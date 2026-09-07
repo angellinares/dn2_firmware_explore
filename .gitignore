@@ -1,0 +1,28 @@
+# Firmware, corpus and reference clones. This repository holds code and
+# documentation only — no Elektron firmware, original or modified, ever.
+00_Resources/
+
+# Firmware artefacts anywhere else, in case one escapes 00_Resources/
+*.syx
+*.bin
+
+# Ghidra
+ghidra/*.gpr
+ghidra/*.rep/
+ghidra/*.lock*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

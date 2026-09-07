@@ -1,0 +1,19 @@
+# Normalise every text file to LF, in the repository and in the working tree.
+#
+# `eol=lf` rather than plain `text=auto`, because `text=auto` still hands
+# Windows a CRLF working tree. This repository ports from C sources and quotes
+# byte-level evidence in its documentation; a line ending that differs between
+# checkouts is one more thing that can make a comparison lie.
+#
+# Same reasoning as DNX/.gitattributes, which was written after a test passed
+# on the author's tree and failed on a fresh clone for exactly this reason.
+* text=auto eol=lf
+
+# Not text, whatever a heuristic decides. None of these belong in this
+# repository — they live in the gitignored corpus — but a stray one must not be
+# line-ending-mangled on its way to an instrument.
+*.syx binary
+*.bin binary
+*.png binary
+*.jpg binary
+*.pdf binary

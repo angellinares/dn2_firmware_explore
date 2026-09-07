@@ -84,6 +84,15 @@ Corpus-dependent tests skip cleanly when `00_Resources/` is absent, and say so.
 | `docs/ROADMAP.md` | the gates, and the Phase 2 LFO4 investigation |
 | `docs/references.md` | prior art, what each is good for, and its licence |
 
+## Licence
+
+**[GNU AGPL-3.0-or-later](LICENSE).** Use it, fork it, change it; keep the
+notices and pass on the same freedoms. A modified version you distribute — or
+run as a service — stays open. Same licence as DNX, for the same reasons.
+
+Parts of it derive from three MIT projects, whose notices are carried in
+[THIRD-PARTY.md](THIRD-PARTY.md).
+
 ## Credit
 
 The container, transport, codec and integrity work stands on
@@ -92,5 +101,9 @@ The container, transport, codec and integrity work stands on
 [bryantysinger/octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt) (MIT),
 and the ColdFire disassembly findings from
 [sambanks/octabam](https://github.com/sambanks/octabam) (MIT). The Digitone
-data formats come from the sibling project DNX. None of them is affiliated with
-Elektron, and neither is this.
+data formats come from the sibling project DNX. What was taken from each, and
+where this project deliberately diverges, is in `docs/references.md`.
+
+None of them is affiliated with Elektron, and neither is this. Everything in
+`docs/` was measured from OS files Elektron publish; no Elektron code has been
+copied into this repository and no firmware is redistributed by it.

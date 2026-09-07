@@ -3,7 +3,8 @@
 Elektron publish no format documentation, so everything in `docs/` was derived
 from real files or from the projects below. Licences were checked before
 anything was ported; all three firmware projects are **MIT**, which is why this
-repository ports from them with attribution rather than reimplementing.
+repository ports from them with attribution rather than reimplementing. Their
+notices are carried in `THIRD-PARTY.md`; this project is AGPL-3.0-or-later.
 
 Working copies are cloned into the private corpus at
 `00_Resources/01_Reference/` and are not part of this repository.

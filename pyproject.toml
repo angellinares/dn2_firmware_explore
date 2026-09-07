@@ -8,6 +8,9 @@ version = "0.1.0"
 description = "Inspect, modify and rebuild Elektron Digitone firmware images"
 requires-python = ">=3.11"
 dependencies = []
+classifiers = [
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

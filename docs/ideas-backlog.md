@@ -1396,3 +1396,76 @@ reserved rank is stored and loaded without complaint on stock.
    does not do -- they belong to whatever schedules the steps.
 3. **Which of the three routes the stored format permits**, from (1).
 4. **The spare-index conflict with section 12**, decided by the owner.
+
+
+### DNX's answer on where the arp settings live, 2026-09-15
+
+Asked with three outcomes committed in the question first. DNX answered from
+its existing records, with no MIDI and with sources named. **Attributed here as
+DNX's findings, not verified in this repository.**
+
+**Location: the sound object (preset), on both instruments.** The primary
+source is the DN1 manual ("arpeggiator settings are part of the Sound and saved
+together"); DNX's `docs/sound-mapping.md` section 8a records the DN2 as the
+same, **without a DN2 capture proving it**. Supporting evidence is indirect but
+strong: across 29,509 named sounds only two DN1 sound bytes vary without feeding
+a DN2 byte, and a heavily arpeggiated sound converts byte for byte against
+Elektron's own DN2 conversion -- so the arp bytes are among the mapped ones.
+
+**Per sound, therefore per track in practice**, through the kit: each pattern's
+kit holds one sound per track. Nothing arp-related is identified in the track
+record; its settings block at track `+0x480` (35 B) has default note, velocity
+and length, length, speed and keyboard setup, with unidentified near-constant
+bytes and an unexplained v3/v4 difference.
+
+**What DNX does not have: any arp field's offset.** None is named in the 359 B
+DN2 sound object, and DNX has no record of a stored 16-step arp pattern either
+way.
+
+**The firmware's `+351..+358` are not stored offsets -- ruled out twice:**
+
+- in a stored DN2 sound object, bytes 355-358 are its **terminator**
+  `BA CE F0 0C`, so a mode byte at 351 and a mask word at 356 would sit on it;
+- in a 1,187 B track record, 351-358 is `+0x15F..0x166`, inside the verified
+  per-trig **condition array** at `+0x100`.
+
+So the pointer the arp step follows is **a runtime object with its own layout**
+-- or a stored object at a different base -- and not a stored sound or track
+record at base 0. Kit offsets were not checked and DNX offered to.
+
+**The lock pool, format facts only:** the id field is 8 bits, so 0-255 can be
+stored; stock never shows an id above 106; stock ids are page-bound, with machine
+pages machine-relative; never observed on stock are 32, 63-65, 86, 107+ and the
+`4*slot+0` rank. **DNX did not lock any arp control in its capture**, so whether
+stock already writes a lock record for one is unknown.
+
+### Against the outcomes written before the answer
+
+- **(A) track record** -- **contradicted** as stated.
+- **(B) sound object** -- **supported for location**, but the firmware offsets
+  do not fit a stored sound at base 0, so the runtime object is its own thing.
+- **(C) elsewhere or split** -- not excluded for the step pattern, which DNX has
+  no record of.
+
+### This changes the routes above
+
+**The spare-index conflict with section 12 gets sharper, not softer.** Arp
+settings live in the sound, like LFO settings -- the natural home for them is the
+parameter-index route (a), which is exactly the range the modulator depths want.
+
+**Route (b), the note-time cave, still stands**, and it does not care where the
+settings are stored: it overrides the runtime object the step reads.
+
+### Two read-only experiments that would settle it
+
+Both from DNX, both needing the owner's go and a named port:
+
+1. **Name the fields.** Save two presets that differ only in arp `MODE`; DNX
+   diffs them. Repeat per field -- range, length, and so on.
+2. **Ask stock what it already does.** Lock an arp control on a trig on stock
+   firmware and have DNX read the pattern: does a lock record appear, and under
+   which id? If stock already p-locks some arp controls, part of this feature
+   exists and only needs finding.
+
+**Experiment 2 is first**: it is one lock and one read, and a yes would change
+the scope of the whole entry.

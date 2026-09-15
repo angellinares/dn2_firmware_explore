@@ -113,3 +113,57 @@ entirely for a first version.
 3. **Build a route-(a) proof**: the tick edit + extension array + one cave,
    flashed to show a fourth LFO modulating a destination. This is the experiment
    that turns "found the tick" into "the generator runs a fourth."
+
+
+---
+
+## The two gating checks, run 2026-09-15
+
+### Check 1 — BSS headroom: there is none. The state relocates (or extends).
+
+The three LFO state arrays are **contiguous, wall-to-wall** in BSS:
+
+```
+0x4463ed18  main tick BACKUP     1920 B  -> ends 0x4463f498
+0x4463f498  second tick state    1920 B  -> ends 0x4463fc18
+0x4463fc18  main tick LIVE       1920 B  -> ends 0x4464039c
+0x44640398  next structure (timing globals, fn 0x401385cc and the 0x446406xx run)
+```
+
+Each is referenced only by its getter and tick (Check confirmed: `0x4463fc18` by
+`0x40137340`/`0x40137726`, `0x4463ed18` by the tick, `0x4463f498` by
+`0x40137394`/`0x401373dc`), but **there is no gap to grow into** — growing
+`0x4463fc18` to 2,560 B would run into `0x44640398`, and the other two are boxed
+by each other.
+
+**So in-place growth is out**, and it confirms the extension design end to end:
+LFO4's per-track 40-byte state lives in a **separate parallel array** —
+`ext_state[16][40]` = 640 B — that the caved fourth iteration uses, exactly as
+its parameter values live in `ext_trk`. The three stock arrays stay 1,920 B and
+do not move; only the tick's inner loop learns to read the fourth LFO's state
+and params from the extension. This is *simpler* than growing them, and it needs
+no BSS relocation at all — the 640 B sits in the 25 MB above BSS with the other
+extensions.
+
+**Net: the tick edit shrinks.** No `#120`→`#160` stride change, no `0x780`
+memset change, no array move. The loop runs three iterations over the stock
+arrays as now, then a **fourth iteration** over the extension arrays — an
+appended pass, not a widened one.
+
+### Check 2 — the second tick's consumer: still unidentified, but boxed in
+
+`0x401373dc` is called from `0x4012a9a8` (a 3,848-byte function), which is
+registered only as a **callback** — its sole reference is `pea 0x4012a9a8` at
+`0x4012b888`, no direct call and no strings. It works over 16 tracks on state at
+`0x445fe870` / `0x446163c4`, distinct from both the audio frame and the sound
+pool.
+
+Not named, but its shape is clear: a **second, non-audio per-track LFO
+evaluation** reached through a registered callback. A route-(a)/first LFO4 can
+skip it and LFO4 simply will not modulate in whatever that callback renders
+(likely a MIDI/CV or metering path — unconfirmed). The complete feature adds the
+same appended-fourth-iteration edit to `0x401373dc`, which has its own extension
+state.
+
+**Neither check blocks the build.** Check 1 makes the tick edit smaller; check 2
+is deferrable to the complete version.

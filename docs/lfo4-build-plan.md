@@ -52,12 +52,13 @@ object, and the stored sound.
 Every function that has to change is now named. None requires a stride edit.
 
 **1. The generator — both ticks** (`docs/lfo4-distance.md`).
-`0x40137726` and `0x401373dc`: loop start `#2`→`#3`, per-LFO offsets, state
-stride `#120`→`#160`, state arrays 1,920→2,560 B. The 4th iteration's parameter
-pointer is caved to read `ext_trk[track]` instead of running off the end of the
-202-byte value array. **State arrays touch only three functions total** — each is
-referenced only by its getter and its tick (`0x4463fc18`↔`0x40137340`/`0x40137726`,
-`0x4463f498`↔`0x40137394`/`0x401373dc`).
+`0x40137726` and `0x401373dc`. **Check 1 (below in `lfo4-distance.md`) shrank
+this:** the three stock state arrays are wall-to-wall in BSS with no headroom, so
+instead of widening them the tick runs an **appended fourth iteration** over
+parallel extension arrays — `ext_state[16][40]` and `ext_trk[16][8]` in the
+25 MB. The stock arrays do not move and the `#120`/`0x780` strides do not change;
+the loop just does one more pass, reading the fourth LFO's state and params from
+the extension. State arrays are referenced only by their getter and tick.
 
 **2. The mirror — control → runtime.** `0x400db092` (the parameter-set apply,
 stride 202) and `Sound::updateMirror` populate the runtime value array from the

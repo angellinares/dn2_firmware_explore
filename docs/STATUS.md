@@ -136,11 +136,7 @@ Rules that keep it honest:
 
 ## Open pull requests
 
-**None open on our repo.** #72 merged 2026-09-15 (the DSP plays no part in
-LFO4; all six modulator sources named). Work continues on `analysis/lfo-tick`.
-External:
-`m-dwyer/digikit` **#12** open (the DN2 cross-check of her DSPI2 frame) and
-**#11** open (SHARC+ VISA cross-check).
+**#74 open** — `analysis/lfo-tick`, carrying everything after #73 merged: the ColdfireEMAC finding, the corrected ISR and module read, the forward/inverse maps, the shared skill with DNX, the LFO tick on both images, and the arp p-lock scoping. #73 merged 2026-09-15. External: `m-dwyer/digikit` **#14** open (LFOs and the modulation matrix are ColdFire code, addresses on DT2 1.16 and DN2 1.11), **#12** and **#11** open.
 
 > **A branch does not close when its PR does.** #70 merged on 2026-09-15 and
 > carried only its **first** commit; fourteen more were then pushed to the same

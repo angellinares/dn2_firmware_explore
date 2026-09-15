@@ -24,9 +24,13 @@ Two routes, both real, neither built:
   shifted into an extension, saved with the preset. This is the full feature and
   the larger job; `docs/lfo4-slot-plan.md` §3 is the analysis.
 
-**The owner's stated goal is a real fourth LFO saved with the sound** (route b).
-Route (a) is the fast way to a *running* LFO4 to prove the generator side before
-committing to storage.
+**The owner chose route (b), 2026-09-15: saved with the sound.** But route (b)
+is *not* done by growing the object — the strides `#2388`, `#202` and `#359` are
+each baked into 16–29 functions and cannot be safely edited. Route (b) uses the
+**same extension arrays** as route (a) plus two serialization hooks that route
+LFO4's values through the stored format's already-reserved 4th LFO slot. See
+`docs/lfo4-build-plan.md`. Route (a) remains the first buildable milestone on the
+way to it.
 
 ## The stages, and where each stands
 

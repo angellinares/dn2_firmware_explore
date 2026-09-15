@@ -562,3 +562,79 @@ Following the owner's lead: a free-running LFO must add elapsed time to its
 phase and a tempo-synced one needs a tempo-scaled step, so the tick either
 reads `0x402a0dec` or reads something computed from it and the BPM in that
 clock module.
+
+## FOUND: the LFO state, the waveform library, and the call from the frame ISR
+
+**2026-09-15, following the owner's lead that the tick is tied to tempo.** The
+clock module that writes the frame time step (`0x4013706a`-`0x401373b0`) holds
+the LFO machinery, and the frame ISR calls into it once per track.
+
+### The state: 16 tracks x 3 LFOs x 40 bytes, and the three is a literal
+
+Two identical initialisers, `0x401372f4` and `0x40137348`, each clear one array:
+
+```
+0x401372f6  clrl %d0                      ; track offset
+0x401372fa  moveq #3,%d1                  ; THREE per track
+0x401372fc  addal #0x4463ed3d,%a0         ;   (base for this array)
+0x40137302  movel #0x3fffffff,%d2
+0x4013730a  movel %d2,%a0@(-21)           ;   field = 0x3fffffff  (half scale)
+0x40137312  clrl %a0@(-37) ... %a0@(-25)  ;   four longs cleared
+0x40137322  lea %a0@(40),%a0              ;   STRIDE 40
+0x4013732a  bnes (inner)
+0x4013732e  addil #120,%d0                ; 3 x 40 per track
+0x40137334  cmpil #1920,%d0               ; 16 x 120
+```
+
+Getters return the two bases: `0x40137340` -> `0x4463ed18`, `0x40137394` ->
+`0x4463e598`.
+
+**Sixteen tracks, three per track, forty bytes each** -- and the count of three
+is `moveq #3` in the loop, with its multiples 120 and 1920 as immediates beside
+it. That is the first place in the image found to *count* the LFOs rather than
+name them.
+
+### The waveform library
+
+Between `0x40137228` and `0x401372f2`, a run of small functions each taking one
+32-bit argument and returning a sample, identified by their arithmetic:
+
+| Entry | Arithmetic | Shape |
+|---|---|---|
+| `0x4013725e` | `+0x40000000`, double, fold on sign, `bchg #31` | **triangle** |
+| `0x40137274` | EMAC `x*|x|` parabola, `x 0.9`, `+0.194`, `x`, `<< 6` | **sine** (parabolic approximation) |
+| `0x40137240` | `addl d0,d0; subxl; negl; +0x7fffffff` -- sign only | **square** |
+| `0x40137228` | `> 16383 ? 0x3fffffff : 0` | **square**, unipolar |
+| `0x40137252` | `eor #0x7fffffff` | **ramp** (inverted saw) |
+| `0x401372ce` | scale by EMAC, through `0x401343e0` | **exponential** |
+| `0x401372be` | `x & ~sign` -- `max(x, 0)` | half-wave |
+
+The shapes are named from arithmetic only. **None is yet tied to a `WAVE`
+index**; the dispatch that picks one by the `WAVE` parameter is still to be
+read. `0x401371ac` uses `%macsr` and the same `0x401343e0` and is not
+identified.
+
+### The call from the frame ISR
+
+In `FUN_40025e36`, once per track, immediately before the six-source
+modulation apply:
+
+```
+0x400272c4  movel %fp@(-168),%sp@-
+0x400272c8  movel %fp@(-152),%sp@-
+0x400272cc  movel 0x402a0dec,%sp@-        ; the frame time step
+0x400272d2  movel %a2,%sp@-               ; the track's record
+0x400272d4  jsr 0x40137726
+```
+
+**`0x40137726` is the tick candidate** -- per track, given the elapsed time,
+next to the state and the waveforms. What it does is recorded below once read.
+
+### What this means for LFO4, provisionally
+
+If `0x40137726` walks the 3x40 state with the literal three, then a real fourth
+LFO needs, at least: the two state arrays grown from 1,920 to 2,560 bytes each
+(`moveq #3` -> `#4`, `120` -> `160`, `1920` -> `2560`), and the tick's own loop
+bound. The arrays sit in BSS near `0x4463e598`/`0x4463ed18`, so whether 640
+bytes can be appended in place is a question about what follows them.
+**Provisional** until the tick is read.

@@ -782,3 +782,31 @@ Counted from the code rather than estimated:
 5. **The same for the second tick**, `0x401373dc`.
 
 Nothing in the DSP, the six-source matrix or the frame builder has to change.
+
+
+### The same LFO tick on Digitakt II 1.16
+
+Found by byte signature (the free-running `#14400`, the parabolic-sine constant
+`0x73333334`, the `cmpil #1920` initialisers) and confirmed by disassembly.
+
+| | Digitone II 1.11 | Digitakt II 1.16 |
+|---|---|---|
+| LFO tick | `0x40137726`, 1,028 B | `0x40139342`, 806 B |
+| inner loop start `moveq #2` | `0x40137784` | `0x4013935e` |
+| single caller | `0x400272d4` | `0x4002e91c` |
+| state initialisers (`cmpil #1920`) | `0x401372f4`, `0x40137348` | `0x40138f50`, `0x40138fa4` |
+| waveform function table | `0x4020b340` | `0x4022231c` |
+| random-wave slew table | `0x4020b358` | `0x40222334` |
+| hold-value tables | `0x4020b2ec`, `0x4020b308`, `0x4020b324` | `0x402222c8`, `0x402222e4`, `0x40222300` |
+| value-array stride | 202 | **142** |
+| `DEST` bound | 100 | **70** |
+| modulation kernel | `0x400db1dc` | `0x400d9354` |
+
+The waveform table's six entries keep **identical relative offsets** on both
+images (+0x1e, +0x34, 0, +0x12, +0x8e, +0x7e from the square), so the same six
+shapes in the same order. The `MULT` clamp to 23, the split at 11 and the fixed
+14400 are identical. The Digitakt's smaller value array and `DEST` bound are its
+smaller parameter set, not a different LFO.
+
+Sent to `m-dwyer/digikit` as a findings section, since its #13 patched Unicorn
+for the MSAC-with-load instruction the kernel uses without naming the function.

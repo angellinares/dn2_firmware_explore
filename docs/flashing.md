@@ -188,3 +188,45 @@ still on.
 | 2026-09-15 | **Page renumber probe** (`page-renumber-test_DN2_1.11.syx`, base **1.11**) — the 22 parameter records on page `0x1d` (ten unlabelled TRIG, four `Retrig`, eight `Euclidean`) moved to page `0x1f`. **22 bytes, all `0x1d`→`0x1f`, no code edited** | **Fail, and a clean, informative one.** It boots and the pages still *draw*, but every moved parameter reads **zero** rather than its record default, and **no edit reaches the sequencer** — recorded trigs are unaffected by anything on the TRIG pages. `NOTE` shows C0, `PROB` 0%, `LFO.T`/`FLT.T` off, `VFAD` −64 (its minimum), `RATE` blank; `RATE` displays a value once set but still does nothing. Untouched parameters on other pages (`PTIM` 40, `PORT` off) read their normal defaults, so the damage is exactly the 22 moved records. **The negative the renumbering plan rested on is refuted: the page id *is* named elsewhere** — see `docs/lfo4-feasibility.md`, "What the flash answered". |
 
 | 2026-09-15 | **Page renumber probe v2** (`page-renumber-test2_DN2_1.11.syx`, base **1.11**) — v1's 22 records plus **one code byte**: `moveq #29` → `moveq #31` at `0x400dc71e`, `param_set_tables_build`'s exact-match routing arm | **Fail, and indistinguishable from v1.** Same wrong values, same dead edits. The routing byte changed nothing observable, which is itself the finding: **populating the `ParameterSet` table is not the binding that matters.** The owner also noticed what v1 had hidden — p-locking `PROB` produces **modulation unrelated to probability**. The owner adds that **any parameter move clears it**, which places the write in the runtime mirror only — `0x400daf44` restores marked parameters from their base values. `VEL` *reads* 112 (LFO1 `SPD`'s default); `PROB` *modulates* (LFO2 `DEST`). The moved records are reading and writing the **sound** value array at index `record+0x04`. |
+
+
+---
+
+## Standing hazard: do not flash while the workstation is crashing (2026-09-16)
+
+**The build machine bugchecks `0x9F` DRIVER_POWER_STATE_FAILURE, repeatably.**
+Two crashes in about 100 minutes on 2026-09-15 (dumps `091526-19890-01.dmp` and
+`091526-20390-01.dmp`), plus three unrelated planned restarts for KB5129195.
+
+**Cause, from the event log — the NVIDIA display driver.** Both crashes carry an
+identical signature: a burst of **~42 `nvlddmkm` Event ID 14 errors**
+(`\Device\Video5`, `CMDre`) in the minutes immediately before the bugcheck,
+preceded about three minutes earlier by a single `nvlddmkm` Event ID 153.
+
+| | burst | crash |
+|---|---|---|
+| first | 22:37, 22:38, 22:40 | ~22:40 (WER logged 22:41:53) |
+| second | 23:54, 23:55, 23:57 | 23:57:15 |
+
+The GPU is an **NVIDIA GeForce RTX 4050 Laptop**, driver **32.0.15.7705 dated
+2025-03-08**, in a hybrid pair with Intel UHD Graphics — so the discrete GPU
+powers down and up dynamically, which is exactly the transition `0x9F` subtype 3
+reports a driver failing to complete.
+
+> **[RETRACTED]** An earlier reading of this named the **Focusrite USB/Thunderbolt
+> audio driver** and the **Intel AX203 Wi-Fi** as the likely causes, from nothing
+> but "these commonly cause `0x9F`". That was speculation dressed as a lead, and
+> the log names a different driver outright. `docs/PRINCIPLES.md` §19 — the guess
+> was not produced by any instrument.
+
+**Why this belongs in the flashing log.** A DN2 flash runs for minutes over
+physical MIDI DIN. A host crash part-way through an OS write is an avoidable
+risk to the instrument, and the recovery path — though proven — needs the Early
+Start-up Menu and another complete flash. **Do not start a flash while this is
+unresolved.** The fix is the owner's: update (or roll back) the NVIDIA driver,
+which is ~18 months old, and confirm no `nvlddmkm` Event 14 bursts appear under
+load before the next flash.
+
+Naming the faulting driver from the dumps themselves needs admin rights and a
+debugger; neither is available to this session. The event-log correlation above
+is two-for-two and is sufficient to act on.

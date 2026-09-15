@@ -1329,3 +1329,70 @@ six descriptor lists' depth halves.
 
 Item 4 gates the others: it is cheap, and it could make this whole entry
 unnecessary by showing the mechanism already exists.
+
+
+---
+
+## 13. P-locking the arpeggiator settings
+
+**Asked for by the owner, 2026-09-15:** *"enable p-locking for the arpeggiator
+settings."* Different from section 10, which is about offering the arp on MIDI
+tracks at all; this is about changing the arp's settings **per trig** on tracks
+that already have it.
+
+### Why it does not work today, and the evidence
+
+**The arp's settings are not parameters.** Section 10 already found that no
+record in the parameter table matches the arp, and that its page is a menu view
+(`ArpSetupMenuView`, `0x40212998`) rather than a page of parameter records.
+
+**2026-09-15 adds the runtime side.** The arp step is `0x4002a0bc`
+(`docs/modulation-matrix.md`, "Two more closed"), called from the trig handler
+with the track at note time. It keeps per-track state at
+`0x4059c8a8 + 40*track` and reads its settings through a pointer held in that
+state at `+32`, as signed bytes and words at fixed offsets:
+
+| Offset | Read as | Use in the step |
+|---|---|---|
+| `+351` | byte | **mode** -- 1, 2, 3 select up / down / up-down |
+| `+353` | byte | **octave range** -- the octave counter wraps here |
+| `+355` | byte | **length** -- the step counter wraps here |
+| `+356` | word | **16-step mask** -- `btst step` gates each step |
+| `+358..` | byte per step | **per-step offset** added to the note |
+
+The parameter-lock path, `0x400db092`, is keyed entirely on a parameter index
+in 1..99 (section 12). **None of these fields has an index, so no lock can name
+one** -- exactly the situation of the performance modulators in section 12.
+
+### Three routes, as scoped for the modulators, and what differs
+
+**(a) Give the arp settings parameter indices.** The scalar settings are few --
+mode, range, length, and the arp's speed and note length wherever those live --
+so they would fit the modulated-parameter bitmap's spare range 100-127. **The
+16-step mask and the per-step offsets do not fit as parameters** and are the
+part a player would most want to lock. **Conflict to resolve first:** section
+12's preferred route spends 24 of those 27 spare indices on modulator depths.
+The two features cannot both have that range as scoped.
+
+**(b) Override at note time from a cave.** The arp step is called from the trig
+handler with the trig descriptor in hand, so a cave before the call could swap
+in per-trig values for the fields above and restore them after. Cheapest in
+structure. The locked values would need a home the sequencer saves -- which is
+the question for DNX, below.
+
+**(c) Carry them in the stored lock pool.** Only if the stored format has room.
+DNX reports the lock pool as 80 records of 258 bytes with a `track<<8 | id`
+header, and knows which ids are never used on stock (32, 63-65, 86, and the
+`4*slot+0` rank). Whether an arp setting could ride an unused id and survive a
+save is a DNX question, and pattern A1 has already shown that a stray id in the
+reserved rank is stored and loaded without complaint on stock.
+
+### What must be established before building
+
+1. **Where the arp settings are stored** in the pattern's track record, and
+   whether they are per track or per sound. The pointer at arp-state `+32` has
+   not been identified as either. **Asked of DNX, 2026-09-15.**
+2. **Where the arp's speed and note length are read**, which the step function
+   does not do -- they belong to whatever schedules the steps.
+3. **Which of the three routes the stored format permits**, from (1).
+4. **The spare-index conflict with section 12**, decided by the owner.

@@ -638,3 +638,147 @@ LFO needs, at least: the two state arrays grown from 1,920 to 2,560 bytes each
 bound. The arrays sit in BSS near `0x4463e598`/`0x4463ed18`, so whether 640
 bytes can be appended in place is a question about what follows them.
 **Provisional** until the tick is read.
+
+## THE LFO TICK: `0x40137726`, generator and apply in one function
+
+**2026-09-15.** Read end to end. Called once per audio frame from
+`FUN_40025e36` with the first track's record and the frame time step, it walks
+all sixteen tracks itself. **Every LFO parameter, the tempo-sync branch the
+owner predicted, all seven waveforms and the write into the parameter array are
+in this one 1,028-byte function.**
+
+### The loops -- and the three
+
+```
+outer:  a5 = track 0..15            (cmpl %a5,#16)
+          value array  += 202
+          track record += 153
+          LFO state    += 120       <- 3 x 40
+inner:  counter = 2, 1, 0           (moveq #2 ... subql #1 ... cmpl #-1)
+          state a2 -= 40,  flag a3 -= 40,  params a4 -= 16
+```
+
+**The inner loop starts at a literal `moveq #2` at `0x40137784` and runs to
+-1: three LFOs.** Field offsets are written for the *third* LFO and walked
+downwards, so the count is baked in three ways -- the start value, the starting
+offsets (`a2@(80..117)`, `a4@(68..82)`), and the outer stride `120`.
+
+### What it reads, per LFO
+
+`a4` starts at the value array minus 34, so `a4@(68)` is sound index 17 --
+LFO3's first parameter -- and each step down by 16 is one LFO:
+
+| Field | Read | Use |
+|---|---|---|
+| `SPD` | `mvsw a4@(68)` | `(v - 0x4000) * 2`, bipolar speed |
+| `MULT` | `mvsb a4@(70)` | clamped 0..23 -- see below |
+| `FADE` | `mvsw a4@(72)` | through `0x401371ac` to a fade coefficient |
+| `DEST` | `mvsb a4@(74)` | destination index, **bounded `<= 100`** |
+| `WAVE` | `mvsb a4@(76)` | **clamped 0..6** -- seven waveforms |
+| `SPH` | `mvsw a4@(78)` | start phase; slew for the random wave |
+| `MODE` | `mvsb a4@(80)` | free / trig / hold / one-shot / half |
+| `DEP` | `mvsw a4@(82)` | `(v - 0x4000) * 2`, bipolar depth |
+
+These are the eight fields `docs/engine-state.md` mapped to indices 17-24, 9-16
+and 1-8 from `record+0x04` -- read now by the code that uses them.
+
+### Tempo sync or free -- the owner's point, exactly as built
+
+```
+0x40137854  moveq #23,%d1        ; clamp MULT to 23
+0x4013785e  moveq #11,%d2        ; MULT <= 11 ?
+0x40137864  addil #-12,%d0       ;   no:  MULT -= 12
+0x4013786a  movel #14400,%d1     ;        rate = 14400      FREE-RUNNING
+0x40137872  movel %sp@(84),%d1   ;   yes: rate = argument   TEMPO-SYNCED
+0x40137888  mulsl %d1,%d6        ; SPD * rate
+0x40137892  subl %d0,%d7         ; 11 - MULT
+0x4013789c  asrl %d7,%d6         ; increment = SPD * rate >> (11 - MULT)
+```
+
+**`MULT` 0-11 are tempo-synced and scale the rate the ISR passes in; `MULT`
+12-23 run free against a fixed 14400.** One compare.
+
+### Phase, and the waveforms
+
+`phase += increment`, **wrapping at 1,382,400,000**, with a half-period
+crossing test at 691,200,000 driving `MODE`'s one-shot and half-cycle stops.
+
+**Waves 0-5** are dispatched through a function table at `0x4020b340[WAVE]`
+after scaling the phase to 32 bits (`macl #1667999861`, `<< 2`). Dumped, in the
+instrument's own order:
+
+| `WAVE` | Entry | Arithmetic | Name |
+|---|---|---|---|
+| 0 | `0x4013725e` | fold on sign, `bchg #31` | **TRI** |
+| 1 | `0x40137274` | EMAC parabola `x*|x|`, `*0.9`, `+0.194` | **SIN** |
+| 2 | `0x40137240` | sign only | **SQR** |
+| 3 | `0x40137252` | `eor #0x7fffffff` | **SAW** |
+| 4 | `0x401372ce` | through `0x401343e0` | **EXP** |
+| 5 | `0x401372be` | `max(x, 0)` | **RMP** |
+| 6 | null | handled inline | **RND** |
+
+`MODE`'s hold-value tables at `0x4020b2ec`, `0x4020b308`, `0x4020b324` hold
+`RMP` and `EXP` at full scale and everything else at zero.
+
+**Wave 6, `RND`, is sample-and-hold.** When the phase advances past a sixteenth
+of a period, or on retrigger, it draws from **`0x4013739c`** -- a lagged
+Fibonacci generator (`next = a + b; b = a`) on `0x402a0df8`/`0x402a0dfc` -- and
+blends old and new samples through a slew table at `0x4020b358[SPH >> 8]`.
+**That is why the search for `rand()` found no LFO: the random wave never calls
+it.** It is also the runtime side of the `SPH` -> slew remap for random
+waveforms that `docs/lfo4-feasibility.md` section 3 found in the UI.
+
+### The apply
+
+```
+0x40137a8a  mvsb %a4@(74),%d2        ; DEST
+0x40137a96  cmpl %d7,%d1             ; DEST <= 100 ?
+0x40137aa2  lea %a0@(0,%d7:l:2),%fp  ;   fp = value array + 2*DEST
+0x40137a9e  mvsw %a4@(82),%d1        ; DEP
+0x40137aae  macl %d1,%d0,%acc0       ; sample * depth
+0x40137aba  addl %d1,%d0             ; + current value
+            ... clamp 0 .. 32512 ...
+0x40137ad0  movew %d0,%fp@           ; write it back
+```
+
+**`value[DEST] = clamp(value[DEST] + sample * DEP * fade, 0, 32512)`**, into
+the same per-track array the six-source matrix modulates and the DSP frame is
+built from. This closes `docs/engine-state.md`'s open item.
+
+### A second tick: `0x401373dc`
+
+842 bytes of the same shape, for **one track** passed as an argument: its own
+3 x 40 state array at `0x4463e598` (the one getter `0x40137394` returns), `MULT`
+clamped to 0-11 and split at 5 against two rate fields at `+3360`/`+3424`, a
+period of **21,600,000**, the same fade, hold tables and random generator.
+Called from `0x4012aaea` and `0x4012b0aa`, beside the code that uses that
+getter. **What it serves is not established** -- it is recorded, not named. A
+fourth LFO has to change it as well.
+
+### Why every earlier search missed it
+
+It is called from inside a 7,582-byte function whose boundaries a heuristic had
+misplaced; stock Ghidra stopped at the `movclr` in its callers; its random wave
+uses a private generator rather than `rand()`; and it lives in the clock module
+rather than beside the modulation kernel. The owner's lead -- follow the tempo --
+went past all four.
+
+### What a real fourth LFO needs from this function
+
+Counted from the code rather than estimated:
+
+1. **The inner loop start**, `moveq #2` -> `#3` at `0x40137784`.
+2. **The per-LFO field offsets**, written for the *last* LFO and so all moving:
+   state `a2@(80..117)` by +40, parameters `a4@(68..82)` by +16.
+3. **The outer state stride**, `moveq #120` -> `#160` at `0x40137b02`, with both
+   state arrays grown from 1,920 to 2,560 bytes -- the initialisers at
+   `0x401372f4`/`0x40137348` and the `0x780` copy at `0x4013773c`.
+4. **Somewhere for LFO4's eight parameters.** The tick reads LFO *n* at
+   value-array indices `8n+1 .. 8n+8`; for a fourth LFO that is **25-32, the
+   first eight machine parameters.** This is `docs/lfo4-slot-plan.md`'s
+   eight-slot problem seen in the exact code that would hit it, and the
+   remaining structural question: point `a4` for the fourth iteration at an
+   extension array instead of the value array, which a cave in this loop can do.
+5. **The same for the second tick**, `0x401373dc`.
+
+Nothing in the DSP, the six-source matrix or the frame builder has to change.

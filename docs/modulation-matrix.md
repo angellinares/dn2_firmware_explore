@@ -586,8 +586,11 @@ Two identical initialisers, `0x401372f4` and `0x40137348`, each clear one array:
 0x40137334  cmpil #1920,%d0               ; 16 x 120
 ```
 
-Getters return the two bases: `0x40137340` -> `0x4463ed18`, `0x40137394` ->
-`0x4463e598`.
+Getters return the two live bases: `0x40137340` -> **`0x4463fc18`** (the main
+tick's state), `0x40137394` -> **`0x4463f498`** (the second tick's). *(An earlier
+draft named these `0x4463ed18`/`0x4463e598`; `0x4463ed18` is in fact the main
+tick's **backup** copy, written by a memcpy at the top of `0x40137726` when a
+flag is set. Corrected 2026-09-15.)*
 
 **Sixteen tracks, three per track, forty bytes each** -- and the count of three
 is `moveq #3` in the loop, with its multiples 120 and 1920 as immediates beside
@@ -635,7 +638,7 @@ next to the state and the waveforms. What it does is recorded below once read.
 If `0x40137726` walks the 3x40 state with the literal three, then a real fourth
 LFO needs, at least: the two state arrays grown from 1,920 to 2,560 bytes each
 (`moveq #3` -> `#4`, `120` -> `160`, `1920` -> `2560`), and the tick's own loop
-bound. The arrays sit in BSS near `0x4463e598`/`0x4463ed18`, so whether 640
+bound. The arrays sit in BSS at `0x4463fc18`/`0x4463f498`, so whether 640
 bytes can be appended in place is a question about what follows them.
 **Provisional** until the tick is read.
 
@@ -748,7 +751,7 @@ built from. This closes `docs/engine-state.md`'s open item.
 ### A second tick: `0x401373dc`
 
 842 bytes of the same shape, for **one track** passed as an argument: its own
-3 x 40 state array at `0x4463e598` (the one getter `0x40137394` returns), `MULT`
+3 x 40 state array at `0x4463f498` (the one getter `0x40137394` returns), `MULT`
 clamped to 0-11 and split at 5 against two rate fields at `+3360`/`+3424`, a
 period of **21,600,000**, the same fade, hold tables and random generator.
 Called from `0x4012aaea` and `0x4012b0aa`, beside the code that uses that

@@ -2676,3 +2676,65 @@ glitch ramp. Both are boot-screen mod options, so they belong in
 **A variation, not a replacement** (owner: *"as a new variation"*): the tunnel intro stays available; ASCII-glitch is another choice beside it in the boot-screen mod and on the site.
 
 **Not built.**
+
+## 17. A performance mixer driven by MIDI controllers
+
+**Raised by the owner 2026-09-17:** *"build a performance mixer via midi
+controllers and the different outputs and routings of the tracks in the DN1 and
+DN2"* — prompted by Overbridge and the Outbox splitting out each track, the send
+FX and the master.
+
+### Where the splitting and routing actually live (read, not assumed)
+
+The owner's premise was that the per-track split and its processing are in
+section 8. The bytes say otherwise, in a way that helps:
+
+- **Section 8 is the Outbox 8's own firmware** — named by its USB strings
+  (`docs/firmware-sections.md`): USB PD, USB host/device tasks, flash and
+  calibration messages, version 1.00E. It is the accessory's program, byte-identical
+  inside Digitakt mk1 1.53. It carries **no** audio, routing, Overbridge or mixer
+  strings (it has very few strings at all). Whether its code does signal
+  processing is unread.
+- **The routing is configured in MAIN OS (section 3)**, as a "break out box":
+  `BreakOutBoxSettings` (with `updateMirror` and a `Serialize`), its storage
+  `BOB::bobConfigStorage_v0_t` behind `ValueWithMirror`, and three menu views —
+  `BreakOutBoxRoutingMenuView`, `BreakOutBoxEditMenuView` (with clear/paste) and
+  `BreakOutBoxCVOutputConfigMenuView` (**the Outbox has configurable CV outputs**).
+  `OVERBRIDGE` and `OVERBRIDGE SYNC` are MAIN OS strings too.
+- **The audio itself is rendered on the SHARC (section 7)** — per-track mixing,
+  sends and master. So a per-track split is DSP work that MAIN OS configures and
+  the Outbox or Overbridge carries out of the box. The DSP-side mechanism is unread.
+
+### What is already MIDI-controllable per track
+
+The parameter records' `+0x18` high byte is the MIDI CC (Elektron's published
+CC map agrees):
+
+| record | CC |
+|---|---|
+| Solo | 93 |
+| Mute | 94 |
+| Track Level | 95 |
+| Pattern Mute | 110 |
+| Chorus / Delay / Reverb send | 29 / 30 / 31 |
+
+Each on the track's own MIDI channel. So a controller can already mix levels,
+mutes and sends; what it cannot do is **routing** (which output a track goes to,
+Outbox/Overbridge assignment), the **master and FX returns**, or one controller
+page mapped across all tracks on one channel.
+
+### First steps
+
+1. Read `bobConfigStorage_v0_t` and the routing menu: what a route is, how many
+   outputs, per track or per bus, and whether a routing change can be applied live.
+2. Map which mixer parameters have no CC (master, FX returns, routing) and whether
+   the CC dispatcher can be given new entries — the `+0x18` field suggests a
+   table-driven path, like the modulation-mask route that already worked.
+3. The DN1 side, from `Digitone_and_Digitone_Keys_OS1.43` (no Outbox classes
+   expected; Overbridge per-track outputs exist there).
+4. Decide the product: firmware-side CC mappings, or a host-side mixer
+   (Overbridge/Outbox outputs driven by a controller) — the latter needs no
+   firmware change for anything already CC-mapped.
+
+**Not built.**
+

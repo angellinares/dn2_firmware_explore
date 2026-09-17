@@ -2736,5 +2736,49 @@ page mapped across all tracks on one channel.
    (Overbridge/Outbox outputs driven by a controller) — the latter needs no
    firmware change for anything already CC-mapped.
 
+### Cueing — the feature a Digitone has never had (owner, 2026-09-17)
+
+*"the important one never given to a DN has been to be able to have a channel/s
+for cueing ... so you can prelisten before sending the audio live through the
+master out."* And: *"the firmware for the outbox give us the possibility of
+creating our own version to be able to handle that DJ mixer functionality."*
+
+**What the DN2 already has that a cue can be built from** (manual 1.10D §13.6,
+and the strings of `AudioRoutingMenuView` / `RoutingMenuView` in MAIN OS):
+
+| setting | what it does | why it matters for cue |
+|---|---|---|
+| `AUDIO ROUTING TO MAIN` | per track (16), per FX return (3) and inputs: send to MAIN OUT or not, one trig key each | taking a track **off the master** is already a live per-track bit |
+| `AUDIO ROUTING TO FX` | per track: send to the FX or not | |
+| `USB OUT` | `MAIN`, or **one or two tracks** as L/R (`L:T%d R:T%d`), `EXT`, `OFF` | a track can already leave the box **without** going to main |
+| `PRE/POST FADER` | USB track audio before or after track level | pre-fader cue is exactly what DJ cue is |
+| `INT TO MAIN` | internal audio to **MAIN OUT and HEADPHONES** or not | the headphones follow the main bus |
+| Outbox 8 routing | `OUTBOX 8 ROUTING CONFIG`, per output audio or CV (`PRESS RIGHT TO ADD AUDIO OUTPUT`, `OUTPUT %d-8 WILL BE CV OUTS`) | eight extra physical outputs to put a cue pair on |
+
+**The catch:** the manual says `INT TO MAIN` feeds *"MAIN OUT and HEADPHONES OUT"*
+and the main volume sets both — the headphone jack appears to be the **main bus**,
+not a separate one. So **cue on the DN2's own headphones** would need a second
+DSP bus and a separately driven headphone output; whether the hardware can do that
+(separate DAC channels) is unknown and may be impossible.
+
+**Three routes, cheapest first:**
+
+1. **Cue on a USB pair or an Outbox pair — MAIN OS only.** A "cue" action (a key
+   combo or a MIDI CC) that, for the selected track(s), clears its `TO MAIN` bit
+   and routes it pre-fader to the cue output; a second action commits it back to
+   main. Every primitive exists and is already changed live from menus; this is
+   wiring them to a performance control. Listening happens on the computer
+   (USB) or on the Outbox's outputs.
+2. **A cue bus on the DN2's headphones** — needs the DSP (section 7) to render a
+   second mix and the hardware to output it separately. Blocked on reading the
+   SHARC mixer and the codec's channel count.
+3. **Custom Outbox 8 firmware** (the owner's suggestion) — section 8 is the
+   Outbox's complete ARM program, shipped and flashed by the DN2 update, so a
+   modified one could in principle add mixing and cue logic inside the box. It is
+   the largest route: the DN2<->Outbox USB protocol and audio path are unread, the
+   ARM code is unread (no ARM toolchain here yet), and a bad image risks the
+   accessory, whose recovery path is unknown. Worth it only after route 1 shows
+   what the DN2 already sends it.
+
 **Not built.**
 

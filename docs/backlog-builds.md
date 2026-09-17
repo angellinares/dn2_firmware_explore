@@ -36,7 +36,7 @@ not been flashed has not been tested.
 | — | **Site: LFO waves with swappable wavetables** (owner goal, 2026-09-17) | **DELIVERED** — `site/lfo.html`, mod `lfowaves` (CLI + browser, byte parity), WAV/JSON wavetable import | page driven headless: builds and verifies 21/21 |
 | 15 | A wavetable synth machine (the owner's actual meaning of "wavetable") | **not started** — audio is DSP-side, so it inherits §7's cost. First build: port digikit's Digitakt machine-slot Milestone A to the Digitone | — |
 | 16 | A glitch-ASCII intro instead of the tunnel | **not started** — queued by the owner 2026-09-17. First build: bypass the tunnel, draw the mark as ASCII cells; then the glitch ramp | — |
-| 17 | A performance mixer driven by MIDI controllers (DN1 and DN2) | **not started** — routing lives in MAIN OS as `BreakOutBoxSettings`; section 8 is the Outbox 8 firmware; levels/mutes/sends already have CCs 93-95, 29-31 | — |
+| 17 | A performance mixer driven by MIDI controllers (DN1 and DN2) | **not started** — routing lives in MAIN OS as `BreakOutBoxSettings`; section 8 is the Outbox 8 firmware; levels/mutes/sends already have CCs 93-95, 29-31. **Cue:** route 1 (USB/Outbox pair, MAIN OS only) chosen, parked until the owner starts it | — |
 | — | **LFO4** (the project's named goal) | **DELIVERED** — `lfo4-tick6a_DN2_1.11.syx` | **PASSED on hardware 2026-09-17** — owner: *"works"*. Next: parameters from storage and the UI (v4 page view) instead of the image |
 | — | Transient Swapper | **SHIPPED** | **passed**, PR #64 |
 

@@ -2780,5 +2780,10 @@ DSP bus and a separately driven headphone output; whether the hardware can do th
    accessory, whose recovery path is unknown. Worth it only after route 1 shows
    what the DN2 already sends it.
 
+**Decision, 2026-09-17:** route 1 first — *but not started yet* (owner: "not
+starting now"). Long-term aim recorded: learn how the Outbox decodes the DN2's
+audio, then a DIY portable interface speaking the same protocol, with a custom
+firmware that only does main output and headphone cue.
+
 **Not built.**
 

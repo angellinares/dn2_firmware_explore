@@ -1,29 +1,23 @@
-"""The whole of LFO4 under the emulator: a value in the table reaches the engine.
+"""The whole of LFO4, with the sound address derived the firmware's way.
 
     # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python \\
-        scripts/emu_lfo4_bridge.py [--frames 40]
+    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u         scripts/emu_lfo4_chain.py [--frames 40]
 
-Steps 1-3 each proved one thing separately. This asks the question they were
-for: **put LFO4's eight values in the table for one track's sound, and does that
-track -- and only that track -- modulate?**
+`emu_lfo4_bridge.py` asks the same question and says outright where it cannot
+help: *"the sound address comes from the build's own `lfo4_sound_of`, so the
+harness and the firmware agree on the track -> sound map by construction"*.
 
-Nothing is laid out by hand except the table entry. The sound address comes from
-the build's own `lfo4_sound_of`, so the harness and the firmware agree on the
-track -> sound map by construction rather than by two copies of the arithmetic.
+**That is exactly the blind spot the instrument found.** The panel writes into
+the table under the sound the *firmware* hands the setter; the tick reads it
+back under a sound the *bridge* works out. A harness that uses our function for
+both sides cannot see them disagree, and for a while they did: the bridge
+computed from a constant measured out of a snapshot.
 
-**And that is this harness's blind spot, found on the instrument.** Agreeing by
-construction is agreeing about nothing: the panel writes into the table under
-the sound the *firmware* hands the setter, and if the bridge's map differs the
-page works and the engine hears silence -- which is what happened, because the
-bridge's map came from a constant measured out of a snapshot.
-`scripts/emu_lfo4_chain.py` is this test with the address taken from the
-firmware's own routine instead, and it is the one to run.
-
-Then the same question again after an edit: `ext_set` bumps `ext_generation`,
-so the next frame must pick the new value up without anything being told.
+So this seeds the table at the address the **firmware's own routine** gives --
+`0x40025bda(track)`, which is `*(0x800052a0) + 52 + track * 1163` -- and then
+asks whether the engine finds it. Two independent derivations of one address,
+which is the only way the question means anything.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -38,7 +32,8 @@ from emu_lfo4_tick import (DEST_SLOT, EVAL_A, MIRROR_AT, MIRROR_BYTES, MIRROR_SL
                            RATE, REST, SET_FRAC, STATE, STATE_LEN, TRACKS, differences)
 from lfo4_harness import SNAP, Machine, check, code_chunk, report  # noqa: E402
 
-BUILD = "/mnt/d/01_Code/Z_Personal/dn2_firmware/out/lfo4-bridge"
+BUILD = "/mnt/d/01_Code/Z_Personal/dn2_firmware/out/lfo4-value"
+FW_SOUND_OF = 0x40025BDA        # the firmware's own track -> sound
 TRACK = 1                                  # 0-based: the second track
 FAST = (0x7000, 0x0100, 0x4000, DEST_SLOT << 8, 0x0100, 0x0000, 0x0000, 0x5000)
 SLOWER = (0x0800,) + FAST[1:]
@@ -81,8 +76,19 @@ def main() -> int:
     rate = m.long(RATE)
     out1, out2 = m.alloc(256), m.alloc(256)
 
-    sound = m.call(sym["lfo4_sound_of"], TRACK)
-    print(f"  track {TRACK + 1}'s live sound, from the firmware's own map: {sound:#010x}\n")
+    # Two independent derivations of one address. The firmware's own
+    # routine at 0x40025bda is `*(0x800052a0) + 52 + track * 1163`; the
+    # bridge works the same thing out for the track the tick hands it. A
+    # harness that uses ours for both sides -- which `emu_lfo4_bridge.py`
+    # says it does -- cannot see them disagree, and for a while they did.
+    sound = m.call(FW_SOUND_OF, TRACK) & 0xFFFFFFFF
+    ours = m.call(sym["lfo4_sound_of"], TRACK) & 0xFFFFFFFF
+    print(f"  track {TRACK + 1}'s live sound, from the firmware: {sound:#010x}")
+    print(f"  and from the bridge's own arithmetic:            {ours:#010x}")
+    check("the bridge derives the same address the firmware does", sound == ours,
+          f"{ours:#010x} against {sound:#010x}; a disagreement here is a page "
+          "that works and an engine that hears nothing")
+    print("")
 
     def frames(values):
         for slot, value in enumerate(values):

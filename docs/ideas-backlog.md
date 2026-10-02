@@ -3902,7 +3902,7 @@ Both routes are to be explored when the time comes.
 | | new shapes (owner's route) | a modifier on every shape (the request) |
 |---|---|---|
 | UI | none new: WAVE picks it, SPH or SLOP sets the amount | a hidden control (FUNC + turn WAVE, or a spare record) and somewhere to show it |
-| storage | none: the shape and SPH are stock fields | a new per-LFO field that must survive save/load ([[working-project-persists]]) |
+| storage | none: the shape and SPH are stock fields | a new per-LFO field that must survive a reboot and SAVE + reload |
 | code | the `lfowaves` generator path, proven on hardware | a stage after every generator, all 3 (4 with LFO4) LFOs |
 | reach | only the new shapes warp | every shape, stock ones included |
 

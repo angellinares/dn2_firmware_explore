@@ -475,7 +475,7 @@ def _matrix(args) -> int:
     for a in ids:
         print(f"  {a:<{width}}" + "  ".join(f"{('-' if a == b else cell[(a, b)]):>6}" for b in ids))
     print(f"\nyes = disjoint bytes and applies in both orders; order = only in the order "
-          "`apply` uses;\nNO = refused. Not a hardware result: no combined image has been flashed.\n")
+          "`apply` uses;\nNO = refused. Not a hardware result, unless a pair's note says it was flashed.\n")
     for pair in found:
         if not pair.combines or pair.order_only or pair.note:
             print(f"  {pair.a} + {pair.b}: " + (pair.reason() or next(iter(pair.refused.values()), "")))

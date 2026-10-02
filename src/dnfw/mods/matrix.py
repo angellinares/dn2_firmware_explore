@@ -37,6 +37,10 @@ NOTES: dict[frozenset, str] = {
     frozenset(("arpmodes", "midiarp")):
         "a MIDI track's arp runs the same step, so SHUF and RAND should reach MIDI tracks; "
         "not run.",
+    frozenset(("bootscreen", "layermidi")):
+        "on the instrument, 2026-10-02: flashed together (a static tunnel mark), the intro "
+        "plays the mark and layering onto a MIDI track plays over MIDI; the boot check from "
+        "reset passes for the tunnel, ascii and spin animations each combined with layermidi.",
     frozenset(("layermidi", "midiarp")):
         "functional as well as bytes (both use the cave at 0x402d0664): midiarp's hook on the "
         "voice trigger (0x400268f8) turns any record on a MIDI track into a MIDI note, layered "

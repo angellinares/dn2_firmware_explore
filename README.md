@@ -34,7 +34,8 @@ produce the same file, byte for byte; that is tested.
 writes the result into `docs/mods-compatibility.md` and the site. Most pairs
 combine freely; a few need an order (`dnfw mods apply` applies them in it), and
 `lfo4`, `lfowaves` and `bootscreen` exclude each other because each needs the
-start-up hook. No combined image has been flashed as a pair yet.
+start-up hook. One pair has been flashed together and confirmed on the
+instrument: `bootscreen` + `layermidi` (2026-10-02, `docs/flashing.md`).
 
 **Old projects that halt on load:** a project with a damaged song row count
 halts even stock 1.11 on load (`EXCEPTION DS0059`). The `songguard` mod bounds

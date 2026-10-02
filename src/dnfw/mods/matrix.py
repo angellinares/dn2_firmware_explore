@@ -37,6 +37,12 @@ NOTES: dict[frozenset, str] = {
     frozenset(("arpmodes", "midiarp")):
         "a MIDI track's arp runs the same step, so SHUF and RAND should reach MIDI tracks; "
         "not run.",
+    frozenset(("layermidi", "midiarp")):
+        "functional as well as bytes (both use the cave at 0x402d0664): midiarp's hook on the "
+        "voice trigger (0x400268f8) turns any record on a MIDI track into a MIDI note, layered "
+        "copies included, reading the record's inline note fields, which a sequencer trig "
+        "never fills -- random notes and lengths on the bench (2026-10-01, midiarp alone) -- "
+        "and layermidi would send the same notes again.",
     frozenset(("fxmod", "lfo4")):
         "emulator, 2026-09-26: the LFO4 slot harness and a turn of all eight LFO4 dials match "
         "lfo4 alone; fxmod's DEST checks and names match fxmod alone; every LFO page, LFO4's "

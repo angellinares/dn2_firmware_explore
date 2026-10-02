@@ -21,6 +21,7 @@ from ..mods import arpmodes as arpmodes_mod
 from ..mods import arpplocks as arpplocks_mod
 from ..mods import bootscreen as bootscreen_mod
 from ..mods import fxmod as fxmod_mod
+from ..mods import layermidi as layermidi_mod
 from ..mods import lfo4 as lfo4_mod
 from ..mods import lfowaves as lfowaves_mod
 from ..mods import midiarp as midiarp_mod
@@ -39,6 +40,7 @@ REGISTRY = {transients_mod.ID: transients_mod,
             bootscreen_mod.ID: bootscreen_mod,
             lfowaves_mod.ID: lfowaves_mod,
             midiarp_mod.ID: midiarp_mod,
+            layermidi_mod.ID: layermidi_mod,
             fxmod_mod.ID: fxmod_mod,
             arpplocks_mod.ID: arpplocks_mod,
             arpmodes_mod.ID: arpmodes_mod,

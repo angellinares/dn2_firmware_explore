@@ -317,7 +317,7 @@ wr_mod_done.:
       R1 = 1;
       COMP(R0, R1);
       IF EQ JUMP 0x16ecc7;              // -> wr_mod_zero.
-      // Random: x = rotate(x, 7) + EMUCLK + 0x9e3779b9, the state at DM 0x2ddea0
+      // Random: x = rotate(x, 7) + EMUCLK + 0x6d2b79f5, the state at DM 0x2ddea0
       // (the cycle counter alone repeats: a block starts in step with the audio
       // interrupt, and the emulator's reads 0)
       R0 = DM(0x2ddea0);
@@ -328,7 +328,7 @@ wr_mod_done.:
       R1 = EMUCLK;
       R12 = PASS R0;
       R0 = R12 + R1;
-      R12 = 0x9e3779b9;
+      R12 = 0x6d2b79f5;
       R0 = R12 + R0;
       DM(0x2ddea0) = R0;
       DM(1, I4) = R0;

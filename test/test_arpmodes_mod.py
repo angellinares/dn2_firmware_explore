@@ -141,8 +141,7 @@ def test_arpplocks_reads_the_ceiling_this_mod_widens(dn2_111, applied):
     immediate of setMode's `moveq`, which is 4 on stock and 6 here. So arpplocks
     needs no knowledge of this mod, and this mod writes none of its bytes."""
     read = bytes.fromhex("1039") + struct.pack(">I", SET_MODE_CEILING)     # move.b abs.l,%d0
-    cave = next(e for e in arpplocks.SPEC["edits"] if e["va"] == 0x402CF560)
-    assert read in bytes.fromhex(cave["new"])
+    assert read in arpplocks.BLOB                       # its code, a platform CODE chunk since 2026-10-02
     assert not any(lo <= SET_MODE_CEILING - BASE < hi for lo, hi in
                    ((e.start, e.end) for e in arpplocks.extents()))
     stock = dn2_111.container.find(3).unpack()

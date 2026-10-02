@@ -9,7 +9,11 @@ stock Digitone II 1.11 and records what it changed:
 - `edits`: every in-image run the build changes -- each code cave whole, and
   every hook and patch -- with the **stock bytes it replaces**, so applying is a
   check-then-write;
-- `guards`: whole instructions the hooks replace or rely on, read not written.
+- `guards`: whole instructions the hooks replace or rely on, read not written;
+- `code`: since 2026-10-02 the mod's code is a **platform `CODE` chunk** loaded at
+  `CODE_VA` (`dnfw.mods.platform`), not seven code caves in the image: the caves
+  it used (one of them usbprobe's, one fxmod's) stay stock, so it combines with
+  both. The hooks and patches are unchanged but for their targets.
 
 Outputs `src/dnfw/mods/arpplocks_code.json`.
 """
@@ -29,13 +33,14 @@ from dnfw.cli.files import read_image  # noqa: E402
 from dnfw.firmware.load import load  # noqa: E402
 
 OUT_JSON = ROOT / "src/dnfw/mods/arpplocks_code.json"
+CODE_VA = 0x467C8000            # past the shadow sounds (0x467c0000 + 18,624) and the note list
 
 
 def main() -> int:
     if arp.FULL:
         raise SystemExit("the mod is the default build; run without --all")
     stock = load(read_image(ROOT / arp.STOCK)).container.find(arp.MAIN_OS).unpack()
-    built = arp.compose(stock, log=lambda *_: None)
+    built = arp.compose(stock, log=lambda *_: None, code_base=CODE_VA)
     content = built["content"]
     caves = {va - arp.BASE: n for va, n in built["caves"]}
 
@@ -66,11 +71,12 @@ def main() -> int:
                    + [{"va": va, "bytes": want.hex()} for va, want, _, _ in arp.PATCHES]),
         "ram": [{"va": arp.SHADOW, "bytes": 16 * arp.SHADOW_STRIDE, "what": "shadow sounds"},
                 {"va": arp.LAST_NOTE, "bytes": 4, "what": "the list the note hook last saw"}],
+        "code": {"va": CODE_VA, "blob": built["blob"].hex(), "labels": {k: v for k, v in built["at"].items()}},
     }
     OUT_JSON.write_text(json.dumps(code, indent=1) + "\n", newline="\n")
     size = sum(len(e["new"]) // 2 for e in edits)
     print(f"wrote {OUT_JSON.relative_to(ROOT)}: {len(edits)} edits, {size} B, "
-          f"{len(code['guards'])} guards")
+          f"{len(code['guards'])} guards; a {len(built['blob'])} B CODE chunk at {CODE_VA:#010x}")
     return 0
 
 

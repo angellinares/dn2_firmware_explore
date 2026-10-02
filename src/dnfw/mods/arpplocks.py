@@ -24,9 +24,12 @@ The code is assembled ahead of time (`scripts/gen_arpplocks_code.py` ->
    differs is refused;
 2. the edits are written: four code caves, the hooks and a few byte patches.
 
-It writes only inside section 3, changes no length and appends nothing. Its
-largest cave sits in the run the boot screen starts, past the boot screen's
-366 bytes, so the two combine. RAM: 16 shadow sounds from `0x467c0000`.
+Since 2026-10-02 its code is a platform `CODE` chunk (`dnfw.mods.platform`): 1,944
+bytes assembled to run at `0x467c8000`, copied there by the platform's start-up
+loader. Until then it sat in seven code caves of the image, two of them shared with
+usbprobe and fxmod, so it combined with neither. The hooks and patches in MAIN OS
+are the same, pointing at the chunk. RAM: 16 shadow sounds from `0x467c0000`, the
+note list at `0x467c4900`, and the code from `0x467c8000`.
 """
 
 from __future__ import annotations
@@ -34,7 +37,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from . import RAM, Extent, ModError, Result
+from . import RAM, Extent, ModError, Result, platform
 
 ID = "arpplocks"
 NAME = "Arpeggiator p-locks"
@@ -45,15 +48,20 @@ BASE = 0x40000400
 SPEC = json.loads((pathlib.Path(__file__).with_name("arpplocks_code.json")).read_text())
 
 
+CODE_VA = SPEC["code"]["va"]
+BLOB = bytes.fromhex(SPEC["code"]["blob"])
+
+
 def extents(firmware=None) -> list[Extent]:
-    return [Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in SPEC["edits"]]
+    return ([Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in SPEC["edits"]]
+            + platform.extents(16 + len(BLOB)))
 
 
 def apply(firmware) -> Result:
     section = firmware.container.find(SECTION)
     if section is None:
         raise ModError("image has no MAIN OS section")
-    original = section.unpack()
+    original, others = platform.split(section.unpack())
     # Longer is fine: data appended after the stock end (lfowaves, bootscreen)
     # moves no address this mod writes or reads.
     if len(original) < SPEC["stock_length"]:
@@ -74,18 +82,23 @@ def apply(firmware) -> Result:
     for e in SPEC["edits"]:
         new = bytes.fromhex(e["new"])
         content[e["va"] - BASE:e["va"] - BASE + len(new)] = new
+    chunk = platform.area.CodeChunk(CODE_VA, BLOB).pack()
+    content = platform.join(bytes(content), others + [(platform.area.CODE, chunk)])
 
     return Result(payloads={SECTION: bytes(content)}, extents=extents(),
                   notes=["hold a trig in grid recording, turn MODE / SPEED / RANGE / N.LEN "
                          "in the ARPEGGIATOR menu: a p-lock",
-                         f"{len(SPEC['edits'])} edits in section 3, nothing appended"])
+                         f"{len(SPEC['edits'])} edits in section 3, and a {len(BLOB):,} B CODE "
+                         f"chunk at 0x{CODE_VA:08x} in the platform's area"])
 
 
 def ram() -> list[Extent]:
     """The RAM above BSS the code uses (`SPEC["ram"]`), for the platform's comparison."""
-    return [Extent(RAM, r["va"], r["bytes"], r["what"]) for r in SPEC.get("ram", [])]
+    return ([Extent(RAM, r["va"], r["bytes"], r["what"]) for r in SPEC.get("ram", [])]
+            + [Extent(RAM, CODE_VA, len(BLOB), "the mod's code (a platform CODE chunk)")])
 
 
-# Bytes that only look like RAM above BSS (`dnfw.mods.ramcheck`): at 0x4028d214,
-# `lea 0x40054690,%a4 ; rts` (49 f9 40 05 46 90 4e 75) straddles into 0x46904e75.
-NOT_RAM = (0x4028D214,)
+# Bytes that only look like RAM above BSS (`dnfw.mods.ramcheck`): `lea 0x40054690,%a4 ;
+# rts` (49 f9 40 05 46 90 4e 75) straddles into 0x46904e75. It was at 0x4028d214 in its
+# cave; in the chunk it is at 0x467c8794.
+NOT_RAM = (0x467C8794,)

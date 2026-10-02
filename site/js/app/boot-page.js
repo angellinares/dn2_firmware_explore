@@ -6,7 +6,7 @@
 
 import { $, buildAndOffer, openFirmware, status, wireDrop } from "./shell.js";
 import { replacement } from "../firmware.js";
-import { H, STOCK_TUNNEL, W, apply, asciiFrames, imageFromPixels, invert, pixelOf, spinFrames } from "../mods/bootscreen.js";
+import { H, STOCK_TUNNEL, W, apply, asciiFrames, invert, markFromPixels, pixelOf, spinFrames } from "../mods/bootscreen.js";
 import { GLYPHS } from "../asciiglitch.js";
 
 const state = { firmware: null, filename: "firmware.syx", luma: null, mark: null, ascii: null, lit: null };
@@ -64,7 +64,7 @@ async function loadPicture(file) {
   return fitToScreen((ctx, x, y, w, h) => ctx.drawImage(bitmap, x, y, w, h), bitmap.width, bitmap.height);
 }
 
-/** `upright`: an animation frame is stored upside down for the blit (bootscreen.js). */
+/** `upright`: animation frames and tunnel marks are stored upside down (bootscreen.js). */
 function drawFrame(canvas, image, upright = false) {
   const ctx = canvas.getContext("2d");
   const out = ctx.createImageData(W, H);
@@ -172,11 +172,11 @@ function render() {
   const flip = $("invertMark").value === "yes";
   $("thresholdVal").textContent = `(${threshold})`;
   state.lit = (x, y) => (state.luma[y * W + x] >= threshold) !== flip;
-  state.mark = imageFromPixels(state.lit);
-  drawFrame($("frameA"), state.mark);
+  state.mark = markFromPixels(state.lit);
+  drawFrame($("frameA"), state.mark, true);
   if (ascii()) rebuildAscii();
   else if (spin()) rebuildSpin();
-  else drawFrame($("frameB"), invert(state.mark));
+  else drawFrame($("frameB"), invert(state.mark), true);
   $("screenB").classList.toggle("hidden", !flashing() && !animated());
   $("capB").textContent = animated() ? "As it plays (about 30 frames a second)" : "Alternates with";
   $("timing").classList.toggle("hidden", !flashing());

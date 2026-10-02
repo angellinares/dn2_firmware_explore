@@ -67,6 +67,15 @@ export function imageFromPixels(lit) {
   return out;
 }
 
+/**
+ * An upright mark -> the image the tunnel shows the right way up: stored turned
+ * over, as the intro's copy maps the source to the panel flipped vertically
+ * (`mark_from_pixels` in bootscreen.py, which carries the evidence).
+ */
+export function markFromPixels(lit) {
+  return imageFromPixels((x, y) => lit(x, H - 1 - y));
+}
+
 /** The inverse image, for the flashing build-up. */
 export const invert = (image) => image.map((b) => (~b) & 0xff);
 

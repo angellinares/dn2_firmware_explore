@@ -10,7 +10,7 @@
  */
 import { readFileSync } from "node:fs";
 import { build, load, replacement, verify } from "../site/js/firmware.js";
-import { apply, asciiFrames, imageFromPixels, invert, spinFrames } from "../site/js/mods/bootscreen.js";
+import { apply, asciiFrames, invert, markFromPixels, spinFrames } from "../site/js/mods/bootscreen.js";
 
 const arg = (n) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 ? process.argv[i + 1] : null; };
 const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
@@ -32,7 +32,7 @@ function readPgm(bytes) {
 
 const firmware = await load(new Uint8Array(readFileSync(arg("syx"))));
 const lit = readPgm(new Uint8Array(readFileSync(arg("pgm"))));
-const mark = imageFromPixels(lit);
+const mark = markFromPixels(lit);
 const cases = [
   ["static, stock tunnel", [mark], {}],
   ["flashing, tunnel 96 x 48", [mark, invert(mark)], { slow: 4, fast: 3, rush: 48, stop: 72, tunnel: [96, 48] }],

@@ -75,11 +75,20 @@ RATE, BLOCK = 48000, 32
 LOOP_RESUME = 0x1C944C          # where machine5_live rejoins the per-track chain
 
 
-def shipped_sources() -> tuple[str, str]:
-    """The reader's and the loop's source names, from the committed sharc_code.json: what
-    the image carries (reader_m5/machine5_live for M5, reader_m9/machine9_live from M9a)."""
+SHIPPED_KEYS = (("reader", "READER_SW"), ("machine5_live", "LOOP_SW"), ("modulator", "MOD_SW"))
+
+
+def shipped_sources() -> tuple[str, ...]:
+    """The source names of the reader, the loop and (M10a) the modulator, from the
+    committed sharc_code.json: what the image carries (reader_m5/machine5_live for M5,
+    reader_m9/machine9_live from M9a, modulator from M10a)."""
     spec = json.loads(dsp.CODE.read_text(encoding="utf-8"))
-    return tuple(pathlib.Path(spec[k]["source"]).stem for k in ("reader", "machine5_live"))
+    return tuple(pathlib.Path(spec[k]["source"]).stem for k, _ in SHIPPED_KEYS if k in spec)
+
+
+def shipped_loads() -> tuple[int, ...]:
+    spec = json.loads(dsp.CODE.read_text(encoding="utf-8"))
+    return tuple(getattr(dsp, sw) for k, sw in SHIPPED_KEYS if k in spec)
 AMP_RETURN = 0x1C99D3
 SETUP_GUARD, SETUP_TABLE_READ, SETUP_NONE = 0x1C905D, 0x1C90A9, 0x1C90D4
 CLAMP_MIN = 0x1C294C
@@ -88,6 +97,9 @@ WAV1, TBL1 = 26, 27             # WaveTone's Osc1 Waveform, Osc1 Wave Table
 TUN1 = 25                       # WaveTone's Osc1 Tune (Milestone 6)
 LEV1 = 30                       # WaveTone's Osc1 Level (Milestone 9a): the reader's gain
 TUN2, WAV2, TBL2, LEV2 = 31, 32, 33, 36   # osc 2's (Milestone 9b): osc 1's, six slots on
+RATE1, MPOS1, MLEV1, MOVE1 = live.MOVE_SLOTS[0][:4]   # M10a: PD1, OFS1, DRIF, ATK
+RATE2, MPOS2, MLEV2, MOVE2 = live.MOVE_SLOTS[1][:4]   # PD2, OFS2, NLEV, BASE
+TRIG = live.MOVE_SLOTS[0][4]                          # RSET, shared
 TUN1_ZERO = 0x4000              # the frame word for 0 semitones: the sound's own (probe, 2026-09-30)
 FRAME_COPY = 0x25C48C           # where sw 0x1c2712 copies the frame image
 OSC2_BLOCKS = 0x900             # osc 2's reader blocks are osc 1's + 0x900 (M9b): 0x2de800 + 32t
@@ -189,7 +201,15 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
                               "tun1": frame_word(r.state, FR.slot_offset(t, TUN1)),
                               "lev1": frame_word(r.state, FR.slot_offset(t, LEV1)),
                               "osc2": tuple(frame_word(r.state, FR.slot_offset(t, s))
-                                            for s in (WAV2, TBL2, TUN2, LEV2))}
+                                            for s in (WAV2, TBL2, TUN2, LEV2)),
+                              # M10a: each oscillator's RATE, MPOS, MLEV, MOVE; TRIG; the
+                              # voice's note-trigger bit in the frame copy (offset 34)
+                              "move1": tuple(frame_word(r.state, FR.slot_offset(t, s))
+                                             for s in live.MOVE_SLOTS[0][:4]),
+                              "move2": tuple(frame_word(r.state, FR.slot_offset(t, s))
+                                             for s in live.MOVE_SLOTS[1][:4]),
+                              "trig": frame_word(r.state, FR.slot_offset(t, TRIG)),
+                              "triggered": bool(frame_word(r.state, FR.TRIG_NOTE) >> t & 1)}
             tap["t5_inputs"] = ins
 
         def at_reader(r):
@@ -269,7 +289,8 @@ def track_series(run, t) -> list[float]:
 def reference_for(run, t, tables, precision="float32") -> list[float]:
     """live.render_two fed the DSP's own unpacked inputs for track T, block by block:
     both oscillators (M9b), osc 2 from its own four frame words."""
-    seq = [(i[t]["note"], (i[t]["wav1"], i[t]["tbl1"], i[t]["tun1"], i[t]["lev1"]), i[t]["osc2"])
+    seq = [(i[t]["note"], (i[t]["wav1"], i[t]["tbl1"], i[t]["tun1"], i[t]["lev1"], *i[t]["move1"]),
+            (*i[t]["osc2"], *i[t]["move2"]), (i[t]["trig"], i[t]["triggered"]))
            for i in run["t5_inputs"] if t in i]
     return live.render_two(tables, seq, BLOCK, precision)
 
@@ -308,7 +329,7 @@ def selmap_text(code: bytes, work: pathlib.Path) -> dict[int, tuple[int, str]]:
 
 def decode_check(dk, image: Image, work: pathlib.Path, use_selmap: bool) -> dict:
     res = {}
-    for name, load_sw in zip(shipped_sources(), (dsp.READER_SW, dsp.LOOP_SW)):
+    for name, load_sw in zip(shipped_sources(), shipped_loads()):
         spec = json.loads((SHARC / f"{name}.json").read_text(encoding="utf-8"))
         code = sharc_object.load_bytes(bytes.fromhex(spec["object_parcels_be"]))
         lines = [ln for ln in (SHARC / f"{name}.asm").read_text(encoding="utf-8").splitlines()
@@ -604,6 +625,17 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             "osc2_only": run_blocks(init, frames(overrides={LEV1: 0, WAV2: 0x7800}), blocks),
             "osc2_mix": run_blocks(init, frames(overrides={WAV1: 0x7800, WAV2: 0x4000, TBL2: 0x0100,
                                                            TUN2: TUN1_ZERO + 12 * 256}), blocks),
+            # M10a: MOVE. POS swept up by a fast ramp (osc 1 alone); LEV shaped by a fast
+            # looping triangle (rising over these blocks); the same ramp free-running (TRIG 0), which the trigger at
+            # block 1 does not restart; osc 2's own modulator on its own controls
+            "move_pos": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400,
+                                                           MOVE1: 0x1a00, RATE1: 0x6400}), blocks),
+            "move_lev": run_blocks(init, frames(overrides={**solo, WAV1: 0x4000, MLEV1: 0x7f00,
+                                                           MOVE1: 0x5000, RATE1: 0x6400}), blocks),
+            "move_free": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400, TRIG: 0,
+                                                            MOVE1: 0x1a00, RATE1: 0x6400}), blocks),
+            "move_osc2": run_blocks(init, frames(overrides={LEV1: 0, WAV2: 0x7800, MPOS2: 0,
+                                                            MOVE2: 0x1a00, RATE2: 0x6400}), blocks),
             # M9b: DETN is a detune from osc 1, so TUNE +12 moves both oscillators
             "tune_both": run_blocks(init, frames(overrides={WAV1: 0x7800, TUN1: TUN1_ZERO + 12 * 256}), blocks),
             "silent": run_blocks(init, lambda b: base_frame(sound, machines).to_bytes(), blocks)}
@@ -619,6 +651,14 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
     rb = {k: (r["reader_blocks"][-1].get(0) if r["ok"] and r["reader_blocks"] else None) for k, r in runs.items()}
     rb2 = {k: (r["reader_blocks2"][-1].get(0) if r["ok"] and r["reader_blocks2"] else None)
            for k, r in runs.items()}
+    rb_all = {k: r["reader_blocks"] for k, r in runs.items() if r["ok"]}
+    rb2_all = {k: r["reader_blocks2"] for k, r in runs.items() if r["ok"]}
+
+    def pos_seq(k, allb):
+        return [b[0][3] for b in allb.get(k, []) if b.get(0)]
+
+    def pos_seq2(k, allb):
+        return [b[0][3] for b in allb.get(k, []) if b.get(0)]
     inc60, inc72 = (rb["pos120"] or [0] * 6)[2], (rb["note72"] or [0] * 6)[2]
     inc_up, inc_down = (rb["tune_up12"] or [0] * 6)[2], (rb["tune_down12"] or [0] * 6)[2]
     zc_up = zero_crossings(track_series(runs["tune_up12"], 0)) if runs["tune_up12"]["ok"] else 0
@@ -699,6 +739,16 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             and rb2["osc2_mix"][0] == dsp.TABLES_DM[1] and abs(rb2["osc2_mix"][2] / inc60 - 2.0) < 1e-6
             and rb2["osc2_mix"][3] == live.position(0x4000)
             and rb["osc2_mix"][0] == dsp.TABLES_DM[0] and rb["osc2_mix"][3] == live.position(0x7800),
+        "MOVE moves POS: a fast ramp with MPOS +50 sweeps osc 1's reader position block by block "
+        "(at least 3 distinct positions, rising) (M10a)":
+            len(set(pos_seq("move_pos", rb_all))) >= 3 and pos_seq("move_pos", rb_all) == sorted(pos_seq("move_pos", rb_all)),
+        "MOVE moves LEV: MLEV 127 on a fast looping triangle changes the tap's peak between blocks (M10a)":
+            runs["move_lev"]["ok"] and len({round(V.peak(b[0]), 4) for b in runs["move_lev"]["machine"] if b}) >= 2,
+        "TRIG: free-running and restart-on-note differ once the trigger at block 1 lands (M10a)":
+            runs["move_free"]["ok"] and runs["move_pos"]["ok"]
+            and pos_seq("move_free", rb_all)[2:] != pos_seq("move_pos", rb_all)[2:],
+        "osc 2's MOVE runs on its own controls: MPOS2 -50 pulls osc 2's position down from the top (M10a)":
+            bool(pos_seq2("move_osc2", rb2_all)) and min(pos_seq2("move_osc2", rb2_all)) < live.position(0x7800),
         "DETN is a detune from osc 1: TUNE +12 with DETN 0 puts both oscillators an octave up "
         "(both increments 2 x note 60's within 1e-6, and equal) (M9b)":
             bool(rb2["tune_both"]) and bool(rb["tune_both"]) and bool(inc60)

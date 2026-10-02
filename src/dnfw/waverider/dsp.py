@@ -86,6 +86,12 @@ COUNT_DM = 0x2DEC00                          # block_count.asm, after idle_load.
 COUNT_SW = COUNT_DM // 2                     # 0x16f600: the entry JUMP's target
 EMARK_DM = 0x2DED00                          # entry_mark.asm: EMUCLK as the handler calls 0x1c2712
 EMARK_SW = EMARK_DM // 2                     # 0x16f680
+MOD_DM = 0x2DEE00                            # modulator.asm (M10a): MOVE, the per-oscillator modulator
+MOD_SW = MOD_DM // 2                         # 0x16f700
+# the directory block's tail (M9b/M10a): what the loop and the modulator keep there
+MOVE_PHASES_DM = 0x2DE700                    # 16 voices x 2 oscillators, a u32 phase each
+MOVE_OFFSETS_DM = 0x2DE780                   # per oscillator, 32 bytes: frame offsets of RATE MPOS MLEV MOVE TRIG
+MOVE_RATE_DM = 0x2DE7D8                      # F[0..9], the rate table
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 
 # stock sites
@@ -134,12 +140,23 @@ def objects() -> dict[str, bytes]:
     spec = _code()
     return {name: sharc_object.load_bytes(bytes.fromhex(spec[name]["object_parcels_be"]))
             for name in ("reader", "machine5_live", "entry_jump", "idle_load", "idle_jump", "block_count",
-                         "entry_mark", "emark_jump")}
+                         "entry_mark", "emark_jump", "modulator")}
 
 
 def directory() -> bytes:
-    return struct.pack("<II", DIRECTORY_MAGIC, len(TABLES_DM)) + struct.pack(
-        "<%dI" % len(TABLES_DM), *TABLES_DM)
+    """The directory block from 0x2de600: the magic, the count and the tables; then
+    (M10a) the modulator's constants in its tail -- each oscillator's frame offsets
+    at MOVE_OFFSETS_DM and the rate table at MOVE_RATE_DM. The words between (M9's
+    gain and oscillator flag, the phases) are zeros, as the loop expects."""
+    out = bytearray(struct.pack("<II", DIRECTORY_MAGIC, len(TABLES_DM)) + struct.pack(
+        "<%dI" % len(TABLES_DM), *TABLES_DM))
+    out += bytes(MOVE_RATE_DM + 4 * len(live.MOVE_RATE) - DIRECTORY_DM - len(out))
+    for osc, offsets in enumerate(live.move_offsets()):
+        at = MOVE_OFFSETS_DM - DIRECTORY_DM + 32 * osc
+        out[at:at + 4 * len(offsets)] = struct.pack("<%dI" % len(offsets), *offsets)
+    at = MOVE_RATE_DM - DIRECTORY_DM
+    out[at:at + 4 * len(live.MOVE_RATE)] = struct.pack("<%dI" % len(live.MOVE_RATE), *live.MOVE_RATE)
+    return bytes(out)
 
 
 def spans() -> list[tuple[str, int, bytes]]:
@@ -159,6 +176,7 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("idle_load.asm (wr_idle)", IDLE_DM, obj["idle_load"]),
         ("block_count.asm (wr_count)", COUNT_DM, obj["block_count"]),
         ("entry_mark.asm (wr_emark)", EMARK_DM, obj["entry_mark"]),
+        ("modulator.asm (wr_mod)", MOD_DM, obj["modulator"]),
         ("table 0: saw -> sine (testtable reversed)", TABLES_DM[0], reference.dsp_bytes(t[0])),
         ("table 1: the overtone series (harmonics)", TABLES_DM[1], reference.dsp_bytes(t[1])),
     ]

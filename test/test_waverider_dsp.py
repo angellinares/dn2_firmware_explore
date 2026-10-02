@@ -42,7 +42,7 @@ def built(stock7) -> bytes:
 
 def test_committed_objects_match_their_sources():
     spec = json.loads(dsp.CODE.read_text(encoding="utf-8"))
-    for key in ("reader", "machine5_live", "idle_load", "block_count", "entry_mark"):
+    for key in ("reader", "machine5_live", "idle_load", "block_count", "entry_mark", "modulator"):
         name = pathlib.Path(spec[key]["source"]).stem      # reader_m9 / machine9_live from M9a
         src = (SHARC / f"{name}.asm").read_bytes().replace(b"\r\n", b"\n")
         assert spec[key]["source_sha256"] == hashlib.sha256(src).hexdigest(), name
@@ -134,7 +134,7 @@ def test_the_four_patches_and_nothing_else_in_the_stock_blocks(stock7, built):
 
 def test_directory_names_both_tables():
     d = dsp.directory()
-    assert struct.unpack("<4I", d) == (0x57525431, 2, 0x2DF000, 0x2E3000)
+    assert struct.unpack_from("<4I", d) == (0x57525431, 2, 0x2DF000, 0x2E3000)
 
 
 # -- the contract -------------------------------------------------------------------------------
@@ -245,7 +245,7 @@ def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
     assert all(e == a for e, a in zip(ends, at[1:]))           # no unwritten gap
     obj = dsp.objects()
     code_spans = [x for x in sp if "asm" in x[0]]
-    assert len(code_spans) == 5
+    assert len(code_spans) == 6                               # + modulator.asm (M10a)
     for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["idle_load"],
                                                      obj["block_count"], obj["entry_mark"])):
         assert payload[:len(code)] == code
@@ -330,3 +330,44 @@ def test_the_reader_returns_in_the_firmwares_shape():
     k = lines.index("I12 = DM(M7, I6);")
     assert lines[k + 2] == "JUMP (M14, I12) (DB);" and lines[k + 1] != lines[k + 2]
     assert lines[k + 4] == "RFRAME;"                           # second delay slot
+
+
+# -- M10a: MOVE ----------------------------------------------------------------------------------
+
+def test_move_defaults_leave_pos_and_lev_untouched():
+    for s in (0, 0x8000, 0xFFFF):
+        assert live.move_apply(0x3C00, 0x6400, live.MPOS_NONE, 0, s) == (0x3C00, 0x6400)
+
+
+def test_move_rate_is_one_second_at_50_and_doubles_every_10():
+    one = live.MOVE_RATE[0] << 5                                 # RATE 50
+    assert abs(one * 1500 / 2 ** 32 - 1.0) < 1e-4
+    assert (live.MOVE_RATE[0] << 6) == 2 * one                    # RATE 60: twice as fast
+    assert live.move_step(0, 0x3200, 0x1A00, 0, False) == one
+
+
+def test_move_shapes():
+    up, down, tri, sq = 0x1A00, 0x0000, 0x5000, 0x7F00
+    assert live.move_shape(0, down) == 0xFFFF and live.move_shape(0xFFFFFFFF, down) == 0
+    assert live.move_shape(0x40000000, up) == 0x4000
+    assert live.move_shape(0x40000000, tri) == 0x8000 and live.move_shape(0xC0000000, tri) == 0x7FFE
+    assert live.move_shape(0x10000000, sq) == 0xFFFF and live.move_shape(0x90000000, sq) == 0
+
+
+def test_one_shots_hold_their_end_and_loops_wrap():
+    near = 0xFFFF0000
+    assert live.move_step(near, 0x6400, 0x1A00, 0, False) == 0xFFFFFFFF    # ramp up: holds
+    assert live.move_step(near, 0x6400, 0x5000, 0, False) < near           # looping triangle: wraps
+
+
+def test_trig_restarts_only_when_on():
+    p = 0x12345678
+    assert live.move_step(p, 0, 0x5000, live.TRIG_RESTART, True) == live.MOVE_RATE[0]
+    assert live.move_step(p, 0, 0x5000, 0, True) == p + live.MOVE_RATE[0]
+    assert live.move_step(p, 0, 0x5000, live.TRIG_RESTART, False) == p + live.MOVE_RATE[0]
+
+
+def test_mpos_and_mlev_full_depth():
+    assert live.move_apply(0, 0x6400, 0x6400, 0, 0xFFFF)[0] in (0x77FF, 0x7800)  # +50 at the top: the far end
+    assert live.move_apply(0x100, 0x6400, 0, 0, 0xFFFF)[0] == 0               # never below 0
+    assert live.move_apply(0, 0x6400, live.MPOS_NONE, 0x7F00, 0)[1] == 0      # MLEV 127 at shape 0: silent

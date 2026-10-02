@@ -52,7 +52,7 @@ This module is pure: it builds the source; `coldfire.compose` assembles and plac
 from __future__ import annotations
 
 LOAD = 0x4670C000                 # RAM above BSS, clear of every declared range (docs/mods-compatibility.md)
-C_LOAD = LOAD + 0x400             # the C page renderer, after this assembly
+C_LOAD = LOAD + 0x500             # the C page renderer, after this assembly (0x400 until M10a)
 C_END = 0x46710000                # the platform runtime starts here
 ACTIVE_TRACK = 0x42431A6C         # byte: the UI's active track, 0..15
 KIT_POINTER = 0x800052A0          # the live kit; sound t at + 52 + 1163 t
@@ -66,28 +66,37 @@ TAG = 10                          # the tag every stock SYN descriptor ends with
 # number). Our own strings, so no descriptor points into WaveTone's. The waveform icons
 # a Waverider page first showed at B and F did not come from the titles: they are the
 # SYN page draw's WaveTone OSC-page overlay (page id 7), which `wr_icons` skips.
-TITLES = ("WR 1", "WR 2")
+TITLES = ("WR 1", "WR 2", "WR 3")
 SUBTITLE = "Waverider"             # where WaveTone's say "WaveTone"
 
 # record id -> Waverider's label (the records stay WaveTone's: their slots are the
 # frame's params 25..27, which the SHARC loop reads)
 LABELS = {238: "TUNE", 241: "LEV", 239: "POS", 247: "TBL",
-          242: "DETN", 245: "LEV", 243: "POS", 251: "TBL"}
+          242: "DETN", 245: "LEV", 243: "POS", 251: "TBL",
+          # M10a: MOVE, the modulator (WaveTone records Waverider does not use)
+          240: "RATE", 246: "MPOS", 252: "MLEV", 253: "MOVE",
+          244: "RATE", 250: "MPOS", 256: "MLEV", 257: "MOVE",
+          249: "TRIG"}
 # record id -> Waverider's long name, in the stock "Osc1 Waveform" style: what the
 # header shows while a knob turns ("Osc1 Position=65"), and the LFO destination
 # browser on a Waverider track
 LONG_NAMES = {238: "Osc1 Tune", 239: "Osc1 Position", 247: "Osc1 Table",
-              242: "Osc2 Detune", 243: "Osc2 Position", 251: "Osc2 Table"}
+              242: "Osc2 Detune", 243: "Osc2 Position", 251: "Osc2 Table",
+              240: "Osc1 Move Rate", 246: "Osc1 Move Pos", 252: "Osc1 Move Level",
+              253: "Osc1 Move Shape", 244: "Osc2 Move Rate", 250: "Osc2 Move Pos",
+              256: "Osc2 Move Level", 257: "Osc2 Move Shape", 249: "Move Retrig"}
 
 # the two pages, encoders A..H; 0 is an empty place
 PAGES = (
-    (238, 241, 239, 247, 0, 0, 0, 0),   # OSC 1: TUNE LEV POS TBL - - - -  (LEV: M9a)
-    (242, 245, 243, 251, 0, 0, 0, 0),   # OSC 2: DETN LEV POS TBL - - - -  (M9b)
+    (238, 241, 239, 247, 240, 246, 252, 253),   # OSC 1: TUNE LEV POS TBL RATE MPOS MLEV MOVE
+    (242, 245, 243, 251, 244, 250, 256, 257),   # OSC 2: DETN LEV POS TBL RATE MPOS MLEV MOVE
+    (249, 0, 0, 0, 0, 0, 0, 0),                 # MOVE: TRIG (M10a: restart on a note, or free)
 )
 
-LABELS_OUT = ("is_wr", "wr_count", "wr_page", "wr_label", "wr_long", "wr_icons", "wr_grid",
+LABELS_OUT = ("is_wr", "wr_count", "wr_page", "wr_label", "wr_long", "wr_icons", "wr_grid", "wr_grid9",
               "descriptors")
 GRID = 0x40017428                 # the stock grid: (view, canvas)
+GRID9 = 0x400175E4                # WaveTone's page-3 grid (page id 9): (view, canvas)
 ICON_PAGE = 7                     # the SYN page draw's id for WaveTone's OSC page
 ICON_SKIP = 0x400182C6            # its branch target past the oscillator icons
 
@@ -266,6 +275,22 @@ wr_grid:
     addq.l  #8,%sp
     rts
 1:  jsr     {GRID:#010x}
+    addq.l  #8,%sp
+    rts
+
+| -- the same for the SYN page draw's page-id-9 arm (WaveTone's page 3, a Waverider's
+| page 3 since M10a), entered by `jsr` at 0x40018208 with nothing pushed: the site's
+| `subq.l #8,%sp` after it leaves the 8 bytes the draw's shared exit pops
+wr_grid9:
+    move.l  %d2,%sp@-
+    move.l  %a2,%sp@-
+    bsr.w   is_wr
+    tst.l   %d0
+    beq.s   1f
+    jsr     {page_draw:#010x}
+    addq.l  #8,%sp
+    rts
+1:  jsr     {GRID9:#010x}
     addq.l  #8,%sp
     rts
 

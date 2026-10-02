@@ -70,6 +70,13 @@ volatile struct wr_probe wr_probe __attribute__((section(".data"))) =
     { 0x57525052u, 0, 0, 0, WR_MARKERS, 0x2D2D2D2Du };
 #endif
 
+/* The oscillator a page shows the wave of: osc 2 on page 2, osc 1 on pages 1 and 3
+ * (page 3 is MOVE's TRIG, M10a, which is not an oscillator's) */
+static int osc_of(int page)
+{
+    return page == 1 ? 1 : 0;
+}
+
 #if WR_MARKERS
 /* Modulation (docs/modulation-display.md). The audio tick keeps, per VOICE, a target
  * array (the sound's values, copied when a note takes the voice) and the value array
@@ -218,7 +225,7 @@ static int tier(u32 id)
 static int signature(void)
 {
     int sig = 0;
-    for (int k = 2 * shown_page; k < 2 * shown_page + 2; k++)
+    for (int k = 2 * osc_of(shown_page); k < 2 * osc_of(shown_page) + 2; k++)
         sig = sig * 131 + (tier(marked[k]) < 2 ? mod_offset(marked[k]) / QUANT : 0);
     return sig;
 }
@@ -420,8 +427,9 @@ static void curve(void *c, int tbl, int pos)
 static void wave(void *c, void *view, int page)
 {
     u8 flag;
-    u32 pos_id = marked[2 * page], tbl_id = marked[2 * page + 1];
-    struct sweep *sw = &sweeps[2 * page];
+    int o = osc_of(page);
+    u32 pos_id = marked[2 * o], tbl_id = marked[2 * o + 1];
+    struct sweep *sw = &sweeps[2 * o];
     int tbl = GET_VALUE(view, tbl_id, &flag) >> 8;
     int pos = GET_VALUE(view, pos_id, &flag);
 #if WR_MARKERS

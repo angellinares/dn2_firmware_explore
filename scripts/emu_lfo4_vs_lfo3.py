@@ -1,8 +1,8 @@
 """Run LFO3 and LFO4 side by side through the same evaluator, same frames.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_BUILD=out/lfo4-meterkeep \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_vs_lfo3.py [--frames 240]
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    DT2_BUILD=out/lfo4-meterkeep \
+        <digikit>/.venv/bin/python -u scripts/emu_lfo4_vs_lfo3.py [--frames 240]
 
 **Why this shape.** By 2026-09-23 everything about LFO4 that could be measured
 separately has been, and none of it explains the instrument: the row the engine
@@ -49,11 +49,12 @@ import os
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths
 from emulib.image import code_chunks, differences, load_build
 from emulib.machine import SNAP, Machine
 
-BUILD = os.path.join("/mnt/d/01_Code/Z_Personal/dn2_firmware",
+BUILD = os.path.join(str(paths.ROOT),
                      os.environ.get("DT2_BUILD", "out/lfo4-meterkeep"))
 
 EVAL_A = 0x40137726

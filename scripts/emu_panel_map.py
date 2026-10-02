@@ -1,8 +1,7 @@
 """What the firmware calls each button and encoder, read out of the image.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \\
-        /root/dn2-emu-venv/bin/python -u scripts/emu_panel_map.py
+    # with digikit's venv (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_panel_map.py
 
 Every key code this project uses came from a note written during another
 session. That is exactly the kind of thing to check rather than carry, and
@@ -18,9 +17,10 @@ the wrong key and looks like a firmware that ignores input.
 from __future__ import annotations
 
 import argparse
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from emulib.machine import SNAP, Machine        # noqa: E402
 

@@ -1,8 +1,7 @@
 """What destinations does each LFO page offer? Read the list, not the ceiling.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_dest_list.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_dest_list.py
 
 `emu_dest_range.py` measured the wrong thing and the screen said so. Turning
 DEST with its push held does not nudge a number: it opens a **modal browser**
@@ -25,9 +24,10 @@ and look like a broken encoder.
 from __future__ import annotations
 
 import argparse
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from emulib.machine import SNAP, Machine                        # noqa: E402
 from emulib.panel import DOWN, MOD, NO, Panel                   # noqa: E402

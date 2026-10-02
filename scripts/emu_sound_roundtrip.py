@@ -1,6 +1,6 @@
 """Which bytes of a live sound does the firmware itself carry through save and load?
 
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
+    <digikit>/.venv/bin/python -u \
         scripts/emu_sound_roundtrip.py --build out/lfo4-everyvoice
 
 **The question.** LFO3's values live inside the sound's own 1,163 bytes, so
@@ -48,8 +48,11 @@ import os
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from emulib import paths                                       # noqa: E402
+
+paths.use_digikit()
 
 import emu_boot_engine as eng                                  # noqa: E402
 from emu import dspboot                                        # noqa: E402

@@ -2,8 +2,8 @@
 
     # inside WSL or Linux, where selache is built:
     python3 scripts/sharc_selache_roundtrip.py out/sharc/code_283825c4.bin \\
-        --selmap /root/selmap-target/release/selmap \\
-        --selas /root/selache-target/release/selas
+        --selmap <selmap-target>/release/selmap \\
+        --selas <selache-target>/release/selas
 
 Takes every distinct instruction a linear walk of the region meets (from
 offset 0, the way `tools/selmap` sizes it), skips all-zero 48-bit padding and

@@ -1,8 +1,7 @@
 """Does the bridge follow the live container, or assume where it is?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_container.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_lfo4_container.py
 
 The extension table is keyed by the live sound's address. The **setter** learns
 that address from the firmware's own virtual call; the **bridge** has to work
@@ -29,15 +28,17 @@ from __future__ import annotations
 
 import argparse
 import os
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
+from emulib import paths                                          # noqa: E402
 from emulib.image import code_chunks, differences, load_build     # noqa: E402
 from emulib.machine import SNAP, Machine                          # noqa: E402
 from emulib.report import check, report                           # noqa: E402
 
-BUILD = "/mnt/d/01_Code/Z_Personal/dn2_firmware/out/lfo4-value"
+BUILD = str(paths.ROOT / "out/lfo4-value")
 CONTAINER = 0x800052A0
 SOUND_AT, STRIDE, TRACKS = 52, 1163, 16
 MOVED = 0x42200000                # somewhere else entirely, as a new project would be

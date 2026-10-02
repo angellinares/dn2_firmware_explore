@@ -10,8 +10,8 @@ Resumes a plain (non-unblocked) snapshot before the intro, watches the source
 `Bitmap` header for its data pointer being set, then watches that pixel data for
 writes, and reports the writing PCs and the order they came in.
 
-    DIGIKIT=... DT2_SECTIONS=/root/dn2-sections-111 \\
-    /root/dn2-emu-venv/bin/python scripts/probe_logo_writer.py \\
+    DIGIKIT=... \\
+    <digikit>/.venv/bin/python scripts/probe_logo_writer.py \\
         snapshots/dn2_11160M.snap 330000000 --bitmap 0x42c4567c
 """
 
@@ -21,7 +21,8 @@ import argparse
 import collections
 import os
 import struct
-import sys
+
+from emulib import paths
 
 
 def main() -> int:
@@ -35,10 +36,7 @@ def main() -> int:
                          "while it writes into the source bitmap")
     args = ap.parse_args()
 
-    digikit = os.environ.get("DIGIKIT")
-    if not digikit:
-        raise SystemExit("set DIGIKIT")
-    sys.path.insert(0, digikit)
+    digikit = str(paths.use_digikit())        # $DIGIKIT, else a sibling checkout
     os.chdir(digikit)
 
     from unicorn import UC_HOOK_MEM_WRITE

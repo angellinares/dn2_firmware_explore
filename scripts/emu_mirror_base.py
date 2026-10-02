@@ -1,7 +1,6 @@
 """Is the mirror the evaluator writes the same memory the page reads?
 
-    DT2_SECTIONS=/root/dn2-sections-111 \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_mirror_base.py
+    <digikit>/.venv/bin/python -u scripts/emu_mirror_base.py
 
 **Why this exists.** `lfo4-cell` put two live mirror cells on LFO4's page and
 the owner watched LFO4's cell sweep a full triangle with LFO3's depth at centre
@@ -42,7 +41,7 @@ import os
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from emulib.machine import SNAP, Machine
 
 POINTER = 0x4058F39C          # the global the ISR reads its mirror base from

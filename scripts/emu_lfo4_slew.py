@@ -1,8 +1,7 @@
 """Why does LFO4's `RND` waveform show `SPH` where LFO1-3 show `SLEW`?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_slew.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_lfo4_slew.py
 
 `0x4010db00` is the substitution: given the entry a column is about to draw, it
 returns either that entry or the `SLEW` that replaces it when the waveform is
@@ -19,7 +18,8 @@ so the fix can be aimed at the gate rather than at the table it never reaches.
 import os
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths
 from emulib.image import code_chunks, differences, load_build
 from emulib.machine import SNAP, Machine
 from emulib.panel import MOD, Panel
@@ -28,7 +28,7 @@ from unicorn.m68k_const import UC_M68K_REG_A2, UC_M68K_REG_D0, UC_M68K_REG_D2
 
 # Which build to look at. `lfo4-value` is where the fault was measured;
 # `DT2_BUILD=out/lfo4-ui` is where the fix is checked with the same probe.
-BUILD = os.path.join("/mnt/d/01_Code/Z_Personal/dn2_firmware",
+BUILD = os.path.join(str(paths.ROOT),
                      os.environ.get("DT2_BUILD", "out/lfo4-value"))
 
 GATE = 0x4010DB18          # moveq #81,%d0 -- %d2 holds the entry being drawn

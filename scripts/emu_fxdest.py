@@ -1,8 +1,7 @@
 """Does a `DEST` of 101..127 land in mirror block 16, and does 1..100 still land where it did?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
-        scripts/emu_fxdest.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_fxdest.py
 
 **Why this exists rather than `emu_boot_engine.py`.** That gate loads
 `out/<build>/symbols.json` and counts `lfo4_refresh`, so it only means anything
@@ -51,11 +50,12 @@ never fires during a boot; that is why the evaluator is called directly.
 from __future__ import annotations
 
 import struct
-import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
+from emulib import paths                                      # noqa: E402
 
-from emu import dspboot                                       # noqa: E402
+paths.use_digikit()
+
+from emu import dspboot                                      # noqa: E402
 from unicorn import (UC_HOOK_CODE, UC_HOOK_MEM_WRITE,          # noqa: E402
                      UC_PROT_ALL, UcError)
 from unicorn.m68k_const import (UC_M68K_REG_A0, UC_M68K_REG_A2,   # noqa: E402
@@ -66,8 +66,8 @@ from unicorn.m68k_const import (UC_M68K_REG_A0, UC_M68K_REG_A2,   # noqa: E402
                                 UC_M68K_REG_PC,
                                 UC_M68K_REG_SR)
 
-ROOT = "/mnt/d/01_Code/Z_Personal/dn2_firmware"
-SYX = f"{ROOT}/00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
+ROOT = str(paths.ROOT)
+SYX = str(paths.SYX)
 SECTION = f"{ROOT}/out/fxdest/section_3_MAIN_OS.bin"
 STOCK_SECTION = f"{ROOT}/out/ext111/section_3_MAIN_OS.aplib.bin"
 

@@ -1,7 +1,7 @@
 """Waverider Milestone 0 under the emulator: boot from reset, then read it back.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
+    # with digikit's venv (docs/emulator.md):
+    <digikit>/.venv/bin/python -u \
         scripts/emu_waverider_m0.py --build out/waverider-m0
 
 Three checks, in the order a failure would be explained:
@@ -37,7 +37,10 @@ import struct
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
+
+from emulib import paths                                      # noqa: E402
+
+paths.use_digikit()
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "src"))
 

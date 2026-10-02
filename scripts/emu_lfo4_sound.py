@@ -1,8 +1,7 @@
 """Does the bridge look up the same sound the setter writes?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
-        scripts/emu_lfo4_sound.py [--build out/lfo4-value]
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_lfo4_sound.py [--build out/lfo4-value]
 
 The extension table is keyed by **the live sound's address**, and the two ends
 of the feature learn that address differently:
@@ -33,8 +32,10 @@ import json
 import os
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths                                       # noqa: E402
+
+paths.use_digikit()
 
 from emu import dspboot                                        # noqa: E402
 from unicorn import UC_HOOK_CODE                               # noqa: E402

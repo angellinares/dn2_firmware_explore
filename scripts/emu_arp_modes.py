@@ -1,8 +1,7 @@
 """Run the stock arp step for every MODE value, and the three MODE bounds, in the emulator.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \\
-        scripts/emu_arp_modes.py [snapshot]
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_arp_modes.py [snapshot]
 
 **The question** (docs/arp-hidden-modes.md): the 1.11 image names eight arp
 modes, OFF TRUE UP DOWN CYCL SHUF RAND CHRD, and the instrument offers five.
@@ -33,18 +32,18 @@ from __future__ import annotations
 import argparse
 import json
 import struct
-import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
+from emulib import paths  # noqa: E402
+
+paths.use_digikit()
 
 from emu.longrun import build  # noqa: E402
 from unicorn import UC_PROT_ALL, UcError  # noqa: E402
 from unicorn.m68k_const import (UC_M68K_REG_A6, UC_M68K_REG_A7,  # noqa: E402
                                 UC_M68K_REG_D0, UC_M68K_REG_SR)
 
-SNAP = "/root/dn2-snapshots/Digitone_II_OS1.11/grid-rec.snap"
-SYX = ("/mnt/d/01_Code/Z_Personal/dn2_firmware/00_Resources/00_Firmware/"
-       "Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx")
+SNAP = str(paths.SNAPSHOTS / "grid-rec.snap")
+SYX = str(paths.SYX)
 
 STEP = 0x4002A0BC                         # (track, arp id) -> note, -1 rest, -2 stale
 SET_MODE, TOGGLE = 0x4004BEA4, 0x4004BF32

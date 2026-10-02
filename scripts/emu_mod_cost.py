@@ -1,10 +1,10 @@
 """What each mod costs on the stock path, in instructions, against stock.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \\
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u \\
         scripts/emu_mod_cost.py --label lfo4 --build out/modcost/lfo4
     # the stock control: no --build
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \\
+    <digikit>/.venv/bin/python -u \\
         scripts/emu_mod_cost.py --label stock
     # then the table, from every JSON the runs wrote:
     python scripts/emu_mod_cost.py --table out/modcost
@@ -152,9 +152,11 @@ class ArpAdapter:
 
 
 def measure(args) -> dict:
+    from emulib import paths
     from emulib.image import code_chunks
     from emulib.machine import SNAP, Machine
 
+    paths.use_digikit()           # DT2_SECTIONS is read below, before any Machine exists
     stock = open(os.path.join(os.environ["DT2_SECTIONS"], "section_3_MAIN_OS.bin"), "rb").read()
     built = stock
     if args.build:

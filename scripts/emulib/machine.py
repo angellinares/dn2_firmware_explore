@@ -11,12 +11,11 @@ manifest guard refuses -- which is the guard working, and worth leaving alone.
 from __future__ import annotations
 
 import struct
-import sys
 
-DIGIKIT = "/mnt/d/01_Code/Z_Personal/digikit-up"
-ROOT = "/mnt/d/01_Code/Z_Personal/dn2_firmware"
-SYX = f"{ROOT}/00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
-SNAP = "/root/dn2-snapshots/Digitone_II_OS1.11/ui1200M.snap"
+from . import paths
+
+SYX = str(paths.SYX)
+SNAP = str(paths.SNAPSHOTS / "ui1200M.snap")
 
 STACK, SCRATCH = 0x46A00000, 0x46A10000
 FLAGS = dict(unblock=True, softfloat=True, bitmap=True, dsp=True,
@@ -26,10 +25,8 @@ FLAGS = dict(unblock=True, softfloat=True, bitmap=True, dsp=True,
 class Machine:
     """A snapshot, restored and ready to be asked things."""
 
-    def __init__(self, snapshot=SNAP, syx=SYX, digikit=DIGIKIT, defer_timers=True, **flags):
-        if digikit not in sys.path:
-            sys.path.insert(0, digikit)
-            sys.path.insert(0, f"{digikit}/tools")
+    def __init__(self, snapshot=SNAP, syx=SYX, defer_timers=True, **flags):
+        paths.use_digikit(tools=True)
         from emu.longrun import build
 
         settings = dict(FLAGS)

@@ -1,7 +1,7 @@
 """Ask the service dispatcher a command under the emulator, and read its reply.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python \\
+    # with digikit's venv (docs/emulator.md):
+    <digikit>/.venv/bin/python \\
         scripts/emu_service_commands.py ["#HELLO" "#STATUS" ...]
 
 `scripts/emu_service_mode.py` proves what maintenance mode *starts* -- USB mode
@@ -30,17 +30,17 @@ from __future__ import annotations
 import argparse
 import re
 import struct
-import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
+from emulib import paths  # noqa: E402
+
+paths.use_digikit()
 
 from emu.longrun import build  # noqa: E402
 from unicorn import UC_HOOK_CODE, UC_PROT_ALL, UcError  # noqa: E402
 from unicorn.m68k_const import UC_M68K_REG_A6, UC_M68K_REG_A7  # noqa: E402
 
-SNAP = "/root/dn2-snapshots/Digitone_II_OS1.11/ui1200M.snap"
-SYX = ("/mnt/d/01_Code/Z_Personal/dn2_firmware/00_Resources/00_Firmware/"
-       "Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx")
+SNAP = str(paths.SNAPSHOTS / "ui1200M.snap")
+SYX = str(paths.SYX)
 
 TASK = 0x400CD48E                # the service task's entry: the dispatcher
 RECEIVE = 0x400CD4E0             # where it takes the next line off the queue

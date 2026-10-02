@@ -33,9 +33,8 @@ hit** only, and the whole question is about the range of values across a run.
 
 Usage (from a WSL shell with the patched Unicorn venv, see docs/emulator.md):
 
-    DIGIKIT=/mnt/d/01_Code/Z_Personal/digikit \\
-    DT2_SECTIONS=/root/dn2-sections-111 \\
-    python scripts/trace_value_array_sites.py \\
+    DIGIKIT=... \\
+    <digikit>/.venv/bin/python scripts/trace_value_array_sites.py \\
         --snapshot ~/dn2-snapshots/Digitone_II_OS1.11/boot400M.snap \\
         --syx .../Digitone_II_OS1.11.syx --limit 200000000 --json out.json
 
@@ -51,7 +50,8 @@ import json
 import os
 import pathlib
 import struct
-import sys
+
+from emulib import paths
 
 SOUND_STRIDE = 2388          # sound(i) = pool + 0x4414 + i*2388
 SOUND_COUNT = 128
@@ -153,10 +153,7 @@ def main():
                     help="skip the per-site code hooks; use with --watch alone")
     args = ap.parse_args()
 
-    digikit = os.environ.get("DIGIKIT")
-    if not digikit:
-        raise SystemExit("set DIGIKIT to the digikit checkout (see docs/emulator.md)")
-    sys.path.insert(0, digikit)
+    digikit = str(paths.use_digikit())        # $DIGIKIT, else a sibling checkout
 
     from unicorn.m68k_const import (
         UC_M68K_REG_A0, UC_M68K_REG_A1, UC_M68K_REG_A2, UC_M68K_REG_A3,

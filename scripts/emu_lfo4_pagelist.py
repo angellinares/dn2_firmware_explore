@@ -1,8 +1,7 @@
 """Is the MOD mode's page vector built with four ids, from reset?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_pagelist.py \
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_lfo4_pagelist.py \
         [out/lfo4-ui2/section_3_MAIN_OS.bin]
 
 From the instrument, 2026-09-22:
@@ -40,7 +39,9 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-sys.path.insert(0, "/root/digikit/src")
+from emulib import paths                                       # noqa: E402
+
+paths.use_digikit()
 
 import emu_boot_check as boot                                  # noqa: E402
 from emulib.report import check, report                        # noqa: E402

@@ -1,8 +1,7 @@
 """LFO4 step 2 under the emulator: does a sound keep its LFO4 across save and load?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python \\
-        scripts/emu_lfo4_store.py [--snapshot ...]
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python scripts/emu_lfo4_store.py [--snapshot ...]
 
 `docs/lfo4-build-plan.md` §4 read both converters; step 2 hooks them. The
 firmware's own `0x400dd1ea` (stored -> live) and `0x400dd6a6` (live -> stored)
@@ -23,9 +22,10 @@ Two questions, in this order:
 from __future__ import annotations
 
 import argparse
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from lfo4_harness import PARAMS, SOUND, SNAP, Harness, check, load_build, report  # noqa: E402
 

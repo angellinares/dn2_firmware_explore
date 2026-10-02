@@ -1,7 +1,7 @@
 """Boot from reset, then run the engine: the combination nothing has tested.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u \
         scripts/emu_boot_engine.py [--build out/lfo4-bridge] [--frames 8] \
         [--arp-mode 5 --arp-mode 6 --arp-max 6]
 
@@ -33,10 +33,12 @@ import pathlib
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from emulib import paths                                      # noqa: E402
 
-from emu import dspboot                                       # noqa: E402
+paths.use_digikit()
+
+from emu import dspboot                                      # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 from dnfw.mods import platform                                # noqa: E402
@@ -56,8 +58,8 @@ LFO4_IDS = [4, 8, 12, 16, 20, 24, 28, 32]          # the reserved p-lock ranks
 MARKS = [0x2A01, 0x2A02, 0x2A03, 0x2A04, 0x2A05, 0x2A06, 0x2A07, 0x2A08]
 EXT_SLOTS, EXT_PARAMS = 256, 8
 
-ROOT = "/mnt/d/01_Code/Z_Personal/dn2_firmware"
-SYX = f"{ROOT}/00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
+ROOT = str(paths.ROOT)
+SYX = str(paths.SYX)
 REPORTER = 0x4011EA6A
 STACK, SCRATCH = 0x46A00000, 0x46A10000       # above BSS end 0x466b74d0
 

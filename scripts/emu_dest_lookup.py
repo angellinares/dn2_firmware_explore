@@ -1,8 +1,7 @@
 """Do all three LFO pages share one slot-lookup, or one each?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_dest_lookup.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_dest_lookup.py
 
 The destination list is built by one loop, for every page, over slots 0..100
 (`0x4003958a`). What differs per page is `obj->vtable[80](slot)`, which returns
@@ -25,9 +24,10 @@ from __future__ import annotations
 
 import argparse
 import collections
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from emulib.machine import SNAP, Machine                        # noqa: E402
 from emulib.panel import DOWN, MOD, NO, Panel                   # noqa: E402

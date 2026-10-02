@@ -1,8 +1,7 @@
 """Which instruction reads a parameter's value while the MOD page is drawn?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_value_reads.py
+    # with digikit's venv (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_value_reads.py
 
 A sound keeps its parameter values in an array at `+0x14`, two bytes per slot,
 and **step 4a diverted the write**: `values[d2] = d3` at `0x40037be8`, where
@@ -24,10 +23,11 @@ the page's reader whatever it looks like, and one that fires on every frame is.
 from __future__ import annotations
 
 import argparse
+import pathlib
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from emulib.machine import SNAP, Machine                       # noqa: E402
 from emulib.panel import MOD, Panel                            # noqa: E402

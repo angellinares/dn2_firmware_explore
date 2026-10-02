@@ -1,7 +1,7 @@
 """Load a stored project through the firmware's own deserialiser, per build.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
+    # with digikit's venv (docs/emulator.md):
+    <digikit>/.venv/bin/python -u \
         scripts/emu_project_load.py --build out/projload/fxmod+lfo4 \
         --project 00_Resources/07_DataCapture/projects_4_12890159B.bin
 
@@ -53,10 +53,14 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from emulib import paths                                      # noqa: E402
+
+paths.use_digikit()
+
 from emulib.image import code_chunks, differences             # noqa: E402
 from emulib.machine import SCRATCH, STACK, Machine            # noqa: E402
 
-ROOT = "/mnt/d/01_Code/Z_Personal/dn2_firmware"
+ROOT = str(paths.ROOT)
 REPORTER = 0x4011EA6A            # formats "V%02x M%x P%08x"
 DESERIALISE = 0x400E1782         # (project, image, progress) -> bool
 PROJECT = 0x41218970             # the boot's project (0x400bb2c4)

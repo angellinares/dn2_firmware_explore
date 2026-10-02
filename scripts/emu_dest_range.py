@@ -1,8 +1,7 @@
 """How far does DEST go on each LFO page, and what stops it?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_dest_range.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_dest_range.py
 
 The owner: the destination list **grows** as you advance the MOD pages -- LFO2
 can modulate LFO1, LFO3 can modulate LFO1 and LFO2. That is an acyclic rule,
@@ -31,9 +30,10 @@ from __future__ import annotations
 
 import argparse
 import collections
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from emulib.machine import SNAP, Machine                       # noqa: E402
 from emulib.panel import DOWN, MOD, Panel                      # noqa: E402

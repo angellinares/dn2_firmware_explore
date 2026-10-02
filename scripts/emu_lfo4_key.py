@@ -1,8 +1,8 @@
 """Does the tick ask for LFO4's row under the key the panel wrote it with?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_BUILD=out/lfo4-meterkeep \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_key.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    DT2_BUILD=out/lfo4-meterkeep \
+        <digikit>/.venv/bin/python -u scripts/emu_lfo4_key.py
 
 **The evidence this is aimed at.** On the instrument LFO4 modulates on roughly
 one trig in fifteen. Everything from the panel to the mirror cell is measured
@@ -39,11 +39,12 @@ import argparse
 import os
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths                                           # noqa: E402
 from emulib.image import code_chunks, differences, load_build      # noqa: E402
 from emulib.machine import SNAP, Machine                           # noqa: E402
 
-BUILD = os.path.join("/mnt/d/01_Code/Z_Personal/dn2_firmware",
+BUILD = os.path.join(str(paths.ROOT),
                      os.environ.get("DT2_BUILD", "out/lfo4-meterkeep"))
 LIVE_CONTAINER, SOUND_AT, SOUND_STRIDE = 0x800052A0, 52, 1163
 DEST_SLOT, DEST_VALUE = 3, 67 << 8          # a real destination, not None

@@ -15,8 +15,8 @@ Runs from a snapshot with the intro already running (the recipe in
 scroll value once per slice, and write-watches the table's memory and the scroll
 field to name the code that writes each.
 
-    DIGIKIT=... DT2_SECTIONS=/root/dn2-sections-111 \\
-    /root/dn2-emu-venv/bin/python scripts/probe_intro_motion.py \\
+    DIGIKIT=... \\
+    <digikit>/.venv/bin/python scripts/probe_intro_motion.py \\
         snapshots/dn2_111_ext400M.snap 20000000 \\
         --table-ptr 0x42c45698 --scroll 0x42c45678
 """
@@ -28,7 +28,8 @@ import collections
 import hashlib
 import os
 import struct
-import sys
+
+from emulib import paths
 
 TABLE_WORDS = 16384
 
@@ -42,10 +43,7 @@ def main() -> int:
     ap.add_argument("--slice", type=int, default=1_000_000)
     args = ap.parse_args()
 
-    digikit = os.environ.get("DIGIKIT")
-    if not digikit:
-        raise SystemExit("set DIGIKIT to the digikit checkout")
-    sys.path.insert(0, digikit)
+    digikit = str(paths.use_digikit())        # $DIGIKIT, else a sibling checkout
     os.chdir(digikit)
 
     from unicorn import UC_HOOK_MEM_WRITE

@@ -1,9 +1,9 @@
 """Does skipping an idle LFO4 change what the evaluators write? Old build against fast.
 
-    # in WSL, with digikit's venv (docs/emulator.md), once per build:
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \\
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md), once per build:
+    <digikit>/.venv/bin/python -u \\
         scripts/emu_lfo4_idle.py --build out/lfo4-everyvoice4 --out /tmp/old.json
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \\
+    <digikit>/.venv/bin/python -u \\
         scripts/emu_lfo4_idle.py --build out/lfo4-fast --out /tmp/fast.json
     python scripts/emu_lfo4_idle.py --compare /tmp/old.json /tmp/fast.json
 
@@ -60,8 +60,11 @@ CASES = (("empty", 0, DEST_SLOT), ("nodest", 16, 0), ("mix", 4, DEST_SLOT), ("al
 
 
 def run(args) -> dict:
+    from emulib import paths
     from emulib.image import code_chunks, differences
     from emulib.machine import Machine
+
+    paths.use_digikit()
 
     stock = open(os.path.join(os.environ["DT2_SECTIONS"], "section_3_MAIN_OS.bin"), "rb").read()
     built = open(os.path.join(args.build, "section_3_MAIN_OS.bin"), "rb").read()

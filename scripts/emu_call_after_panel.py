@@ -1,8 +1,8 @@
 """Why does a direct call stop working once the panel has been driven?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_BUILD=out/lfo4-meterkeep \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_call_after_panel.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    DT2_BUILD=out/lfo4-meterkeep \
+        <digikit>/.venv/bin/python -u scripts/emu_call_after_panel.py
 
 `emu_lfo4_uikey.py` drove the panel and then called `lfo4_sound_of`, which
 returned **8** -- a value that function cannot produce, since it returns either
@@ -46,12 +46,13 @@ import argparse
 import os
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths                                           # noqa: E402
 from emulib.image import code_chunks, differences, load_build      # noqa: E402
 from emulib.machine import SNAP, Machine                           # noqa: E402
 from emulib.panel import DOWN, MOD, Panel                          # noqa: E402
 
-BUILD = os.path.join("/mnt/d/01_Code/Z_Personal/dn2_firmware",
+BUILD = os.path.join(str(paths.ROOT),
                      os.environ.get("DT2_BUILD", "out/lfo4-meterkeep"))
 LIVE_CONTAINER, SOUND_AT, SOUND_STRIDE = 0x800052A0, 52, 1163
 STUB = bytes.fromhex("702a4e75")          # moveq #42,%d0 ; rts

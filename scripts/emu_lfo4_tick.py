@@ -1,8 +1,7 @@
 """LFO4 step 3 under the emulator: does each track get its own fourth LFO?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python \\
-        scripts/emu_lfo4_tick.py [--frames 400]
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python scripts/emu_lfo4_tick.py [--frames 400]
 
 `scripts/build_lfo4_tick7.py` gives every track its own row of LFO4 parameters
 and makes both evaluators index it. The question it asks is whether that
@@ -38,11 +37,14 @@ import os
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths  # noqa: E402
+
+paths.use_digikit()       # main() reads DT2_SECTIONS before any Machine exists
 
 from lfo4_harness import SNAP, Machine, check, report  # noqa: E402
 
-ROOT = "/mnt/d/01_Code/Z_Personal/dn2_firmware"
+ROOT = str(paths.ROOT)
 BUILT = f"{ROOT}/out/lfo4-tick7/section_3_MAIN_OS.bin"
 BASE = 0x40000400
 

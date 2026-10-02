@@ -1,7 +1,7 @@
 """Which entries does a MOD page ask the companion table for, and what does it get?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx>         /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_widget.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_lfo4_widget.py
 
 LFO4's page drew eight identical empty circles where LFO3's has `512` in a box
 for `MULT`, `SYN PD2` for `DEST` and a square glyph for `WAVE`. The labels, the
@@ -18,14 +18,15 @@ entry 0, and would have been believed if 676 identical answers were not
 obviously an instrument fault rather than a finding.
 """
 import os, sys
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths
 from emulib.image import code_chunks, differences, load_build
 from emulib.machine import SNAP, Machine
 from emulib.panel import MOD, Panel
 from unicorn import UC_HOOK_CODE
 from unicorn.m68k_const import UC_M68K_REG_A7, UC_M68K_REG_D0
 
-BUILD = "/mnt/d/01_Code/Z_Personal/dn2_firmware/out/lfo4-value"
+BUILD = str(paths.ROOT / "out/lfo4-value")
 COMPANION = 0x400C2418          # entry -> &companion[entry], bound 321, clamps to 0
 COMPANION_RET = 0x400C243A      # the rts, with the address in d0
 

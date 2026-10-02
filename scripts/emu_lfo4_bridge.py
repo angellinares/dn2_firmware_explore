@@ -1,8 +1,7 @@
 """The whole of LFO4 under the emulator: a value in the table reaches the engine.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python \\
-        scripts/emu_lfo4_bridge.py [--frames 40]
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python scripts/emu_lfo4_bridge.py [--frames 40]
 
 Steps 1-3 each proved one thing separately. This asks the question they were
 for: **put LFO4's eight values in the table for one track's sound, and does that
@@ -29,16 +28,20 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import pathlib
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from emulib import paths  # noqa: E402
+
+paths.use_digikit()
 
 from emu_lfo4_tick import (DEST_SLOT, EVAL_A, MIRROR_AT, MIRROR_BYTES, MIRROR_SLOTS,  # noqa: E402
                            RATE, REST, SET_FRAC, STATE, STATE_LEN, TRACKS, differences)
 from lfo4_harness import SNAP, Machine, check, code_chunk, report  # noqa: E402
 
-BUILD = "/mnt/d/01_Code/Z_Personal/dn2_firmware/out/lfo4-bridge"
+BUILD = str(paths.ROOT / "out/lfo4-bridge")
 TRACK = 1                                  # 0-based: the second track
 FAST = (0x7000, 0x0100, 0x4000, DEST_SLOT << 8, 0x0100, 0x0000, 0x0000, 0x5000)
 SLOWER = (0x0800,) + FAST[1:]

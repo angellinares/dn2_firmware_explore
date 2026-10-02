@@ -1,8 +1,7 @@
 """Which code writes a sound's parameter value, and which page moves which slot?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \\
-        /root/dn2-emu-venv/bin/python -u scripts/emu_param_setter.py
+    # with digikit's venv (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_param_setter.py
 
 LFO4's step 4 needs the point where a turn lands in the live sound. The getter
 was known (`0x4006408a`); the static hunt for its counterpart went through
@@ -30,9 +29,10 @@ from __future__ import annotations
 
 import argparse
 import collections
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from emulib.machine import SNAP, Machine                       # noqa: E402
 from emulib.panel import DOWN, MOD, UP, Panel                      # noqa: E402

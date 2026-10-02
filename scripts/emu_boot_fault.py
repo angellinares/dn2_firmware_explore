@@ -1,7 +1,7 @@
 """Boot a build from reset and catch the firmware's own exception screen.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u \
         scripts/emu_boot_fault.py --build out/lfo4-bridge [--limit 400000000]
 
 `lfo4-bridge` faulted on the instrument at boot, 2026-09-20, with the
@@ -28,17 +28,19 @@ import os
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths                                  # noqa: E402
 
-from emu import dspboot                                   # noqa: E402
+paths.use_digikit()
+
+from emu import dspboot                                 # noqa: E402
 from unicorn import UC_HOOK_CODE                          # noqa: E402
 from unicorn.m68k_const import (UC_M68K_REG_A0, UC_M68K_REG_A1, UC_M68K_REG_A2,  # noqa: E402
                                 UC_M68K_REG_A7, UC_M68K_REG_D0, UC_M68K_REG_D1,
                                 UC_M68K_REG_D2, UC_M68K_REG_PC)
 
-ROOT = "/mnt/d/01_Code/Z_Personal/dn2_firmware"
-SYX = f"{ROOT}/00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
+ROOT = str(paths.ROOT)
+SYX = str(paths.SYX)
 REPORTER = 0x4011EA6A          # draws EXCEPTION V.. M. P........
 
 

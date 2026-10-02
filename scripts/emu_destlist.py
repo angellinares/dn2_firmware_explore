@@ -1,8 +1,7 @@
 """What is actually in the destination list, stock beside the build?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
-        scripts/emu_destlist.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_destlist.py
 
 From the instrument, 2026-09-23, on `fxbrowser`:
 
@@ -46,12 +45,13 @@ import os
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from emulib import paths                                      # noqa: E402
 from emulib.image import differences                          # noqa: E402
 from emulib.machine import Machine                            # noqa: E402
 
-ROOT = "/mnt/d/01_Code/Z_Personal/dn2_firmware"
+ROOT = str(paths.ROOT)
 BUILD = os.environ.get("DT2_BUILD", "out/fxbrowser")
 BUILT = f"{ROOT}/{BUILD}/section_3_MAIN_OS.bin"
 
@@ -150,7 +150,7 @@ def dump(m, label: str, entries: list[int]) -> None:
 
 
 def main() -> int:
-    stock_path = os.path.join(os.environ["DT2_SECTIONS"], "section_3_MAIN_OS.bin")
+    stock_path = str(paths.SECTIONS / "section_3_MAIN_OS.bin")
     runs = differences(open(stock_path, "rb").read(), open(BUILT, "rb").read())
     print(f"  under test: {BUILD}")
     print(f"  the build differs from stock in {len(runs)} run(s)\n")

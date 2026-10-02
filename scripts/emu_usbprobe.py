@@ -1,7 +1,7 @@
 """The USB probe in the emulator: every command, the refusals, and a stock control.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
+    # with digikit's venv (docs/emulator.md):
+    <digikit>/.venv/bin/python -u \
         scripts/emu_usbprobe.py [--build out/usbprobe]
 
 derived from irpina/digihealth (tools/digiusb.py), GPL-2.0-or-later, used here under GPL-3.0 within this AGPL-3.0-or-later project
@@ -45,12 +45,13 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "tools"))
+from emulib import paths                        # noqa: E402
 from emulib.image import differences            # noqa: E402
 from emulib.machine import SNAP, Machine        # noqa: E402
 
 import dn2probe as proto                        # noqa: E402  the host's codec, shared
 
-ROOT = "/mnt/d/01_Code/Z_Personal/dn2_firmware"
+ROOT = str(paths.ROOT)
 ROUTER, SENDER = 0x4012166E, 0x401233F2
 FRAMES, IDLE_TCB, IDLE_PC, CUR_TCB = 0x4058E8D4, 0x424388AC, 0x400CEBE2, 0x4664ACDC
 USB, DIN = 2, 8
@@ -242,13 +243,13 @@ def from_reset(results, image, sym, limit, label, fast=False):
     This is the round trip a snapshot cannot give: the hooks are in place from
     the first instruction, the context-switch hook runs through the whole boot,
     and the reply path is entered in a machine this image booted."""
-    sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
+    paths.use_digikit()
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from emu_boot_engine import After
     from unicorn import UC_HOOK_CODE
     from unicorn.m68k_const import UC_M68K_REG_A7
 
-    syx = f"{ROOT}/00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
+    syx = str(paths.SYX)
     holder, fault, sent, hits = {}, {}, [], {"task_switch": 0}
 
     def pre_start(mach, count):

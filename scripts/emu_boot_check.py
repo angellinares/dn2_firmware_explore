@@ -1,8 +1,7 @@
 """The gate every build passes before it is allowed near the instrument.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
-        scripts/emu_boot_check.py out/lfo4-bridge/section_3_MAIN_OS.bin
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_boot_check.py out/lfo4-bridge/section_3_MAIN_OS.bin
 
 One question, asked from **reset**: does this image boot and draw its UI?
 
@@ -38,14 +37,16 @@ import pathlib
 import sys
 import time
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
+from emulib import paths                                      # noqa: E402
+
+paths.use_digikit()
 
 from emu import dspboot, symbols                              # noqa: E402
 from unicorn import UC_HOOK_CODE                              # noqa: E402
 from unicorn.m68k_const import UC_M68K_REG_A2                 # noqa: E402
 
-ROOT = pathlib.Path("/mnt/d/01_Code/Z_Personal/dn2_firmware")
-SYX = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
+ROOT = paths.ROOT
+SYX = paths.SYX
 CACHE = ROOT / "out/boot-check/control.json"
 REPORTER = 0x4011EA6A
 
@@ -59,7 +60,7 @@ REPORTER = 0x4011EA6A
 # Comparing a build against a control measured under a different emulator is
 # comparing two things at once. So the cache carries a fingerprint of the
 # emulator's own sources, and refreshes itself when they move.
-EMU = pathlib.Path("/mnt/d/01_Code/Z_Personal/digikit-up/emu")
+EMU = paths.DIGIKIT / "emu"
 
 
 def emulator_fingerprint():

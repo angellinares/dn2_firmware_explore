@@ -1,8 +1,7 @@
 """Does the live sound container ever move under us?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        DT2_BUILD=out/lfo4-browser /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_swap.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    DT2_BUILD=out/lfo4-browser <digikit>/.venv/bin/python -u scripts/emu_lfo4_swap.py
 
 From the instrument, 2026-09-22, the owner's own framing:
 
@@ -28,14 +27,15 @@ answer.
 import os
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths
 from emulib.image import code_chunks, differences, load_build
 from emulib.machine import SNAP, Machine
 from emulib.panel import MOD, Panel
 from unicorn import UC_HOOK_MEM_WRITE
 from unicorn.m68k_const import UC_M68K_REG_PC
 
-BUILD = os.path.join("/mnt/d/01_Code/Z_Personal/dn2_firmware",
+BUILD = os.path.join(str(paths.ROOT),
                      os.environ.get("DT2_BUILD", "out/lfo4-browser"))
 
 LIVE_CONTAINER = 0x800052A0

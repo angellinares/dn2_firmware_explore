@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -34,15 +35,22 @@ from dnfw.cli.files import read_image
 from dnfw.cli.mods import _read_pgm
 from dnfw.firmware.load import load
 from dnfw.mods import bootscreen, platform
+from emulib import paths
 
 STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-SYX = "/mnt/d/01_Code/Z_Personal/dn2_firmware/00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
-SNAP = "~/dn2-snapshots/Digitone_II_OS1.11/boot400M.snap"
+if os.name == "nt":                      # guirun runs in WSL: these are WSL's paths, not this host's
+    SYX = "/mnt/d/01_Code/Z_Personal/dn2_firmware/00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
+    SNAP = "~/dn2-snapshots/Digitone_II_OS1.11/boot400M.snap"
+else:
+    SYX = str(paths.SYX)
+    SNAP = str(paths.SNAPSHOTS / "boot400M.snap")
 WORK = ROOT / "out/film"
 START, STEP, SHOTS = 3, 1, 38            # millions of instructions from the snapshot; the first capture lands after 3M
 
 
 def wsl_path(p: pathlib.Path) -> str:
+    if os.name != "nt":
+        return str(p.resolve())
     s = str(p.resolve()).replace("\\", "/")
     return "/mnt/" + s[0].lower() + s[2:]
 
@@ -67,12 +75,27 @@ def ranges(stock: bytes, content: bytes) -> list[dict]:
 def film(name: str, patch: pathlib.Path | None) -> list[pathlib.Path]:
     shots = [WORK / name / f"f{k:03d}.png" for k in range(SHOTS)]
     shots[0].parent.mkdir(parents=True, exist_ok=True)
-    pngs = " ".join(f"--png-at {START + STEP * (k + 1)}M:{wsl_path(p)}" for k, p in enumerate(shots))
-    extra = f"--patch-ranges {wsl_path(patch)}" if patch else ""
-    script = (f"cd /mnt/d/01_Code/Z_Personal/digikit && export DT2_SECTIONS=/root/dn2-sections-111 && "
-              f"timeout 1800 /root/dn2-emu-venv/bin/python tools/guirun.py {SNAP} --weakptr --slc "
-              f"--syx {SYX} {extra} {pngs} --limit {(START + STEP * SHOTS + 6) * 1_000_000}")
-    run = subprocess.run(["wsl", "bash", "-lc", script], capture_output=True, text=True)
+    if os.name == "nt":
+        pngs = " ".join(f"--png-at {START + STEP * (k + 1)}M:{wsl_path(p)}" for k, p in enumerate(shots))
+        extra = f"--patch-ranges {wsl_path(patch)}" if patch else ""
+        script = (f"cd /mnt/d/01_Code/Z_Personal/digikit && export DT2_SECTIONS=/root/dn2-sections-111 && "
+                  f"timeout 1800 /root/dn2-emu-venv/bin/python tools/guirun.py {SNAP} --weakptr --slc "
+                  f"--syx {SYX} {extra} {pngs} --limit {(START + STEP * SHOTS + 6) * 1_000_000}")
+        run = subprocess.run(["wsl", "bash", "-lc", script], capture_output=True, text=True)
+    else:
+        argv = [str(paths.DIGIKIT / ".venv/bin/python"), "tools/guirun.py", SNAP, "--weakptr", "--slc",
+                "--syx", SYX]
+        if patch:
+            argv += ["--patch-ranges", wsl_path(patch)]
+        for k, p in enumerate(shots):
+            argv += ["--png-at", f"{START + STEP * (k + 1)}M:{wsl_path(p)}"]
+        argv += ["--limit", str((START + STEP * SHOTS + 6) * 1_000_000)]
+        env = {**os.environ, "DT2_SECTIONS": str(paths.SECTIONS)}
+        try:
+            run = subprocess.run(argv, cwd=paths.DIGIKIT, env=env, capture_output=True, text=True,
+                                 timeout=1800)
+        except subprocess.TimeoutExpired as exc:   # as `timeout 1800` did: report what is missing
+            run = subprocess.CompletedProcess(argv, -1, exc.stdout or "", exc.stderr or "")
     missing = [p for p in shots if not p.exists()]
     if missing:
         print(run.stdout[-2000:], run.stderr[-2000:])

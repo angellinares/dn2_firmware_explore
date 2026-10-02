@@ -1,7 +1,7 @@
 """Score two SHARC+ VISA decoders against the firmware's own instruction starts.
 
     python scripts/sharc_selache_compare.py <image.syx|.zip>
-    python scripts/sharc_selache_compare.py <image> --selmap "wsl -e /root/selmap-target/release/selmap"
+    python scripts/sharc_selache_compare.py <image> --selmap "wsl -e /root/selmap-target/release/selmap"  # Windows
     python scripts/sharc_selache_compare.py <image> --digikit ../digikit-wt/tools --no-selache
 
 The decoders are digikit's `tools/sharc_disasm.py` and, through
@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import os
 import pathlib
 import random
 import re
@@ -51,10 +52,13 @@ import sharc_callgraph as CG                    # noqa: E402
 from dnfw.cli.files import read_image           # noqa: E402
 from dnfw.firmware.load import load             # noqa: E402
 from dnfw.image import bootstream               # noqa: E402
+from emulib import paths                        # noqa: E402
 
 BLOB = 7
 DEFAULT_DIGIKIT = HERE.parent.parent / "digikit" / "tools"
-DEFAULT_SELMAP = "wsl -e /root/selmap-target/release/selmap"
+# a command line, shlex-split below: quoted so a path with spaces survives
+DEFAULT_SELMAP = ("wsl -e /root/selmap-target/release/selmap" if os.name == "nt"
+                  else shlex.quote(str(paths.SELMAP)))
 PC_REL = re.compile(r"\(pc,(-?0x[0-9a-f]+|-?\d+)\)")
 
 

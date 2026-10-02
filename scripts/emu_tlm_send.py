@@ -1,7 +1,7 @@
 """Does calling the MIDI sink actually work, or does it fault?
 
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_BUILD=out/lfo4-tlm \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_tlm_send.py
+    DT2_BUILD=out/lfo4-tlm \
+        <digikit>/.venv/bin/python -u scripts/emu_tlm_send.py
 
 **Why this and not the engine gate.** The telemetry burst is rate-limited to one
 in 2048 calls of `lfo4_row_for_block`, and `emu_boot_engine.py` produces 128 --
@@ -30,11 +30,12 @@ import argparse
 import os
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths                                        # noqa: E402
 from emulib.image import code_chunks, differences, load_build   # noqa: E402
 from emulib.machine import SNAP, Machine                        # noqa: E402
 
-BUILD = os.path.join("/mnt/d/01_Code/Z_Personal/dn2_firmware",
+BUILD = os.path.join(str(paths.ROOT),
                      os.environ.get("DT2_BUILD", "out/lfo4-tlm"))
 MIDI_TX = 0x401233F2
 PORT, FLAGS = 0, 2

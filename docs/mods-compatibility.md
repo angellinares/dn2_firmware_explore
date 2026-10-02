@@ -56,6 +56,9 @@ check rather than from a README (`docs/references.md`).
     nothing else, so it would run neither mod's code. Pairs with transients only
     change section 7.
   - The results are recorded below the table.
+  - 2026-10-03: midiarp became a platform mod (a `CODE` chunk), so its pairs with
+    bootscreen, lfo4 and lfowaves were booted again with the new code, and the new pair
+    with usbprobe was booted: **4 of 4 booted and drew their UI**, as did midiarp alone.
 
 ## One loader, one appended area (since 2026-09-30)
 
@@ -178,4 +181,5 @@ the init, so only pairs that include a loader mod are booted; the rest say why t
 - `lfowaves` + `moddest`: booted and drew its UI (1 frame(s), control 1).
 - `lfowaves` + `songguard`: booted and drew its UI (1 frame(s), control 1).
 - `lfowaves` + `waverider`: booted and drew its UI (1 frame(s), control 1).
+- `midiarp` + `usbprobe`: booted and drew its UI (1 frame(s), control 1).
 <!-- /dnfw:boots -->

@@ -18,22 +18,29 @@
 //   MOVE  (ATK 40 / BASE 44; 0..127): the shape, in five bands -- 0..25 ramp down,
 //         26..51 ramp up, 52..76 triangle once, 77..102 triangle looping, 103..127
 //         square looping. The three one-shots stop at their end (the phase saturates).
-//   TRIG  (RSET 39, shared; 0..2, default 1): 0 free-running, else a note on this
-//         voice (the frame's note-trigger mask, offset 34, bit t) restarts the phase.
+//   TRIG  (TYPE 46, shared; 0..2, default 0): 0 restarts the phase on a note on this
+//         voice (the frame's note-trigger mask, offset 34, bit t); 1, 2 free-running.
+//   PRST  (RSET 39, shared; Off / On / Random, default On): the OSCILLATOR's phase on
+//         a note -- left running, restarted at 0, or set from the cycle counter.
+//         Applied by wr_mod_b to the reader block's phase word (DM(1, I4)).
+//         (TRIG and PRST until 2026-10-02's m10a3: TRIG was RSET, and the oscillators
+//         never restarted, so the same note could start anywhere in its cycle.)
 //
 // MPOS 50 and MLEV 0 -- every sound's defaults -- skip their arithmetic entirely, so
 // R4 and R14 come back untouched and a default sound is bit-identical to M9's.
 //
 // In: R9 = t (the voice), R4 = POS, R14 = LEV, DM 0x2de6c4 = the oscillator (0, 1).
-// Out: R4, R14. Clobbers R0-R2, R6-R8, R10-R12, R15, I0-I2. Keeps R5, R9, R13, I3-I5,
+// Out: R4, R14; R6 = 1 if a note started on this voice in this block (for wr_mod_b).
+// Clobbers R0-R2, R6-R8, R10-R12, R15, I0-I2. Keeps R5, R9, R13, I3-I5,
 // M4. Only forms the firmware itself uses, and every add has R8-R15 first (see
 // reader_m5.asm).
 //
 // DM (byte addresses, the directory block's tail, written by the build):
+//   0x2ddea0  PRST Random's generator state (wr_mod_b), zero at boot
 //   0x2de700  16 voices x 2 oscillators: the phase, a u32 (zeros at boot)
 //   0x2de780  per oscillator, 32 bytes: the frame byte offsets (168 + 2s) of RATE,
-//             MPOS, MLEV, MOVE and TRIG
-//   0x2de7c0  the five 16-bit values this call read, one a word
+//             MPOS, MLEV, MOVE, TRIG and PRST
+//   0x2de7c0  the six 16-bit values this call read, one a word
 //   0x2de7d8  F[0..9], the rate table
 //
 // PLACEMENT IS FIXED at PM sw 0x16f700 (DM 0x2dee00): the absolute jumps below are
@@ -60,7 +67,7 @@ wr_mod.:
       I1 = R0;
       R12 = 0x2de7c0;
       I2 = R12;
-      R15 = 5;
+      R15 = 6;
 .GLOBAL wr_mod_read.;
 wr_mod_read.:
       R0 = DM(I1, M6);                  // a byte offset in the voice's frame
@@ -92,19 +99,20 @@ wr_mod_low.:
       I1 = R0;
       R15 = DM(0, I1);
 
-      // TRIG: restart on a note on this voice
-      R0 = DM(0x2de7d0);
-      R0 = LSHIFT R0 BY -8;
-      R0 = PASS R0;
-      IF EQ JUMP 0x16f772;              // -> wr_mod_run. (free-running)
+      // the voice's note-trigger bit, for TRIG and PRST: R6 = 1 if a note started
       R0 = DM(0x25c4ac);                // the frame's offset 32..35: the note mask high
       R0 = LSHIFT R0 BY -16;
       R1 = R1 - R1;
       R1 = R1 - R9;
       R0 = LSHIFT R0 BY R1;             // >> t
       R1 = 1;
-      R0 = R0 AND R1;
-      IF EQ JUMP 0x16f772;              // -> wr_mod_run.
+      R6 = R0 AND R1;
+      IF EQ JUMP 0x16f773;              // -> wr_mod_run. (no note)
+      // TRIG: 0 restarts the shape on a note; 1, 2 free-running
+      R0 = DM(0x2de7d0);
+      R0 = LSHIFT R0 BY -8;
+      R0 = PASS R0;
+      IF NE JUMP 0x16f773;              // -> wr_mod_run. (free-running)
       R15 = R15 - R15;
 .GLOBAL wr_mod_run.;
 wr_mod_run.:
@@ -118,11 +126,11 @@ wr_mod_run.:
 .GLOBAL wr_mod_div.;
 wr_mod_div.:
       COMP(R0, R1);
-      IF LT JUMP 0x16f78a;              // -> wr_mod_divd.
+      IF LT JUMP 0x16f78b;              // -> wr_mod_divd.
       R0 = R0 - R1;
       R2 = 1;
       R8 = R8 + R2;
-      JUMP 0x16f77f;                    // -> wr_mod_div.
+      JUMP 0x16f780;                    // -> wr_mod_div.
 .GLOBAL wr_mod_divd.;
 wr_mod_divd.:
       R0 = LSHIFT R0 BY 2;
@@ -138,19 +146,19 @@ wr_mod_divd.:
       R11 = R11 - R11;
       R2 = 26;
       COMP(R1, R2);
-      IF LT JUMP 0x16f7bf;              // -> wr_mod_shape.
+      IF LT JUMP 0x16f7c0;              // -> wr_mod_shape.
       R11 = 1;
       R2 = 52;
       COMP(R1, R2);
-      IF LT JUMP 0x16f7bf;              // -> wr_mod_shape.
+      IF LT JUMP 0x16f7c0;              // -> wr_mod_shape.
       R11 = 2;
       R2 = 77;
       COMP(R1, R2);
-      IF LT JUMP 0x16f7bf;              // -> wr_mod_shape.
+      IF LT JUMP 0x16f7c0;              // -> wr_mod_shape.
       R11 = 3;
       R2 = 103;
       COMP(R1, R2);
-      IF LT JUMP 0x16f7bf;              // -> wr_mod_shape.
+      IF LT JUMP 0x16f7c0;              // -> wr_mod_shape.
       R11 = 4;
 .GLOBAL wr_mod_shape.;
 wr_mod_shape.:

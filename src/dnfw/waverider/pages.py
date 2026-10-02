@@ -76,7 +76,7 @@ LABELS = {238: "TUNE", 241: "LEV", 239: "POS", 247: "TBL",
           # M10a: MOVE, the modulator (WaveTone records Waverider does not use)
           240: "RATE", 246: "MPOS", 252: "MLEV", 253: "MOVE",
           244: "RATE", 250: "MPOS", 256: "MLEV", 257: "MOVE",
-          249: "TRIG"}
+          249: "PRST", 259: "TRIG"}
 # record id -> Waverider's long name, in the stock "Osc1 Waveform" style: what the
 # header shows while a knob turns ("Osc1 Position=65"), and the LFO destination
 # browser on a Waverider track
@@ -84,13 +84,13 @@ LONG_NAMES = {238: "Osc1 Tune", 239: "Osc1 Position", 247: "Osc1 Table",
               242: "Osc2 Detune", 243: "Osc2 Position", 251: "Osc2 Table",
               240: "Osc1 Move Rate", 246: "Osc1 Move Pos", 252: "Osc1 Move Level",
               253: "Osc1 Move Shape", 244: "Osc2 Move Rate", 250: "Osc2 Move Pos",
-              256: "Osc2 Move Level", 257: "Osc2 Move Shape", 249: "Move Retrig"}
+              256: "Osc2 Move Level", 257: "Osc2 Move Shape", 259: "Move Retrig"}
 
 # the two pages, encoders A..H; 0 is an empty place
 PAGES = (
     (238, 241, 239, 247, 240, 246, 252, 253),   # OSC 1: TUNE LEV POS TBL RATE MPOS MLEV MOVE
     (242, 245, 243, 251, 244, 250, 256, 257),   # OSC 2: DETN LEV POS TBL RATE MPOS MLEV MOVE
-    (249, 0, 0, 0, 0, 0, 0, 0),                 # MOVE: TRIG (M10a: restart on a note, or free)
+    (249, 259, 0, 0, 0, 0, 0, 0),               # PRST (RSET: Off/On/Random), TRIG (TYPE: 0 restart)
 )
 
 LABELS_OUT = ("is_wr", "wr_count", "wr_page", "wr_label", "wr_long", "wr_icons", "wr_grid", "wr_grid9",

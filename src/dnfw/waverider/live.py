@@ -108,10 +108,12 @@ def tuned(note: float, tun1: int = TUN1_ZERO) -> float:
 
 
 # -- M10a: MOVE, the per-oscillator modulator (csrc/waverider/sharc/modulator.asm) --
-# The frame slots of each oscillator's RATE, MPOS, MLEV, MOVE, and the shared TRIG.
-MOVE_SLOTS = ((29, 28, 38, 40, 39), (35, 34, 43, 44, 39))
+# The frame slots of each oscillator's RATE, MPOS, MLEV, MOVE, and the shared TRIG
+# (TYPE) and PRST (RSET).
+MOVE_SLOTS = ((29, 28, 38, 40, 46, 39), (35, 34, 43, 44, 46, 39))
 MPOS_NONE = 0x3200                 # MPOS 50: no movement
-TRIG_RESTART = 0x0100              # TRIG's default (RSET 1): a note restarts the phase
+TRIG_RESTART = 0x0000              # TRIG's default (TYPE 0): a note restarts the shape
+PRST_OFF, PRST_ON, PRST_RANDOM = 0x0000, 0x0100, 0x0200   # RSET: the oscillators on a note
 # F[j] = 2^32 / 1500 x 2^(j / 10) / 32: a block's phase step at RATE j; << (r div 10)
 MOVE_RATE = tuple(round(2 ** 32 / 1500 * 2 ** (j / 10) / 32) for j in range(10))
 MPOS_SCALE = 0x7800 / (0x3200 * 0xFFFF)
@@ -131,7 +133,7 @@ def move_band(move: int) -> int:
 
 def move_step(phase: int, rate: int, move: int, trig_mode: int, triggered: bool) -> int:
     """The phase after one block, as the modulator steps it."""
-    if (trig_mode & 0xFFFF) >> 8 and triggered:
+    if not (trig_mode & 0xFFFF) >> 8 and triggered:
         phase = 0
     r = min((rate & 0xFFFF) >> 8, 100)
     inc = (MOVE_RATE[r % 10] << (r // 10)) & 0xFFFFFFFF
@@ -232,7 +234,8 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
     table_t = increment_table()
     for blk in blocks:
         note, oscs = blk[0], blk[1:3]
-        trig_mode, triggered = blk[3] if len(blk) > 3 else (TRIG_RESTART, False)
+        trig_mode, triggered, *rest = blk[3] if len(blk) > 3 else (TRIG_RESTART, False)
+        prst = rest[0] if rest else PRST_OFF
         mixed: list[float] = []
         for k, osc in enumerate(oscs):
             wav, tbl, tun, lev = osc[:4]
@@ -242,6 +245,10 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
                 rate, mpos, mlev, move = osc[4:8]
                 mphase[k] = move_step(mphase[k], rate, move, trig_mode, triggered)
                 wav, lev = move_apply(wav, lev, mpos, mlev, move_shape(mphase[k], move))
+            if len(osc) > 4 and triggered and (prst & 0xFFFF) >> 8:
+                if (prst & 0xFFFF) >> 8 != 1:
+                    raise ValueError("PRST Random starts from the DSP's cycle counter: no reference")
+                phase[k] = 0                    # PRST On: the oscillator restarts
             g = gain(lev)
             samples, phase[k] = render.render(tables[slot(tbl, len(tables))], phase[k],
                                               increment(tuned(note, tun) if k == 0 else

@@ -363,7 +363,7 @@ def test_one_shots_hold_their_end_and_loops_wrap():
 def test_trig_restarts_only_when_on():
     p = 0x12345678
     assert live.move_step(p, 0, 0x5000, live.TRIG_RESTART, True) == live.MOVE_RATE[0]
-    assert live.move_step(p, 0, 0x5000, 0, True) == p + live.MOVE_RATE[0]
+    assert live.move_step(p, 0, 0x5000, 0x100, True) == p + live.MOVE_RATE[0]    # TRIG 1: free
     assert live.move_step(p, 0, 0x5000, live.TRIG_RESTART, False) == p + live.MOVE_RATE[0]
 
 
@@ -371,3 +371,16 @@ def test_mpos_and_mlev_full_depth():
     assert live.move_apply(0, 0x6400, 0x6400, 0, 0xFFFF)[0] in (0x77FF, 0x7800)  # +50 at the top: the far end
     assert live.move_apply(0x100, 0x6400, 0, 0, 0xFFFF)[0] == 0               # never below 0
     assert live.move_apply(0, 0x6400, live.MPOS_NONE, 0x7F00, 0)[1] == 0      # MLEV 127 at shape 0: silent
+
+
+def test_prst_on_restarts_the_oscillator_on_a_note():
+    tables = dsp.tables()
+    o1 = (0x3C00, 0, 0x4000, 0x6400, 0x3200, live.MPOS_NONE, 0, 0)
+    off = (0, 0, 0x4000, 0, 0x3200, live.MPOS_NONE, 0, 0)
+    note = lambda trig, prst: (60.0, o1, off, (live.TRIG_RESTART, trig, prst))
+    fresh = live.render_two(tables, [note(False, live.PRST_ON)], 32)
+    # three blocks, then a note with PRST On: that block is the first block again
+    seq = [note(False, live.PRST_ON)] * 3 + [note(True, live.PRST_ON)]
+    assert live.render_two(tables, seq, 32)[-32:] == fresh
+    seq_off = [note(False, live.PRST_OFF)] * 3 + [note(True, live.PRST_OFF)]
+    assert live.render_two(tables, seq_off, 32)[-32:] != fresh

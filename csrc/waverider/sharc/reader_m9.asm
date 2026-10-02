@@ -305,6 +305,40 @@ wr_mod_lev.:
       R14 = TRUNC F2;
 .GLOBAL wr_mod_done.;
 wr_mod_done.:
+      // PRST (m10a3): on a note, the oscillator's phase -- Off leaves it, On restarts
+      // it at 0 (every note starts alike), Random sets it from the cycle counter.
+      // The reader reads it from its block's phase word, DM(1, I4).
+      R6 = PASS R6;
+      IF EQ JUMP 0x16ecca;              // -> wr_mod_back. (no note)
+      R0 = DM(0x2de7d4);
+      R0 = LSHIFT R0 BY -8;
+      R0 = PASS R0;
+      IF EQ JUMP 0x16ecca;              // -> wr_mod_back. (Off: free-running)
+      R1 = 1;
+      COMP(R0, R1);
+      IF EQ JUMP 0x16ecc7;              // -> wr_mod_zero.
+      // Random: x = rotate(x, 7) + EMUCLK + 0x9e3779b9, the state at DM 0x2ddea0
+      // (the cycle counter alone repeats: a block starts in step with the audio
+      // interrupt, and the emulator's reads 0)
+      R0 = DM(0x2ddea0);
+      R1 = LSHIFT R0 BY 7;
+      R0 = LSHIFT R0 BY -25;
+      R12 = PASS R1;
+      R0 = R12 + R0;
+      R1 = EMUCLK;
+      R12 = PASS R0;
+      R0 = R12 + R1;
+      R12 = 0x9e3779b9;
+      R0 = R12 + R0;
+      DM(0x2ddea0) = R0;
+      DM(1, I4) = R0;
+      JUMP 0x16ecca;                    // -> wr_mod_back.
+.GLOBAL wr_mod_zero.;
+wr_mod_zero.:
+      R0 = R0 - R0;
+      DM(1, I4) = R0;
+.GLOBAL wr_mod_back.;
+wr_mod_back.:
       JUMP 0x16edf3;                    // -> wr_t5v_modded. (machine9_live.asm)
 .wr_mod_b..end:
       .type wr_mod_b.,STT_FUNC;

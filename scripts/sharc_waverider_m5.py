@@ -99,7 +99,8 @@ LEV1 = 30                       # WaveTone's Osc1 Level (Milestone 9a): the read
 TUN2, WAV2, TBL2, LEV2 = 31, 32, 33, 36   # osc 2's (Milestone 9b): osc 1's, six slots on
 RATE1, MPOS1, MLEV1, MOVE1 = live.MOVE_SLOTS[0][:4]   # M10a: PD1, OFS1, DRIF, ATK
 RATE2, MPOS2, MLEV2, MOVE2 = live.MOVE_SLOTS[1][:4]   # PD2, OFS2, NLEV, BASE
-TRIG = live.MOVE_SLOTS[0][4]                          # RSET, shared
+TRIG = live.MOVE_SLOTS[0][4]                          # TYPE, shared (0: restart on a note)
+PRST = live.MOVE_SLOTS[0][5]                          # RSET, shared: the oscillators Off/On/Random
 TUN1_ZERO = 0x4000              # the frame word for 0 semitones: the sound's own (probe, 2026-09-30)
 FRAME_COPY = 0x25C48C           # where sw 0x1c2712 copies the frame image
 OSC2_BLOCKS = 0x900             # osc 2's reader blocks are osc 1's + 0x900 (M9b): 0x2de800 + 32t
@@ -209,6 +210,7 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
                               "move2": tuple(frame_word(r.state, FR.slot_offset(t, s))
                                              for s in live.MOVE_SLOTS[1][:4]),
                               "trig": frame_word(r.state, FR.slot_offset(t, TRIG)),
+                              "prst": frame_word(r.state, FR.slot_offset(t, PRST)),
                               "triggered": bool(frame_word(r.state, FR.TRIG_NOTE) >> t & 1)}
             tap["t5_inputs"] = ins
 
@@ -290,7 +292,7 @@ def reference_for(run, t, tables, precision="float32") -> list[float]:
     """live.render_two fed the DSP's own unpacked inputs for track T, block by block:
     both oscillators (M9b), osc 2 from its own four frame words."""
     seq = [(i[t]["note"], (i[t]["wav1"], i[t]["tbl1"], i[t]["tun1"], i[t]["lev1"], *i[t]["move1"]),
-            (*i[t]["osc2"], *i[t]["move2"]), (i[t]["trig"], i[t]["triggered"]))
+            (*i[t]["osc2"], *i[t]["move2"]), (i[t]["trig"], i[t]["triggered"], i[t]["prst"]))
            for i in run["t5_inputs"] if t in i]
     return live.render_two(tables, seq, BLOCK, precision)
 
@@ -632,27 +634,39 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
                                                            MOVE1: 0x1a00, RATE1: 0x6400}), blocks),
             "move_lev": run_blocks(init, frames(overrides={**solo, WAV1: 0x4000, MLEV1: 0x7f00,
                                                            MOVE1: 0x5000, RATE1: 0x6400}), blocks),
-            "move_free": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400, TRIG: 0,
+            "move_free": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400, TRIG: 0x100,
                                                             MOVE1: 0x1a00, RATE1: 0x6400}), blocks),
             "move_osc2": run_blocks(init, frames(overrides={LEV1: 0, WAV2: 0x7800, MPOS2: 0,
                                                             MOVE2: 0x1a00, RATE2: 0x6400}), blocks),
+            # PRST (m10a3): the oscillators at the note (block 1) -- Off keeps running, Random
+            # starts from the cycle counter (no reference: its tap is not compared)
+            "prst_off": run_blocks(init, frames(overrides={**solo, PRST: 0}), blocks),
+            "prst_random": run_blocks(init, frames(overrides={**solo, PRST: 0x200}), blocks),
             # M9b: DETN is a detune from osc 1, so TUNE +12 moves both oscillators
             "tune_both": run_blocks(init, frames(overrides={WAV1: 0x7800, TUN1: TUN1_ZERO + 12 * 256}), blocks),
             "silent": run_blocks(init, lambda b: base_frame(sound, machines).to_bytes(), blocks)}
     ok_runs = all(r["ok"] for r in runs.values())
     n, mism = {}, {}
     for k, r in runs.items():
-        if r["ok"]:
+        if r["ok"] and k != "prst_random":
             mism[k] = mismatches(track_series(r, 0), reference_for(r, 0, tables))
     i = runs["init"]
     settle = BLOCK * min(3, blocks // 2)
-    ideal = reference_for(i, 0, tables, "ideal") if i["ok"] else []
-    fit = V.fit_gain(i["amp_out"][settle:], ideal[settle:]) if i["ok"] else None
+    # the chain check runs on PRST Off: PRST On (the default) restarts both oscillators
+    # at the note, a step a single fitted gain cannot follow (0.897 on the default,
+    # 0.94 on one oscillator either way; m10a3); every run is bit-exact regardless
+    c = runs["prst_off"]
+    ideal = reference_for(c, 0, tables, "ideal") if c["ok"] else []
+    fit = V.fit_gain(c["amp_out"][settle:], ideal[settle:]) if c["ok"] else None
     rb = {k: (r["reader_blocks"][-1].get(0) if r["ok"] and r["reader_blocks"] else None) for k, r in runs.items()}
     rb2 = {k: (r["reader_blocks2"][-1].get(0) if r["ok"] and r["reader_blocks2"] else None)
            for k, r in runs.items()}
     rb_all = {k: r["reader_blocks"] for k, r in runs.items() if r["ok"]}
     rb2_all = {k: r["reader_blocks2"] for k, r in runs.items() if r["ok"]}
+
+    def phase_at(k, b):
+        blocks_ = rb_all.get(k, [])
+        return blocks_[b][0][1] if len(blocks_) > b and blocks_[b].get(0) else None
 
     def pos_seq(k, allb):
         return [b[0][3] for b in allb.get(k, []) if b.get(0)]
@@ -709,7 +723,8 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             bool(rb["init"]) and rb["init"][0] == dsp.TABLES_DM[0] and rb["init"][2] == live.increment(60.0)
             and rb["init"][3] == 0 and rb["init"][4] == BLOCK,
         "audible at the amp's output (peak > 0.02)": bool(n["amp_out_peak"]) and n["amp_out_peak"] > 0.02,
-        "correlated with the ideal reference through the chain (r > 0.9)": bool(fit) and fit.correlation > 0.9,
+        "correlated with the ideal reference through the chain (r > 0.9; the PRST Off run)":
+            bool(fit) and fit.correlation > 0.9,
         "POS 120 is darker than POS 0 (spectral centroid)": 0 < c120 < c0,
         "TBL1 1 plays the other table (reader block table pointer = dsp.TABLES_DM[1])":
             bool(rb["slot1"]) and rb["slot1"][0] == dsp.TABLES_DM[1],
@@ -749,6 +764,11 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             and pos_seq("move_free", rb_all)[2:] != pos_seq("move_pos", rb_all)[2:],
         "osc 2's MOVE runs on its own controls: MPOS2 -50 pulls osc 2's position down from the top (M10a)":
             bool(pos_seq2("move_osc2", rb2_all)) and min(pos_seq2("move_osc2", rb2_all)) < live.position(0x7800),
+        "PRST On (the default) restarts the oscillator at the note: osc 1's reader phase is 0 at "
+        "block 1; Off keeps it running (not 0); Random gives neither (m10a3)":
+            bool(phase_at("init_solo", 1)) is False and phase_at("init_solo", 1) == 0
+            and (phase_at("prst_off", 1) or 0) != 0
+            and phase_at("prst_random", 1) not in (None, 0, phase_at("prst_off", 1)),
         "DETN is a detune from osc 1: TUNE +12 with DETN 0 puts both oscillators an octave up "
         "(both increments 2 x note 60's within 1e-6, and equal) (M9b)":
             bool(rb2["tune_both"]) and bool(rb["tune_both"]) and bool(inc60)

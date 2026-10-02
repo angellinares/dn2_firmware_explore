@@ -3796,3 +3796,38 @@ On the instrument, the SHARC's time from the per-block routine's entry to the ma
 - The combo: the manual's own PERSONALIZE shortcuts are "hold [SETTINGS] + [TRIG 1..3]" (LED intensity) and "+ [TRIG 9]" (backlight), so a hold [SETTINGS] + an unused TRIG fits the idiom. Still to read: which TRIG keys the SETTINGS-hold handler acts on. The combo must not collide with the private combos kept in dn_sysex.
 
 **Order:** a RAM-only flag on the combo first; then the PERSONALIZE item; then its persistence.
+
+## 31. An original pixel alien as the default boot mark, and a low-res 1-bit editor
+
+**Asked by the owner, 2026-10-02:** "let's add the space invader as the default" (in
+place of the chimera on the Boot Screen page), then, once the licence was checked:
+"propose 4 variations in an artifact when we execute it. We could also provide a low
+res 1bit editor with the same number of pixels so users can draw their own low res
+image to be patched into the firmware."
+
+**Why not the Space Invaders alien itself:** the game and its characters are Taito's
+(now Square Enix), with copyrights and trademarks held in Japan and abroad and
+enforced (Taito threatened action over an unauthorised 2008 exhibit). A 1978
+corporate work is decades from the public domain, so it fails the project's
+original-art-only rule for presets and the site.
+
+**The plan, when executed:**
+
+1. **Four original aliens**, drawn from scratch on a coarse grid in the 8-bit
+   arcade spirit, each with its own body, eyes and legs: no trace or threshold of
+   the reference. They are shown in an artifact on the 128 × 64 screen, at the
+   coarse grid's scale. The owner picks one, and it replaces "Chimera (ours)" as the
+   page's default preset (`site/boot.html`, `site/art/*.pgm`,
+   `scripts/film_bootscreen.py`'s default). The chimera stays available as a
+   preset.
+2. **A low-res 1-bit editor on the Boot Screen page**: a coarse grid with the same
+   number of cells as the reference (13 × 10 in the owner's example; offer a few
+   sizes that divide into the screen well) where each cell is a pixel the user turns
+   on or off. The result is scaled up with nearest-neighbour, centred on the
+   128 × 64 mark, and goes through the same path as an uploaded picture (no
+   threshold needed). It can export and import its grid as text or PGM, so a drawing
+   can be shared.
+3. Everything stays client-side, like the rest of the page: nothing is uploaded.
+
+The exact Taito sprite may go into a personal build for the owner's own instrument
+only, never as a preset or on the site.

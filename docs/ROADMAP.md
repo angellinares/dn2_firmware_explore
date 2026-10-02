@@ -171,6 +171,9 @@ derived independently, from hardware, by a different tool.
 
 ## Later, unscheduled
 
+- **A transient shaper** (owner, 2026-10-02): attack and body levels, for drums; on the master
+  or per voice. `docs/ideas-backlog.md` §32 has the design, the placements and what to
+  read first.
 - The Digitone 1. Its firmware is unsigned, which makes the tooling side
   easier, but its flash and RAM are likely tighter and the feature question is
   the same one over again.

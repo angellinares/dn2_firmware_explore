@@ -47,6 +47,7 @@ Where they disagree, they win and this table is wrong.
 | 25 | The hidden second intro, and GIF/PNG animations for the boot screen | **open** | — | the emulator film of the other branch; a GIF/PNG importer for the `ANIM` chunk |
 | 26 | Performance macros, as on the Analog Four | **open** | — | everything; ColdFire only |
 | 27 | LFO waves follow a negative SPD | **open (a fix)** | — | how a stock generator uses SPD's sign |
+| 32 | Transient shaper | **open (roadmap)** | — | everything: where it sits (master or per voice), its controls' home, and the SHARC cost |
 
 **The numbering is wrong and is left wrong on purpose.** There are two `## 8.`
 headings — "New LFO waveforms" and "FX machines on tracks" — and `## 7.` sits
@@ -3831,3 +3832,44 @@ original-art-only rule for presets and the site.
 
 The exact Taito sprite may go into a personal build for the owner's own instrument
 only, never as a preset or on the site.
+
+## 32. A transient shaper
+
+**Asked by the owner, 2026-10-02, for the roadmap.** A community member described
+what one is, in a discussion the owner shared. In our words: a dynamics effect,
+related to a compressor but easier to tune. It follows how fast the amplitude is
+changing, splits the signal into the **attack** (the fast rise) and the **body**
+(what follows), and gives each its own level. It is mostly used on drums. They
+expected such an effect to live with the master effects, if it existed.
+
+**Not the `transients` mod.** That mod (§3) swaps FM Drum's attack samples; this is
+an effect on the audio.
+
+**How it would work (the usual design, not yet anything of ours):** two envelope
+followers on the signal, a fast one and a slow one. Their difference is high
+while a transient is rising and falls to zero in the body. Gain =
+1 + ATTACK × (transient part) + SUSTAIN × (body part), smoothed so it does not
+click. Two controls cover the classic form:
+- **ATTACK**, ± (punchier or softer hits);
+- **SUSTAIN**, ± (longer or tighter tails).
+
+Some designs add a speed for the fast follower and an output level.
+
+**Where it could sit, and what each costs:**
+
+| | where | for | against |
+|---|---|---|---|
+| **A. master** | the master chain, beside the stock compressor (Master page, ids 149–159) | where the owner's source expected it; one instance, cheap | shapes the whole mix, not one drum; the master chain on the SHARC is unread |
+| **B. per voice** | the per-track chain, after the machine (as Waverider's loop runs per voice) | each hit is shaped on its own (the drum use); proven route: our code already runs in the per-track chain | 16 instances' cost; its controls need a home in the sound (as M10 borrowed WaveTone's unused records, a stock machine has none spare: the filter/amp pages, or new records) |
+| **C. an FX machine** | a track of its own (§8) | general | waits on §8 |
+
+**What to find out first:**
+- The SHARC load headroom: `docs/sharc-load.md` measures it with the idle stub.
+- For A: where the master compressor runs on the SHARC (its parameters reach the
+  frame, ids 149–159).
+- For B: which records can carry ATTACK and SUSTAIN for every machine, and whether
+  the amp stage's input (`0x1c99d3`, the gate's amp tap) is the place.
+
+The SHARC gate (`scripts/sharc_waverider_m5.py`) and its bit-exact reference
+pattern carry over: a transient shaper is a pure function of the buffer, so it
+can be gated offline before any flash.

@@ -1,7 +1,8 @@
-// reader_m9.asm -- Waverider Milestone 9a: reader_m5.asm with a gain. Each sample is
-// multiplied by the float at DM 0x2de6c0, which machine9_live.asm writes before every
-// call: LEV / 100 (LEV1 for osc 1), so the default level 100 is exactly 1.0 and the
-// output is bit-identical to reader_m5.asm's there.
+// reader_m9.asm -- Waverider Milestone 9: reader_m5.asm with a gain and a mix. Each
+// sample is multiplied by the float at DM 0x2de6c0, which machine9_live.asm writes
+// before every call: LEV / 100, so the default level 100 is exactly 1.0 and the output
+// is bit-identical to reader_m5.asm's there (M9a). When DM 0x2de6c4 is non-zero (osc 2,
+// M9b) the sample is added to what the buffer holds instead of replacing it.
 //
 // What follows is reader_m5.asm's own description, unchanged:
 //
@@ -55,8 +56,9 @@
 // SHARC C ABI. Not ABI-clean: machine5_live.asm saves what it needs. I3 and I5 are
 // the loop's own pointers and are not touched.
 //
-// PLACEMENT IS FIXED at PM sw 0x16eb00 (L1 block 1, byte 0x2dd600): the two
-// absolute jumps below are written for it from selas's symbol table.
+// PLACEMENT IS FIXED at PM sw 0x16eb00 (L1 block 1, byte 0x2dd600): the absolute
+// jumps below are written for it from selas's symbol table. wr_t5v_exit (M9b) is
+// machine9_live.asm's, not the reader's.
 
 .SECTION/PM seg_pmco;
 
@@ -96,7 +98,7 @@ wr_render5.:
       R15 = -23;                        // sample fraction scale, 2^-23
       R8 = -15;                         // int16 -> float full scale, 2^-15
       R12 = PASS R12;
-      IF EQ JUMP 0x16ebab;              // -> wr5_done. (count 0: write nothing)
+      IF EQ JUMP 0x16ebb5;              // -> wr5_done. (count 0: write nothing)
       R12 = -16;
 
 .GLOBAL wr5_loop.;
@@ -150,6 +152,15 @@ wr5_loop.:
       R0 = DM(0x2de6c0);                // M9a: the gain, LEV / 100
       F4 = F0 * F4;                     // y * gain
       R9 = R9 + R10;                    // phase += inc, mod 2^32
+      // M9b: osc 2 adds into the buffer osc 1 wrote (DM 0x2de6c4 = 1); osc 1 never
+      // reads it, since the dispatch may leave anything there (NaN included)
+      R0 = DM(0x2de6c4);
+      R0 = PASS R0;
+      IF EQ JUMP 0x16ebaa;              // -> wr5_store.
+      R1 = DM(0, I2);                   // what osc 1 wrote
+      F4 = F4 + F1;
+.GLOBAL wr5_store.;
+wr5_store.:
       DM(I2, M6) = F4;
       R0 = DM(4, I4);
       R1 = 1;
@@ -168,3 +179,44 @@ wr5_done.:
       RFRAME;
 .wr_render5..end:
       .type wr_render5.,STT_FUNC;
+
+// M9b: machine9_live.asm's way out, here because its own 1 KB span is full: restore
+// what the loop saved, re-execute the two instructions the entry JUMP replaced
+// (0x1c9448, 0x1c944a) and go back to the dispatch.
+.GLOBAL wr_t5v_exit.;
+wr_t5v_exit.:
+      R0 = DM(0x2dde00);
+      R1 = DM(0x2dde04);
+      R2 = DM(0x2dde08);
+      R3 = DM(0x2dde0c);
+      R4 = DM(0x2dde10);
+      R5 = DM(0x2dde14);
+      R6 = DM(0x2dde18);
+      R7 = DM(0x2dde1c);
+      R8 = DM(0x2dde20);
+      R9 = DM(0x2dde24);
+      R10 = DM(0x2dde28);
+      R11 = DM(0x2dde2c);
+      R12 = DM(0x2dde30);
+      R13 = DM(0x2dde34);
+      R14 = DM(0x2dde38);
+      R15 = DM(0x2dde3c);
+      I0 = DM(0x2dde40);
+      I1 = DM(0x2dde44);
+      I2 = DM(0x2dde48);
+      I3 = DM(0x2dde4c);
+      I4 = DM(0x2dde50);
+      I5 = DM(0x2dde54);
+      I12 = DM(0x2dde58);
+      M0 = DM(0x2dde5c);
+      M1 = DM(0x2dde60);
+      M2 = DM(0x2dde64);
+      M3 = DM(0x2dde68);
+      M4 = DM(0x2dde6c);
+
+      // the two instructions the entry JUMP replaced (0x1c9448, 0x1c944a)
+      I5 = DM(-24, I6);
+      R10 = DM(-34, I6);
+      JUMP 0x1c944c;
+.wr_t5v_exit..end:
+      .type wr_t5v_exit.,STT_FUNC;

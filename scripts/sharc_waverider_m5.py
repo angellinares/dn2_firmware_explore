@@ -87,8 +87,10 @@ NOTE_CELL = V.ENGINE + 0x1387C
 WAV1, TBL1 = 26, 27             # WaveTone's Osc1 Waveform, Osc1 Wave Table
 TUN1 = 25                       # WaveTone's Osc1 Tune (Milestone 6)
 LEV1 = 30                       # WaveTone's Osc1 Level (Milestone 9a): the reader's gain
+TUN2, WAV2, TBL2, LEV2 = 31, 32, 33, 36   # osc 2's (Milestone 9b): osc 1's, six slots on
 TUN1_ZERO = 0x4000              # the frame word for 0 semitones: the sound's own (probe, 2026-09-30)
 FRAME_COPY = 0x25C48C           # where sw 0x1c2712 copies the frame image
+OSC2_BLOCKS = 0x900             # osc 2's reader blocks are osc 1's + 0x900 (M9b): 0x2de800 + 32t
 
 
 # -- the machine ------------------------------------------------------------------------------
@@ -167,7 +169,7 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
     them at the loop's entry; the reader blocks the loop filled; loop entries."""
     state = init
     out = {"machine": [], "amp_in": [], "amp_out": [], "buffers": [], "buffer_bits": [], "t5_inputs": [],
-           "reader_blocks": [], "loop_entries": 0, "setup": []}
+           "reader_blocks": [], "reader_blocks2": [], "loop_entries": 0, "setup": []}
     instr = wall = 0
     for b in range(blocks):
         tap = {}
@@ -185,7 +187,9 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
                               "wav1": frame_word(r.state, FR.slot_offset(t, WAV1)),
                               "tbl1": frame_word(r.state, FR.slot_offset(t, TBL1)),
                               "tun1": frame_word(r.state, FR.slot_offset(t, TUN1)),
-                              "lev1": frame_word(r.state, FR.slot_offset(t, LEV1))}
+                              "lev1": frame_word(r.state, FR.slot_offset(t, LEV1)),
+                              "osc2": tuple(frame_word(r.state, FR.slot_offset(t, s))
+                                            for s in (WAV2, TBL2, TUN2, LEV2))}
             tap["t5_inputs"] = ins
 
         def at_reader(r):
@@ -193,13 +197,18 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
             # the count word down to 0, so the contract is read on entry, not at resume
             blk = m2.word_reg(r, "R4") or 0
             t = (blk - dsp.READER_BLOCKS_DM) // 32
-            tap.setdefault("reader_in", {})[t] = [m2.word(r.state, blk + 4 * k) or 0 for k in range(6)]
+            words = [m2.word(r.state, blk + 4 * k) or 0 for k in range(6)]
+            if t >= OSC2_BLOCKS // 32:          # osc 2's blocks (M9b), 0x2de800 + 32t
+                tap.setdefault("reader_in2", {})[t - OSC2_BLOCKS // 32] = words
+            else:
+                tap.setdefault("reader_in", {})[t] = words
 
         def at_resume(r):
             tap["machine"] = [m2.floats(r.state, tap["bufs"][t], BLOCK) for t in range(16)]
             tap["reader_blocks"] = {t: tap.get("reader_in", {}).get(t)
                                     or [m2.word(r.state, dsp.READER_BLOCKS_DM + 32 * t + 4 * k) or 0
                                         for k in range(6)] for t in tap.get("t5_inputs", {})}
+            tap["reader_blocks2"] = dict(tap.get("reader_in2", {}))
 
         def amp(r):
             if m2.word_reg(r, "R12") == tap["bufs"][0] and "amp_in" not in tap:
@@ -239,6 +248,7 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
                                    for t in range(16)])
         out["t5_inputs"].append(tap.get("t5_inputs", {}))
         out["reader_blocks"].append(tap.get("reader_blocks", {}))
+        out["reader_blocks2"].append(tap.get("reader_blocks2", {}))
         instr += res[2]
         state = r
     return {**out, "ok": True, "blocks": blocks, "instructions": instr, "wall_s": round(wall, 1),
@@ -257,11 +267,11 @@ def track_series(run, t) -> list[float]:
 
 
 def reference_for(run, t, tables, precision="float32") -> list[float]:
-    """live.render_blocks fed the DSP's own unpacked inputs for track T, block by block."""
-    seq = [(i[t]["note"], i[t]["wav1"], i[t]["tbl1"], i[t].get("tun1", live.TUN1_ZERO),
-            i[t].get("lev1", live.LEV1_UNITY))
+    """live.render_two fed the DSP's own unpacked inputs for track T, block by block:
+    both oscillators (M9b), osc 2 from its own four frame words."""
+    seq = [(i[t]["note"], (i[t]["wav1"], i[t]["tbl1"], i[t]["tun1"], i[t]["lev1"]), i[t]["osc2"])
            for i in run["t5_inputs"] if t in i]
-    return live.render_blocks(tables, seq, BLOCK, 0, precision)[0]
+    return live.render_two(tables, seq, BLOCK, precision)
 
 
 def mismatches(a, b) -> int:
@@ -578,14 +588,22 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             return base_frame(sound, machines, trigger=(b == 1), **kw).to_bytes()
         return fb
 
+    solo = {LEV2: 0}                    # osc 1 alone: the loop skips osc 2 (M9b)
     runs = {"init": run_blocks(init, frames(), blocks),
-            "pos120": run_blocks(init, frames(overrides={WAV1: 0x7800}), blocks),
-            "slot1": run_blocks(init, frames(overrides={WAV1: 0x4000, TBL1: 0x0100}), blocks),
-            "note72": run_blocks(init, frames(overrides={WAV1: 0x7800}, note=0x4800), blocks),
-            "tune_up12": run_blocks(init, frames(overrides={WAV1: 0x7800, TUN1: TUN1_ZERO + 12 * 256}), blocks),
-            "tune_down12": run_blocks(init, frames(overrides={WAV1: 0x7800, TUN1: TUN1_ZERO - 12 * 256}), blocks),
-            "lev50": run_blocks(init, frames(overrides={WAV1: 0x7800, LEV1: 0x3200}), blocks),
-            "lev0": run_blocks(init, frames(overrides={WAV1: 0x7800, LEV1: 0}), blocks),
+            "init_solo": run_blocks(init, frames(overrides=solo), blocks),
+            "pos120": run_blocks(init, frames(overrides={**solo, WAV1: 0x7800}), blocks),
+            "slot1": run_blocks(init, frames(overrides={**solo, WAV1: 0x4000, TBL1: 0x0100}), blocks),
+            "note72": run_blocks(init, frames(overrides={**solo, WAV1: 0x7800}, note=0x4800), blocks),
+            "tune_up12": run_blocks(init, frames(overrides={**solo, WAV1: 0x7800,
+                                                            TUN1: TUN1_ZERO + 12 * 256}), blocks),
+            "tune_down12": run_blocks(init, frames(overrides={**solo, WAV1: 0x7800,
+                                                              TUN1: TUN1_ZERO - 12 * 256}), blocks),
+            "lev50": run_blocks(init, frames(overrides={**solo, WAV1: 0x7800, LEV1: 0x3200}), blocks),
+            "lev0": run_blocks(init, frames(overrides={**solo, WAV1: 0x7800, LEV1: 0}), blocks),
+            # M9b: osc 2 alone, as POS 120 is for osc 1; and both, osc 2 an octave up on table 1
+            "osc2_only": run_blocks(init, frames(overrides={LEV1: 0, WAV2: 0x7800}), blocks),
+            "osc2_mix": run_blocks(init, frames(overrides={WAV1: 0x7800, WAV2: 0x4000, TBL2: 0x0100,
+                                                           TUN2: TUN1_ZERO + 12 * 256}), blocks),
             "silent": run_blocks(init, lambda b: base_frame(sound, machines).to_bytes(), blocks)}
     ok_runs = all(r["ok"] for r in runs.values())
     n, mism = {}, {}
@@ -597,6 +615,8 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
     ideal = reference_for(i, 0, tables, "ideal") if i["ok"] else []
     fit = V.fit_gain(i["amp_out"][settle:], ideal[settle:]) if i["ok"] else None
     rb = {k: (r["reader_blocks"][-1].get(0) if r["ok"] and r["reader_blocks"] else None) for k, r in runs.items()}
+    rb2 = {k: (r["reader_blocks2"][-1].get(0) if r["ok"] and r["reader_blocks2"] else None)
+           for k, r in runs.items()}
     inc60, inc72 = (rb["pos120"] or [0] * 6)[2], (rb["note72"] or [0] * 6)[2]
     inc_up, inc_down = (rb["tune_up12"] or [0] * 6)[2], (rb["tune_down12"] or [0] * 6)[2]
     zc_up = zero_crossings(track_series(runs["tune_up12"], 0)) if runs["tune_up12"]["ok"] else 0
@@ -630,6 +650,8 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
          "machine_peak_pos120": V.peak(track_series(runs["pos120"], 0)) if runs["pos120"]["ok"] else None,
          "machine_peak_lev50": V.peak(track_series(runs["lev50"], 0)) if runs["lev50"]["ok"] else None,
          "machine_peak_lev0": V.peak(track_series(runs["lev0"], 0)) if runs["lev0"]["ok"] else None,
+         "reader_block2_last": rb2,
+         "machine_peak_init_solo": V.peak(track_series(runs["init_solo"], 0)) if runs["init_solo"]["ok"] else None,
          "setup_events_after_type5_guard": t0_events,
          "instructions_per_block": round(i.get("instructions", 0) / max(blocks, 1)),
          "wall_s": {k: r.get("wall_s") for k, r in runs.items()},
@@ -660,6 +682,21 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             bool(n["machine_peak_pos120"]) and n["machine_peak_lev50"] is not None
             and abs(n["machine_peak_lev50"] / n["machine_peak_pos120"] - 0.5) < 1e-6,
         "LEV1 0 silences the machine tap (peak 0) (M9a)": n["machine_peak_lev0"] == 0,
+        "LEV2 0 skips osc 2: no osc-2 reader call in any solo run (M9b)":
+            all(r["ok"] and not any(r["reader_blocks2"]) for k, r in runs.items()
+                if k in ("init_solo", "pos120", "slot1", "note72", "tune_up12", "tune_down12", "lev50", "lev0")),
+        "the default sound plays both oscillators, identical: its tap is exactly 2 x osc 1's alone (M9b)":
+            runs["init"]["ok"] and runs["init_solo"]["ok"] and bool(n["machine_peak_init_solo"])
+            and track_series(runs["init"], 0) == [2 * x for x in track_series(runs["init_solo"], 0)],
+        "osc 2 alone (LEV1 0, WAV2 at the top) is bit-identical to osc 1 alone at POS 120 (M9b)":
+            runs["osc2_only"]["ok"] and runs["pos120"]["ok"] and bool(n["machine_peak_pos120"])
+            and track_series(runs["osc2_only"], 0) == track_series(runs["pos120"], 0),
+        "osc 2 has its own reader block (0x2de800): TBL2 1 -> table 1, TUN2 +12 -> 2 x the increment, "
+        "WAV2 0x4000 -> its pos; osc 1's block keeps table 0 and POS 120 (M9b)":
+            bool(rb2["osc2_mix"]) and bool(rb["osc2_mix"]) and bool(inc60)
+            and rb2["osc2_mix"][0] == dsp.TABLES_DM[1] and abs(rb2["osc2_mix"][2] / inc60 - 2.0) < 1e-6
+            and rb2["osc2_mix"][3] == live.position(0x4000)
+            and rb["osc2_mix"][0] == dsp.TABLES_DM[0] and rb["osc2_mix"][3] == live.position(0x7800),
         "control: no trigger is silent at the amp's output (peak < 0.01)":
             n["silent_amp_out_peak"] is not None and n["silent_amp_out_peak"] < 0.01,
     }

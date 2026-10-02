@@ -141,3 +141,30 @@ def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
                                        block, precision)
         out += [_f32(g * y) for y in samples] if precision == "float32" else [g * y for y in samples]
     return out, phase
+
+
+def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> list[float]:
+    """The loop's output with both oscillators (Milestone 9b), each block
+    (note, osc1, osc2) with each osc (WAV, TBL, TUN, LEV), the frame's 16-bit words.
+    Osc 1 writes y1 x gain1; osc 2, unless its LEV is 0 (the loop then skips it), adds
+    y2 x gain2 to that, both rounded to float32 as reader_m9.asm does. Each oscillator
+    keeps its own phase from block to block."""
+    out: list[float] = []
+    phase = [0, 0]
+    table_t = increment_table()
+    for note, *oscs in blocks:
+        mixed: list[float] = []
+        for k, (wav, tbl, tun, lev) in enumerate(oscs):
+            if k and not lev & 0xFFFF:
+                continue
+            g = gain(lev)
+            samples, phase[k] = render.render(tables[slot(tbl, len(tables))], phase[k],
+                                              increment(tuned(note, tun), table_t),
+                                              position(wav), block, precision)
+            y = [_f32(g * v) for v in samples] if precision == "float32" else [g * v for v in samples]
+            if k == 0:
+                mixed = y
+            else:
+                mixed = [_f32(a + b) for a, b in zip(mixed, y)] if precision == "float32"                     else [a + b for a, b in zip(mixed, y)]
+        out += mixed
+    return out

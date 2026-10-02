@@ -42,8 +42,8 @@ def built(stock7) -> bytes:
 
 def test_committed_objects_match_their_sources():
     spec = json.loads(dsp.CODE.read_text(encoding="utf-8"))
-    for key, name in (("reader", "reader_m5"), ("machine5_live", "machine5_live"), ("idle_load", "idle_load"),
-                      ("block_count", "block_count"), ("entry_mark", "entry_mark")):
+    for key in ("reader", "machine5_live", "idle_load", "block_count", "entry_mark"):
+        name = pathlib.Path(spec[key]["source"]).stem      # reader_m9 / machine9_live from M9a
         src = (SHARC / f"{name}.asm").read_bytes().replace(b"\r\n", b"\n")
         assert spec[key]["source_sha256"] == hashlib.sha256(src).hexdigest(), name
         csrc = json.loads((SHARC / f"{name}.json").read_text(encoding="utf-8"))
@@ -181,6 +181,22 @@ def test_render_blocks_carries_phase_across_a_slot_change():
     b, _ = live.render_blocks(tables, [(60.0, 0, 0x100)], 32, ph)
     both, _ = live.render_blocks(tables, [(60.0, 0, 0), (60.0, 0, 0x100)], 32)
     assert both == a + b
+
+
+def test_render_two_is_osc1_alone_when_lev2_is_0():
+    tables = dsp.tables()
+    one, _ = live.render_blocks(tables, [(60.0, 0x7800, 0, 0x4000, 0x6400)] * 3, 32)
+    two = live.render_two(tables, [(60.0, (0x7800, 0, 0x4000, 0x6400), (0, 0x100, 0x4c00, 0))] * 3, 32)
+    assert two == one
+
+
+def test_render_two_mixes_osc2_with_its_own_phase():
+    tables = dsp.tables()
+    osc = (0x7800, 0, 0x4000, 0x6400)
+    one, _ = live.render_blocks(tables, [(60.0, *osc)] * 3, 32)
+    assert live.render_two(tables, [(60.0, osc, osc)] * 3, 32) == [2 * x for x in one]
+    silent1 = (0x7800, 0, 0x4000, 0)
+    assert live.render_two(tables, [(60.0, silent1, osc)] * 3, 32) == one   # osc 2 alone
 
 
 # -- the tables -----------------------------------------------------------------------------------

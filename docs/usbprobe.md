@@ -198,19 +198,14 @@ no init and no BSS. The cave is in cached DDR like the rest of MAIN OS.
 
 ## Compatibility
 
-Byte overlap against every registered mod (`check_compatible`, 2026-09-27):
-disjoint from arpmodes, bootscreen, fxmod, lfo4, moddest, songguard,
-transients and waverider. It overlaps:
+Byte overlap against every registered mod (`dnfw mods matrix`, regenerated
+2026-10-03): disjoint from every one of them. Three mods used to share its caves
+and were refused with it, and each left for the mod platform: `lfowaves`
+(2026-09-30), `arpplocks` (2026-10-02) and `midiarp` (2026-10-03, its code a
+`CODE` chunk at `0x467d0000`). The probe's own bytes sit in section 3 only, and
+the platform's loader and appended area are shared, not overlapped.
 
-- `lfowaves` (its 3-byte stub at the cave's start) and `arpplocks` (its UI
-  cave): real, the cave is theirs too;
-- `midiarp`, since layout 2: its code runs from the start of the run
-  `0x402d0664`, where `ext.S` now sits. arpplocks' second cave is there too;
-
-usbprobe is not in `dnfw mods matrix`'s list on purpose: it is a diagnostic
-mod, not one for everyday builds, and the matrix drives the public compatibility
-page and the site. The
-four hook sites are used by no other mod, nor by waverider-m5b / m5c.
+The four hook sites are used by no other mod, nor by waverider-m5b / m5c.
 
 ## How it was checked
 

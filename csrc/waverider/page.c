@@ -71,11 +71,16 @@ volatile struct wr_probe wr_probe __attribute__((section(".data"))) =
 #endif
 
 #if WR_MARKERS
-/* Modulation (docs/modulation-display.md). The audio tick keeps, per track, a target
- * array (the sound's values, refreshed when a note plays) and the value array it
- * smooths from it and then modulates in place (0x400db12a, 0x400db22c); slot s of
- * track t is at +34 + 202 t + 2 s in both, at the record's own scale for a linear
+/* Modulation (docs/modulation-display.md). The audio tick keeps, per VOICE, a target
+ * array (the sound's values, copied when a note takes the voice) and the value array
+ * it smooths from it and then modulates in place (0x400db12a, 0x400db22c); slot s of
+ * voice v is at +34 + 202 v + 2 s in both, at the record's own scale for a linear
  * parameter (instrument, modview1, 2026-10-01: POS 74 with no LFO reads 0x4a00).
+ * The 16 rows are voices, not tracks (instrument, wrm9c, 2026-10-02: a poly
+ * Waverider on track 2 sat on voices 3/5/7/8/14, then 0/5/7; the LFO4 work found the
+ * same, docs/lfo4-build-plan.md "SOLVED"). Reading row = the active track showed
+ * another sound's modulation: page 1's wave flicked between tables 0 and 1 while an
+ * FM track's LFO moved its own slot 27. So the rows are read at `voice()`.
  *
  * The value array alone lags the knob: it holds what was last heard, so with the
  * sequencer stopped it does not follow a turn (owner, modview2b). So the markers
@@ -85,6 +90,13 @@ volatile struct wr_probe wr_probe __attribute__((section(".data"))) =
 #define ACTIVE_TRACK (*(volatile u8 *)0x42431A6Cu)
 #define TARGETS 0x80003AF0u
 #define VALUES  0x800068E4u
+/* voice v's track, a long each (instrument, wrm9c, 2026-10-02: 12 readings against
+ * the frame's machine types while the voices moved, no mismatch; a "reuse"-locked
+ * voice held its track, the FM Drum voice its own) */
+#define OWNER(v)   (((volatile u32 *)0x80005308u)[v])
+/* voice v's machine type in the SHARC control frame (dnfw.waverider.frame MACHINE) */
+#define MACHINE(v) (((volatile unsigned short *)(0x80005E60u + 148u))[v])
+#define NEW_TYPE 5
 /* the UI tick, about 120 a second (instrument, modview3, 2026-10-01: 239 in 2.0 s).
  * Not a millisecond count, as docs/display-path.md had it from the emulator. */
 #define TICKS   (*(volatile u32 *)0x466758B0u)
@@ -98,12 +110,34 @@ volatile struct wr_probe wr_probe __attribute__((section(".data"))) =
 #define MARKED  4               /* the places with markers: POS and TBL of each osc (TUNE is
                                  * pitch-converted in the array, so not yet) */
 
+/* The voice to read for the active track: one it owns that plays a Waverider (an idle
+ * voice also reads track 0). The last one chosen is kept while it still qualifies,
+ * so the markers do not jump between voices whose LFOs are at different phases.
+ * -1: none (the track has not played; nothing is shown, as before the first PLAY). */
+static int chosen __attribute__((section(".data"))) = -1;
+
+static int voice(void)
+{
+    u32 t = ACTIVE_TRACK;
+    if (t > 15)
+        return -1;
+    if (chosen >= 0 && OWNER(chosen) == t && MACHINE(chosen) == NEW_TYPE)
+        return chosen;
+    chosen = -1;
+    for (int v = 0; v < 16; v++)
+        if (OWNER(v) == t && MACHINE(v) == NEW_TYPE) {
+            chosen = v;
+            break;
+        }
+    return chosen;
+}
+
 static int mod_offset(u32 id)
 {
-    int t = ACTIVE_TRACK, slot = RECORD(id)[1];
-    if (t > 15 || slot < 0 || slot > 99)
+    int v = voice(), slot = RECORD(id)[1];
+    if (v < 0 || slot < 0 || slot > 99)
         return 0;
-    u32 at = 34u + 202u * t + 2u * slot;
+    u32 at = 34u + 202u * v + 2u * slot;
     return *(volatile unsigned short *)(VALUES + at) - *(volatile unsigned short *)(TARGETS + at);
 }
 
@@ -151,15 +185,15 @@ static int bpm(void)
     return t >= 20 && t <= 400 ? t : 120;
 }
 
-static int lfo_word(int t, int slot)
+static int lfo_word(int v, int slot)
 {
-    return *(volatile unsigned short *)(TARGETS + 34u + 202u * t + 2u * slot);
+    return *(volatile unsigned short *)(TARGETS + 34u + 202u * v + 2u * slot);
 }
 
 static int tier(u32 id)
 {
-    int t = ACTIVE_TRACK, slot = RECORD(id)[1], fastest = 0;
-    if (t > 15)
+    int t = voice(), slot = RECORD(id)[1], fastest = 0;
+    if (t < 0)
         return 0;
     for (int l = 0; l < 3; l++) {
         int base = 1 + 8 * l;

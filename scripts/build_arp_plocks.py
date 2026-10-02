@@ -1152,7 +1152,12 @@ def check(content: bytes, va: int, want: bytes, why: str) -> None:
         raise SystemExit(f"{va:#010x}: expected {want.hex()}, found {have.hex()} ({why})")
 
 
-def compose(stock: bytes, log=print) -> dict:
+def compose(stock: bytes, log=print, code_base: int | None = None) -> dict:
+    """The mod on STOCK. Without CODE_BASE, each piece of code goes into its cave in the
+    image (the packaged build of 2026-09-19). With it (the mod platform, 2026-10-02),
+    the pieces are assembled one after another from CODE_BASE into one blob for a
+    platform `CODE` chunk, and the caves stay stock: the hooks and patches are the same,
+    pointing at the blob's addresses."""
     if not available():
         raise SystemExit("no m68k assembler found (m68k-linux-gnu-as; WSL is fine)")
     content = bytearray(stock)
@@ -1161,16 +1166,23 @@ def compose(stock: bytes, log=print) -> dict:
         check(content, va, want, why)
         log(f"  {va:#010x}  {want.hex():<14}  {why}")
 
-    log("part 2 -- the caves")
+    log("part 2 -- the caves" if code_base is None else f"part 2 -- the code, from {code_base:#010x}")
     at, caves = {}, []
+    blob_out = bytearray()
     for (cave, cap), source, labels in CAVES:
-        if any(content[cave - BASE:cave - BASE + cap]):
+        if code_base is not None:
+            cave = code_base + len(blob_out)
+        elif any(content[cave - BASE:cave - BASE + cap]):
             raise SystemExit(f"cave at {cave:#010x} is not free")
         text = re.sub(r"@(\w+)@", lambda m: f"{at[m.group(1)]:#010x}", source())
         table = "\n    .align 2\n" + "\n".join(f"    .long {n}" for n in labels) + "\n"
         blob = assemble(text + table, base=cave)
         payload = blob[:-4 * len(labels)]
         at.update(zip(labels, struct.unpack(f">{len(labels)}I", blob[-4 * len(labels):])))
+        if code_base is not None:
+            blob_out += payload + bytes(-len(payload) % 4)
+            log(f"  {len(payload)} bytes at {cave:#010x}: " + ", ".join(labels))
+            continue
         if len(payload) > cap:
             raise SystemExit(f"cave at {cave:#010x} overflows: {len(payload)} > {cap}")
         content[cave - BASE:cave - BASE + len(payload)] = payload
@@ -1190,7 +1202,8 @@ def compose(stock: bytes, log=print) -> dict:
         check(content, va, stock_bytes, why)
         content[va - BASE:va - BASE + len(new)] = new
         log(f"  {va:#010x}  {stock_bytes.hex()} -> {new.hex()}  {why}")
-    return {"content": bytes(content), "caves": caves, "at": at}
+    return {"content": bytes(content), "caves": caves, "at": at,
+            "code_base": code_base, "blob": bytes(blob_out)}
 
 
 def main() -> int:

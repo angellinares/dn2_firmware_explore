@@ -25,8 +25,8 @@ cave at `0x402cf52c` and records it with four 6-byte `jsr` hooks in
 2. the edits are written, and the HELLO tag is filled in.
 
 Section 3 only, no length change, nothing appended. Its caves are also used by
-arpplocks and midiarp, so it does not combine with those two. lfowaves left the
-cave on the mod platform (2026-09-30) and combines with it.
+midiarp, so it does not combine with that one. lfowaves (2026-09-30) and arpplocks
+(2026-10-02) left these caves for the mod platform and combine with it.
 """
 
 from __future__ import annotations

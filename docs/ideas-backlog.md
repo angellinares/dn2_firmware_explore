@@ -3432,6 +3432,17 @@ the core cave `0x402dfa1c` is the boot screen's too.
 - Emulator limits met: a second trig placement and copy/paste could not be
   driven, so the clear and paste paths wait for the device.
 
+### Status, 2026-10-02: on the mod platform, so it combines with the USB probe
+
+The code moved from its seven caves into a platform `CODE` chunk at `0x467c8000`
+(`docs/mods-compatibility.md`), so `arpplocks` now combines with every mod,
+`usbprobe` and `fxmod` included. `scripts/emu_arp_plocks.py` passes 42/42 on the
+chunk build as on the cave build. What that opens is the open list above, measured
+instead of heard: an `arpplocks + usbprobe` build reads the shadow sounds
+(`0x467c0000 + 1164 t`) live while a pattern plays, which is the path the emulator
+cannot run (the sequencer, the pattern load). Also still missing: a browser port and
+a site page of its own.
+
 ### Status, 2026-09-19 (verification pass): every edit path driven in the emulator
 
 After PR #85 the owner asked for every skipped test to be run before the device

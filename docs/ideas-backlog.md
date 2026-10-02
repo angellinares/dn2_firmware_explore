@@ -48,6 +48,7 @@ Where they disagree, they win and this table is wrong.
 | 26 | Performance macros, as on the Analog Four | **open** | — | everything; ColdFire only |
 | 27 | LFO waves follow a negative SPD | **open (a fix)** | — | how a stock generator uses SPD's sign |
 | 32 | Transient shaper | **open (roadmap)** | — | everything: where it sits (master or per voice), its controls' home, and the SHARC cost |
+| 33 | LFO shape warps: phase distortion and a power curve | **open** | — | route: new shapes with their own parameter (as `lfowaves`), or a modifier on every shape |
 
 **The numbering is wrong and is left wrong on purpose.** There are two `## 8.`
 headings — "New LFO waveforms" and "FX machines on tracks" — and `## 7.` sits
@@ -3873,3 +3874,45 @@ Some designs add a speed for the fast follower and an output level.
 The SHARC gate (`scripts/sharc_waverider_m5.py`) and its bit-exact reference
 pattern carry over: a transient shaper is a pure function of the buffer, so it
 can be gated offline before any flash.
+
+## 33. LFO shape warps: phase distortion and a power curve
+
+**From the community, 2026-10-02** (impbox, in a discussion the owner, as _aLinG_,
+took part in and lodged here). In our words:
+
+- the stock LFOs being **unipolar** is a frustration most of the time;
+- a **hidden shape parameter that phase-distorts** the LFO's shape would be very
+  welcome, for example on a held FUNC + turn of the WAVE knob;
+- and a second one to **warp it vertically**, output = shape ^ amount. That turns a
+  saw into an exponential of any curvature. Applied to random, a high power leaves
+  mostly values near 0 with occasional spikes (they showed random at power 1 and at
+  power 10).
+
+**The owner's answer: there may be a simpler route.** Build these as **new LFO
+shapes, each with its own control parameter**, as `lfowaves` (§8, the first one)
+already does. NOIS takes its colour and loop from SPH, and TRAP its edge from SLOP.
+So:
+- a phase-distorted saw, triangle or sine, with SPH as the distortion amount;
+- a "power random" or "power saw", with SPH as the exponent.
+
+Both routes are to be explored when the time comes.
+
+**The two routes, side by side:**
+
+| | new shapes (owner's route) | a modifier on every shape (the request) |
+|---|---|---|
+| UI | none new: WAVE picks it, SPH or SLOP sets the amount | a hidden control (FUNC + turn WAVE, or a spare record) and somewhere to show it |
+| storage | none: the shape and SPH are stock fields | a new per-LFO field that must survive a reboot and SAVE + reload |
+| code | the `lfowaves` generator path, proven on hardware | a stage after every generator, all 3 (4 with LFO4) LFOs |
+| reach | only the new shapes warp | every shape, stock ones included |
+
+**Notes for either:**
+- **Phase distortion** remaps the phase before the generator: p' = f(p, amount), e.g.
+  a two-segment knee at amount, as in Casio's PD. It changes the timing within the
+  cycle, not the levels.
+- **The power curve** is applied after the generator, on a unipolar 0..1 value. For a
+  bipolar shape, either |x|^a with its sign kept, or (x+1)/2 then back. The two
+  differ, and the choice is the user's ear.
+- **On unipolar:** worth checking which stock waves are unipolar on the DN2 and
+  whether DEP's sign already covers part of it. A bipolar/unipolar switch could be
+  a third such parameter.

@@ -199,6 +199,16 @@ def test_render_two_mixes_osc2_with_its_own_phase():
     assert live.render_two(tables, [(60.0, silent1, osc)] * 3, 32) == one   # osc 2 alone
 
 
+def test_detn_is_a_detune_from_osc1():
+    assert live.tuned2(60.0, 0x4000, 0x4c00) == 72.0          # TUNE +12 moves osc 2 too
+    assert live.tuned2(60.0, 0x4700, 0x4c00) == 79.0          # + DETN +7
+    assert live.tuned2(60.0, 0x4700, 0x4000) == 67.0
+    tables = dsp.tables()
+    up = (0x7800, 0, 0x4c00, 0)                                 # osc 1 silent, TUNE +12
+    alone, _ = live.render_blocks(tables, [(72.0, 0x7800, 0, 0x4000, 0x6400)] * 3, 32)
+    assert live.render_two(tables, [(60.0, up, (0x7800, 0, 0x4000, 0x6400))] * 3, 32) == alone
+
+
 # -- the tables -----------------------------------------------------------------------------------
 
 def _partial(frame, h):

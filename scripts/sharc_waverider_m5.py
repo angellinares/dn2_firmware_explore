@@ -604,6 +604,8 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             "osc2_only": run_blocks(init, frames(overrides={LEV1: 0, WAV2: 0x7800}), blocks),
             "osc2_mix": run_blocks(init, frames(overrides={WAV1: 0x7800, WAV2: 0x4000, TBL2: 0x0100,
                                                            TUN2: TUN1_ZERO + 12 * 256}), blocks),
+            # M9b: DETN is a detune from osc 1, so TUNE +12 moves both oscillators
+            "tune_both": run_blocks(init, frames(overrides={WAV1: 0x7800, TUN1: TUN1_ZERO + 12 * 256}), blocks),
             "silent": run_blocks(init, lambda b: base_frame(sound, machines).to_bytes(), blocks)}
     ok_runs = all(r["ok"] for r in runs.values())
     n, mism = {}, {}
@@ -697,6 +699,10 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             and rb2["osc2_mix"][0] == dsp.TABLES_DM[1] and abs(rb2["osc2_mix"][2] / inc60 - 2.0) < 1e-6
             and rb2["osc2_mix"][3] == live.position(0x4000)
             and rb["osc2_mix"][0] == dsp.TABLES_DM[0] and rb["osc2_mix"][3] == live.position(0x7800),
+        "DETN is a detune from osc 1: TUNE +12 with DETN 0 puts both oscillators an octave up "
+        "(both increments 2 x note 60's within 1e-6, and equal) (M9b)":
+            bool(rb2["tune_both"]) and bool(rb["tune_both"]) and bool(inc60)
+            and rb2["tune_both"][2] == rb["tune_both"][2] and abs(rb["tune_both"][2] / inc60 - 2.0) < 1e-6,
         "control: no trigger is silent at the amp's output (peak < 0.01)":
             n["silent_amp_out_peak"] is not None and n["silent_amp_out_peak"] < 0.01,
     }

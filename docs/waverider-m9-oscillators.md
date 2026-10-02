@@ -30,8 +30,14 @@ Osc 2's four are osc 1's plus 12 bytes. 12 is 0 mod 4, so each one sits in the s
 of its 32-bit word as its osc-1 twin. The loop's half-word choices are therefore the same
 for both oscillators, and only the base offset changes.
 
-DETN is TUN2 at full range (±60 semitones, the same scale as TUNE). The name is the
-owner's layout's.
+**DETN is a detune from osc 1**, as Tonverk's DTUN ("detune from osc 1"): osc 1 plays
+note + TUNE, osc 2 plays note + TUNE + DETN. So TUNE transposes the whole voice, and
+DETN 0 is unison. DETN keeps WaveTone's TUN2 range and display (±60 semitones), because
+the control is that record. The first M9b build (`waverider-m9b`) tuned osc 2 on its own
+(note + DETN). The owner chose the detune before flashing it (2026-10-02).
+
+In the loop, osc 1's pass leaves its TUN1, in semitones, at DM `0x2dde98`. Osc 2's pass
+adds that to its own value. The track's start writes +0.0 there, so osc 1 adds nothing.
 
 ## M9a: the level
 
@@ -71,10 +77,11 @@ always run, because it is the one that writes the buffer.
 **Room.** With the second pass, the loop was 1,020 B, and the build wants 64 B of NOP
 padding after every code span. The register restore and the way back (`wr_t5v_exit`, 31
 instructions) moved into the reader's span, after `wr_render5`. After that the loop is
-844 B of 1,024 and the reader span is 560 B of 1,024.
+844 B of 1,024, 864 B with the detune, and the reader span is 560 B of 1,024.
 
 **DM used, all inside spans the build already writes as zeros:**
-- `0x2dde88..0x2dde97`: the state block's free words after the counters.
+- `0x2dde88..0x2dde9b`: the state block's free words after the counters (buffer, offsets,
+  tune base).
 - `0x2de6c4`: the directory block's tail, next to M9a's gain.
 - `0x2de800..0x2dea00`: osc 2's 16 reader blocks, the end of the directory block's tail.
 
@@ -98,4 +105,5 @@ M9b checks:
 - the default sound's tap is exactly 2× its LEV2-0 tap;
 - osc 2 alone (LEV1 0, WAV2 at the top) is bit-identical to osc 1 alone at POS 120;
 - osc 2's own block, read on the reader's entry, has TBL2 1 → table 1, TUN2 +12 → twice
-  the increment, and WAV2 0x4000 → its position. Osc 1's block keeps table 0 and POS 120.
+  the increment, and WAV2 0x4000 → its position. Osc 1's block keeps table 0 and POS 120;
+- TUNE +12 with DETN 0 puts both oscillators an octave up, with equal increments.

@@ -91,6 +91,8 @@ def main() -> int:
     ap.add_argument("--glitch", type=float, default=1.0)
     ap.add_argument("--idle", type=float, default=0.3)
     ap.add_argument("--seed", type=int, default=26)
+    ap.add_argument("--static", action="store_true",
+                    help="tunnel: one mark held, as `--boot-image` alone builds, not the flashing pair")
     args = ap.parse_args()
 
     from PIL import Image
@@ -107,8 +109,8 @@ def main() -> int:
         result = bootscreen.apply(firmware, [], ascii=bootscreen.spin_frames(
             lambda x, y: (x, y) in pix, seed=args.seed))
     else:
-        mark = bootscreen.image_from_pixels(pix)
-        result = bootscreen.apply(firmware, [mark, bootscreen.invert(mark)])
+        mark = bootscreen.mark_from_pixels(pix)
+        result = bootscreen.apply(firmware, [mark] if args.static else [mark, bootscreen.invert(mark)])
     WORK.mkdir(parents=True, exist_ok=True)
     patch = WORK / f"{args.mode}.ranges.json"
     patch.write_text(json.dumps({"ranges": ranges(stock, result.payloads[3])}))

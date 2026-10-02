@@ -19,7 +19,7 @@ def main() -> int:
     pgm = pathlib.Path(sys.argv[3] if len(sys.argv) > 3 else "site/art/chimera.pgm")
     firmware = load(read_image(stock))
     pix = _read_pgm(pgm)
-    mark = bootscreen.image_from_pixels(pix)
+    mark = bootscreen.mark_from_pixels(pix)
     cases = [
         ([mark], {}),
         ([mark, bootscreen.invert(mark)], dict(slow=4, fast=3, rush=48, stop=72, tunnel=(96.0, 48.0))),

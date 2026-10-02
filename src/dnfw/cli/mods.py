@@ -245,7 +245,7 @@ def _apply_bootscreen(mod, firmware, args):
                                smear=args.spin_smear, spin=args.spin_turns,
                                zoom=args.spin_zoom, seed=args.ascii_seed)
         return mod.apply(firmware, [], ascii=anim)
-    images = [mod.image_from_pixels(_read_pgm(p)) for p in args.boot_image]
+    images = [mod.mark_from_pixels(_read_pgm(p)) for p in args.boot_image]
     if args.boot_invert:
         if len(images) != 1:
             raise ModError("--boot-invert takes exactly one --boot-image")

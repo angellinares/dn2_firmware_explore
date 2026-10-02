@@ -83,6 +83,19 @@ def image_from_pixels(lit) -> bytes:
     return struct.pack(f">{SPEC['words']}I", *words)
 
 
+def mark_from_pixels(lit) -> bytes:
+    """An upright 128 x 64 mark -> the image the tunnel shows the right way up.
+
+    The intro's copy maps its source bitmap to the panel turned over vertically
+    (`docs/display-path.md`, "The source-bitmap dumps are stored flipped"), so a
+    mark stored as drawn appears upside down while it is held, before the tunnel
+    scatters it -- filmed under the emulator on 2026-10-02 with an upright
+    wordmark, and flashed stored flipped, which showed upright. The animations
+    flip their own frames (`_images`); this does the same for a tunnel mark.
+    """
+    return image_from_pixels({(x, H - 1 - y) for x, y in lit})
+
+
 def invert(image: bytes) -> bytes:
     return bytes((~b) & 0xFF for b in image)
 

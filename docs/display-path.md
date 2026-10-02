@@ -1279,7 +1279,10 @@ Two corrections this forces on earlier readings:
   the bitmap in storage order; the copy routine maps it the right way up. The mark
   a mod writes must account for this — `intro-bang` was built from the stored
   orientation and passed, so the mapping is consistent, but a user-supplied image
-  on the site must be flipped the same way before it is stored.
+  on the site must be flipped the same way before it is stored. **Done since
+  2026-10-02** by `bootscreen.mark_from_pixels` / `markFromPixels`, for the CLI and
+  the site alike: before then an upright tunnel mark was held upside down
+  (filmed under the emulator; the flipped mark flashed and showed upright).
 - **The films record only `setPixel` pixels.** Anything a blit draws on the panel
   never appears in them. The text screen is not in these films for that reason
   *and* because it happens before 380M.

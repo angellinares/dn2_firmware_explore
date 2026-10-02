@@ -95,7 +95,7 @@ volatile struct wr_probe wr_probe __attribute__((section(".data"))) =
 #define HOLD    (2 * TICK_HZ)   /* a range edge holds 2 s before it relaxes */
 #define SHOWN   (TICK_HZ * 6 / 5)   /* 1.2 s: the stock UI redraws a shown page once a second */
 #define FRAME   5               /* ticks: at most 24 redraws a second, about a turn's own rate */
-#define MARKED  2               /* the places with markers: POS and TBL (TUNE is
+#define MARKED  4               /* the places with markers: POS and TBL of each osc (TUNE is
                                  * pitch-converted in the array, so not yet) */
 
 static int mod_offset(u32 id)
@@ -107,11 +107,15 @@ static int mod_offset(u32 id)
     return *(volatile unsigned short *)(VALUES + at) - *(volatile unsigned short *)(TARGETS + at);
 }
 
-static const u32 marked[MARKED] = { WR_POS_ID, WR_TBL_ID };
+/* POS and TBL of osc 1 (page 1), then of osc 2 (page 2, M9b): page p's are 2p, 2p + 1 */
+static const u32 marked[MARKED] = { WR_POS_ID, WR_TBL_ID, WR_POS2_ID, WR_TBL2_ID };
 
 /* per marked parameter: the offset range swept lately, and when each edge last grew */
 struct sweep { int lo, hi; u32 lo_at, hi_at; };
-static struct sweep sweeps[MARKED] __attribute__((section(".data"))) = { { 0, 0, 0, 0 }, { 0, 0, 0, 0 } };
+static struct sweep sweeps[MARKED] __attribute__((section(".data"))) =
+    { { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 } };
+/* the page the last draw showed: wr_poll watches its two places only */
+static int shown_page __attribute__((section(".data"))) = 0;
 /* what the last draw showed, for wr_poll to compare against */
 static u32 drawn_at __attribute__((section(".data"))) = 0;
 static u32 asked_at __attribute__((section(".data"))) = 0;
@@ -180,7 +184,7 @@ static int tier(u32 id)
 static int signature(void)
 {
     int sig = 0;
-    for (int k = 0; k < MARKED; k++)
+    for (int k = 2 * shown_page; k < 2 * shown_page + 2; k++)
         sig = sig * 131 + (tier(marked[k]) < 2 ? mod_offset(marked[k]) / QUANT : 0);
     return sig;
 }
@@ -378,17 +382,22 @@ static void curve(void *c, int tbl, int pos)
     }
 }
 
-static void wave(void *c, void *view)
+/* the wave of the page's oscillator: osc 1 on page 1, osc 2 on page 2 (M9b) */
+static void wave(void *c, void *view, int page)
 {
     u8 flag;
-    int tbl = GET_VALUE(view, WR_TBL_ID, &flag) >> 8;
-    int pos = GET_VALUE(view, WR_POS_ID, &flag);
+    u32 pos_id = marked[2 * page], tbl_id = marked[2 * page + 1];
+    struct sweep *sw = &sweeps[2 * page];
+    int tbl = GET_VALUE(view, tbl_id, &flag) >> 8;
+    int pos = GET_VALUE(view, pos_id, &flag);
 #if WR_MARKERS
     int set_pos = clamp_pos(pos);
-    int moved = mod_offset(WR_POS_ID);
-    int speed = tier(WR_POS_ID);
+    int moved = mod_offset(pos_id);
+    int speed = tier(pos_id);
     pos += moved;
-    tbl = (GET_VALUE(view, WR_TBL_ID, &flag) + mod_offset(WR_TBL_ID)) >> 8;
+    tbl = (GET_VALUE(view, tbl_id, &flag) + mod_offset(tbl_id)) >> 8;
+#else
+    (void)sw;
 #endif
     if (tbl < 0) tbl = 0;
     if (tbl >= WR_TABLES) tbl = WR_TABLES - 1;
@@ -400,7 +409,7 @@ static void wave(void *c, void *view)
          * ordinary curves, with a sparse dotted fill between them (one pixel in
          * nine) -- the frames being heard lie in there. A dense 50 % envelope read
          * as too heavy on the panel (owner, modview4b). */
-        int from = clamp_pos(set_pos + sweeps[0].lo), to = clamp_pos(set_pos + sweeps[0].hi);
+        int from = clamp_pos(set_pos + sw->lo), to = clamp_pos(set_pos + sw->hi);
         curve(c, tbl, from);
         curve(c, tbl, to);
         for (int x = 0; x < WR_WIDTH; x += 3) {
@@ -438,7 +447,7 @@ static void wave(void *c, void *view)
     int h = WAVE_X + pos * (WR_WIDTH - MARK) / WR_POS_MAX;
     /* while POS is modulated at all (the range swept is wider than a step), even
      * as the cursor passes under the knob's own marker (owner, modview4f) */
-    if (sweeps[0].hi - sweeps[0].lo > QUANT || moved >= QUANT || moved <= -QUANT)
+    if (sw->hi - sw->lo > QUANT || moved >= QUANT || moved <= -QUANT)
         for (int k = 0; k < MARK; k += 2)
             px(c, h + k, CURSOR_Y);
 #else
@@ -459,10 +468,11 @@ void wr_page_draw(void *view, void *canvas)
 #if WR_MARKERS
     u32 now = TICKS;
     settling = 0;
+    shown_page = page;
     drawn_sig = signature();
 #endif
 
-    wave(canvas, view);
+    wave(canvas, view, page);
 
     for (int i = 0; i < 8; i++) {
         int top = i < 4;

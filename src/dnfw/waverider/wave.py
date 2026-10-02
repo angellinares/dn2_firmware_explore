@@ -30,6 +30,7 @@ from __future__ import annotations
 from . import dsp
 
 POS_ID, TBL_ID = 239, 247         # WAV1 (POS) and TBL1 (TBL)
+POS2_ID, TBL2_ID = 243, 251       # WAV2 and TBL2: osc 2's, on page 2 (Milestone 9b)
 POS_MAX = 0x7800                  # the reader's clamp on WAV1
 TABLES = 2
 FRAMES = 16
@@ -69,6 +70,7 @@ def c_source() -> str:
             frames.append("  {{" + ",".join(map(str, lo)) + "},\n   {" + ",".join(map(str, hi)) + "}}")
         rows.append(" {\n" + ",\n".join(frames) + "\n }")
     return (f"#define WR_POS_ID {POS_ID}\n#define WR_TBL_ID {TBL_ID}\n"
+            f"#define WR_POS2_ID {POS2_ID}\n#define WR_TBL2_ID {TBL2_ID}\n"
             f"#define WR_POS_MAX {POS_MAX:#x}\n#define WR_TABLES {TABLES}\n"
             f"#define WR_FRAMES {FRAMES}\n#define WR_WIDTH {WIDTH}\n"
             f"static const signed char wr_spans[WR_TABLES][WR_FRAMES][2][WR_WIDTH] = {{\n"

@@ -663,6 +663,52 @@ SKETCHPAD opens (owner).
 
 **Browser:** not yet.
 
+## Mod 12: `layermidi` -- track layering onto MIDI tracks
+
+TRACK WILL TRIGGER can point an audio track at a MIDI track, and on stock 1.11
+the MIDI track stays silent. Layering happens in the frame ISR, which copies the
+note onto the destination as a synth note; a MIDI track has no voice to play it.
+This mod sends those copies out on the MIDI track's channel: a note-on as each
+layered note is voiced, a note-off as it is released.
+
+Two hooks in the ISR and one cave (midiarp's, on purpose -- see below):
+
+- `0x40026980`, the head of the per-note body: every note the ISR voices,
+  chord notes included, passes once. A layered copy's note (record `+56` bit 17)
+  on a MIDI track becomes a MIDI record on the batch the ISR hands the MIDI
+  task, with the note, velocity and length from the ISR's own entry (`%a2`).
+- `0x40026d32`, the head of the per-note release body: a layered copy's release
+  becomes a MIDI record of kind 0. The MIDI task finds the note on whichever
+  channel it is active, cancels its scheduled note-off and sends it.
+- A record is taken from the MIDI pool only while two are free. The stock
+  allocator (`0x4012a408`) pops without an empty check, and an empty pop
+  corrupts low memory for good; a bench build that flooded the pool froze the
+  instrument.
+
+**Confirmed on the instrument, 2026-10-02** (`layer-midi6`, byte-identical to
+`dnfw mods apply --mod layermidi`): sequenced notes, chords, retrigs and
+probability; INF holds until the sequencer stops; live keys with no hanging
+notes; two sources into one MIDI track, one source into several; mutes respected
+on either end. Six bench builds got there -- `docs/flashing.md` has each, and
+`docs/layer-midi.md` the reading of the ISR they rest on.
+
+    dnfw mods apply <image> --mod layermidi -o out.syx
+
+**Not with `midiarp`.** midiarp's voice-trigger hook (`0x400268f8`) turns any
+record on a MIDI track into a MIDI note, layered copies included, and reads them
+from the record's inline fields -- which a sequencer trig never fills: random
+notes and lengths, measured with midiarp alone. Sharing the cave makes the
+matrix refuse the pair; `matrix.NOTES` records why. Fixing midiarp to read
+`%a2` would let both live together; that is left to midiarp's owner.
+
+**Evidence.** `test/test_layermidi_mod.py` (the shipped bytes, the hooks, the
+guards, the refusals); `scripts/emu_layer_midi.py` runs the ISR's **own** note
+and release loops in the emulator on records the firmware's own layering
+routine made, and reproduces the bench's chord result for the build that failed
+it; `scripts/js_layermidi_check.mjs` (browser == Python, byte for byte).
+
+**Browser:** `site/layer-midi.html`.
+
 ## Mod 11: `oneshot` (withdrawn)
 
 ONESHOT development continues locally, and its code has been removed from this repository (2026-09-29). The DT2 → DN2 port research it grew from stays in `docs/dt2-machine-port.md`.

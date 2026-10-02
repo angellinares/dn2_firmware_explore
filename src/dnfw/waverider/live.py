@@ -52,6 +52,8 @@ POS_MAX = 0x7800                 # WAV1's range in the frame: the sound's own
 POS_SHIFT = 5                    # 0x7800 << 5 == 15 << 16
 SLOT_SHIFT = 8                   # TBL1 1: 0x0100, in the sound and in the frame
 TUN1_ZERO = 0x4000               # TUN1's frame word for 0 semitones: the sound's own
+LEV1_UNITY = 0x6400              # LEV1 100, the default: gain exactly 1.0 (Milestone 9a)
+GAIN_STEP = 1 / 25600            # the loop's constant, as float32 0x3823d70a
 
 
 def _f32(x: float) -> float:
@@ -105,6 +107,18 @@ def tuned(note: float, tun1: int = TUN1_ZERO) -> float:
     return 0.0 if n < 0 else n
 
 
+def tuned2(note: float, tun2: int, tun1: int) -> float:
+    """Osc 2's note (Milestone 9b): DETN is a detune from osc 1, so the loop adds
+    (TUN2 + TUN1) in semitones, float32, where osc 1 adds TUN1; otherwise as `tuned`."""
+    n = _f32(note)
+    if math.isnan(n) or math.isinf(n) or n < 0 or (n == 0 and math.copysign(1.0, n) < 0):
+        n = 0.0
+    t1 = _f32(_f32(float(tun1 & 0xFFFF) / 256.0) - 64.0)
+    t2 = _f32(_f32(float(tun2 & 0xFFFF) / 256.0) - 64.0)
+    n = _f32(n + _f32(t2 + t1))
+    return 0.0 if n < 0 else n
+
+
 def position(wav1: int) -> int:
     """The loop's Q16 frame position for the frame's 16-bit WAV1 word."""
     return min(wav1 & 0xFFFF, POS_MAX) << POS_SHIFT
@@ -116,18 +130,55 @@ def slot(tbl1: int, count: int) -> int:
     return s if s < count else 0
 
 
+def gain(lev1: int) -> float:
+    """The reader's gain for the frame's 16-bit LEV1 word (Milestone 9a): LEV1 x
+    f32(1/25600) in float32, as the loop computes it; exactly 1.0 at 100."""
+    return _f32(_f32(float(lev1 & 0xFFFF)) * _f32(GAIN_STEP))
+
+
 def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
                   precision: str = "float32") -> tuple[list[float], int]:
-    """The loop's output for a sequence of blocks, each (note, WAV1, TBL1[, TUN1] -- the
-    frame's 16-bit words; TUN1 defaults to 0 semitones): the phase
-    carries across blocks and across slot changes, as the reader block holds it."""
+    """The loop's output for a sequence of blocks, each (note, WAV1, TBL1[, TUN1[, LEV1]])
+    -- the frame's 16-bit words; TUN1 defaults to 0 semitones, LEV1 to 100: the phase
+    carries across blocks and across slot changes, as the reader block holds it. Each
+    sample is the reader's y times the gain, rounded to float32 (reader_m9.asm)."""
     out: list[float] = []
     table_t = increment_table()
     for note, wav1, tbl1, *rest in blocks:
         tun1 = rest[0] if rest else TUN1_ZERO
+        g = gain(rest[1] if len(rest) > 1 else LEV1_UNITY)
         tab = tables[slot(tbl1, len(tables))]
         samples, phase = render.render(tab, phase, increment(tuned(note, tun1), table_t),
                                        position(wav1),
                                        block, precision)
-        out += samples
+        out += [_f32(g * y) for y in samples] if precision == "float32" else [g * y for y in samples]
     return out, phase
+
+
+def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> list[float]:
+    """The loop's output with both oscillators (Milestone 9b), each block
+    (note, osc1, osc2) with each osc (WAV, TBL, TUN, LEV), the frame's 16-bit words.
+    Osc 1 writes y1 x gain1; osc 2, unless its LEV is 0 (the loop then skips it), adds
+    y2 x gain2 to that, both rounded to float32 as reader_m9.asm does. Osc 2's TUN is
+    a detune from osc 1 (`tuned2`). Each oscillator keeps its own phase from block to
+    block."""
+    out: list[float] = []
+    phase = [0, 0]
+    table_t = increment_table()
+    for note, *oscs in blocks:
+        mixed: list[float] = []
+        for k, (wav, tbl, tun, lev) in enumerate(oscs):
+            if k and not lev & 0xFFFF:
+                continue
+            g = gain(lev)
+            samples, phase[k] = render.render(tables[slot(tbl, len(tables))], phase[k],
+                                              increment(tuned(note, tun) if k == 0 else
+                                                        tuned2(note, tun, oscs[0][2]), table_t),
+                                              position(wav), block, precision)
+            y = [_f32(g * v) for v in samples] if precision == "float32" else [g * v for v in samples]
+            if k == 0:
+                mixed = y
+            else:
+                mixed = [_f32(a + b) for a, b in zip(mixed, y)] if precision == "float32"                     else [a + b for a, b in zip(mixed, y)]
+        out += mixed
+    return out

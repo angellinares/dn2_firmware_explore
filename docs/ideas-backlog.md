@@ -2257,6 +2257,64 @@ the table predicts. No stuck notes over 5,248 note messages; onsets held at
 Not re-checked on play4: synth tracks and arp OFF (both stock on play3, and
 play4 changes only the MIDI record's length byte).
 
+### 2026-10-03: layered copies, the MIDI record pool, and the move to the platform
+
+The contributor of PR #176 (`layermidi`, track layering onto MIDI tracks) found two
+faults in this mod's voice-trigger hook. Both were re-derived from the firmware
+here before anything was changed; `scripts/emu_midiarp_layered.py` is the evidence
+(it enters the ISR's own call at `0x400268f8`, before and after, with controls).
+**Checked in the emulator, not yet on the instrument.**
+
+**1. A layered copy is not a note.** TRACK WILL TRIGGER (`kit +0x5ce0 + 2*src`)
+is applied in the frame ISR: for a record that is not itself a copy, `0x400265d2`
+reads the mask and calls `0x400255b4(record, dest)` per set bit, which copies the
+source's `0x6c` bytes, sets track `+16` = dest and `+56` bit 17 (`0x400255ec`). The
+copy then goes the way of any synth note, so on a MIDI track it reaches the voice
+trigger. A sequencer trig keeps its notes in a list (`+28`, entry at index `+32`);
+the inline entry at `+36` (note `+38`, velocity `+39`, length `+40`) is filled only
+by the ISR's own arp step (`0x400266f2`, `0x400267fc`, `0x40026882`, with `+56`
+bit 19 set at `0x400267f6`). The hook read the inline entry for every record of a
+MIDI track, so a copy sent whatever the engine record held. In the emulator the
+copy of a three-note chord with stale bytes `7b 03 59` in `+38..+40` was sent as
+note 123, velocity 3, length 89 (stock midiarp); and the same copy onto an audio
+track reached the stock trigger and sent nothing (the control).
+
+*What midiarp does now.* A layered copy on a MIDI track is played **only as that
+track's own arp note**: bit 17 set needs bit 19 (the ISR's arp step made it) and the
+track's arp MODE on (`sound +0x15f`, the test the forks use). Otherwise the hook
+hands the record to the stock trigger, which does nothing on a MIDI track, so with the
+arp off the track behaves as stock (the contract of this mod: arp off is stock) and
+a copy never produces a note from stale bytes. The note itself is now read from the
+ISR's entry (`%a2` at the call), which is the inline entry for an arp step and the
+list's entry otherwise, so a legato record (bit 18, no arp step) on an arp-on MIDI
+track also sends its own note, where it read the inline bytes before. Layering a
+synth track onto a MIDI track with the arp on therefore arpeggiates there; plain
+layering onto a MIDI track (arp off) is what `layermidi` is for, and it plays each
+note of a chord from the entry loop (`0x40026980`), which this hook, called once per
+record, cannot. The two should not be built into one image as they stand: with the
+arp on both would send.
+
+**2. The record pool.** The MIDI record allocator `0x4012a408` pops the free list
+head `0x4460e4b8` with no empty check: an empty pop reads address 92 as the new
+head and clears 0, 4 and 92 (`0x4012a40e..0x4012a426`, read here). It is stock's
+own hazard (the live MIDI sender `0x4012b8b0` allocates the same way), but the
+contributor's bench build that flooded the 64-record pool froze the instrument, and a
+hook that takes a record per arp step can run the pool dry the same way. The hook has
+one allocation, and it now
+walks the free list and takes a record only while **four** are free (the stock
+paths, which do not check, keep three). With the pool empty, the old hook
+left the free head at `0xa5a5a5a5` (the long it read from address 92, where the
+harness had seeded low memory with that pattern), so the next allocation or free
+runs off the map; the fixed one sent nothing, left the list and low memory
+as they were, and over a flood of 68 arp steps against 64 records sent 61 and left 3.
+The note it drops is one arp step.
+
+**3. The platform.** Its routines (590 B, 592 with padding) are a `CODE` chunk at
+`0x467d0000` copied by the platform loader, not the cave at `0x402d0664` that
+usbprobe's routines also ran from; the hooks are the same seven edits, pointing
+at the chunk. It combines with every mod now, usbprobe included
+(`docs/mods-compatibility.md`), so it can be tested together with the USB probe.
+
 ## 11. A real compatibility check between mods
 
 **State — open, and more urgent than when filed:** this was filed "to be picked

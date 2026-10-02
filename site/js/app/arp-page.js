@@ -14,9 +14,10 @@ async function ready(firmware) {
   // against: every guard is read, and it throws rather than writing.
   apply(firmware);
   state.firmware = firmware;
-  const found = extents();
+  const found = extents().filter((e) => !e.owner);
   const bytes = found.reduce((n, e) => n + e.length, 0);
-  $("writes").textContent = `${found.length} places in section 3, ${bytes} bytes; nothing appended`;
+  $("writes").textContent = `${found.length} places in section 3, ${bytes} bytes; `
+    + "and a small block of code in the platform's appended area";
   for (const id of ["step2", "step3", "bar"]) $(id).classList.remove("hidden");
   status("Loaded. Ready to build.");
 }

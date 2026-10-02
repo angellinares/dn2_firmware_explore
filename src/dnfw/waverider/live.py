@@ -107,6 +107,70 @@ def tuned(note: float, tun1: int = TUN1_ZERO) -> float:
     return 0.0 if n < 0 else n
 
 
+# -- M10a: MOVE, the per-oscillator modulator (csrc/waverider/sharc/modulator.asm) --
+# The frame slots of each oscillator's RATE, MPOS, MLEV, MOVE, and the shared TRIG
+# (TYPE) and PRST (RSET).
+MOVE_SLOTS = ((29, 28, 38, 40, 46, 39), (35, 34, 43, 44, 46, 39))
+MPOS_NONE = 0x3200                 # MPOS 50: no movement
+TRIG_RESTART = 0x0000              # TRIG's default (TYPE 0): a note restarts the shape
+PRST_OFF, PRST_ON, PRST_RANDOM = 0x0000, 0x0100, 0x0200   # RSET: the oscillators on a note
+# F[j] = 2^32 / 1500 x 2^(j / 10) / 32: a block's phase step at RATE j; << (r div 10)
+MOVE_RATE = tuple(round(2 ** 32 / 1500 * 2 ** (j / 10) / 32) for j in range(10))
+MPOS_SCALE = 0x7800 / (0x3200 * 0xFFFF)
+MLEV_SCALE, SHAPE_SCALE = 1 / 0x7F00, 1 / 0xFFFF
+ONE_SHOTS = 3                      # bands 0..2 stop at their end; 3 and 4 loop
+
+
+def move_offsets() -> tuple[tuple[int, ...], ...]:
+    """Per oscillator, the frame byte offsets (168 + 2 s) the modulator reads."""
+    return tuple(tuple(168 + 2 * s for s in slots) for slots in MOVE_SLOTS)
+
+
+def move_band(move: int) -> int:
+    b = (move & 0xFFFF) >> 8
+    return 0 if b < 26 else 1 if b < 52 else 2 if b < 77 else 3 if b < 103 else 4
+
+
+def move_step(phase: int, rate: int, move: int, trig_mode: int, triggered: bool) -> int:
+    """The phase after one block, as the modulator steps it."""
+    if not (trig_mode & 0xFFFF) >> 8 and triggered:
+        phase = 0
+    r = min((rate & 0xFFFF) >> 8, 100)
+    inc = (MOVE_RATE[r % 10] << (r // 10)) & 0xFFFFFFFF
+    new = (phase + inc) & 0xFFFFFFFF
+    if move_band(move) < ONE_SHOTS and new < phase:
+        new = 0xFFFFFFFF
+    return new
+
+
+def move_shape(phase: int, move: int) -> int:
+    """The shape's value, 0..0xffff, at this phase."""
+    x, band = phase >> 16, move_band(move)
+    if band == 0:
+        return 0xFFFF - x
+    if band == 1:
+        return x
+    if band == 4:
+        return 0xFFFF if x < 0x8000 else 0
+    return (x if x < 0x8000 else 0xFFFF - x) << 1
+
+
+def move_apply(wav: int, lev: int, mpos: int, mlev: int, s: int) -> tuple[int, int]:
+    """POS and LEV after the modulator, in its float32 order; MPOS 50 and MLEV 0 leave
+    them untouched."""
+    d = (mpos & 0xFFFF) - MPOS_NONE
+    if d:
+        f = _f32(_f32(_f32(float(d)) * _f32(float(s))) * _f32(MPOS_SCALE))
+        wav = max(wav + trunc(f), 0)
+    m = mlev & 0xFFFF
+    if m:
+        a = _f32(_f32(float(m)) * _f32(MLEV_SCALE))
+        b = _f32(1.0 - _f32(_f32(float(s)) * _f32(SHAPE_SCALE)))
+        g = _f32(1.0 - _f32(a * b))
+        lev = trunc(_f32(_f32(float(lev)) * g))
+    return wav, lev
+
+
 def tuned2(note: float, tun2: int, tun1: int) -> float:
     """Osc 2's note (Milestone 9b): DETN is a detune from osc 1, so the loop adds
     (TUN2 + TUN1) in semitones, float32, where osc 1 adds TUN1; otherwise as `tuned`."""
@@ -157,19 +221,34 @@ def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
 
 def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> list[float]:
     """The loop's output with both oscillators (Milestone 9b), each block
-    (note, osc1, osc2) with each osc (WAV, TBL, TUN, LEV), the frame's 16-bit words.
+    (note, osc1, osc2[, (TRIG, triggered)]) with each osc (WAV, TBL, TUN, LEV[, RATE,
+    MPOS, MLEV, MOVE]), the frame's 16-bit words. With the M10a fields the modulator
+    (move_step / move_shape / move_apply) moves POS and LEV first, per oscillator.
     Osc 1 writes y1 x gain1; osc 2, unless its LEV is 0 (the loop then skips it), adds
     y2 x gain2 to that, both rounded to float32 as reader_m9.asm does. Osc 2's TUN is
     a detune from osc 1 (`tuned2`). Each oscillator keeps its own phase from block to
     block."""
     out: list[float] = []
     phase = [0, 0]
+    mphase = [0, 0]
     table_t = increment_table()
-    for note, *oscs in blocks:
+    for blk in blocks:
+        note, oscs = blk[0], blk[1:3]
+        trig_mode, triggered, *rest = blk[3] if len(blk) > 3 else (TRIG_RESTART, False)
+        prst = rest[0] if rest else PRST_OFF
         mixed: list[float] = []
-        for k, (wav, tbl, tun, lev) in enumerate(oscs):
+        for k, osc in enumerate(oscs):
+            wav, tbl, tun, lev = osc[:4]
             if k and not lev & 0xFFFF:
                 continue
+            if len(osc) > 4:                    # M10a: RATE, MPOS, MLEV, MOVE
+                rate, mpos, mlev, move = osc[4:8]
+                mphase[k] = move_step(mphase[k], rate, move, trig_mode, triggered)
+                wav, lev = move_apply(wav, lev, mpos, mlev, move_shape(mphase[k], move))
+            if len(osc) > 4 and triggered and (prst & 0xFFFF) >> 8:
+                if (prst & 0xFFFF) >> 8 != 1:
+                    raise ValueError("PRST Random starts from the DSP's cycle counter: no reference")
+                phase[k] = 0                    # PRST On: the oscillator restarts
             g = gain(lev)
             samples, phase[k] = render.render(tables[slot(tbl, len(tables))], phase[k],
                                               increment(tuned(note, tun) if k == 0 else
@@ -179,6 +258,7 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
             if k == 0:
                 mixed = y
             else:
-                mixed = [_f32(a + b) for a, b in zip(mixed, y)] if precision == "float32"                     else [a + b for a, b in zip(mixed, y)]
+                mixed = ([_f32(a + b) for a, b in zip(mixed, y)] if precision == "float32"
+                         else [a + b for a, b in zip(mixed, y)])
         out += mixed
     return out

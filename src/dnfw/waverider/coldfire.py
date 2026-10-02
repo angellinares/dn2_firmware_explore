@@ -333,6 +333,11 @@ ICON_STOCK = bytes.fromhex("7007b083660000a2")
 # the grid 0x40017428 (a pc-relative jsr), pop them. wr_grid draws Waverider's own page.
 GRID_SITE = 0x40018214
 GRID_STOCK = bytes.fromhex("2f022f0a4ebaf20e508f")
+# its page-id-9 arm (WaveTone's page 3): push the canvas and the view, call 0x400175e4,
+# then `bra.w 0x400182c4`, the shared exit, which pops the two. Waverider's page 3 (M10a)
+# arrives here: wr_grid9 pushes and pops its own, and `subq.l #8,%sp` keeps the exit's pop.
+GRID9_SITE = 0x40018208
+GRID9_STOCK = bytes.fromhex("2f022f0a4ebaf3d6")
 # the UI task's loop asks its screen `isDirty()` (0x4011d2f4, the byte at screen +32) once
 # a pass, and redraws every view on it when set (0x4011d32a). The stock UI sets it on a
 # change: at rest a shown page redraws once a second, and a modulation never redraws it
@@ -483,6 +488,11 @@ def compose(stock: bytes, assemble, compile_c) -> dict:
          "the LFO destination browser)", LONG_STOCK)
     edit(GRID_SITE, bytes.fromhex("4eb9") + _long(playout["wr_grid"]) + bytes.fromhex("4e714e71"),
          "the SYN page draw: Waverider's own page for a Waverider track (M8.1)", GRID_STOCK)
+    edit(GRID9_SITE, bytes.fromhex("4eb9") + _long(playout["wr_grid9"]) + bytes.fromhex("518f"),
+         "the SYN page draw's page-3 arm: Waverider's own page 3 for a Waverider track (M10a)",
+         GRID9_STOCK)
+    _need(content, GRID9_SITE + 8, bytes.fromhex("600000b2"), "... then bra.w to the shared exit")
+    _need(content, 0x400182C4, bytes.fromhex("508f"), "the shared exit pops the two arguments")
     edit(ICON_SITE, bytes.fromhex("4eb9") + _long(playout["wr_icons"]) + bytes.fromhex("4e71"),
          "the SYN page draw: no WaveTone oscillator icons on a Waverider track (M7)", ICON_STOCK)
     _need(content, PAGE_SITE - 4, bytes.fromhex("2f027404"), "0x400c24ee's push of d2 and its bound")

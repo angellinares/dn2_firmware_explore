@@ -220,3 +220,125 @@ wr_t5v_exit.:
       JUMP 0x1c944c;
 .wr_t5v_exit..end:
       .type wr_t5v_exit.,STT_FUNC;
+
+// M10a: modulator.asm's second half, here because its own span (DM 0x2dee00..0x2df000)
+// takes 448 B and the whole is 668: store the phase, form the shape's value, and apply
+// MPOS and MLEV, then go back to the loop. Registers as modulator.asm says.
+.GLOBAL wr_mod_b.;
+wr_mod_b.:
+      DM(0, I1) = R15;
+
+      // the shape's value, 0..0xffff, in R1, from x = phase >> 16
+      R1 = LSHIFT R15 BY -16;
+      R11 = PASS R11;
+      IF EQ JUMP 0x16ec50;              // -> wr_mod_down.
+      R2 = 1;
+      COMP(R11, R2);
+      IF EQ JUMP 0x16ec55;              // -> wr_mod_have. (ramp up: x)
+      R2 = 4;
+      COMP(R11, R2);
+      IF EQ JUMP 0x16ec3f;              // -> wr_mod_sq.
+      R2 = 0x8000;                      // the triangles
+      COMP(R1, R2);
+      IF LT JUMP 0x16ec39;              // -> wr_mod_tri.
+      R2 = 0xffff;
+      R1 = R2 - R1;
+.GLOBAL wr_mod_tri.;
+wr_mod_tri.:
+      R1 = LSHIFT R1 BY 1;
+      JUMP 0x16ec55;                    // -> wr_mod_have.
+.GLOBAL wr_mod_sq.;
+wr_mod_sq.:
+      R2 = 0x8000;
+      COMP(R1, R2);
+      IF LT JUMP 0x16ec4a;              // -> wr_mod_sqhi.
+      R1 = R1 - R1;
+      JUMP 0x16ec55;                    // -> wr_mod_have.
+.GLOBAL wr_mod_sqhi.;
+wr_mod_sqhi.:
+      R1 = 0xffff;
+      JUMP 0x16ec55;                    // -> wr_mod_have.
+.GLOBAL wr_mod_down.;
+wr_mod_down.:
+      R2 = 0xffff;
+      R1 = R2 - R1;
+.GLOBAL wr_mod_have.;
+wr_mod_have.:
+      // MPOS: POS += (MPOS - 0x3200) x shape x 0x7800 / (0x3200 x 0xffff)
+      R0 = DM(0x2de7c4);
+      R2 = 0x3200;
+      R0 = R0 - R2;
+      IF EQ JUMP 0x16ec72;              // -> wr_mod_lev. (no depth: POS untouched)
+      R12 = R12 - R12;
+      F0 = FLOAT R0 BY R12;
+      F2 = FLOAT R1 BY R12;
+      F0 = F0 * F2;
+      R12 = 0x38199a33;                 // f32(0x7800 / (0x3200 x 0xffff))
+      F0 = F0 * F12;
+      R0 = TRUNC F0;
+      R12 = PASS R0;
+      R4 = R12 + R4;
+      R4 = PASS R4;
+      IF GE JUMP 0x16ec72;              // -> wr_mod_lev.
+      R4 = R4 - R4;
+.GLOBAL wr_mod_lev.;
+wr_mod_lev.:
+      // MLEV: LEV x (1 - MLEV/0x7f00 x (1 - shape/0xffff))
+      R0 = DM(0x2de7c8);
+      R0 = PASS R0;
+      IF EQ JUMP 0x16ec95;              // -> wr_mod_done. (no depth: LEV untouched)
+      R12 = R12 - R12;
+      F0 = FLOAT R0 BY R12;
+      R12 = 0x38010204;                 // f32(1 / 0x7f00)
+      F0 = F0 * F12;
+      R12 = R12 - R12;
+      F2 = FLOAT R1 BY R12;
+      R12 = 0x37800080;                 // f32(1 / 0xffff)
+      F2 = F2 * F12;
+      R12 = 0x3f800000;                 // 1.0
+      F2 = F12 - F2;
+      F0 = F0 * F2;
+      F0 = F12 - F0;
+      R12 = R12 - R12;
+      F2 = FLOAT R14 BY R12;
+      F2 = F2 * F0;
+      R14 = TRUNC F2;
+.GLOBAL wr_mod_done.;
+wr_mod_done.:
+      // PRST (m10a3): on a note, the oscillator's phase -- Off leaves it, On restarts
+      // it at 0 (every note starts alike), Random sets it from the cycle counter.
+      // The reader reads it from its block's phase word, DM(1, I4).
+      R6 = PASS R6;
+      IF EQ JUMP 0x16ecca;              // -> wr_mod_back. (no note)
+      R0 = DM(0x2de7d4);
+      R0 = LSHIFT R0 BY -8;
+      R0 = PASS R0;
+      IF EQ JUMP 0x16ecca;              // -> wr_mod_back. (Off: free-running)
+      R1 = 1;
+      COMP(R0, R1);
+      IF EQ JUMP 0x16ecc7;              // -> wr_mod_zero.
+      // Random: x = rotate(x, 7) + EMUCLK + 0x6d2b79f5, the state at DM 0x2ddea0
+      // (the cycle counter alone repeats: a block starts in step with the audio
+      // interrupt, and the emulator's reads 0)
+      R0 = DM(0x2ddea0);
+      R1 = LSHIFT R0 BY 7;
+      R0 = LSHIFT R0 BY -25;
+      R12 = PASS R1;
+      R0 = R12 + R0;
+      R1 = EMUCLK;
+      R12 = PASS R0;
+      R0 = R12 + R1;
+      R12 = 0x6d2b79f5;
+      R0 = R12 + R0;
+      DM(0x2ddea0) = R0;
+      DM(1, I4) = R0;
+      JUMP 0x16ecca;                    // -> wr_mod_back.
+.GLOBAL wr_mod_zero.;
+wr_mod_zero.:
+      R0 = R0 - R0;
+      DM(1, I4) = R0;
+.GLOBAL wr_mod_back.;
+wr_mod_back.:
+      JUMP 0x16edf3;                    // -> wr_t5v_modded. (machine9_live.asm)
+.wr_mod_b..end:
+      .type wr_mod_b.,STT_FUNC;

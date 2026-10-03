@@ -422,6 +422,26 @@ alternatives until a shared area registry exists.
 
 ---
 
+## Mod 5: `midiarp` -- the arpeggiator on MIDI tracks
+
+The mod's own docstring (`src/dnfw/mods/midiarp.py`) and `docs/ideas-backlog.md`
+section 10 carry the design and the hardware pass of 2026-09-17. What changed on
+2026-10-03 (reported by the contributor of PR #176, checked in the emulator by
+`scripts/emu_midiarp_layered.py`, not yet flashed):
+
+- **Layered copies.** TRACK WILL TRIGGER copies a note record onto the destination
+  track in the frame ISR (`+56` bit 17). midiarp used to turn that copy into a MIDI
+  note from the record's inline fields, which a sequencer trig never fills: random
+  notes. Now a layered copy on a MIDI track plays only as that track's own arp note
+  (the arp on, and the ISR's arp step made it); with the arp off it is left to stock
+  and stays silent. A note is read from the ISR's entry, which is the inline entry for
+  an arp step.
+- **The MIDI record pool.** The allocator pops its free list without an empty check;
+  the hook takes a record only while four are free and drops the note otherwise.
+- **The platform.** Its code is a 592 B `CODE` chunk at `0x467d0000`, not a cave
+  shared with usbprobe: `midiarp` combines with every mod, so a build can carry the
+  USB probe too (`dnfw mods apply --mod midiarp --mod usbprobe`).
+
 ## Mod 6: `fxmod` — an LFO on the Chorus, Delay and Reverb
 
 **Status: shipped, confirmed on hardware 2026-09-23, live at `site/fx.html`.**
@@ -570,8 +590,8 @@ length changes.
   `0x4004bf00`), the FUNC+ARP restore (`0x4004bfb4`, `0x4004bfc6`) and the
   stored-sound LOAD (`0x400dd530`).
 - Two code caves: 230 B at `0x402d08c0` and 122 B at `0x4028fcb4`. The first is
-  the free tail of the run that midiarp and arpplocks already run from on the
-  instrument.
+  the free tail of the run that midiarp and arpplocks ran from on the instrument
+  (both have since moved to the platform).
 - RAM: 2,320 B at `0x467a0000`, above BSS. It holds the generator and one
   144-byte SHUF record per track (which entries this cycle has played).
 

@@ -4,17 +4,22 @@
  * The browser half of `src/dnfw/mods/midiarp.py`, which carries the evidence and
  * the hardware result. Same steps, same order: check every guard and every
  * edit's stock bytes, write the edits, rebuild the N.LEN lookup from this
- * image's own length tables. `scripts/js_midiarp_check.mjs` fails if the bytes
- * differ from the Python's.
+ * image's own length tables. Since 2026-10-03 its routines are a platform CODE
+ * chunk at 0x467d0000 (not a cave of the image), so the edits are the five hooks
+ * and two menu bytes and the blob joins the platform's area.
+ * `scripts/js_midiarp_check.mjs` fails if the bytes differ from the Python's.
  */
 
 import { CODE } from "./midiarp-code.js";
+import * as platform from "./platform.js";
 
 export const ID = "midiarp";
 export const NAME = "Arpeggiator on MIDI tracks";
 export const SECTION = 3;
 const BASE = 0x40000400;
 const LUT_BYTES = 128;
+const CODE_VA = CODE.code.va;
+const BLOB = CODE.code.blob;
 
 export class ModError extends Error {}
 
@@ -23,8 +28,9 @@ const toHex = (a) => Array.from(a, (b) => b.toString(16).padStart(2, "0")).join(
 const i32 = (d, at) => ((d[at] << 24) | (d[at + 1] << 16) | (d[at + 2] << 8) | d[at + 3]);
 
 export function extents() {
-  return CODE.edits.map((e) => ({ section: SECTION, start: e.va - BASE,
-                                  length: e.new.length / 2, what: e.what }));
+  return [...CODE.edits.map((e) => ({ section: SECTION, start: e.va - BASE,
+                                      length: e.new.length / 2, what: e.what })),
+          ...platform.extents(16 + BLOB.length / 2)];
 }
 
 /**
@@ -49,8 +55,9 @@ export function nlenLut(content) {
 export function apply(firmware) {
   const section = firmware.container.find(SECTION);
   if (section === null) throw new ModError("image has no MAIN OS section");
-  const original = section.unpack();
-  if (original === null) throw new ModError("MAIN OS did not depack");
+  const unpacked = section.unpack();
+  if (unpacked === null) throw new ModError("MAIN OS did not depack");
+  const [original, others] = platform.split(unpacked);
   // Longer is fine: data appended after the stock end moves no address used here.
   if (original.length < CODE.stock_length) {
     throw new ModError(`MAIN OS is ${original.length.toLocaleString()} B, shorter than `
@@ -69,14 +76,17 @@ export function apply(firmware) {
     }
   }
 
-  const content = original.slice();
-  for (const e of CODE.edits) content.set(hex(e.new), e.va - BASE);
-  content.set(nlenLut(original), CODE.lut_va - BASE);
+  const edited = original.slice();
+  for (const e of CODE.edits) edited.set(hex(e.new), e.va - BASE);
+  const blob = hex(BLOB);
+  blob.set(nlenLut(original), CODE.lut_va - CODE_VA);
+  const content = platform.join(edited, [...others, [platform.CODE, platform.codeChunk(CODE_VA, blob)]]);
 
   return {
     content,
     notes: ["ARPEGGIATOR menu opens on MIDI tracks",
             "an arp-enabled MIDI track plays its arp out over MIDI",
-            `${CODE.edits.length} edits in section 3, nothing appended`],
+            `${CODE.edits.length} edits in section 3, and a ${blob.length.toLocaleString("en-US")} B CODE `
+              + `chunk at 0x${CODE_VA.toString(16).padStart(8, "0")} in the platform's area`],
   };
 }

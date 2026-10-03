@@ -56,6 +56,9 @@ check rather than from a README (`docs/references.md`).
     nothing else, so it would run neither mod's code. Pairs with transients only
     change section 7.
   - The results are recorded below the table.
+  - 2026-10-03: midiarp became a platform mod (a `CODE` chunk), so its pairs with
+    bootscreen, lfo4 and lfowaves were booted again with the new code, and the new pair
+    with usbprobe was booted: **4 of 4 booted and drew their UI**, as did midiarp alone.
 
 ## One loader, one appended area (since 2026-09-30)
 
@@ -132,11 +135,11 @@ Two checks came out of the failure:
 | `fxmod` | yes | yes | yes | - | order | yes | yes | yes | yes | yes | yes | **NO** |
 | `lfo4` | yes | yes | yes | order | - | order | yes | order | yes | yes | yes | **NO** |
 | `lfowaves` | yes | yes | yes | yes | order | - | yes | yes | yes | yes | yes | yes |
-| `midiarp` | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | **NO** | yes |
+| `midiarp` | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | yes | yes |
 | `moddest` | yes | yes | yes | yes | order | yes | yes | - | yes | yes | yes | yes |
 | `songguard` | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes |
 | `transients` | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | **NO** |
-| `usbprobe` | yes | yes | yes | yes | yes | yes | **NO** | yes | yes | yes | - | yes |
+| `usbprobe` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes |
 | `waverider` | yes | yes | yes | **NO** | **NO** | yes | yes | yes | yes | **NO** | yes | - |
 
 - **arpmodes + arpplocks: yes**: disjoint bytes. *Note:* emulator, 2026-09-26: arpplocks' MODE lock takes its ceiling from setMode's clamp (0x4004bf01), which arpmodes widens to 6. Turning MODE with every step held locks DOWN CYCL SHUF RAND RAND RAND with both, and DOWN CYCL CYCL ... with arpplocks alone (scripts/emu_arp_modes.py). A locked SHUF or RAND playing from a trig was not run.
@@ -146,7 +149,6 @@ Two checks came out of the failure:
 - **lfo4 + lfowaves: order**: lfowaves refuses after lfo4: 0x400372da is not stock (202f00080c800000014b...); lfo4 widens this bound: apply lfowaves first, then lfo4.
 - **lfo4 + moddest: order**: moddest refuses after lfo4: found 2 candidate parameter tables, expected 1; this image's layout is not the one this mod was measured against. *Note:* measured: with moddest applied first, all 13 masks it opens are in lfo4's relocated table (test/test_lfo4_mod.py).
 - **lfo4 + waverider: NO**: lfo4 and waverider both write section 3 0x000dce86..0x000dce88 (2 bytes).
-- **midiarp + usbprobe: NO**: midiarp and usbprobe both write section 3 0x002d0268..0x002d02d8 (112 bytes).
 - **transients + waverider: NO**: transients and waverider both write section 7 0x000795d4..0x00084f24 (47,440 bytes).
 <!-- /dnfw:matrix -->
 
@@ -179,4 +181,5 @@ the init, so only pairs that include a loader mod are booted; the rest say why t
 - `lfowaves` + `moddest`: booted and drew its UI (1 frame(s), control 1).
 - `lfowaves` + `songguard`: booted and drew its UI (1 frame(s), control 1).
 - `lfowaves` + `waverider`: booted and drew its UI (1 frame(s), control 1).
+- `midiarp` + `usbprobe`: booted and drew its UI (1 frame(s), control 1).
 <!-- /dnfw:boots -->

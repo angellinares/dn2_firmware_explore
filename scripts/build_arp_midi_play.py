@@ -112,6 +112,8 @@ VOICE_START = 0x40137D3C    # synth road, live
 MIDI_SEND = 0x4012B8B0      # MIDI road, live
 VOICE_TRIGGER = 0x400DB524  # the ISR's per-note voice trigger
 MIDI_RECORD = 0x4012A408    # MIDI record pool, interrupts masked while taken
+MIDI_FREE = 0x4460E4B8      # ...its free list's head; the allocator pops it with no empty check
+POOL_RESERVE = 4            # the hook takes a record only while this many are free (see voice_hook)
 MIDI_LOCKS_FREE = 0x4012A3B4  # returns a MIDI lock list to 0x4460fcbc
 TRIG_LENGTHS = 0x401D88D8   # duration per trig length index, 0..127 (0x4012a9a8, 0x40026a7e)
 ARP_LENGTHS = 0x40287B08    # duration per arp N.LEN index, 0..127, -1 = INF (0x40026a74)
@@ -123,9 +125,28 @@ LABELS = ("seq_gate", "live_send", "voice_hook", "nlen_lut")
 # held copy (0x400db4ac); every record reaching it is a note (diag capture,
 # 466 of 466 arp steps had it clear). Bit 20 is set on a record once the ISR
 # has voiced it (0x40026948), so a record seen again is not sent twice.
-FILTER = """  move.l  56(%a0),%d1
+#
+# A layered copy (bit 17, set by 0x400255ec: TRACK WILL TRIGGER) copies the source's
+# record, whose notes are a *list* (+28): the inline entry at +36..+40 is never
+# filled by a sequencer trig, so reading it sent random notes (PR #176's report,
+# confirmed 2026-10-03 in scripts/emu_midiarp_layered.py). The ISR fills the inline
+# entry only for an arp step (bit 19, 0x400267f6 and 0x400266f2). So a copy is
+# played only as its destination's own arp note; with the arp off on that track it
+# goes to the stock trigger, which does nothing on a MIDI track: arp off is stock.
+FILTER = f"""  move.l  56(%a0),%d1
     btst    #20,%d1
     bne     9f
+    btst    #17,%d1                     | a layered copy
+    beq.s   16f
+    btst    #19,%d1                     | ...is the arp's note or nothing
+    beq     3b
+    move.l  #{SOUND_STRIDE},%d1
+    muls.l  %d0,%d1
+    move.l  {KIT:#x},%a1
+    add.l   %d1,%a1
+    tst.b   {SOUND_BASE + ARP_MODE}(%a1)  | and only while its track's arp is on
+    beq     3b
+16:
 """
 LEAVE = """9:  moveq   #0,%d0
     rts"""
@@ -152,7 +173,7 @@ DIAG_MARK = """    move.l  56(%a2),%d1
     moveq   #6,%d0
     move.b  %d0,40(%a3)
 """
-DIAG_LEAVE = f"""    jmp     {VOICE_TRIGGER:#x}              | and voice it: the hook fired if T16 sounds"""
+DIAG_LEAVE = f"""9:  jmp     {VOICE_TRIGGER:#x}              | and voice it: the hook fired if T16 sounds"""
 
 
 def cave_source(nlen_lut: bytes, diag: bool = False) -> str:
@@ -213,8 +234,16 @@ voice_hook:
     btst    %d0,%d1
     bne.s   4f
 3:  jmp     {VOICE_TRIGGER:#x}
-4:{{FILTER}}    lea     -16(%sp),%sp
-    movem.l %d2-%d3/%a2-%a3,(%sp)
+4:{{FILTER}}    move.l  {MIDI_FREE:#x},%a1          | the pool's free list: the allocator does not
+    moveq   #{POOL_RESERVE - 1},%d1             | check it is empty and corrupts low memory,
+17: move.l  %a1,%d0                     | so take a record only while {POOL_RESERVE} are free
+    beq     9f                          | (the live MIDI sender allocates unguarded too)
+    move.l  92(%a1),%a1
+    subq.l  #1,%d1
+    bpl.s   17b
+    lea     -20(%sp),%sp
+    movem.l %d2-%d3/%a2-%a4,(%sp)
+    move.l  %a2,%a4                     | the ISR's entry (0x4002695a): the note being played
     move.l  %a0,%a2
     jsr     {MIDI_RECORD:#x}
     move.l  %d0,%a3
@@ -228,12 +257,12 @@ voice_hook:
     moveq   #-1,%d0
     move.l  %d0,24(%a3)                 | the note is the inline entry at +36
     clr.l   32(%a3)
-    move.l  24(%sp),48(%a3)             | time, the base of its note-off
+    move.l  28(%sp),48(%a3)             | time, the base of its note-off
     moveq   #2,%d0
     move.l  %d0,52(%a3)                 | live-played: the engine already gated mutes
     clr.b   36(%a3)
     clr.b   37(%a3)
-    move.b  38(%a2),38(%a3)             | note: the arp's step
+    move.b  2(%a4),38(%a3)              | note: the entry's, which for an arp step is the inline one
     clr.b   41(%a3)
     move.l  64(%a2),%d0                 | the sound it plays with, as the ISR finds it (0x40026708)
     bne.s   5f
@@ -249,14 +278,14 @@ voice_hook:
     move.l  %a1,%d0
 12: move.l  %d0,44(%a3)                 | the MIDI task reads defaults through +44 too:
     move.l  %d0,%a0                     | never leave it null
-    move.b  39(%a2),%d1                 | velocity; negative = the sound's
+    move.b  3(%a4),%d1                  | velocity; negative = the sound's
     bpl.s   13f
     move.b  {SOUND_VELOCITY}(%a0),%d1
     bpl.s   13f
     moveq   #100,%d1
 13: move.b  %d1,39(%a3)
     moveq   #0,%d3
-    move.b  40(%a2),%d3                 | the note's own length
+    move.b  4(%a4),%d3                  | the note's own length
     move.l  56(%a2),%d1
     btst    #19,%d1                     | the arp is running this note
     beq.s   14f
@@ -279,8 +308,8 @@ voice_hook:
     bra.s   10f
 8:  move.l  %a3,92(%a5)
 10: move.l  %a3,%a5
-    movem.l (%sp),%d2-%d3/%a2-%a3
-    lea     16(%sp),%sp
+    movem.l (%sp),%d2-%d3/%a2-%a4
+    lea     20(%sp),%sp
 {{LEAVE}}
 
 | N.LEN -> the trig length index nearest in duration (build-time, from the image).
@@ -382,12 +411,17 @@ def poke(content: bytearray, va: int, stock: bytes, new: bytes, why: str, log=pr
     log(f"  {va:#010x}  {stock.hex():<14} -> {new.hex():<14}  {why}")
 
 
-def compose(stock: bytes, diag: bool = False, log=print) -> dict:
-    """Apply the whole build to a stock MAIN OS. -> {content, cave, lut}.
+def compose(stock: bytes, diag: bool = False, log=print, code_base: int | None = None) -> dict:
+    """Apply the whole build to a stock MAIN OS. -> {content, cave, lut, blob}.
 
     `cave` is (va, length) of the assembled code and `lut` is (va, 128), the
     N.LEN lookup inside it, which is derived from this image's own tables.
-    `scripts/gen_midiarp_code.py` uses both to write the mod's data."""
+    `scripts/gen_midiarp_code.py` uses both to write the mod's data.
+
+    Without CODE_BASE the code goes into its cave in the image (the build of
+    2026-09-17, plus the 2026-10-03 fixes). With it (the mod platform) the same code is
+    assembled to run at CODE_BASE and returned as `blob`, for a platform `CODE` chunk;
+    the cave stays stock and the hooks point at the chunk."""
     if not available():
         raise SystemExit("no m68k assembler found (m68k-linux-gnu-as; WSL is fine)")
     content = bytearray(stock)
@@ -397,14 +431,17 @@ def compose(stock: bytes, diag: bool = False, log=print) -> dict:
         check(content, va, want, why)
         log(f"  {va:#010x}  {want.hex():<14}  {why}")
 
-    log("part 2 -- the cave")
-    if any(content[CAVE - BASE:CAVE - BASE + CAVE_CAP]):
+    log("part 2 -- the cave" if code_base is None else f"part 2 -- the code, from {code_base:#010x}")
+    where = CAVE if code_base is None else code_base
+    if code_base is None and any(content[CAVE - BASE:CAVE - BASE + CAVE_CAP]):
         raise SystemExit(f"cave at {CAVE:#010x} is not free")
-    payload, at = assemble_stubs(cave_source(nlen_lut(content), diag), CAVE)
-    if len(payload) > CAVE_CAP:
-        raise SystemExit(f"cave overflows: {len(payload)} > {CAVE_CAP}")
-    content[CAVE - BASE:CAVE - BASE + len(payload)] = payload
-    log(f"  {len(payload)} bytes at {CAVE:#010x}: "
+    payload, at = assemble_stubs(cave_source(nlen_lut(content), diag), where)
+    blob = payload + bytes(-len(payload) % 4)
+    if code_base is None:
+        if len(payload) > CAVE_CAP:
+            raise SystemExit(f"cave overflows: {len(payload)} > {CAVE_CAP}")
+        content[CAVE - BASE:CAVE - BASE + len(payload)] = payload
+    log(f"  {len(payload)} bytes at {where:#010x}: "
         + ", ".join(f"{k} {v:#010x}" for k, v in at.items()))
 
     log("part 3 -- the menu gate")
@@ -419,8 +456,8 @@ def compose(stock: bytes, diag: bool = False, log=print) -> dict:
         new += bytes.fromhex("4e71") * ((len(stock_bytes) - len(new)) // 2)
         poke(content, va, stock_bytes, new, f"{kind} -> {label}", log)
 
-    return {"content": bytes(content), "cave": (CAVE, len(payload)),
-            "lut": (at["nlen_lut"], 128)}
+    return {"content": bytes(content), "cave": (where, len(payload)),
+            "lut": (at["nlen_lut"], 128), "code_base": code_base, "blob": blob}
 
 
 def main() -> int:

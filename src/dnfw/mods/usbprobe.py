@@ -24,9 +24,9 @@ cave at `0x402cf52c` and records it with four 6-byte `jsr` hooks in
    differs is refused;
 2. the edits are written, and the HELLO tag is filled in.
 
-Section 3 only, no length change, nothing appended. Its caves are also used by
-midiarp, so it does not combine with that one. lfowaves (2026-09-30) and arpplocks
-(2026-10-02) left these caves for the mod platform and combine with it.
+Section 3 only, no length change, nothing appended. lfowaves (2026-09-30), arpplocks
+(2026-10-02) and midiarp (2026-10-03) left these caves for the mod platform and
+combine with it.
 """
 
 from __future__ import annotations
@@ -74,8 +74,7 @@ def apply(firmware, tag: str = DEFAULT_TAG) -> Result:
         want = bytes.fromhex(e["stock"])
         if original[e["va"] - BASE:e["va"] - BASE + len(want)] != want:
             raise ModError(f"0x{e['va']:08x} is not stock; this mod is for unmodified "
-                           "Digitone II 1.11, or another mod already wrote there "
-                           "(arpplocks and midiarp share the probe's caves)")
+                           "Digitone II 1.11, or another mod already wrote there")
 
     content = bytearray(original)
     for e in SPEC["edits"]:

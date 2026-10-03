@@ -425,6 +425,9 @@ def main(argv=None):
     p.add_argument("--no-selmap", action="store_true", help="skip selmap (no WSL)")
     p.add_argument("--steps", default="decode,map,voice,stock,frame")
     p.add_argument("--tag", default="", help="names this run's frame WAVs and report: m5_frame_TAG_*.wav, m5_report_TAG.json")
+    p.add_argument("--big", action="store_true",
+                   help="the 64 x 2048 stress test's section 7 (dsp.section7(big=True)); the checks that "
+                        "name the 16 x 512 tables' addresses or positions are expected to differ")
     a = p.parse_args(argv)
     if a.seconds < 2:
         raise SystemExit("--seconds must be at least 2")
@@ -436,11 +439,16 @@ def main(argv=None):
     m4.IMAGE = a.image
     stock = m1.dn2_section7(a.image)
     sound, machines = m4.init_sound(a.image)
-    m5 = Image(dk, dsp.section7(stock))
+    m5 = Image(dk, dsp.section7(stock, a.big))
     stock_img = Image(dk, stock)
     s7 = OUT / "m5_section7_waverider.bin"
     s7.write_bytes(m5.stream)
-    tables = dsp.tables()
+    if a.big:
+        from dnfw.waverider import bigtable  # noqa: PLC0415
+        tables = bigtable.tables()
+        dsp.TABLES_DM = dsp.TABLES_DM_BIG           # what the checks compare the table pointer to
+    else:
+        tables = dsp.tables()
     report = {"digikit": {"path": str(a.digikit), "head": dk.head}, "section7_sha256": m5.sha,
               "section7_bytes": len(m5.stream), "section7_file": str(s7),
               "placements": dsp.placements(), "blocks": a.blocks}
@@ -453,7 +461,7 @@ def main(argv=None):
             print("step 1: decode")
             s1 = decode_check(dk, m5, work, not a.no_selmap)
             s1["checks"] = {
-                "section 7 is dnfw.waverider.dsp.section7(stock)": m5.sha == hashlib.sha256(dsp.section7(stock)).hexdigest(),
+                "section 7 is dnfw.waverider.dsp.section7(stock)": m5.sha == hashlib.sha256(dsp.section7(stock, a.big)).hexdigest(),
                 "every instruction reads as its source to digikit and selmap, on selas's boundaries,"
                 " sources match their objects; the entry decodes as a 48-bit jump + 16-bit nop": s1["ok"],
             }

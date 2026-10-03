@@ -75,8 +75,10 @@ def render(table: list[list[int]], phase: int, inc: int, pos: int, count: int,
     `phase`, `inc` are u32 (see the module docstring); `pos` is Q16.
     """
     frames, points = len(table), len(table[0])
-    if points != 1 << (PHASE_BITS - INDEX_SHIFT):
-        raise ValueError(f"a frame must be {1 << (PHASE_BITS - INDEX_SHIFT)} points, not {points}")
+    if points < 2 or points & (points - 1):
+        raise ValueError(f"a frame must be a power of two points, not {points}")
+    shift = PHASE_BITS - (points.bit_length() - 1)     # INDEX_SHIFT at 512 points
+    mask = (1 << shift) - 1
     if not 0 <= pos <= (frames - 1) * POS_ONE:
         raise ValueError(f"position {pos:#x} is outside 0..{(frames - 1) * POS_ONE:#x}")
     if count < 1:
@@ -90,9 +92,9 @@ def render(table: list[list[int]], phase: int, inc: int, pos: int, count: int,
     row0, row1 = table[f0], table[f1]
     out = []
     for _ in range(count):
-        k0 = phase >> INDEX_SHIFT
+        k0 = phase >> shift
         k1 = (k0 + 1) % points
-        fr = (phase & FRAC_MASK) / (1 << INDEX_SHIFT)   # exact
+        fr = (phase & mask) / (1 << shift)   # exact
         s00, s01 = row0[k0] / FULL_SCALE, row0[k1] / FULL_SCALE
         s10, s11 = row1[k0] / FULL_SCALE, row1[k1] / FULL_SCALE
         a = r(s00 + r(fr * r(s01 - s00)))

@@ -50,6 +50,9 @@ A4_NOTE, A4_HZ = 69, 440.0
 NOTES = 129                      # T[0..128]; T[128] is only read with fr = 0
 POS_MAX = 0x7800                 # WAV1's range in the frame: the sound's own
 POS_SHIFT = 5                    # 0x7800 << 5 == 15 << 16
+# the stress-test geometry (64 frames x 2048 points, Tonverk's size): 0x7800 << 7 is
+# frame 60, so frames 61..63 are out of POS's reach there
+POS_SHIFTS = {16: POS_SHIFT, 64: 7}
 SLOT_SHIFT = 8                   # TBL1 1: 0x0100, in the sound and in the frame
 TUN1_ZERO = 0x4000               # TUN1's frame word for 0 semitones: the sound's own
 LEV1_UNITY = 0x6400              # LEV1 100, the default: gain exactly 1.0 (Milestone 9a)
@@ -248,9 +251,9 @@ def tuned2(note: float, tun2: int, tun1: int) -> float:
     return 0.0 if n < 0 else n
 
 
-def position(wav1: int) -> int:
+def position(wav1: int, shift: int = POS_SHIFT) -> int:
     """The loop's Q16 frame position for the frame's 16-bit WAV1 word."""
-    return min(wav1 & 0xFFFF, POS_MAX) << POS_SHIFT
+    return min(wav1 & 0xFFFF, POS_MAX) << shift
 
 
 def slot(tbl1: int, count: int) -> int:
@@ -278,7 +281,7 @@ def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
         g = gain(rest[1] if len(rest) > 1 else LEV1_UNITY)
         tab = tables[slot(tbl1, len(tables))]
         samples, phase = render.render(tab, phase, increment(tuned(note, tun1), table_t),
-                                       position(wav1),
+                                       position(wav1, POS_SHIFTS[len(tab)]),
                                        block, precision)
         out += [_f32(g * y) for y in samples] if precision == "float32" else [g * y for y in samples]
     return out, phase
@@ -323,7 +326,7 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
             samples, phase[k] = render.render(tables[slot(tbl, len(tables))], phase[k],
                                               increment(tuned(note, tun) if k == 0 else
                                                         tuned2(note, tun, oscs[0][2]), table_t),
-                                              position(wav), block, precision)
+                                              position(wav, POS_SHIFTS[len(tables[0])]), block, precision)
             y = [_f32(g * v) for v in samples] if precision == "float32" else [g * v for v in samples]
             if k == 0:
                 mixed = y

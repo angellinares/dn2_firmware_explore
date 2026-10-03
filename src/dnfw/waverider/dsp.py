@@ -88,6 +88,12 @@ STOCK_DDR_END = 0x8052FBE0
 DDR_REGION = (0x80600000, 0x80A00000)
 TABLE_BYTES = 0x4000                         # 16 frames x 512 int16
 TABLES_DM = (0x80600000, 0x80604000)
+# The stress test (2026-10-04): two Tonverk-size tables, 64 frames x 2048 int16 each
+# (bigtable.py), with the reader and loop re-assembled for that geometry
+# (sharc_code_big.json, scripts/gen_waverider_sharc.py --big). Opt-in: `big=True`.
+CODE_BIG = pathlib.Path(__file__).with_name("sharc_code_big.json")
+TABLE_BYTES_BIG = 0x40000
+TABLES_DM_BIG = (0x80600000, 0x80640000)
 
 IDLE_DM = 0x2DEA00                           # idle_load.asm, in the gap before table 0
 IDLE_SW = IDLE_DM // 2                       # 0x16f500
@@ -150,21 +156,27 @@ def _code() -> dict:
     return json.loads(CODE.read_text(encoding="utf-8"))
 
 
-def objects() -> dict[str, bytes]:
-    """The committed SHARC objects: reader, loop, entry JUMP, idle stub, idle JUMP."""
+def objects(big: bool = False) -> dict[str, bytes]:
+    """The committed SHARC objects: reader, loop, entry JUMP, idle stub, idle JUMP. With
+    BIG, the reader and loop are the stress test's (64 x 2048)."""
     spec = _code()
+    if big:
+        if not CODE_BIG.exists():
+            raise DspError(f"{CODE_BIG.name} is missing: run scripts/gen_waverider_sharc.py --big")
+        spec = {**spec, **json.loads(CODE_BIG.read_text(encoding="utf-8"))}
     return {name: sharc_object.load_bytes(bytes.fromhex(spec[name]["object_parcels_be"]))
             for name in ("reader", "machine5_live", "entry_jump", "idle_load", "idle_jump", "block_count",
                          "entry_mark", "emark_jump", "modulator", "shapes")}
 
 
-def directory() -> bytes:
+def directory(big: bool = False) -> bytes:
     """The directory block from 0x2de600: the magic, the count and the tables; then
     (M10a) the modulator's constants in its tail -- each oscillator's frame offsets
     at MOVE_OFFSETS_DM and the rate table at MOVE_RATE_DM. The words between (M9's
     gain and oscillator flag, the phases) are zeros, as the loop expects."""
-    out = bytearray(struct.pack("<II", DIRECTORY_MAGIC, len(TABLES_DM)) + struct.pack(
-        "<%dI" % len(TABLES_DM), *TABLES_DM))
+    at_dm = TABLES_DM_BIG if big else TABLES_DM
+    out = bytearray(struct.pack("<II", DIRECTORY_MAGIC, len(at_dm)) + struct.pack(
+        "<%dI" % len(at_dm), *at_dm))
     out += bytes(MOVE_RATE_DM + 4 * len(live.MOVE_RATE) - DIRECTORY_DM - len(out))
     for osc, offsets in enumerate(live.move_offsets()):
         at = MOVE_OFFSETS_DM - DIRECTORY_DM + 32 * osc
@@ -174,20 +186,27 @@ def directory() -> bytes:
     return bytes(out)
 
 
-def spans() -> list[tuple[str, int, bytes]]:
+def spans(big: bool = False) -> list[tuple[str, int, bytes]]:
     """(what, load address, payload) of every block this adds, in stream order.
 
     Each payload is zero-padded up to the next span's start (the last to REGION's
     end), so the region is written end to end and every code object is followed by
     at least 64 bytes of zeros (a zero word is a NOP)."""
-    obj = objects()
-    t = tables()
+    obj = objects(big)
+    if big:
+        from . import bigtable  # noqa: PLC0415  (numpy, the stress test only)
+        t, at_dm, size = bigtable.tables(), TABLES_DM_BIG, TABLE_BYTES_BIG
+        names = ("table 0 (big): a sine growing into a saw, 64 x 2048",
+                 "table 1 (big): a pulse narrowing from a square, 64 x 2048")
+    else:
+        t, at_dm, size = tables(), TABLES_DM, TABLE_BYTES
+        names = ("table 0: saw -> sine (testtable reversed)", "table 1: the overtone series (harmonics)")
     raw = [
         ("reader_m5.asm (wr_render5)", READER_DM, obj["reader"]),
         ("machine5_live.asm (wr_type5v)", LOOP_DM, obj["machine5_live"]),
         ("state: save area, counters, 16 reader blocks (zeros)", STATE_DM, bytes(STATE_BYTES)),
         ("increment table, 129 float32", INC_TABLE_DM, live.table_bytes()),
-        ("wavetable directory", DIRECTORY_DM, directory()),
+        ("wavetable directory", DIRECTORY_DM, directory(big)),
         ("idle_load.asm (wr_idle)", IDLE_DM, obj["idle_load"]),
         ("block_count.asm (wr_count)", COUNT_DM, obj["block_count"]),
         ("entry_mark.asm (wr_emark)", EMARK_DM, obj["entry_mark"]),
@@ -203,11 +222,10 @@ def spans() -> list[tuple[str, int, bytes]]:
         if "asm" in what and end - at - len(payload) < 64:
             raise DspError(f"{what} leaves fewer than 64 bytes of NOP padding")
         out.append((what, dm_to_load(at), payload + bytes(end - at - len(payload))))
-    for what, at, frames in (("table 0: saw -> sine (testtable reversed)", TABLES_DM[0], t[0]),
-                             ("table 1: the overtone series (harmonics)", TABLES_DM[1], t[1])):
+    for what, at, frames in ((names[0], at_dm[0], t[0]), (names[1], at_dm[1], t[1])):
         payload = reference.dsp_bytes(frames)
-        if len(payload) != TABLE_BYTES:
-            raise DspError(f"{what} is {len(payload)} bytes, not {TABLE_BYTES}")
+        if len(payload) != size:
+            raise DspError(f"{what} is {len(payload)} bytes, not {size}")
         out.append((what, at, payload))                  # DDR: the target is the address
     return out
 
@@ -304,13 +322,13 @@ def section7_idle_only(stock: bytes) -> bytes:
     return _finish(out)
 
 
-def section7(stock: bytes) -> bytes:
-    """DN2 1.11's section 7 -> Waverider's. Refuses anything else."""
+def section7(stock: bytes, big: bool = False) -> bytes:
+    """DN2 1.11's section 7 -> Waverider's (BIG: the 64 x 2048 stress test). Refuses anything else."""
     digest = hashlib.sha256(stock).hexdigest()
     if digest != STOCK_SHA256:
         raise DspError(f"section 7 sha256 {digest[:12]}... is not stock DN2 1.11's "
                        f"({STOCK_SHA256[:12]}...)")
-    obj = objects()
+    obj = objects(big)
     entry = obj["entry_jump"] + NOP16
     if len(entry) != len(ENTRY_STOCK):
         raise DspError(f"the entry patch is {len(entry)} bytes, not {len(ENTRY_STOCK)}")
@@ -327,7 +345,7 @@ def section7(stock: bytes) -> bytes:
     lookup = struct.unpack("<8I", bootstream.read_span(stock, dm_to_load(LOOKUP_DM), 32))
     if lookup != LOOKUP_STOCK:
         raise DspError(f"the machine lookup is {lookup}, not stock {LOOKUP_STOCK}")
-    added = spans()
+    added = spans(big)
     _check_free(stock, added)
 
     out = bytearray(bootstream.insert_before_final(

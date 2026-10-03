@@ -501,3 +501,31 @@ def test_the_report_writes_the_live_reply_tail():
     assert 0x2C49D0 + 0xA9C == 0x2C546C
     assert "DM(0, I0) = R8;" in src
     assert not any("XOR" in c or "NOT " in c for c in src)
+
+
+# -- the 64 x 2048 stress test (big=True) ------------------------------------------------------
+
+def test_the_reference_reads_any_power_of_two_frame():
+    big = [[0, 32767] * 1024]                     # 2048 points
+    out, phase = reference.render(big, 0, 1 << 21, 0, 2, "float32")   # one point a sample
+    assert out == [0.0, 32767 / 32768] and phase == 2 << 21
+    with pytest.raises(ValueError):
+        reference.render([[0] * 1000], 0, 1, 0, 1)
+
+
+def test_big_positions_reach_frame_60():
+    assert live.position(0x7800, live.POS_SHIFTS[64]) == 60 << 16
+    assert live.position(0x7800, live.POS_SHIFTS[16]) == 15 << 16
+
+
+def test_the_big_build_keeps_the_layout_and_puts_256_kb_tables_in_ddr(stock7):
+    pytest.importorskip("numpy")
+    small, big = dsp.objects(), dsp.objects(True)
+    for k in ("reader", "machine5_live"):
+        assert len(big[k]) == len(small[k]) and big[k] != small[k]       # same layout, other constants
+    assert all(big[k] == small[k] for k in small if k not in ("reader", "machine5_live"))
+    tables = [(at, p) for what, at, p in dsp.spans(True) if "(big)" in what]
+    assert [at for at, _ in tables] == list(dsp.TABLES_DM_BIG)
+    assert all(len(p) == dsp.TABLE_BYTES_BIG for _, p in tables)
+    built = dsp.section7(stock7, big=True)
+    assert bootstream.read_span(built, dsp.TABLES_DM_BIG[1], 16) == tables[1][1][:16]

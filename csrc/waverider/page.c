@@ -173,6 +173,33 @@ static int move_offset(int v, int o)
     return ((mpos * (s << 8 | s)) >> 16) * 0x7800 / 0x3200;
 }
 
+/* M10b-3: follow the newest note. Each trig plays on the next voice (instrument,
+ * m10b3b, 2026-10-03: a Ramp Up on track 1 ramped on voices 15, 3, 5, 4, 8, 9, 10, 13
+ * in turn), and a one-shot stops at its end, so the voice chosen went still while
+ * the next notes moved. A voice of the track whose report moves after standing still
+ * for STILL has started a note: it becomes the one shown. A looping shape never
+ * stands still, so with one the chosen voice is kept, as before. */
+#define STILL   (TICK_HZ / 2)
+static u8 seen[32] __attribute__((section(".data"))) = { 0 };
+static u32 seen_at[16] __attribute__((section(".data"))) = { 0 };
+
+static void follow(u32 now)
+{
+    int c = voice();
+    u32 t = ACTIVE_TRACK;
+    for (int v = 0; v < 16; v++) {
+        u8 a = REPLY_TAIL[2 * v], b = REPLY_TAIL[2 * v + 1];
+        if (a == seen[2 * v] && b == seen[2 * v + 1])
+            continue;
+        if (c >= 0 && v != c && now - seen_at[v] > STILL
+                && OWNER(v) == t && MACHINE(v) == NEW_TYPE)
+            chosen = c = v;
+        seen[2 * v] = a;
+        seen[2 * v + 1] = b;
+        seen_at[v] = now;
+    }
+}
+
 static int mod_offset(u32 id)
 {
     int v = voice(), slot = RECORD(id)[1];
@@ -299,6 +326,7 @@ static void sweep(int k, int off, u32 now)
 int wr_poll(void *screen)
 {
     u32 now = TICKS;
+    follow(now);
     if (now - drawn_at < SHOWN && now - asked_at >= FRAME
             && (settling || signature() != drawn_sig)) {
         asked_at = now;

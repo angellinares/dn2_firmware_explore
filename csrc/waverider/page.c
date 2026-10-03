@@ -76,9 +76,12 @@ static const int *limits(u32 id)
  * (132 MHz on the instrument), so `ticks` over `draws` is the time one page draw
  * takes, and `marker_ticks` the part the markers take. */
 #define DTCN0   (*(volatile u32 *)0xFC07000Cu)
-struct wr_probe { u32 magic, draws, ticks, marker_ticks, markers, spare; };
+struct wr_probe { u32 magic, draws, ticks, marker_ticks, markers, spare, wave_ticks, max_draw; };
 volatile struct wr_probe wr_probe __attribute__((section(".data"))) =
-    { 0x57525052u, 0, 0, 0, WR_MARKERS, 0x2D2D2D2Du };
+    { 0x57525052u, 0, 0, 0, WR_MARKERS, 0x2D2D2D2Du, 0, 0 };
+/* wave_ticks: the part wave() takes (the curve, the band and the position bar);
+ * max_draw: the longest single draw (m10b3h-prof, 2026-10-03: is one of our draws
+ * what stretches the audio interrupt past a frame?) */
 #endif
 
 /* The oscillator a page shows the wave of: osc 2 on page 2, osc 1 on pages 1 and 3
@@ -169,13 +172,20 @@ static int heard(int v, u32 id)
 #define MPOS_ID(o) ((o) ? 250u : 246u)          /* OFS1 / OFS2 (pages.PAGES) */
 #define RATE_ID(o) ((o) ? 244u : 240u)          /* PD1 / PD2 */
 
-static int move_offset(int v, int o)
+#define MOVE_ID(o) ((o) ? 257u : 253u)          /* M.Shape: the shape index << 8, 4 = Square */
+
+/* MOVE's POS shift at shape byte S (the report's high byte, or 0 / 255 for its ends) */
+static int move_offset_at(int v, int o, int s)
 {
     int mpos = heard(v, MPOS_ID(o)) - 0x3200;
     if (!mpos)
         return 0;
-    int s = REPLY_TAIL[2 * v + o];
     return ((mpos * (s << 8 | s)) >> 16) * 0x7800 / 0x3200;
+}
+
+static int move_offset(int v, int o)
+{
+    return move_offset_at(v, o, REPLY_TAIL[2 * v + o]);
 }
 
 /* M10b-3: follow the newest note. Each trig plays on the next voice (instrument,
@@ -190,6 +200,14 @@ static int move_offset(int v, int o)
  * 2026-10-03). So a voice that is not yet the track's keeps its last still time, and
  * is taken as soon as it qualifies; with none chosen, the first that moves is taken. */
 #define STILL   (TICK_HZ / 2)
+/* A shape byte that moves more than JUMP between two polls has restarted: a new note
+ * with TRIG on restart. A looping shape never stands still, so without this the page
+ * kept its first voice and jumped whenever the rotation retriggered that one
+ * (instrument, m10b3f/g, 2026-10-03: unison, 3-note chords, Tri on osc 2). Not for
+ * Square, which jumps by design, nor past RATE 60 (2 cycles a second: a Tri moves
+ * about 51 steps in a 50 ms gap between polls), where motion could pass for a jump. */
+#define JUMP      96
+#define JUMP_RATE 60
 static u8 seen[32] __attribute__((section(".data"))) = { 0 };
 static u32 seen_at[32] __attribute__((section(".data"))) = { 0 };
 
@@ -204,14 +222,19 @@ static void follow(u32 now, int o)
     u32 t = ACTIVE_TRACK;
     for (int k = 0; k < 32; k++) {
         int v = k >> 1;
-        u8 a = REPLY_TAIL[k];
-        if (a == seen[k])
+        u8 a = REPLY_TAIL[k], was = seen[k];
+        if (a == was)
             continue;
         seen[k] = a;
         if (OWNER(v) != t || MACHINE(v) != NEW_TYPE)
             continue;                       /* not the track's yet: the start stays pending */
-        if ((k & 1) == o && v != c && now - seen_at[k] > STILL)
-            chosen = c = v;
+        if ((k & 1) == o && v != c) {
+            int d = a > was ? a - was : was - a;
+            int restart = d > JUMP && (heard(v, MOVE_ID(o)) >> 8) < 4
+                && (heard(v, RATE_ID(o)) >> 8) <= JUMP_RATE;
+            if (restart || now - seen_at[k] > STILL)
+                chosen = c = v;
+        }
         seen_at[k] = now;
     }
 }
@@ -545,6 +568,16 @@ static void wave(void *c, void *view, int page)
          * nine) -- the frames being heard lie in there. A dense 50 % envelope read
          * as too heavy on the panel (owner, modview4b). */
         int from = clamp_pos(set_pos + sw->lo), to = clamp_pos(set_pos + sw->hi);
+        /* A fast MOVE's ends are known, not measured: shape 0 and 255, the DSP's own
+         * arithmetic, plus what the LFOs add now. Sampled at the redraw rate they
+         * wandered, and the two end waves changed for a fixed sweep (owner, m10b3g). */
+        int v = voice();
+        if (v >= 0 && (heard(v, RATE_ID(o)) >> 8) > 66 && heard(v, MPOS_ID(o)) != 0x3200) {
+            int lfo = moved - move_offset(v, o);
+            int e0 = move_offset_at(v, o, 0), e1 = move_offset_at(v, o, 255);
+            from = clamp_pos(set_pos + lfo + (e0 < e1 ? e0 : e1));
+            to = clamp_pos(set_pos + lfo + (e0 < e1 ? e1 : e0));
+        }
         curve(c, tbl, from);
         curve(c, tbl, to);
         for (int x = 0; x < WR_WIDTH; x += 3) {
@@ -607,7 +640,13 @@ void wr_page_draw(void *view, void *canvas)
     drawn_sig = signature();
 #endif
 
+#ifdef WR_PROBE
+    u32 w0 = DTCN0;
+#endif
     wave(canvas, view, page);
+#ifdef WR_PROBE
+    wr_probe.wave_ticks += DTCN0 - w0;
+#endif
 
     for (int i = 0; i < 8; i++) {
         int top = i < 4;
@@ -641,7 +680,10 @@ void wr_page_draw(void *view, void *canvas)
 #endif
 #ifdef WR_PROBE
     wr_probe.draws++;
-    wr_probe.ticks += DTCN0 - t0;
+    u32 took = DTCN0 - t0;
+    wr_probe.ticks += took;
     wr_probe.marker_ticks += tm;
+    if (took > wr_probe.max_draw)
+        wr_probe.max_draw = took;
 #endif
 }

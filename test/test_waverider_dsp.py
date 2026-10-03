@@ -281,14 +281,18 @@ def test_the_idle_stub_is_placed_and_returns_where_its_source_says():
     assert int(spec["load_sw"], 16) == dsp.IDLE_SW == 0x16F500
     be = bytes.fromhex(spec["object_parcels_be"])
     offs = spec["instruction_offsets"]
-    src = [ln.split("//", 1)[0].strip() for ln in (SHARC / "idle_load.asm").read_text().splitlines()]
+    text = (SHARC / "idle_load.asm").read_text()
+    # wr_idle's own instructions: the file goes on with wr_prst (M10b-3), tested below
+    text = text[:text.index(".wr_idle..end:")]
+    src = [ln.split("//", 1)[0].strip() for ln in text.splitlines()]
     src = [c for c in src if c and not c.startswith(".") and not c.endswith(":")]
     at = {c: dsp.IDLE_SW + o // 2 for c, o in zip(src, offs)}
     assert at["R8 = DM(0x2de100);"] == 0x16F57B                   # wr_idle_out.
     assert at["R8 = DM(0x2de10c);"] == 0x16F55A                   # wr_idle_after.
     assert be[offs[src.index("IF GE JUMP 0x16f53d;")]:][:6].hex() == "06220016f53d"
     assert at["R11 = DM(0x2de13c);"] == 0x16F53D                  # wr_idle_busy.
-    assert be[offs[-1]:].hex() == "063e00b88aab" and dsp.IDLE_RETURN_SW == 0xB88AAB
+    last = offs[len(src) - 1]
+    assert be[last:last + 6].hex() == "063e00b88aab" and dsp.IDLE_RETURN_SW == 0xB88AAB
     # its DM: 0x2de100..0x2de117, after the 16 reader blocks (to 0x2de100) and inside the state block
     assert dsp.READER_BLOCKS_DM + 16 * dsp.READER_BLOCK_BYTES == dsp.IDLE_STATE_DM
     assert dsp.IDLE_STATE_DM + dsp.IDLE_STATE_BYTES <= dsp.STATE_DM + dsp.STATE_BYTES == dsp.INC_TABLE_DM
@@ -384,3 +388,37 @@ def test_prst_on_restarts_the_oscillator_on_a_note():
     assert live.render_two(tables, seq, 32)[-32:] == fresh
     seq_off = [note(False, live.PRST_OFF)] * 3 + [note(True, live.PRST_OFF)]
     assert live.render_two(tables, seq_off, 32)[-32:] != fresh
+
+
+def _code(name: str) -> tuple[bytes, list[int], list[str]]:
+    """An assembled object's big-endian parcels, its instruction offsets and its
+    instructions, in source order."""
+    spec = json.loads((SHARC / f"{name}.json").read_text(encoding="utf-8"))
+    src = [ln.split("//", 1)[0].strip() for ln in (SHARC / f"{name}.asm").read_text().splitlines()]
+    src = [c for c in src if c and not c.startswith(".") and not c.endswith(":")]
+    return bytes.fromhex(spec["object_parcels_be"]), spec["instruction_offsets"], src
+
+
+def test_prst_moved_to_the_idle_span_and_returns_into_the_loop():
+    """M10b-3: wr_mod_b ends by jumping to wr_prst in idle_load.asm's span (the reply
+    report took PRST's room in the reader span); wr_prst's exits go to wr_t5v_modded,
+    and idle_load still fits its span with the build's 64 B of padding."""
+    be, offs, src = _code("idle_load")
+    start = src.index("R6 = PASS R6;")                       # wr_prst's first instruction
+    prst_sw = dsp.IDLE_SW + offs[start] // 2
+    rbe, roffs, rsrc = _code("reader_m9")
+    jump = rsrc.index(f"JUMP {prst_sw:#x};")
+    assert rbe[roffs[jump]:roffs[jump] + 6].hex() == f"063e00{prst_sw:06x}"
+    assert be[offs[-1]:offs[-1] + 6].hex() == "063e0016edf3"   # -> wr_t5v_modded
+    assert dsp.IDLE_DM + len(be) + 64 <= dsp.COUNT_DM
+    assert dsp.READER_DM + len(rbe) + 64 <= dsp.LOOP_DM
+
+
+def test_the_report_writes_the_live_reply_tail():
+    """M10b-3: the shape's high byte goes to byte 2t + osc of the reply's tail
+    (0x2c49d0 + 0xa9c), in the page DM 0x2c0450 selects."""
+    _, _, src = _code("reader_m9")
+    assert "R10 = DM(0x2c0450);" in src and "R12 = 0x2c546c;" in src
+    assert 0x2C49D0 + 0xA9C == 0x2C546C
+    assert "DM(0, I0) = R8;" in src
+    assert not any("XOR" in c or "NOT " in c for c in src)

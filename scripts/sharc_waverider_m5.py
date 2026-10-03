@@ -104,6 +104,8 @@ PRST = live.MOVE_SLOTS[0][5]                          # RSET, shared: the oscill
 TUN1_ZERO = 0x4000              # the frame word for 0 semitones: the sound's own (probe, 2026-09-30)
 FRAME_COPY = 0x25C48C           # where sw 0x1c2712 copies the frame image
 OSC2_BLOCKS = 0x900             # osc 2's reader blocks are osc 1's + 0x900 (M9b): 0x2de800 + 32t
+REPLY_PAGE_DM = 0x2C0450        # the reply ring's page word: the live reply is 0x2c49d0 + page << 12
+REPLY_TAIL_DM = 0x2C49D0 + 0xA9C   # the reply's tail, 32 bytes no stock code reads (M10b-3)
 
 
 # -- the machine ------------------------------------------------------------------------------
@@ -182,7 +184,8 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
     them at the loop's entry; the reader blocks the loop filled; loop entries."""
     state = init
     out = {"machine": [], "amp_in": [], "amp_out": [], "buffers": [], "buffer_bits": [], "t5_inputs": [],
-           "reader_blocks": [], "reader_blocks2": [], "loop_entries": 0, "setup": []}
+           "reader_blocks": [], "reader_blocks2": [], "loop_entries": 0, "setup": [],
+           "reply_tail": [], "move_phases": []}
     instr = wall = 0
     for b in range(blocks):
         tap = {}
@@ -231,6 +234,12 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
                                     or [m2.word(r.state, dsp.READER_BLOCKS_DM + 32 * t + 4 * k) or 0
                                         for k in range(6)] for t in tap.get("t5_inputs", {})}
             tap["reader_blocks2"] = dict(tap.get("reader_in2", {}))
+            # M10b-3: the reply tail the report writes (the live page) and the phases it
+            # was formed from, one u32 per voice and oscillator at 0x2de700 + 4 (2t + osc)
+            page = m2.word(r.state, REPLY_PAGE_DM) or 0
+            tap["reply_tail"] = [m2.word(r.state, REPLY_TAIL_DM + (page << 12) + 4 * k) or 0
+                                 for k in range(8)]
+            tap["move_phases"] = [m2.word(r.state, dsp.MOVE_PHASES_DM + 4 * k) or 0 for k in range(32)]
 
         def amp(r):
             if m2.word_reg(r, "R12") == tap["bufs"][0] and "amp_in" not in tap:
@@ -271,6 +280,8 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
         out["t5_inputs"].append(tap.get("t5_inputs", {}))
         out["reader_blocks"].append(tap.get("reader_blocks", {}))
         out["reader_blocks2"].append(tap.get("reader_blocks2", {}))
+        out["reply_tail"].append(tap.get("reply_tail"))
+        out["move_phases"].append(tap.get("move_phases"))
         instr += res[2]
         state = r
     return {**out, "ok": True, "blocks": blocks, "instructions": instr, "wall_s": round(wall, 1),
@@ -668,6 +679,27 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
         blocks_ = rb_all.get(k, [])
         return blocks_[b][0][1] if len(blocks_) > b and blocks_[b].get(0) else None
 
+    def tail_byte(run, b, t, osc):
+        """byte 2t + osc of the reply tail after block b, as the ColdFire reads it"""
+        words = run["reply_tail"][b] or [0] * 8
+        k = 2 * t + osc
+        w = words[k >> 2]
+        return (w >> (16 * ((k >> 1) & 1) + 8 - 8 * (k & 1))) & 0xFF
+
+    def tail_ok(name):
+        run = runs[name]
+        for b, (ins, phases) in enumerate(zip(run["t5_inputs"], run["move_phases"])):
+            if not phases:
+                return False
+            for t, i in (ins or {}).items():
+                for osc, key in ((0, "move1"), (1, "move2")):
+                    if osc and not (i["osc2"][3] & 0xFFFF):
+                        continue                    # osc 2 at LEV 0 is not run (M9b)
+                    want = live.move_shape(phases[2 * t + osc], i[key][3]) >> 8
+                    if tail_byte(run, b, t, osc) != want:
+                        return False
+        return True
+
     def pos_seq(k, allb):
         return [b[0][3] for b in allb.get(k, []) if b.get(0)]
 
@@ -764,6 +796,11 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             and pos_seq("move_free", rb_all)[2:] != pos_seq("move_pos", rb_all)[2:],
         "osc 2's MOVE runs on its own controls: MPOS2 -50 pulls osc 2's position down from the top (M10a)":
             bool(pos_seq2("move_osc2", rb2_all)) and min(pos_seq2("move_osc2", rb2_all)) < live.position(0x7800),
+        "the reply report: after every MOVE block, byte 2t + osc of the live reply tail is the "
+        "high byte of the shape at the phase the DSP stored, for every Waverider voice and "
+        "oscillator it ran; and the ramp's byte changes from block to block (M10b-3)":
+            all(tail_ok(name) for name in ("move_pos", "move_lev", "move_osc2"))
+            and len({tail_byte(runs["move_pos"], b, 0, 0) for b in range(len(runs["move_pos"]["reply_tail"]))}) >= 3,
         "PRST On (the default) restarts the oscillator at the note: osc 1's reader phase is 0 at "
         "block 1; Off keeps it running (not 0); Random gives neither (m10a3)":
             bool(phase_at("init_solo", 1)) is False and phase_at("init_solo", 1) == 0

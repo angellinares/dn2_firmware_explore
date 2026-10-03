@@ -137,7 +137,8 @@ layered copies on MIDI tracks into MIDI, so the pair is refused by hand
 `layer-midi1` (lowest chord note) -> `layer-midi2` (flood, freeze) ->
 `layer-midi4` (lowest chord note) -> `layer-midi5` (chords right, live hangs) ->
 `layer-midi6` (pass). `layer-midi7` = `layermidi` is the same code on the mod
-platform, checked in the emulator; not yet on the instrument.
+platform: checked in the emulator, then passed on the instrument on 2026-10-03,
+flashed with bootscreen and usbprobe.
 
 The two wrong turns (1 and 4) came from one assumption: that the voice trigger
 is called per note. The emulator harness at the time called the hook per chord
@@ -158,7 +159,15 @@ showing `layermidi`'s three.
 The emulator scripts need digikit with the DN2 fixes from this project's open
 PRs there (#19, #24) -- see `scripts/emu_make_snapshots.py`.
 
+## Arp on the source track
+
+On the instrument, 2026-10-03, with `layer-midi7`: with the source track's arp on,
+the layered MIDI track receives the **original notes, not the arp's steps**. Stock
+firmware does the same between audio tracks: an audio destination plays the
+source's notes unarpeggiated. Layering copies the note before the arp runs, so
+layermidi matches stock here. Sending the arp's output instead would change
+layering for audio tracks too, and is not what this mod does.
+
 ## Open
 
-- **Arp on the source track:** not tried.
 - **OS 1.12:** not built. The routines move; re-derive from `docs/version-anchors.md`.

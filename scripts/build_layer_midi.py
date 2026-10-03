@@ -92,7 +92,8 @@ note-off). MIDI ~8 ms ahead of the recorded audio -- the audio path's latency.
 
 ## Limits, known before the bench
 
-- **Arp on the source:** untested.
+- **Arp on the source:** the destination gets the original notes, not the arp's
+  steps -- as stock layering does between audio tracks (instrument, 2026-10-03).
 - Velocity and length defaults come from the source track's sound (the copy
   keeps its `+44`). The MIDI track's channel is the one used.
 - Not with `midiarp`: both turn layered copies on MIDI tracks into MIDI

@@ -118,7 +118,8 @@ PRST_OFF, PRST_ON, PRST_RANDOM = 0x0000, 0x0100, 0x0200   # RSET: the oscillator
 MOVE_RATE = tuple(round(2 ** 32 / 1500 * 2 ** (j / 10) / 32) for j in range(10))
 MPOS_SCALE = 0x7800 / (0x3200 * 0xFFFF)
 MLEV_SCALE, SHAPE_SCALE = 1 / 0x7F00, 1 / 0xFFFF
-ONE_SHOTS = 3                      # bands 0..2 stop at their end; 3 and 4 loop
+ONE_SHOTS = 3                      # shapes 0..2 stop at their end; 3 and 4 loop
+MOVE_SHAPES = ("Ramp Down", "Ramp Up", "Tri Once", "Tri Loop", "Square")   # MOVE 0..4 (M10b)
 
 
 def move_offsets() -> tuple[tuple[int, ...], ...]:
@@ -128,7 +129,7 @@ def move_offsets() -> tuple[tuple[int, ...], ...]:
 
 def move_band(move: int) -> int:
     b = (move & 0xFFFF) >> 8
-    return 0 if b < 26 else 1 if b < 52 else 2 if b < 77 else 3 if b < 103 else 4
+    return min(b, len(MOVE_SHAPES) - 1)
 
 
 def move_step(phase: int, rate: int, move: int, trig_mode: int, triggered: bool) -> int:

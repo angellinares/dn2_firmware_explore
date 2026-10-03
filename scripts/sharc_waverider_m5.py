@@ -631,13 +631,13 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             # looping triangle (rising over these blocks); the same ramp free-running (TRIG 0), which the trigger at
             # block 1 does not restart; osc 2's own modulator on its own controls
             "move_pos": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400,
-                                                           MOVE1: 0x1a00, RATE1: 0x6400}), blocks),
+                                                           MOVE1: 0x0100, RATE1: 0x6400}), blocks),
             "move_lev": run_blocks(init, frames(overrides={**solo, WAV1: 0x4000, MLEV1: 0x7f00,
-                                                           MOVE1: 0x5000, RATE1: 0x6400}), blocks),
+                                                           MOVE1: 0x0300, RATE1: 0x6400}), blocks),
             "move_free": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400, TRIG: 0x100,
-                                                            MOVE1: 0x1a00, RATE1: 0x6400}), blocks),
+                                                            MOVE1: 0x0100, RATE1: 0x6400}), blocks),
             "move_osc2": run_blocks(init, frames(overrides={LEV1: 0, WAV2: 0x7800, MPOS2: 0,
-                                                            MOVE2: 0x1a00, RATE2: 0x6400}), blocks),
+                                                            MOVE2: 0x0100, RATE2: 0x6400}), blocks),
             # PRST (m10a3): the oscillators at the note (block 1) -- Off keeps running, Random
             # starts from the cycle counter (no reference: its tap is not compared)
             "prst_off": run_blocks(init, frames(overrides={**solo, PRST: 0}), blocks),

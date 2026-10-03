@@ -345,6 +345,21 @@ GRID9_STOCK = bytes.fromhex("2f022f0a4ebaf3d6")
 # the stock 0x4011d2fe while a modulation marker on Waverider's page would move.
 POLL_SITE = 0x4002E464                  # jsr 0x4011d2f4 (isDirty), its argument the screen
 POLL_STOCK = bytes.fromhex("4eb94011d2f4")
+# M10b: a value's text and its limits. The header's value is made by 0x400c243c(id,
+# value), which calls the record's naming routine (table + 60 id + 0x34) with the value
+# and the buffer 0x4243298c: turning PRST, the routine it reached read RSET's
+# Off/On/Random (emulator, 2026-10-03, --access on the name table). Every clamp asks
+# 0x400dbff0(id) for {min, max, default} (the knob turn 0x40036adc, 14 callers).
+FMT_SITE = 0x400C2464                   # movea.l %a0@(0x34,%d0:l),%a0 ; jsr %a0@
+FMT_STOCK = bytes.fromhex("207008344e90")
+# ... and the parameter set's own value text (vtable +0x5c, 0x40036692), which the SYN
+# page's readouts reach: every value text in a trace of turns went that way (emulator,
+# 2026-10-03, --regs-at 0x400645cc: a1 = 0x40036692), ending in a tail call of the
+# record's routine at 0x40036708.
+VFMT_SITE = 0x40036708                  # movea.l %a2@(0x34),%a1 ; movem.l ; lea ; jmp %a1@
+VFMT_STOCK = bytes.fromhex("226a00344cd7041c4fef00104ed1")
+RANGE_SITE = 0x400DBFF0                 # move.l %d2,-(%sp) ; move.l %sp@(8),%d1
+RANGE_STOCK = bytes.fromhex("2f02222f0008")
 
 
 def _cave_free(content: bytes, cave: tuple[int, int]) -> None:
@@ -498,6 +513,17 @@ def compose(stock: bytes, assemble, compile_c) -> dict:
     _need(content, PAGE_SITE - 4, bytes.fromhex("2f027404"), "0x400c24ee's push of d2 and its bound")
     _need(content, POLL_SITE - 2, bytes.fromhex("2f0a"), "the UI loop pushes the screen")
     _need(content, POLL_SITE + 6, bytes.fromhex("588f4a00"), "... and tests the answer's low byte")
+    _need(content, FMT_SITE + 6, bytes.fromhex("508f"), "0x400c243c pops the value and the buffer")
+    edit(FMT_SITE, bytes.fromhex("4eb9") + _long(playout["wr_fmt"]),
+         "the header's value text: Waverider's names for MOVE and TRIG on a Waverider "
+         "track (M10b); every other value through its record's routine", FMT_STOCK)
+    edit(VFMT_SITE, bytes.fromhex("4ef9") + _long(playout["wr_vfmt"]) + bytes.fromhex("4e71") * 4,
+         "the parameter set's value text: Waverider's names for MOVE and TRIG on a Waverider "
+         "track (M10b); every other value through its record's routine", VFMT_STOCK)
+    _need(content, RANGE_SITE + 6, bytes.fromhex("0c8100000141"), "the limits getter's id bound")
+    edit(RANGE_SITE, bytes.fromhex("4eb9") + _long(playout["wr_range"]),
+         "the limits getter: MOVE 0..4 and TRIG 0..1 on a Waverider track (M10b); every "
+         "other parameter its record's", RANGE_STOCK)
     edit(POLL_SITE, bytes.fromhex("4eb9") + _long(csyms["wr_poll"]),
          "the UI loop's redraw test: wr_poll asks for a redraw while a modulation marker on "
          "Waverider's page would move, then answers as stock", POLL_STOCK)

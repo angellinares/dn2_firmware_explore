@@ -15,9 +15,10 @@
 //   MPOS  (OFS1 28 / OFS2 34; 0..100, 50 = none): POS += (MPOS - 50) x shape x
 //         0x7800 / (50 x 0xffff), in float32, truncated; not below 0.
 //   MLEV  (DRIF 38 / NLEV 43; 0..127, 0 = none): LEV x (1 - MLEV/127 x (1 - shape)).
-//   MOVE  (ATK 40 / BASE 44; 0..127): the shape, in five bands -- 0..25 ramp down,
-//         26..51 ramp up, 52..76 triangle once, 77..102 triangle looping, 103..127
-//         square looping. The three one-shots stop at their end (the phase saturates).
+//   MOVE  (ATK 40 / BASE 44; 0..4 since M10b, the ColdFire's range hook): the shape --
+//         0 ramp down, 1 ramp up, 2 triangle once, 3 triangle looping, 4 square
+//         looping; past 4 is 4. The three one-shots stop at their end (the phase
+//         saturates). (M10a read 0..127 in five bands of about 25.)
 //   TRIG  (TYPE 46, shared; 0..2, default 0): 0 restarts the phase on a note on this
 //         voice (the frame's note-trigger mask, offset 34, bit t); 1, 2 free-running.
 //   PRST  (RSET 39, shared; Off / On / Random, default On): the OSCILLATOR's phase on
@@ -140,26 +141,13 @@ wr_mod_divd.:
       R0 = DM(0, I0);                   // F[j]
       R0 = LSHIFT R0 BY R8;             // the increment
 
-      // MOVE: the shape's band, 0..4, in R11
+      // MOVE: the shape, 0..4, in R11 (M10b: the control steps shape by shape;
+      // a value past 4 -- an LFO's overshoot -- is the last shape)
       R1 = DM(0x2de7cc);
-      R1 = LSHIFT R1 BY -8;
-      R11 = R11 - R11;
-      R2 = 26;
-      COMP(R1, R2);
-      IF LT JUMP 0x16f7c0;              // -> wr_mod_shape.
-      R11 = 1;
-      R2 = 52;
-      COMP(R1, R2);
-      IF LT JUMP 0x16f7c0;              // -> wr_mod_shape.
-      R11 = 2;
-      R2 = 77;
-      COMP(R1, R2);
-      IF LT JUMP 0x16f7c0;              // -> wr_mod_shape.
-      R11 = 3;
-      R2 = 103;
-      COMP(R1, R2);
-      IF LT JUMP 0x16f7c0;              // -> wr_mod_shape.
-      R11 = 4;
+      R11 = LSHIFT R1 BY -8;
+      R2 = 4;
+      COMP(R11, R2);
+      IF GT R11 = PASS R2;
 .GLOBAL wr_mod_shape.;
 wr_mod_shape.:
       // step the phase; a one-shot (bands 0..2) stops at the end

@@ -38,6 +38,17 @@ typedef unsigned char u8;
 /* a parameter record: +8 min, +12 max, +16 default (TUN1: 0x400, 0x7c00, 0x4000) */
 #define RECORD(id) ((const int *)(0x401F7F94u + 60u * (id)))
 
+/* {min, max, default}: the record's, or Waverider's own for the controls it steps
+ * itself (M10b, `pages.RANGES`: MOVE 0..4, TRIG 0..1), as wr_range answers the
+ * firmware's limits getter on a Waverider track */
+static const int *limits(u32 id)
+{
+    for (int k = 0; k < WR_RANGES; k++)
+        if ((u32)wr_ranges[k][0] == id)
+            return &wr_ranges[k][1];
+    return RECORD(id) + 2;
+}
+
 /* the strips: four columns of 25 across x 22..121 */
 #define COL0  22
 #define COLW  25
@@ -293,8 +304,8 @@ static void column(void *c, int x, int y0, int y1)
  * that many segments with the current one filled. */
 static void indicator(void *c, int cx, int y, u32 id, int v)
 {
-    const int *r = RECORD(id);
-    int lo = r[2], hi = r[3], def = r[4], span = hi - lo;
+    const int *r = limits(id);
+    int lo = r[0], hi = r[1], def = r[2], span = hi - lo;
     if (span <= 0)
         return;
     if (v < lo) v = lo;
@@ -338,8 +349,8 @@ static void approx(void *c, int x, int y)
 /* x of value v on place cx's track, as `indicator` places it */
 static int track_x(u32 id, int cx, int v)
 {
-    const int *r = RECORD(id);
-    int lo = r[2], hi = r[3];
+    const int *r = limits(id);
+    int lo = r[0], hi = r[1];
     if (v < lo) v = lo;
     if (v > hi) v = hi;
     return cx - BAR_HALF + (v - lo) * (2 * BAR_HALF) / (hi - lo);
@@ -351,8 +362,8 @@ static int track_x(u32 id, int cx, int v)
 static void modulation(void *c, int cx, int y, int label_y, u32 id, int set, u32 now)
 {
     int k = which(id);
-    const int *r = RECORD(id);
-    if (k < 0 || r[3] <= r[2])
+    const int *r = limits(id);
+    if (k < 0 || r[1] <= r[0])
         return;
     int off = mod_offset(id);
     sweep(k, off, now);

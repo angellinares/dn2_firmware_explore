@@ -343,11 +343,11 @@ def test_move_rate_is_one_second_at_50_and_doubles_every_10():
     one = live.MOVE_RATE[0] << 5                                 # RATE 50
     assert abs(one * 1500 / 2 ** 32 - 1.0) < 1e-4
     assert (live.MOVE_RATE[0] << 6) == 2 * one                    # RATE 60: twice as fast
-    assert live.move_step(0, 0x3200, 0x1A00, 0, False) == one
+    assert live.move_step(0, 0x3200, 0x0100, 0, False) == one
 
 
 def test_move_shapes():
-    up, down, tri, sq = 0x1A00, 0x0000, 0x5000, 0x7F00
+    up, down, tri, sq = 0x0100, 0x0000, 0x0300, 0x0400
     assert live.move_shape(0, down) == 0xFFFF and live.move_shape(0xFFFFFFFF, down) == 0
     assert live.move_shape(0x40000000, up) == 0x4000
     assert live.move_shape(0x40000000, tri) == 0x8000 and live.move_shape(0xC0000000, tri) == 0x7FFE
@@ -356,15 +356,15 @@ def test_move_shapes():
 
 def test_one_shots_hold_their_end_and_loops_wrap():
     near = 0xFFFF0000
-    assert live.move_step(near, 0x6400, 0x1A00, 0, False) == 0xFFFFFFFF    # ramp up: holds
-    assert live.move_step(near, 0x6400, 0x5000, 0, False) < near           # looping triangle: wraps
+    assert live.move_step(near, 0x6400, 0x0100, 0, False) == 0xFFFFFFFF    # ramp up: holds
+    assert live.move_step(near, 0x6400, 0x0300, 0, False) < near           # looping triangle: wraps
 
 
 def test_trig_restarts_only_when_on():
     p = 0x12345678
-    assert live.move_step(p, 0, 0x5000, live.TRIG_RESTART, True) == live.MOVE_RATE[0]
-    assert live.move_step(p, 0, 0x5000, 0x100, True) == p + live.MOVE_RATE[0]    # TRIG 1: free
-    assert live.move_step(p, 0, 0x5000, live.TRIG_RESTART, False) == p + live.MOVE_RATE[0]
+    assert live.move_step(p, 0, 0x0300, live.TRIG_RESTART, True) == live.MOVE_RATE[0]
+    assert live.move_step(p, 0, 0x0300, 0x100, True) == p + live.MOVE_RATE[0]    # TRIG 1: free
+    assert live.move_step(p, 0, 0x0300, live.TRIG_RESTART, False) == p + live.MOVE_RATE[0]
 
 
 def test_mpos_and_mlev_full_depth():

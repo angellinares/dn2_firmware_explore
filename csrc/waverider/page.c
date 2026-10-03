@@ -150,13 +150,41 @@ static int voice(void)
     return chosen;
 }
 
+static int heard(int v, u32 id)
+{
+    return *(volatile unsigned short *)(VALUES + 34u + 202u * v + 2u * RECORD(id)[1]);
+}
+
+/* M10b-3: MOVE's share of POS. The SHARC moves POS itself (modulator.asm), so the value
+ * array never sees it; it reports each voice's shape instead, as byte 2v + osc of its
+ * reply's tail, the shape's high byte (reader_m9.asm, wr_mod_done). This applies the
+ * same arithmetic as wr_mod_b: POS += (MPOS - 0x3200) x shape x 0x7800 / (0x3200 x
+ * 0xffff), in 32 bits (the shape's low byte is its high byte again, within a step). */
+#define REPLY_TAIL ((volatile u8 *)(0x800053A4u + 0xA9Cu))
+#define MPOS_ID(o) ((o) ? 250u : 246u)          /* OFS1 / OFS2 (pages.PAGES) */
+#define RATE_ID(o) ((o) ? 244u : 240u)          /* PD1 / PD2 */
+
+static int move_offset(int v, int o)
+{
+    int mpos = heard(v, MPOS_ID(o)) - 0x3200;
+    if (!mpos)
+        return 0;
+    int s = REPLY_TAIL[2 * v + o];
+    return ((mpos * (s << 8 | s)) >> 16) * 0x7800 / 0x3200;
+}
+
 static int mod_offset(u32 id)
 {
     int v = voice(), slot = RECORD(id)[1];
     if (v < 0 || slot < 0 || slot > 99)
         return 0;
     u32 at = 34u + 202u * v + 2u * slot;
-    return *(volatile unsigned short *)(VALUES + at) - *(volatile unsigned short *)(TARGETS + at);
+    int off = *(volatile unsigned short *)(VALUES + at) - *(volatile unsigned short *)(TARGETS + at);
+    if (id == WR_POS_ID)
+        off += move_offset(v, 0);
+    else if (id == WR_POS2_ID)
+        off += move_offset(v, 1);
+    return off;
 }
 
 /* POS and TBL of osc 1 (page 1), then of osc 2 (page 2, M9b): page p's are 2p, 2p + 1 */
@@ -226,6 +254,15 @@ static int tier(u32 id)
         /* spd/16 x mult x bpm stays in 31 bits; Hz x 30720 x 256 / 16 = Hz x 491520 */
         int rate = (spd >> 4) * mult * beats;
         int k = rate > 491520 * (TIER_FPS / 2) ? 2 : rate > 491520 * (TIER_FPS / 8) ? 1 : 0;
+        if (k > fastest)
+            fastest = k;
+    }
+    /* MOVE on POS (M10b-3): one cycle a second at RATE 50, twice as fast every +10,
+     * so past 66 it is over 3 Hz and past 86 over 12 Hz -- the LFOs' two tiers */
+    int o = id == WR_POS2_ID ? 1 : 0;
+    if ((id == WR_POS_ID || id == WR_POS2_ID) && heard(t, MPOS_ID(o)) != 0x3200) {
+        int r = heard(t, RATE_ID(o)) >> 8;
+        int k = r > 86 ? 2 : r > 66 ? 1 : 0;
         if (k > fastest)
             fastest = k;
     }

@@ -178,7 +178,12 @@ static int move_offset(int v, int o)
  * in turn), and a one-shot stops at its end, so the voice chosen went still while
  * the next notes moved. A voice of the track whose report moves after standing still
  * for STILL has started a note: it becomes the one shown. A looping shape never
- * stands still, so with one the chosen voice is kept, as before. */
+ * stands still, so with one the chosen voice is kept, as before.
+ * A voice reads as Waverider (MACHINE) only once it has played a Waverider note, and
+ * on its first one that comes after its report has begun to move: the first lap of
+ * notes was missed until every voice had played once (instrument, m10b3d,
+ * 2026-10-03). So a voice that is not yet the track's keeps its last still time, and
+ * is taken as soon as it qualifies; with none chosen, the first that moves is taken. */
 #define STILL   (TICK_HZ / 2)
 static u8 seen[32] __attribute__((section(".data"))) = { 0 };
 static u32 seen_at[16] __attribute__((section(".data"))) = { 0 };
@@ -191,11 +196,12 @@ static void follow(u32 now)
         u8 a = REPLY_TAIL[2 * v], b = REPLY_TAIL[2 * v + 1];
         if (a == seen[2 * v] && b == seen[2 * v + 1])
             continue;
-        if (c >= 0 && v != c && now - seen_at[v] > STILL
-                && OWNER(v) == t && MACHINE(v) == NEW_TYPE)
-            chosen = c = v;
         seen[2 * v] = a;
         seen[2 * v + 1] = b;
+        if (OWNER(v) != t || MACHINE(v) != NEW_TYPE)
+            continue;                       /* not the track's yet: the start stays pending */
+        if (v != c && now - seen_at[v] > STILL)
+            chosen = c = v;
         seen_at[v] = now;
     }
 }

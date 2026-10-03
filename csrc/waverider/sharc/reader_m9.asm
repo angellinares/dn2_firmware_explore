@@ -228,47 +228,15 @@ wr_t5v_exit.:
 wr_mod_b.:
       DM(0, I1) = R15;
 
-      // the shape's value, 0..0xffff, in R1, from x = phase >> 16
-      R1 = LSHIFT R15 BY -16;
-      R11 = PASS R11;
-      IF EQ JUMP 0x16ec50;              // -> wr_mod_down.
-      R2 = 1;
-      COMP(R11, R2);
-      IF EQ JUMP 0x16ec55;              // -> wr_mod_have. (ramp up: x)
-      R2 = 4;
-      COMP(R11, R2);
-      IF EQ JUMP 0x16ec3f;              // -> wr_mod_sq.
-      R2 = 0x8000;                      // the triangles
-      COMP(R1, R2);
-      IF LT JUMP 0x16ec39;              // -> wr_mod_tri.
-      R2 = 0xffff;
-      R1 = R2 - R1;
-.GLOBAL wr_mod_tri.;
-wr_mod_tri.:
-      R1 = LSHIFT R1 BY 1;
-      JUMP 0x16ec55;                    // -> wr_mod_have.
-.GLOBAL wr_mod_sq.;
-wr_mod_sq.:
-      R2 = 0x8000;
-      COMP(R1, R2);
-      IF LT JUMP 0x16ec4a;              // -> wr_mod_sqhi.
-      R1 = R1 - R1;
-      JUMP 0x16ec55;                    // -> wr_mod_have.
-.GLOBAL wr_mod_sqhi.;
-wr_mod_sqhi.:
-      R1 = 0xffff;
-      JUMP 0x16ec55;                    // -> wr_mod_have.
-.GLOBAL wr_mod_down.;
-wr_mod_down.:
-      R2 = 0xffff;
-      R1 = R2 - R1;
+      // the shape's value, 0..0xffff, in R1: shapes.asm (M10b-4), which comes back
+      JUMP 0x16f800;                    // -> wr_shape. (shapes.asm)
 .GLOBAL wr_mod_have.;
 wr_mod_have.:
       // MPOS: POS += (MPOS - 0x3200) x shape x 0x7800 / (0x3200 x 0xffff)
       R0 = DM(0x2de7c4);
       R2 = 0x3200;
       R0 = R0 - R2;
-      IF EQ JUMP 0x16ec72;              // -> wr_mod_lev. (no depth: POS untouched)
+      IF EQ JUMP 0x16ec3a;              // -> wr_mod_lev. (no depth: POS untouched)
       R12 = R12 - R12;
       F0 = FLOAT R0 BY R12;
       F2 = FLOAT R1 BY R12;
@@ -279,14 +247,14 @@ wr_mod_have.:
       R12 = PASS R0;
       R4 = R12 + R4;
       R4 = PASS R4;
-      IF GE JUMP 0x16ec72;              // -> wr_mod_lev.
+      IF GE JUMP 0x16ec3a;              // -> wr_mod_lev.
       R4 = R4 - R4;
 .GLOBAL wr_mod_lev.;
 wr_mod_lev.:
       // MLEV: LEV x (1 - MLEV/0x7f00 x (1 - shape/0xffff))
       R0 = DM(0x2de7c8);
       R0 = PASS R0;
-      IF EQ JUMP 0x16ec95;              // -> wr_mod_done. (no depth: LEV untouched)
+      IF EQ JUMP 0x16ec5d;              // -> wr_mod_done. (no depth: LEV untouched)
       R12 = R12 - R12;
       F0 = FLOAT R0 BY R12;
       R12 = 0x38010204;                 // f32(1 / 0x7f00)

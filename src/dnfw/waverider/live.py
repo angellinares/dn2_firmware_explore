@@ -118,8 +118,19 @@ PRST_OFF, PRST_ON, PRST_RANDOM = 0x0000, 0x0100, 0x0200   # RSET: the oscillator
 MOVE_RATE = tuple(round(2 ** 32 / 1500 * 2 ** (j / 10) / 32) for j in range(10))
 MPOS_SCALE = 0x7800 / (0x3200 * 0xFFFF)
 MLEV_SCALE, SHAPE_SCALE = 1 / 0x7F00, 1 / 0xFFFF
-ONE_SHOTS = 3                      # shapes 0..2 stop at their end; 3 and 4 loop
-MOVE_SHAPES = ("Ramp Down", "Ramp Up", "Tri Once", "Tri Loop", "Square")   # MOVE 0..4 (M10b)
+# MOVE 0..10 (M10b-4), sorted by nature: the one-shots, which stop at their end; the
+# loops; the random shapes, which draw a value each cycle. (M10b-1 had five: Ramp Down,
+# Ramp Up, Tri Once, Tri Loop, Square; a sound saved with those reads the new order.)
+MOVE_SHAPES = ("Ramp Up", "Ramp Down", "Exp Up", "Exp Down", "Tri Once",
+               "Up Loop", "Down Loop", "Tri Loop", "Square",
+               "Rnd Hold", "Rnd Glide")
+ONE_SHOTS = 5                      # shapes 0..4 stop at their end; 5.. loop
+RND_HOLD, RND_GLIDE = 9, 10
+# the random shapes' generator (shapes.asm): x = rotate(x, 7) + RND_ADD, one state
+# for every voice, drawn on a cycle's wrap and on a note's restart; the value is x >> 16
+RND_ADD = 0x6D2B79F5
+EXP_SCALE = 2.0 ** -32             # Exp: x^3 / 2^32, in float32
+GLIDE_IN, GLIDE_TWO, GLIDE_THREE = 2.0 ** -16, 2.0, 3.0
 
 
 def move_offsets() -> tuple[tuple[int, ...], ...]:
@@ -132,9 +143,14 @@ def move_band(move: int) -> int:
     return min(b, len(MOVE_SHAPES) - 1)
 
 
+def move_restarts(trig_mode: int, triggered: bool) -> bool:
+    """TRIG Retrig and a note on this voice: the shape starts again."""
+    return not (trig_mode & 0xFFFF) >> 8 and triggered
+
+
 def move_step(phase: int, rate: int, move: int, trig_mode: int, triggered: bool) -> int:
     """The phase after one block, as the modulator steps it."""
-    if not (trig_mode & 0xFFFF) >> 8 and triggered:
+    if move_restarts(trig_mode, triggered):
         phase = 0
     r = min((rate & 0xFFFF) >> 8, 100)
     inc = (MOVE_RATE[r % 10] << (r // 10)) & 0xFFFFFFFF
@@ -144,15 +160,63 @@ def move_step(phase: int, rate: int, move: int, trig_mode: int, triggered: bool)
     return new
 
 
-def move_shape(phase: int, move: int) -> int:
-    """The shape's value, 0..0xffff, at this phase."""
+def rnd_next(x: int) -> int:
+    """The random shapes' generator step."""
+    return ((((x << 7) | (x >> 25)) & 0xFFFFFFFF) + RND_ADD) & 0xFFFFFFFF
+
+
+class MoveRandom:
+    """The random shapes' state: the generator, and per voice and oscillator the value
+    before (a) and the value now (b), 16 bits each; all zero at boot."""
+
+    def __init__(self) -> None:
+        self.x = 0
+        self.held: dict[int, list[int]] = {}
+
+    def values(self, key: int) -> list[int]:
+        return self.held.setdefault(key, [0, 0])
+
+    def step(self, key: int, start: int, new: int, move: int, restarted: bool) -> None:
+        """After one block of a random shape: a new value on a wrap or a restart."""
+        if move_band(move) < RND_HOLD:
+            return
+        if restarted or new < start:
+            ab = self.values(key)
+            self.x = rnd_next(self.x)
+            ab[0], ab[1] = ab[1], self.x >> 16
+
+
+def _exp(x: int) -> int:
+    f = _f32(float(x))
+    return trunc(_f32(_f32(_f32(f * f) * f) * _f32(EXP_SCALE)))
+
+
+def _glide(x: int, a: int, b: int) -> int:
+    """a to b over the cycle on a smoothstep, u^2 (3 - 2u), in float32."""
+    u = _f32(_f32(float(x)) * _f32(GLIDE_IN))
+    s = _f32(_f32(u * u) * _f32(GLIDE_THREE - _f32(u * GLIDE_TWO)))
+    fa = _f32(float(a))
+    return trunc(_f32(_f32(_f32(_f32(float(b)) - fa) * s) + fa))
+
+
+def move_shape(phase: int, move: int, held: tuple[int, int] = (0, 0)) -> int:
+    """The shape's value, 0..0xffff, at this phase; HELD is (a, b) for the random
+    shapes."""
     x, band = phase >> 16, move_band(move)
-    if band == 0:
-        return 0xFFFF - x
-    if band == 1:
+    if band in (0, 5):
         return x
-    if band == 4:
+    if band in (1, 6):
+        return 0xFFFF - x
+    if band == 2:
+        return _exp(x)
+    if band == 3:
+        return _exp(0xFFFF - x)
+    if band == 8:
         return 0xFFFF if x < 0x8000 else 0
+    if band == RND_HOLD:
+        return held[1]
+    if band == RND_GLIDE:
+        return _glide(x, *held)
     return (x if x < 0x8000 else 0xFFFF - x) << 1
 
 
@@ -232,6 +296,7 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
     out: list[float] = []
     phase = [0, 0]
     mphase = [0, 0]
+    rnd = MoveRandom()
     table_t = increment_table()
     for blk in blocks:
         note, oscs = blk[0], blk[1:3]
@@ -244,8 +309,12 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
                 continue
             if len(osc) > 4:                    # M10a: RATE, MPOS, MLEV, MOVE
                 rate, mpos, mlev, move = osc[4:8]
+                restarted = move_restarts(trig_mode, triggered)
+                start = 0 if restarted else mphase[k]
                 mphase[k] = move_step(mphase[k], rate, move, trig_mode, triggered)
-                wav, lev = move_apply(wav, lev, mpos, mlev, move_shape(mphase[k], move))
+                rnd.step(k, start, mphase[k], move, restarted)
+                wav, lev = move_apply(wav, lev, mpos, mlev,
+                                      move_shape(mphase[k], move, tuple(rnd.values(k))))
             if len(osc) > 4 and triggered and (prst & 0xFFFF) >> 8:
                 if (prst & 0xFFFF) >> 8 != 1:
                     raise ValueError("PRST Random starts from the DSP's cycle counter: no reference")

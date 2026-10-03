@@ -77,7 +77,17 @@ READER_BLOCKS_DM, READER_BLOCK_BYTES = 0x2DDF00, 32
 INC_TABLE_DM = 0x2DE200
 DIRECTORY_DM = 0x2DE600
 DIRECTORY_MAGIC = 0x57525431                 # 'WRT1'
-TABLES_DM = (0x2DF000, 0x2E3000)
+# The tables live in the SHARC's DDR, not in L1 (2026-10-03): 32 KB of L1's 43 KB free
+# tail is better spent on code and per-voice state, and tables loaded from the +Drive
+# at run time will live in DDR anyway. The stock image's last DDR byte is 0x8052fbe0
+# (`dnfw ldr`); no aligned data word and no code immediate names DDR above it (the
+# scan in docs/waverider-m10-move.md, "The tables in DDR"). DDR_REGION sits 720 KB
+# above it and below 0x80a00000, where the Digitakt II, on the same board, keeps its
+# sample pool. DDR has no 0x28 load alias: a block's target is the address itself.
+STOCK_DDR_END = 0x8052FBE0
+DDR_REGION = (0x80600000, 0x80A00000)
+TABLE_BYTES = 0x4000                         # 16 frames x 512 int16
+TABLES_DM = (0x80600000, 0x80604000)
 
 IDLE_DM = 0x2DEA00                           # idle_load.asm, in the gap before table 0
 IDLE_SW = IDLE_DM // 2                       # 0x16f500
@@ -177,8 +187,6 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("block_count.asm (wr_count)", COUNT_DM, obj["block_count"]),
         ("entry_mark.asm (wr_emark)", EMARK_DM, obj["entry_mark"]),
         ("modulator.asm (wr_mod)", MOD_DM, obj["modulator"]),
-        ("table 0: saw -> sine (testtable reversed)", TABLES_DM[0], reference.dsp_bytes(t[0])),
-        ("table 1: the overtone series (harmonics)", TABLES_DM[1], reference.dsp_bytes(t[1])),
     ]
     out = []
     for k, (what, at, payload) in enumerate(raw):
@@ -188,6 +196,12 @@ def spans() -> list[tuple[str, int, bytes]]:
         if "asm" in what and end - at - len(payload) < 64:
             raise DspError(f"{what} leaves fewer than 64 bytes of NOP padding")
         out.append((what, dm_to_load(at), payload + bytes(end - at - len(payload))))
+    for what, at, frames in (("table 0: saw -> sine (testtable reversed)", TABLES_DM[0], t[0]),
+                             ("table 1: the overtone series (harmonics)", TABLES_DM[1], t[1])):
+        payload = reference.dsp_bytes(frames)
+        if len(payload) != TABLE_BYTES:
+            raise DspError(f"{what} is {len(payload)} bytes, not {TABLE_BYTES}")
+        out.append((what, at, payload))                  # DDR: the target is the address
     return out
 
 
@@ -213,27 +227,34 @@ def _check_free(stock: bytes, span_list) -> None:
     blocks = [b for b in bootstream.walk(stock).blocks if b.count]
     for what, at, payload in span_list:
         lo, hi = at, at + len(payload)
-        if not (dm_to_load(REGION[0]) <= lo and hi <= dm_to_load(REGION[1])):
-            raise DspError(f"{what} at {lo:#x} leaves the block-1 region {REGION}")
+        in_l1 = dm_to_load(REGION[0]) <= lo and hi <= dm_to_load(REGION[1])
+        in_ddr = DDR_REGION[0] <= lo and hi <= DDR_REGION[1]
+        if not (in_l1 or in_ddr):
+            raise DspError(f"{what} at {lo:#x} leaves the block-1 region {REGION} "
+                           f"and the DDR region {DDR_REGION}")
         for b in blocks:
             if b.target < hi and lo < b.target + b.count:
                 raise DspError(f"{what} at {lo:#x}+{len(payload):#x} overlaps the stock "
                                f"block at {b.target:#x}+{b.count:#x}")
     if not (STOCK_BLOCK1_END <= REGION[0] and REGION[1] <= DM_CACHE_32K):
         raise DspError(f"the region {REGION} is not between block 1's last stock byte and a 32 KB DM cache")
+    if DDR_REGION[0] < STOCK_DDR_END:
+        raise DspError(f"the DDR region {DDR_REGION} starts below the stock image's last DDR byte")
     ordered = sorted((at, at + len(p), w) for w, at, p in span_list)
     for (a0, a1, w0), (b0, b1, w1) in zip(ordered, ordered[1:]):
         if b0 < a1:
             raise DspError(f"{w0} and {w1} overlap")
 
 
-IDLE_STATE_BYTES = 0x40                      # idle: saves, LAST, total, passes, BEFORE, AFTER; count: blocks, saves, MARK; MARK0
+IDLE_PAD_END = 0x2DF000
+IDLE_STATE_BYTES = 0x40                     # idle: saves, LAST, total, passes, BEFORE, AFTER; count: blocks, saves, MARK; MARK0
 
 
 def idle_spans() -> list[tuple[str, int, bytes]]:
-    """The idle stub's own blocks: its zeroed state, and its code padded to table 0."""
+    """The idle stub's own blocks: its zeroed state, and its code padded to 0x2df000
+    (where table 0 began until the tables moved to DDR, so this build is unchanged)."""
     code = objects()["idle_load"]
-    end = TABLES_DM[0]
+    end = IDLE_PAD_END
     if end - IDLE_DM - len(code) < 64:
         raise DspError("idle_load.asm leaves fewer than 64 bytes of NOP padding")
     return [("idle_load state (zeros)", dm_to_load(IDLE_STATE_DM), bytes(IDLE_STATE_BYTES)),

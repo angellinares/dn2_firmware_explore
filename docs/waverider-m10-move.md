@@ -144,5 +144,75 @@ Owner's follow-up: "Osc1 Move Shape" was too long for the header, so the long na
 Osc1 / Osc2 M.Shape, and likewise M.Rate, M.Pos and M.Level.
 
 Still to come in M10b:
-- page-3 options for a beat-synced RATE and for smoothing the square's edges;
-- the page's wave following MOVE.
+- page-3 options for a beat-synced RATE and for smoothing the square's edges (M10b-2);
+- ~~the page's wave following MOVE~~: M10b-3, below.
+
+# M10b-3: the page's wave follows MOVE
+
+MOVE runs on the SHARC (`modulator.asm`), so the value array the page reads never sees
+it. The page drew POS where the knob was while the sound moved.
+
+## The report
+
+After every MOVE block (`reader_m9.asm`, `wr_mod_done`) the DSP writes the shape's high
+byte for that voice and oscillator into the reply's last 32 bytes (`+0xa9c`), byte
+`2t + osc`, in the page `DM(0x2c0450)` selects. The DMA delivers those bytes every frame,
+and no stock ColdFire code reads them (zero on the instrument in every state measured).
+The ColdFire sees them at `0x80005e40`. To make room, M10a's PRST block moved unchanged
+into `idle_load.asm`'s span. The SHARC gate checks every byte against the phase the DSP
+stored, for every voice and oscillator it ran.
+
+The page (`csrc/waverider/page.c`, `move_offset`) applies the DSP's own arithmetic,
+`(MPOS - 0x3200) x shape x 0x7800 / (0x3200 x 0xffff)`, and adds it to the offset its
+markers already use. So the drawn wave, the position cursor, the swept range and the
+redraws all follow MOVE. A MOVE pushed past either end of the table holds the end frame
+in the sound, and the cursor pins at that end too (owner: keep it that way).
+
+## Which voice the page follows
+
+The page draws one voice. Getting that right took five rounds on the instrument:
+
+| build | owner's report | cause | fix |
+|---|---|---|---|
+| m10b3b | a one-shot animated once, then stood still on later trigs | each trig plays on the next voice (the probe: 15, 3, 5, 4, 8, 9, 10, 13 for one Ramp Up); the page kept its first voice, standing at its ramp's end | follow the voice whose report moves after standing still for 0.5 s (a new note) |
+| m10b3d | the first lap of trigs after arriving on a page did not animate | a voice reads as Waverider (its machine word) only once it has played a Waverider note, which comes after its report has begun to move | a voice that is not yet the track's keeps its start pending |
+| m10b3e | page 1 followed only every other note while osc 2 ran a Tri | either oscillator's byte counted, and osc 2's loop kept every voice from standing still | judge each voice by the shown oscillator's byte only |
+| m10b3f/g | irregular jumps with unison, 3-note chords and a Tri restarting on each note | a looping shape never stands still, so the page kept an old voice and jumped when the rotation retriggered it | a jump of more than 96 steps between polls is a restart, so a new note (not for Square, which jumps by design, nor past RATE 60, where motion could pass for a jump) |
+| m10b3g | the wave stepped visibly, even with the pattern stopped | the page redrew only when the offset moved by `QUANT`, half a pixel of the cursor but 37 % of a frame of the wave's morph: about 7 redraws a second for a slow Tri | POS redraws on a 1/16-frame step (`POS_QUANT`); the 24-a-second cap stays |
+
+At high RATE the page draws the band between the sweep's two ends. Those ends were
+sampled at the redraw rate and wandered, so the end waves changed for a fixed sweep. In
+m10b3h a fast MOVE's ends are computed: shape 0 and 255 through the same arithmetic,
+plus whatever the LFOs add at that moment.
+
+The emulator checks poke the report bytes and capture the screen
+(`out/m10b3_follow*.sh`): the rotation case, a voice's first note, and a note on the
+shown oscillator while the other one keeps moving. Each was run beside the previous
+build as a control that has to fail. The restart rule's own check did not discriminate
+(both builds switched on the first movement after a long still); the instrument settled
+it.
+
+## What the page costs
+
+`m10b3h-prof` (the page's draw timers, `WR_PROBE`), with Waverider on every track and all
+voices busy:
+
+| state | redraws | ColdFire CPU | longest audio interrupt (share of a frame) |
+|---|---|---|---|
+| stock FILTER page, hands off | about 1 every 2 s | 58.9 % | 112 % every other second |
+| our page, wave still | about 1 every 2 s | 58.8 % | the same |
+| our page, animating | 18 a second | 61-63 % | 112 % most seconds |
+| stock FILTER page, a knob turning | about 26 a second | 65 % | 112 % every second |
+
+- A draw takes 1.84 ms, 0.63 ms of it our wave; the page costs 3.3 % of the ColdFire
+  while animating.
+- **The 112 % peak is the stock UI's.** Every redraw of any page lengthens one audio
+  interrupt to just over a frame; our page matches the stock one at rest, and causes
+  fewer peaks than a stock page while a knob turns. No audio frame was lost in any state
+  (1,500 a second).
+
+## On the instrument
+
+`waverider-m10b3h-usbprobe` / `-prof` (2026-10-03), the owner: the wave follows MOVE on
+both pages, from the first trig after a reboot, on every note under unison and chords,
+with loops restarting cleanly and no hopping on Square.

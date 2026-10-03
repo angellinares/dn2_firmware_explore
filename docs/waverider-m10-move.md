@@ -95,3 +95,54 @@ play started relative to the grid, and it jumps between silent and full within o
 gone with TRIG 0. For M10b:
 - a beat-synced RATE, so edges land on steps;
 - a few milliseconds of smoothing on the square's edges.
+
+# M10b-1: MOVE as named shapes
+
+Owner, on M10a: a 0..127 control with no feedback was "quite hard to use and remember".
+So MOVE is now a stepped control of five shapes, and the header names the one chosen:
+0 Ramp Down, 1 Ramp Up, 2 Tri Once, 3 Tri Loop, 4 Square. TRIG reads Retrig (0, the
+default) or Free (1). The DSP reads MOVE as the shape's index, and any value past 4 is
+the last shape, so an LFO's overshoot and a sound saved under M10a (0..127) read as
+Square.
+
+**Only on a Waverider track.** The records stay WaveTone's: MOVE1 is its Noise Attack,
+MOVE2 the noise filter Base, and TRIG the Noise Type. So nothing in a record changes.
+Three hooks answer for these ids, and only when the active track is a Waverider (`is_wr`):
+
+| hook | site | what it answers |
+|---|---|---|
+| `wr_range` | the entry of `0x400dbff0(id)`, which every clamp asks for {min, max, default} (the knob turn `0x40036adc` among 14 callers) | MOVE 0..`0x400`, TRIG 0..`0x100` |
+| `wr_fmt` | `0x400c2464`, in `0x400c243c(id, value)`: the call of the record's naming routine (table + 60 id + `0x34`) | the shape name, Retrig / Free |
+| `wr_vfmt` | `0x40036708`, the tail call of the same routine in the parameter set's value text (vtable `+0x5c`, `0x40036692`) | the same |
+
+The two value-text paths were found in the emulator. Turning PRST, a read watch on
+RSET's Off / On / Random strings found the first. A register trace at the SYN page's
+readout found the second: every value text in that trace went through `0x40036692`.
+The page (`csrc/waverider/page.c`) draws MOVE and TRIG from the same limits
+(`pages.RANGES`, via `wr_gen.h`), as five and two segments.
+
+**Checked in the emulator.** Direct calls of both value-text routines give the
+following on a Waverider:
+- MOVE 3: "Tri Loop";
+- MOVE `0x7f00`: "Square";
+- MOVE2 1: "Ramp Up";
+- TRIG 1: "Free", TRIG 0: "Retrig".
+
+PRST and LEV print as stock. The same calls on another machine give the stock numbers.
+The knob routine clamps MOVE to our maximum, the same way it clamps PRST to its own. One
+shape per detent can't be shown in the emulator, which delivers a detent as a delta of
+4 steps to every stepped control.
+
+**On the instrument** (`waverider-m10b1b-usbprobe`, 2026-10-03), all five steps passed:
+- MOVE goes one shape per detent, with the shape named in the header;
+- the five shapes sound as in the reference WAV;
+- osc 2's MOVE behaves the same;
+- TRIG reads Retrig / Free;
+- WaveTone's Noise controls are unchanged.
+
+Owner's follow-up: "Osc1 Move Shape" was too long for the header, so the long names are
+Osc1 / Osc2 M.Shape.
+
+Still to come in M10b:
+- page-3 options for a beat-synced RATE and for smoothing the square's edges;
+- the page's wave following MOVE.

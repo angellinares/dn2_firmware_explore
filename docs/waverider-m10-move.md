@@ -258,3 +258,54 @@ track). `dn2sharc_load.py --idle`, 10 intervals each:
 - Decision (owner): keep the tables in DDR. The 32 KB of L1 goes to code and per-voice
   state (M10b-4's shapes first), and tables loaded from the +Drive will live in DDR
   anyway.
+
+# M10b-4: eleven shapes
+
+MOVE now has eleven shapes, sorted by nature (owner, 2026-10-03). Index 0..10 is what
+the DSP reads; any value past 10 is the last shape.
+
+| index | shape | value at x = phase >> 16 |
+|---|---|---|
+| 0 | Ramp Up | x |
+| 1 | Ramp Down | 0xffff - x |
+| 2 | Exp Up | x^3 / 2^32, float32 |
+| 3 | Exp Down | (0xffff - x)^3 / 2^32 |
+| 4 | Tri Once | up to 0xffff at half the cycle, then down |
+| 5 | Up Loop | as 0, looping |
+| 6 | Down Loop | as 1, looping |
+| 7 | Tri Loop | as 4, looping |
+| 8 | Square | 0xffff for the first half, then 0 |
+| 9 | Rnd Hold | b, held for the cycle |
+| 10 | Rnd Glide | a + (b - a) u^2 (3 - 2u), u = x / 2^16, float32 |
+
+Shapes 0..4 stop at their end (the phase saturates); 5..10 wrap.
+
+**The random shapes.** Each voice and oscillator keeps the value before (a) and the
+value now (b) at DM `0x2df400 + 8 (2t + osc)`. A new value is drawn on a cycle's wrap,
+and on a note when TRIG is Retrig: a takes b, and b the generator's high half. All the
+voices share one generator at `0x2df500`: x = rotate(x, 7) + 0x6d2b79f5. That's PRST
+Random's step without the cycle counter, so a render repeats and the gate can check it.
+In tests it doesn't repeat within 5M draws, its buckets are even, and its lag-1
+correlation is -0.01. The page's names avoid "&": no stock UI string uses it, so the
+font may not draw it.
+
+**Where it runs.** `csrc/waverider/sharc/shapes.asm`, at sw `0x16f800` (DM `0x2df000`),
+in the L1 the tables left when they moved to DDR. `wr_mod_b` hands it the phase and
+gets the value back at `wr_mod_have`. That shortened the reader's span by 112 bytes.
+`scripts/sharc_resolve_jumps.py` now resolves a jump into another of our sources from
+that source's own layout.
+
+**The page.** The restart rule leaves out every shape whose report jumps by itself: Up
+Loop and Down Loop at each wrap, Square, and Rnd Hold at each new value. Before, it
+left out only Square. Known: at a slow RATE, Rnd Hold stands still and then changes,
+which the stillness rule can take for a new note on another voice.
+
+**The gate.** `scripts/sharc_waverider_m5.py`, 43/43 on `waverider-m10b4`: Exp Up, Down
+Loop, Rnd Hold, Rnd Glide, and both random shapes at once. Every run is bit-exact
+against `live.render_two`, and the report check reads the DSP's random pair. Its first
+run failed on Rnd Glide alone: the code kept b in R0 and then wrote F0, which is the
+same register. A probe of just that case showed the DSP's position pinned at the top
+from block 0.
+
+Sounds saved with M10b-1's five shapes read the new order: old 0 Ramp Down reads Ramp
+Up, 1 Ramp Down, 2 Exp Up, 3 Exp Down and 4 Tri Once.

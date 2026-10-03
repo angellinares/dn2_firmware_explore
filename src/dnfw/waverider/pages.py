@@ -51,8 +51,10 @@ This module is pure: it builds the source; `coldfire.compose` assembles and plac
 
 from __future__ import annotations
 
+from .live import MOVE_SHAPES
+
 LOAD = 0x4670C000                 # RAM above BSS, clear of every declared range (docs/mods-compatibility.md)
-C_LOAD = LOAD + 0x500             # the C page renderer, after this assembly (0x400 until M10a)
+C_LOAD = LOAD + 0x600             # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b)
 C_END = 0x46710000                # the platform runtime starts here
 ACTIVE_TRACK = 0x42431A6C         # byte: the UI's active track, 0..15
 KIT_POINTER = 0x800052A0          # the live kit; sound t at + 52 + 1163 t
@@ -93,8 +95,19 @@ PAGES = (
     (249, 259, 0, 0, 0, 0, 0, 0),               # PRST (RSET: Off/On/Random), TRIG (TYPE: 0 restart)
 )
 
+# M10b: the controls whose steps and value text are Waverider's own. The records stay
+# WaveTone's (MOVE1 is its Noise Attack, MOVE2 the noise filter Base, TRIG the Noise
+# Type), so wr_range and wr_fmt answer for them on a Waverider track only: MOVE steps
+# shape by shape and the header names the shape; TRIG reads Retrig / Free.
+VALUE_NAMES = {253: MOVE_SHAPES, 257: MOVE_SHAPES, 259: ("Retrig", "Free")}
+# record id -> (min, max, default), as the firmware's limits getter returns them
+RANGES = {rid: (0, (len(names) - 1) << 8, 0) for rid, names in VALUE_NAMES.items()}
+FORMAT_S = 0x40219C2D             # "%s", the stock naming routines' format
+RECORD_TABLE = 0x401F7F94         # record id N at + 60 N (the naming routine at + 0x34)
+SPRINTF = 0x40000E82              # (buffer, format, ...), as the stock naming routines call it
+
 LABELS_OUT = ("is_wr", "wr_count", "wr_page", "wr_label", "wr_long", "wr_icons", "wr_grid", "wr_grid9",
-              "descriptors")
+              "wr_fmt", "wr_vfmt", "wr_range", "descriptors")
 GRID = 0x40017428                 # the stock grid: (view, canvas)
 GRID9 = 0x400175E4                # WaveTone's page-3 grid (page id 9): (view, canvas)
 ICON_PAGE = 7                     # the SYN page draw's id for WaveTone's OSC page
@@ -121,9 +134,12 @@ def c_header() -> str:
     """The control table, as C for `wr_gen.h`: per page, eight record ids and labels."""
     ids = ",\n".join(" {" + ", ".join(str(r) for r in page) + "}" for page in PAGES)
     names = ",\n".join(" {" + ", ".join(f'"{label(r)}"' for r in page) + "}" for page in PAGES)
+    ranges = ",\n".join(f" {{{rid}, {lo}, {hi}, {d}}}" for rid, (lo, hi, d) in RANGES.items())
     return (f"#define WR_PAGES {len(PAGES)}\n"
             f"static const unsigned short wr_ids[WR_PAGES][8] = {{\n{ids}\n}};\n"
-            f"static const char wr_labels[WR_PAGES][8][6] = {{\n{names}\n}};\n")
+            f"static const char wr_labels[WR_PAGES][8][6] = {{\n{names}\n}};\n"
+            f"#define WR_RANGES {len(RANGES)}\n"
+            f"static const int wr_ranges[WR_RANGES][4] = {{\n{ranges}\n}};\n")
 
 
 def source(page_draw: int) -> str:
@@ -139,6 +155,12 @@ def source(page_draw: int) -> str:
                      f"    .long {', '.join(str(e) for e in entries)}\n"
                      f"    .long {TAG}")
     page_data = "\n".join(pages)
+    fmt_table = "\n".join(f"    .long {60 * rid}, names_{rid}, {len(names)}" for rid, names in VALUE_NAMES.items())
+    name_lists = "\n".join(f"names_{rid}:\n" + "\n".join(f"    .long name_{rid}_{k}" for k in range(len(names)))
+                           for rid, names in VALUE_NAMES.items())
+    name_strings = "\n".join(f'name_{rid}_{k}: .asciz "{n}"' for rid, names in VALUE_NAMES.items()
+                             for k, n in enumerate(names))
+    range_table = "\n".join(f"    .long {rid}, {lo}, {hi}, {d}" for rid, (lo, hi, d) in RANGES.items())
     return f"""
 | -- is the active track a Waverider? d0 = 1 if so, else 0; every other register kept
 is_wr:
@@ -294,7 +316,97 @@ wr_grid9:
     addq.l  #8,%sp
     rts
 
+| -- the value text 0x400c243c(id, value), at 0x400c2464 (`movea.l %a0@(0x34,%d0:l),%a0 ;
+| jsr %a0@`, 6 bytes: call the record's naming routine with the value and the buffer),
+| now jsr here. a0 = the record table, d0 = 60 x id; the stack is the routine's own:
+| our return (0x400c246a), the value, the buffer. A Waverider track and a control in
+| fmt_table: its name for value >> 8 (the last name past the end), printed as the stock
+| routines print theirs. Anything else: the record's routine, by a tail jump.
+wr_fmt:
+    movea.l %a0@(0x34,%d0:l),%a1
+    move.l  %d0,%d1
+wr_fmt_named:
+    bsr.w   is_wr
+    tst.l   %d0
+    beq.s   9f
+    lea     fmt_table,%a0
+1:  move.l  %a0@+,%d0
+    beq.s   9f
+    cmp.l   %d0,%d1
+    beq.s   2f
+    addq.l  #8,%a0
+    bra.s   1b
+2:  movea.l %a0@+,%a1
+    move.l  %a0@,%d1
+    move.l  %sp@(4),%d0
+    asr.l   #8,%d0
+    bpl.s   3f
+    moveq   #0,%d0
+3:  cmp.l   %d1,%d0
+    blt.s   4f
+    move.l  %d1,%d0
+    subq.l  #1,%d0
+4:  lsl.l   #2,%d0
+    move.l  %a1@(0,%d0:l),%sp@-
+    pea     {FORMAT_S:#010x}
+    move.l  %sp@(16),%sp@-
+    jsr     {SPRINTF:#010x}
+    lea     %sp@(12),%sp
+    rts
+9:  movea.l %a1,%a0
+    jmp     %a1@
+
+| -- the parameter set's value text (vtable +0x5c, 0x40036692(this, id, value, buffer)),
+| the other way a value is named -- the SYN page's readouts and the header ask it.
+| With a naming routine on the record it ends at 0x40036708 (`movea.l %a2@(0x34),%a1 ;
+| movem.l (%sp),%d2-%d4/%a2 ; lea 16(%sp),%sp ; jmp %a1@`, 14 bytes: a tail call with
+| the value and the buffer), now `jmp` here. a2 = the record. Does the same, then
+| wr_fmt's own test: the routine's frame is wr_fmt's.
+wr_vfmt:
+    movea.l %a2@(0x34),%a1
+    move.l  %a2,%d1
+    subi.l  #{RECORD_TABLE:#010x},%d1
+    movem.l %sp@,%d2-%d4/%a2
+    lea     %sp@(16),%sp
+    bra.w   wr_fmt_named
+
+| -- the limits getter 0x400dbff0(id), a0 = where to put {{min, max, default}}: its first
+| two instructions (`move.l %d2,-(%sp) ; move.l %sp@(8),%d1`, 6 bytes) now jsr here.
+| Every clamp asks it -- the knob turn 0x40036adc among 14 callers. A Waverider track
+| and a control in range_table: ours, and straight back to the caller with d0 = a0, as
+| the getter returns. Anything else: the two displaced instructions, then on at
+| 0x400dbff6.
+wr_range:
+    move.l  %sp@(8),%d1
+    bsr.w   is_wr
+    tst.l   %d0
+    beq.s   9f
+    lea     range_table,%a1
+1:  move.l  %a1@+,%d0
+    beq.s   9f
+    cmp.l   %d0,%d1
+    beq.s   2f
+    lea     %a1@(12),%a1
+    bra.s   1b
+2:  move.l  %a1@+,%a0@
+    move.l  %a1@+,%a0@(4)
+    move.l  %a1@,%a0@(8)
+    move.l  %a0,%d0
+    addq.l  #4,%sp
+    rts
+9:  movea.l %sp@+,%a1
+    move.l  %d2,%sp@-
+    move.l  %sp@(8),%d1
+    jmp     %a1@
+
     .align 2
+fmt_table:
+{fmt_table}
+    .long 0
+range_table:
+{range_table}
+    .long 0
+{name_lists}
 labels:
 {table}
     .long 0
@@ -307,5 +419,6 @@ descriptors:
 {chr(10).join(_rep(f"title_{k}", t) for k, t in enumerate(TITLES))}
 {strings}
 {long_strings}
+{name_strings}
     .align 2
 """

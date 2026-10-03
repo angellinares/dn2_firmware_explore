@@ -122,6 +122,11 @@ static int osc_of(int page)
 #define SET_DIRTY ((void (*)(void *))0x4011D2FEu)               /* screen: redraw */
 
 #define QUANT   0x300           /* an offset step worth a redraw: about half a pixel */
+/* POS's own step: 1/16 of a table frame (a frame is 0x800). QUANT is half a pixel of
+ * the cursor but 37 % of a frame of the wave's morph, so a slow MOVE on POS redrew
+ * about 7 times a second, the wave stepping visibly (instrument, m10b3f,
+ * 2026-10-03: oscillator 2's Tri, pattern stopped). FRAME still caps the rate. */
+#define POS_QUANT 0x80
 #define HOLD    (2 * TICK_HZ)   /* a range edge holds 2 s before it relaxes */
 #define SHOWN   (TICK_HZ * 6 / 5)   /* 1.2 s: the stock UI redraws a shown page once a second */
 #define FRAME   5               /* ticks: at most 24 redraws a second, about a turn's own rate */
@@ -312,7 +317,8 @@ static int signature(void)
 {
     int sig = 0;
     for (int k = 2 * osc_of(shown_page); k < 2 * osc_of(shown_page) + 2; k++)
-        sig = sig * 131 + (tier(marked[k]) < 2 ? mod_offset(marked[k]) / QUANT : 0);
+        sig = sig * 131 + (tier(marked[k]) < 2
+                           ? mod_offset(marked[k]) / (k & 1 ? QUANT : POS_QUANT) : 0);
     return sig;
 }
 

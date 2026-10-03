@@ -85,8 +85,8 @@ LABELS = {238: "TUNE", 241: "LEV", 239: "POS", 247: "TBL",
 LONG_NAMES = {238: "Osc1 Tune", 239: "Osc1 Position", 247: "Osc1 Table",
               242: "Osc2 Detune", 243: "Osc2 Position", 251: "Osc2 Table",
               240: "Osc1 Move Rate", 246: "Osc1 Move Pos", 252: "Osc1 Move Level",
-              253: "Osc1 Move Shape", 244: "Osc2 Move Rate", 250: "Osc2 Move Pos",
-              256: "Osc2 Move Level", 257: "Osc2 Move Shape", 259: "Move Retrig"}
+              253: "Osc1 M.Shape", 244: "Osc2 Move Rate", 250: "Osc2 Move Pos",
+              256: "Osc2 Move Level", 257: "Osc2 M.Shape", 259: "Move Retrig"}
 
 # the two pages, encoders A..H; 0 is an empty place
 PAGES = (

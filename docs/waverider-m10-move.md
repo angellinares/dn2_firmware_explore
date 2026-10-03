@@ -146,3 +146,45 @@ Osc1 / Osc2 M.Shape, and likewise M.Rate, M.Pos and M.Level.
 Still to come in M10b:
 - page-3 options for a beat-synced RATE and for smoothing the square's edges;
 - the page's wave following MOVE.
+
+# The tables in DDR
+
+The two wavetables (32 KB: 16 frames x 512 int16 each) moved from L1 block 1's free
+tail (`0x2df000`, `0x2e3000`) to the SHARC's DDR (`0x80600000`, `0x80604000`). L1 is the
+fast memory; its free tail was about 43 KB in all, and the modulator's 512-byte slot
+before table 0 was full. Now L1 holds only code and state, and the modulator's span runs
+to the region's end (about 33 KB). The reader is unchanged: the loop takes each table's
+address from the directory (`machine9_live.asm`, `0x2de608`), so only `dsp.py` moved.
+
+**Why that DDR is free.**
+- The stock stream's last DDR byte is `0x8052fbe0` (`dnfw ldr`).
+- No aligned data word in L1, L2 or DDR names DDR above it. The 24 hits are pairs of
+  negative int16 samples, and the control finds 36 words naming the image's own DDR.
+- No code immediate does either, in selmap's disassembly of every code region. The
+  control finds 73 naming the image's own DDR; the few hits are absolute operands of
+  data read as code.
+- `0x80600000` sits 720 KB above the image and below `0x80a00000`, where the Digitakt II,
+  on the same board, keeps its 32 MiB sample pool. So the memory exists, and a ported
+  pool would not collide.
+- DDR has no `0x28` load alias, so a table's boot block targets its own address.
+
+Limit, as for the block-1 region: this cannot exclude an address computed at run time.
+The instrument is the check.
+
+**On the instrument** (2026-10-03, A: `m10b3h-prof`, tables in L1; B:
+`waverider-ddr-usbprobe`, identical but for the table addresses; Waverider on every
+track). `dn2sharc_load.py --idle`, 10 intervals each:
+
+| state | A: L1 | B: DDR | change |
+|---|---|---|---|
+| heavy chords, all voices | 51.8 % (C 48.3) | 52.5 % (C 49.0) | +0.7 |
+| one note | 51.6 % (held) | 52.7 % held, 52.3 % sequenced | +0.7 to +1.1 |
+| silent | 51.6 % | 52.3 % (C 48.9) | +0.7 |
+
+- It sounds the same (owner).
+- DDR costs about 0.7 points of the SHARC, about 4,700 cycles a frame, nearly constant,
+  and all of it in part C, where the reader runs. With Waverider on every track the
+  reader runs each block whether or not a note sounds, so silence still reads the tables.
+- Decision (owner): keep the tables in DDR. The 32 KB of L1 goes to code and per-voice
+  state (M10b-4's shapes first), and tables loaded from the +Drive will live in DDR
+  anyway.

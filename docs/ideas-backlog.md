@@ -3985,3 +3985,57 @@ Both routes are to be explored when the time comes.
 - **On unipolar:** worth checking which stock waves are unipolar on the DN2 and
   whether DEP's sign already covers part of it. A bipolar/unipolar switch could be
   a third such parameter.
+
+## 34. A stress-test harness, once the Rust emulator boots DN2 (waiting on digikit)
+
+**Why.** digikit's author, on 2026-10-03, made the case for a proper test harness and
+stress testing before piling patches onto the firmware. Without one, a set of mods that
+each pass alone can start crashing in odd edge cases: race conditions and timing. The
+owner wants this suite set up as soon as the emulator can carry it. Our own record shows
+why. Every fault that reached the instrument, or nearly did, was about timing or load,
+never about a single call in isolation:
+- `lfo4-bridge` faulted on the instrument on an instruction only the ColdFire refuses.
+  The snapshot harnesses never ran the loader from reset.
+- midiarp's arp hook popped an empty MIDI record pool and corrupted low memory. A flood
+  of 68 arp steps on 64 records reproduces it (PR #179; layermidi's bench build froze the
+  instrument the same way).
+- The save-while-playing bisect (`fix/save-while-playing-bisect`, local) is a timing
+  question by nature.
+- Waverider's free-running MOVE clicked only when its edge landed partway through a trig,
+  which depended on when play started.
+
+**Waiting on.** The Rust emulators (digikit `work/sharc-emulator`, 2026-09-30) can't boot
+DN2 1.11 from reset yet: the P5 machine isn't built. Today's Unicorn path can't run the
+frame ISR, the sequencer or the SHARC link together, so it can't play anything. Start
+when P5 boots DN2 with the audio ISR and the SHARC running.
+
+**What it would run, every build.** Ordered so the cheap checks come first:
+1. **Boot from reset**: every mod alone and every pair `dnfw mods matrix` says
+   combines. We do this by hand per build today (`scripts/emu_boot_check.py`).
+2. **Soak**: minutes of a real pattern playing on every machine and every mod's track,
+   checking these invariants each frame:
+   - no fault;
+   - every frame delivered on time;
+   - SHARC cycles per frame inside the budget (`docs/sharc-load.md`);
+   - stack high-water marks under each task's size;
+   - no write outside RAM the build declares (`dnfw.mods.ramcheck`, checked at run
+     time instead of statically);
+   - pool low-water marks: the MIDI records at `0x4460e4b8`, the engine's note records.
+3. **Storms**, each held for a while:
+   - MIDI in: CC floods, note floods, clock jitter, SysEx with the probe polling;
+   - encoder and button floods: turns while p-locking, page flips while playing;
+   - every arp at 1/32 on every track;
+   - layering onto every track.
+4. **Edges while playing**: pattern and kit load, SAVE PROJECT, track and page copy and
+   paste, machine changes, tempo changes, start and stop, all at random moments, each
+   repeated with different interrupt timing.
+5. **Differential**: the same input played on stock and on the modded image. The
+   frames, MIDI out and audio must match except where the mod means them to differ. That
+   is the check that catches a mod quietly changing stock behaviour.
+
+**Shape.** Seeded and repeatable: a failure gives the seed and the instruction count,
+and replays exactly. A short subset runs on every build (about 10 minutes); the full soak
+runs before a PR. The suite only gives a pass when each check has first been shown to
+fail on a build made broken on purpose, as the boot check is calibrated against its
+stock control. Built on `scripts/emulib/` and the existing harnesses; and anything about
+digikit itself that we learn goes back there as a PR.

@@ -375,9 +375,41 @@ static void sweep(int k, int off, u32 now)
  * while Waverider's page is on screen (it drew in the last SHOWN) and a marker
  * would move, ask the stock redraw (0x4011d2fe), at most every FRAME. Off the
  * page, or with nothing modulated, it costs a compare and the stock call. */
+#ifdef WR_DRIVEREAD
+/* A measurement build only (scripts/build_driveread_probe.py): the first step of loading
+ * tables from the +Drive. Once, 5 s after boot, from the UI task (whose interrupts are
+ * live, as the driver needs), read three sectors with the stock block driver
+ * 0x4012c59a(sector, bytes, buf) and keep each one's return and first 32 bytes for the
+ * probe's PEEK: sector 0 (the +Drive header, BE EF BA CE: the control), project slot 0
+ * (0x58000) and our region's base (0x600000). Reads only. */
+struct wr_drive { u32 magic, state, when, rc[3]; u8 head[3][32]; };
+volatile struct wr_drive wr_drive __attribute__((section(".data"))) = { 0x57524452u, 0, 0, { 0, 0, 0 }, { { 0 } } };
+static u8 drive_buf[512] __attribute__((section(".data"), aligned(16))) = { 0 };
+
+static void drive_read_once(u32 now)
+{
+    static const u32 sectors[3] = { 0, 0x58000, 0x600000 };
+    if (wr_drive.state || now < 5 * TICK_HZ)
+        return;
+    wr_drive.state = 1;                                   /* started: a hang shows as 1 */
+    wr_drive.when = now;
+    for (int k = 0; k < 3; k++) {
+        for (int i = 0; i < 512; i++)
+            drive_buf[i] = 0xEE;                          /* a read that writes nothing shows */
+        wr_drive.rc[k] = ((int (*)(u32, u32, void *))0x4012C59Au)(sectors[k], 512, drive_buf);
+        for (int i = 0; i < 32; i++)
+            wr_drive.head[k][i] = drive_buf[i];
+    }
+    wr_drive.state = 2;                                   /* done */
+}
+#endif
+
 int wr_poll(void *screen)
 {
     u32 now = TICKS;
+#ifdef WR_DRIVEREAD
+    drive_read_once(now);
+#endif
     follow(now, osc_of(shown_page));
     if (now - drawn_at < SHOWN && now - asked_at >= FRAME
             && (settling || signature() != drawn_sig)) {

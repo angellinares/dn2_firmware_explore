@@ -109,26 +109,35 @@ branches to `0x40026cd6`):
 `layermidi` (`src/dnfw/mods/layermidi.py`, built by `scripts/build_layer_midi.py`):
 
 1. **`0x40026980`** (`jsr`; the displaced `mvz.w 0x8000537e,%d1` runs last in
-   the cave): for a layered copy (`-36(%fp)` `+56` bit 17) on a MIDI track
+   the code): for a layered copy (`-36(%fp)` `+56` bit 17) on a MIDI track
    (`0x8000537c`, the kit's `+0x5cda` mirrored per frame), a note-on on the
    batch, from the entry `%a2`, with the time the ISR gives the voice trigger
    (`0x400268de`). INF (127) is sent as 126, so a note whose release never comes
    still ends; a release cancels that.
 2. **`0x40026d32`** (`jmp`; its two instructions push onto the ISR's stack, so
-   the cave runs them and jumps back to `0x40026d38`): for the same, a kind-0
+   the code runs them and jumps back to `0x40026d38`): for the same, a kind-0
    record.
 3. A record is taken only while two are free.
 
 Every other register is preserved, and every other record and track is stock.
-Its cave is midiarp's: midiarp's voice-trigger hook catches layered copies on
-MIDI tracks too, from the inline fields, so the two must not share an image.
+
+The code runs from the mod platform: a 324-byte `CODE` chunk that the platform
+loader copies to `0x467d8000` at start-up (`layer-midi7`, 2026-10-03). Up to
+`layer-midi6` it sat in the cave at `0x402d0664`, which was midiarp's and
+usbprobe's too; that cave now stays stock, and the two hooks are the only edits
+in the image. The code is the same: every reference out of it is absolute.
+
+It is not combined with midiarp. The bytes no longer collide, but both turn
+layered copies on MIDI tracks into MIDI, so the pair is refused by hand
+(`matrix.REFUSED`) until the maintainer re-checks it.
 
 ## Bench history
 
 `docs/flashing.md`, 2026-10-01..02: stock (silent) -> midiarp (random notes) ->
 `layer-midi1` (lowest chord note) -> `layer-midi2` (flood, freeze) ->
 `layer-midi4` (lowest chord note) -> `layer-midi5` (chords right, live hangs) ->
-`layer-midi6` = `layermidi` (pass).
+`layer-midi6` (pass). `layer-midi7` = `layermidi` is the same code on the mod
+platform, checked in the emulator; not yet on the instrument.
 
 The two wrong turns (1 and 4) came from one assumption: that the voice trigger
 is called per note. The emulator harness at the time called the hook per chord
@@ -139,7 +148,7 @@ showing `layermidi`'s three.
 ## Running the evidence
 
     python scripts/build_layer_midi.py            # the image, with every guard asserted
-    dnfw extract 00_Resources/02_Builds/layer-midi6_DN2_1.11.syx -o out/layer-midi6
+    dnfw extract 00_Resources/02_Builds/layer-midi7_DN2_1.11.syx -o out/layer-midi7
     python scripts/gen_layermidi_code.py          # the shipped JSON and JS
     pytest test/test_layermidi_mod.py
     <digikit>/.venv/bin/python -u scripts/emu_make_snapshots.py   # once: boot400M, ui1200M

@@ -135,7 +135,8 @@ def test_declared_bytes_are_disjoint_from_every_other_mod(dn2_111):
     from dnfw.cli.mods import REGISTRY, _apply_default
     named = [(mid, list(mod.extents(dn2_111)) + list(getattr(mod, "ram", list)()))
              for mid, mod in REGISTRY.items() if mid in (midiarp.ID, "usbprobe", "arpplocks", "arpmodes",
-                                                         "lfowaves", "bootscreen", "fxmod", "moddest")]
+                                                         "lfowaves", "bootscreen", "fxmod", "moddest",
+                                                         "layermidi")]
     bad = [c for c in check_compatible(named) if "midiarp" in c]
     assert bad == []
 

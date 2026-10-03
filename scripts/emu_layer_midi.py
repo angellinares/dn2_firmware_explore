@@ -40,7 +40,7 @@ from emulib import paths  # noqa: E402
 
 paths.use_digikit(tools=True)
 
-from emulib import image                       # noqa: E402
+from emulib import code_chunks, image          # noqa: E402
 from emulib.machine import Machine             # noqa: E402
 from unicorn import UC_HOOK_CODE               # noqa: E402
 from unicorn.m68k_const import (UC_M68K_REG_A2, UC_M68K_REG_A5,  # noqa: E402
@@ -48,7 +48,7 @@ from unicorn.m68k_const import (UC_M68K_REG_A2, UC_M68K_REG_A5,  # noqa: E402
                                 UC_M68K_REG_D1, UC_M68K_REG_D3, UC_M68K_REG_D5,
                                 UC_M68K_REG_D7, UC_M68K_REG_PC)
 
-HOOK = 0x402D0664
+HOOK = 0x402D0664               # the note hook: layer-midi1..6's cave; from the build otherwise
 NOTE_SITE = 0x40026980
 LOOP = 0x4002695A
 LOOP_EXIT = 0x40026E50
@@ -178,7 +178,7 @@ class Rig:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("build", nargs="?", default=str(paths.ROOT / "out/layer-midi6"))
+    p.add_argument("build", nargs="?", default=str(paths.ROOT / "out/layer-midi7"))
     p.add_argument("--post", action="store_true")
     p.add_argument("--control", action="store_true")
     p.add_argument("--trigger-only", action="store_true",
@@ -190,7 +190,17 @@ def main() -> int:
     runs = image.differences(stock, built)
     m = Machine()
     m.apply(runs)
-    print(f"  installed {len(runs)} run(s) from {args.build}")
+    # A snapshot never runs the platform loader: put each CODE chunk where it
+    # would have copied it.
+    chunks = code_chunks(built) if len(built) > len(stock) else []
+    for c in chunks:
+        m.load_code_chunk(c)
+    m.flush()
+    print(f"  installed {len(runs)} run(s) and {len(chunks)} CODE chunk(s) from {args.build}")
+    global HOOK
+    site = m.read(NOTE_SITE, 6)
+    if site[:2] == bytes.fromhex("4eb9"):
+        HOOK = struct.unpack(">I", site[2:])[0]
     if args.control:
         control(m)
         return 0
@@ -207,8 +217,11 @@ def main() -> int:
         print(f"  from the voice-trigger call: stopped at {pc:#x}; "
               f"MIDI notes on the batch: {[n for _, n, _, _ in notes]}")
         return 0
-    check("the hook site 0x40026980 now calls the cave",
+    check(f"the hook site 0x40026980 now calls the note hook ({HOOK:#x})",
           m.read(NOTE_SITE, 6) == bytes.fromhex("4eb9") + be(HOOK))
+    if chunks:
+        check("the note hook is inside a loaded CODE chunk",
+              any(load <= HOOK < load + length for load, length, *_ in chunks))
     check("the voice-trigger call 0x400268f8 is stock",
           m.read(0x400268F8, 6) == bytes.fromhex("4eb9400db524"))
 

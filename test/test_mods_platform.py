@@ -30,10 +30,11 @@ def stock(firmware):
 
 def _apply(firmware, order):
     from dnfw.cli.mods import _staged
-    from dnfw.mods import bootscreen, lfo4, lfowaves
+    from dnfw.mods import arpplocks, bootscreen, layermidi, lfo4, lfowaves, usbprobe
     mark = [bootscreen.image_from_pixels({(x, x // 2) for x in range(128)})]
     run = {"lfo4": lfo4.apply, "lfowaves": lfowaves.apply,
-           "bootscreen": lambda f: bootscreen.apply(f, mark)}
+           "bootscreen": lambda f: bootscreen.apply(f, mark),
+           "layermidi": layermidi.apply, "usbprobe": usbprobe.apply, "arpplocks": arpplocks.apply}
     payloads = {}
     for mid in order:
         payloads.update(run[mid](_staged(firmware, payloads)).payloads)
@@ -148,6 +149,25 @@ def test_changes_nothing_outside_the_declared_extents(firmware, stock, order):
     from dnfw.mods import bootscreen, lfo4, lfowaves
     mods = {"lfo4": lfo4, "lfowaves": lfowaves, "bootscreen": bootscreen}
     out = _apply(firmware, order)
+    allowed = [x for m in order for x in mods[m].extents(firmware)]
+    for i, (a, b) in enumerate(zip(stock, out)):
+        if a != b:
+            assert any(x.start <= i < x.end for x in allowed), hex(BASE + i)
+
+
+@pytest.mark.parametrize("order", [["layermidi"], ["usbprobe", "layermidi"], ["arpplocks", "layermidi"],
+                                   ["layermidi", "bootscreen"]])
+def test_layermidis_chunk_lands_at_its_address(firmware, stock, order):
+    """layermidi on the platform, alone and with another platform mod either side:
+    its CODE chunk loads at 0x467d8000, and the stock span outside every declared
+    extent is untouched."""
+    from dnfw.mods import arpplocks, bootscreen, layermidi, usbprobe
+    mods = {"layermidi": layermidi, "usbprobe": usbprobe, "arpplocks": arpplocks, "bootscreen": bootscreen}
+    out = _apply(firmware, order)
+    assert platform.installed(out)
+    _, chunks = platform.split(out)
+    code = [area.CodeChunk.unpack(d) for c, d in chunks if c == area.CODE]
+    assert [c.image for c in code if c.load == layermidi.CODE_VA] == [layermidi.BLOB]
     allowed = [x for m in order for x in mods[m].extents(firmware)]
     for i, (a, b) in enumerate(zip(stock, out)):
         if a != b:

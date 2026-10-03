@@ -16,7 +16,7 @@ async function ready(firmware) {
   state.firmware = firmware;
   const found = extents();
   const bytes = found.reduce((n, e) => n + e.length, 0);
-  $("writes").textContent = `${found.length} places in section 3, ${bytes} bytes; nothing appended`;
+  $("writes").textContent = `${found.length} places in section 3, ${bytes} bytes, with the code in the platform's appended area`;
   for (const id of ["step2", "step3", "bar"]) $(id).classList.remove("hidden");
   status("Loaded. Ready to build.");
 }

@@ -95,12 +95,12 @@
 <table class="matrix">
   <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
   <tbody>
-    <tr><th scope="row">Layering onto MIDI tracks <code>layermidi</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="both use the same code cave">&#10007;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="both use the same code cave">&#10007;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">Layering onto MIDI tracks <code>layermidi</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="refused by hand: they fight over one feature">&#10007;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
   </tbody>
 </table>
 </div>
 <!-- /dnfw:matrix-row -->
-  <p><!-- dnfw:combines layermidi -->With Arpeggiator SHUF and RAND, Arpeggiator p-locks, Boot screen, LFO modulation of the FX, A fourth LFO, New LFO waveforms, More modulation destinations, Song guard, FM drum transients, Waverider, a sixth machine; <strong>not</strong> with Arpeggiator on MIDI tracks (both use the same code cave); USB SysEx probe (diagnostic) (both use the same code cave). See the compatibility table<!-- /dnfw:combines -->.</p>
+  <p><!-- dnfw:combines layermidi -->With Arpeggiator SHUF and RAND, Arpeggiator p-locks, Boot screen, LFO modulation of the FX, A fourth LFO, New LFO waveforms, More modulation destinations, Song guard, FM drum transients, USB SysEx probe (diagnostic), Waverider, a sixth machine; <strong>not</strong> with Arpeggiator on MIDI tracks (refused by hand: they fight over one feature). See the compatibility table<!-- /dnfw:combines -->.</p>
 </section>
 
 <section class="step">
@@ -159,10 +159,9 @@
 
 <h2>Not with the MIDI Arpeggiator</h2>
 <p>
-  <a href="arp.html">MIDI Arpeggiator</a> also turns notes on MIDI tracks into MIDI at
-  the voice trigger, layered ones included, and reads them from fields a sequencer trig
-  never fills &mdash; random notes and lengths. The two use the same code cave, so they
-  cannot be built together.
+  <a href="arp.html">MIDI Arpeggiator</a> also turns layered notes on MIDI tracks into
+  MIDI, when the MIDI track's own arp is on. The two no longer share any bytes, but
+  until that overlap is checked they are kept apart: they cannot be built together.
 </p>
 
 <footer>

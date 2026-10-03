@@ -10,9 +10,13 @@ hanging notes; two audio sources into one MIDI track, and one source into
 several MIDI tracks. `docs/layer-midi.md` carries the reading and the bench
 history, and `scripts/build_layer_midi.py` the assembly and evidence.
 
+**Moved onto the mod platform 2026-10-03** (`layer-midi7`): the same code, now a
+platform `CODE` chunk at `0x467d8000` instead of a cave in the image, so it
+combines with usbprobe. Checked in the emulator, not yet on the instrument.
+
 ## How it works
 
-Two hooks in the frame ISR, one code cave:
+Two hooks in the frame ISR, one platform `CODE` chunk at `0x467d8000`:
 
 1. at the head of the per-note body (`0x40026980`), every note the ISR voices
    passes once: a layered copy's note (record `+56` bit 17) on a MIDI track
@@ -32,12 +36,15 @@ The code is assembled ahead of time (`scripts/gen_layermidi_code.py` ->
 
 1. every guard (whole instructions and the code the hooks rely on) and every
    edit's stock bytes are checked -- an image that differs is refused;
-2. the edits are written: two hooks and the code cave.
+2. the edits are written: the two hooks, pointing at the chunk;
+3. the routines are added to the platform's area (`dnfw.mods.platform`) as a
+   324 B `CODE` chunk at `0x467d8000`, which the platform's start-up loader
+   copies there.
 
-It writes only inside section 3, changes no length, and appends nothing. It
-uses midiarp's cave on purpose: midiarp's voice-trigger hook also catches
-layered copies on MIDI tracks, reading the wrong note fields, so the two must
-not share an image.
+It writes only inside section 3 and changes no stock length; the appended area
+is the platform's, shared with the other mods on it. It is kept apart from
+midiarp by the compatibility notes, not by bytes: both turn layered copies on
+MIDI tracks into MIDI (`dnfw.mods.matrix`).
 """
 
 from __future__ import annotations
@@ -45,7 +52,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from . import Extent, ModError, Result
+from . import RAM, Extent, ModError, Result, platform
 
 ID = "layermidi"
 NAME = "Layering onto MIDI tracks"
@@ -54,17 +61,20 @@ DEVICE = 0x15                      # Digitone II
 SECTION = 3                        # MAIN OS
 BASE = 0x40000400
 SPEC = json.loads((pathlib.Path(__file__).with_name("layermidi_code.json")).read_text())
+CODE_VA = SPEC["code"]["va"]
+BLOB = bytes.fromhex(SPEC["code"]["blob"])
 
 
 def extents(firmware=None) -> list[Extent]:
-    return [Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in SPEC["edits"]]
+    return ([Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in SPEC["edits"]]
+            + platform.extents(16 + len(BLOB)))
 
 
 def apply(firmware) -> Result:
     section = firmware.container.find(SECTION)
     if section is None:
         raise ModError("image has no MAIN OS section")
-    original = section.unpack()
+    original, others = platform.split(section.unpack())
     # Longer is fine: data appended after the stock end (lfowaves, bootscreen)
     # moves no address this mod writes or reads. The guards identify the build.
     if len(original) < SPEC["stock_length"]:
@@ -85,8 +95,16 @@ def apply(firmware) -> Result:
     for e in SPEC["edits"]:
         new = bytes.fromhex(e["new"])
         content[e["va"] - BASE:e["va"] - BASE + len(new)] = new
+    chunk = platform.area.CodeChunk(CODE_VA, BLOB).pack()
+    content = platform.join(bytes(content), others + [(platform.area.CODE, chunk)])
 
     return Result(payloads={SECTION: bytes(content)}, extents=extents(),
                   notes=["TRACK WILL TRIGGER onto a MIDI track plays it over MIDI",
                          "note-on as the layered note plays, note-off as it is released",
-                         f"{len(SPEC['edits'])} edits in section 3, nothing appended"])
+                         f"{len(SPEC['edits'])} hooks in section 3, and a {len(BLOB):,} B CODE "
+                         f"chunk at 0x{CODE_VA:08x} in the platform's area"])
+
+
+def ram() -> list[Extent]:
+    """The RAM above BSS the code uses: only its own code, copied there by the loader."""
+    return [Extent(RAM, CODE_VA, len(BLOB), "the mod's code (a platform CODE chunk)")]

@@ -95,7 +95,16 @@ note-off). MIDI ~8 ms ahead of the recorded audio -- the audio path's latency.
 - **Arp on the source:** untested.
 - Velocity and length defaults come from the source track's sound (the copy
   keeps its `+44`). The MIDI track's channel is the one used.
-- Not with `midiarp`: this uses its cave.
+- Not with `midiarp`: both turn layered copies on MIDI tracks into MIDI
+  (docs/mods-compatibility.md).
+
+## On the mod platform (layer-midi7, 2026-10-03)
+
+The code no longer goes into the cave. It is assembled to run at `CODE_VA`
+and travels as a platform `CODE` chunk that the loader copies to RAM at
+start-up; the two hooks are the only edits in the image, and the cave stays
+stock. The code has no position-dependent reference to the cave: every
+reference out of it is absolute (`jmp`, `jsr`, RAM and I/O addresses).
 
 | on the bench: T1 audio WILL TRIGGER T9 MIDI | means |
 |---|---|
@@ -117,6 +126,7 @@ from dnfw.cli.files import read_image
 from dnfw.container.section import compress
 from dnfw.firmware import build as fwbuild
 from dnfw.firmware.load import load
+from dnfw.mods import platform
 from dnfw.patch.assemble import assemble, available
 
 MAIN_OS = 3
@@ -124,8 +134,13 @@ BASE = 0x40000400
 
 # One of the three clean 896-byte runs (docs/code-caves.md), and midiarp's.
 # The hook is past the largest smaller clean run (203 B at 0x40295698).
+# layer-midi1..6 only: layer-midi7 runs from the platform (CODE_VA).
 CAVE = 0x402D0664
 CAVE_CAP = 896
+
+# Where the platform loader puts the code: RAM given to layermidi, above
+# midiarp's chunk (0x467d0000..0x467d0250) and below the platform's limit.
+CODE_VA = 0x467D8000
 
 KIT = 0x800052A0            # the ISR's kit pointer (0x40026534)
 MIDI_MASK = 0x8000537C      # kit +0x5cda, mirrored per frame (0x40025b9a)
@@ -315,7 +330,7 @@ CONTEXT = (
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-OUT = ROOT / "00_Resources/02_Builds/layer-midi6_DN2_1.11.syx"
+OUT = ROOT / "00_Resources/02_Builds/layer-midi7_DN2_1.11.syx"
 
 
 def be32(v: int) -> bytes:
@@ -338,8 +353,13 @@ def check(content: bytes, va: int, want: bytes, why: str) -> None:
                          f"-- not the image this patch was written against ({why})")
 
 
-def compose(stock: bytes, log=print) -> dict:
-    """Apply the build to a stock MAIN OS. -> {content, cave}."""
+def compose(stock: bytes, log=print, code_base: int | None = None) -> dict:
+    """Apply the build to a stock MAIN OS. -> {content, cave, code_base, blob}.
+
+    Without CODE_BASE the code goes into the cave (layer-midi1..6). With it
+    (the mod platform) the same code is assembled to run at CODE_BASE and
+    returned as `blob`, 4-padded, for a platform `CODE` chunk; the cave stays
+    stock and the hooks point at the chunk."""
     if not available():
         raise SystemExit("no m68k assembler found")
     content = bytearray(stock)
@@ -349,14 +369,18 @@ def compose(stock: bytes, log=print) -> dict:
         check(content, va, want, why)
         log(f"  {va:#010x}  {want.hex():<14}  {why}")
 
-    log("part 2 -- the cave")
-    if any(content[CAVE - BASE:CAVE - BASE + CAVE_CAP]):
+    log("part 2 -- the cave" if code_base is None else f"part 2 -- the code, from {code_base:#010x}")
+    where = CAVE if code_base is None else code_base
+    if code_base is None and any(content[CAVE - BASE:CAVE - BASE + CAVE_CAP]):
         raise SystemExit(f"cave at {CAVE:#010x} is not free")
-    payload, at = assemble_stubs(SOURCE, CAVE)
-    if len(payload) > CAVE_CAP:
-        raise SystemExit(f"cave overflows: {len(payload)} > {CAVE_CAP}")
-    content[CAVE - BASE:CAVE - BASE + len(payload)] = payload
-    log(f"  {len(payload)} of {CAVE_CAP} bytes at {CAVE:#010x}")
+    payload, at = assemble_stubs(SOURCE, where)
+    blob = payload + bytes(-len(payload) % 4)
+    if code_base is None:
+        if len(payload) > CAVE_CAP:
+            raise SystemExit(f"cave overflows: {len(payload)} > {CAVE_CAP}")
+        content[CAVE - BASE:CAVE - BASE + len(payload)] = payload
+    log(f"  {len(payload)} bytes at {where:#010x}: "
+        + ", ".join(f"{k} {v:#010x}" for k, v in at.items()))
 
     log("part 3 -- the hooks")
     for va, stock_bytes, kind, label in HOOKS:
@@ -367,7 +391,8 @@ def compose(stock: bytes, log=print) -> dict:
         content[va - BASE:va - BASE + len(new)] = new
         log(f"  {va:#010x}  {stock_bytes.hex()} -> {new.hex()}  {kind} {label}")
 
-    return {"content": bytes(content), "cave": (CAVE, len(payload))}
+    return {"content": bytes(content), "cave": (where, len(payload)),
+            "code_base": code_base, "blob": blob}
 
 
 def main() -> int:
@@ -375,7 +400,9 @@ def main() -> int:
     section = firmware.container.find(MAIN_OS)
     if section is None:
         raise SystemExit("image has no MAIN OS section")
-    content = compose(section.unpack())["content"]
+    built = compose(section.unpack(), code_base=CODE_VA)
+    chunk = platform.area.CodeChunk(CODE_VA, built["blob"]).pack()
+    content = platform.join(built["content"], [(platform.area.CODE, chunk)])
 
     print("part 4 -- repack")
     OUT.parent.mkdir(parents=True, exist_ok=True)

@@ -671,7 +671,8 @@ note onto the destination as a synth note; a MIDI track has no voice to play it.
 This mod sends those copies out on the MIDI track's channel: a note-on as each
 layered note is voiced, a note-off as it is released.
 
-Two hooks in the ISR and one cave (midiarp's, on purpose -- see below):
+Two hooks in the ISR and one platform `CODE` chunk at `0x467d8000` (324 B; until
+2026-10-03 a cave at `0x402d0664`, shared with midiarp and usbprobe):
 
 - `0x40026980`, the head of the per-note body: every note the ISR voices,
   chord notes included, passes once. A layered copy's note (record `+56` bit 17)
@@ -694,12 +695,16 @@ on either end. Six bench builds got there -- `docs/flashing.md` has each, and
 
     dnfw mods apply <image> --mod layermidi -o out.syx
 
-**Not with `midiarp`.** midiarp's voice-trigger hook (`0x400268f8`) turns any
-record on a MIDI track into a MIDI note, layered copies included, and reads them
-from the record's inline fields -- which a sequencer trig never fills: random
-notes and lengths, measured with midiarp alone. Sharing the cave makes the
-matrix refuse the pair; `matrix.NOTES` records why. Fixing midiarp to read
-`%a2` would let both live together; that is left to midiarp's owner.
+**On the platform, 2026-10-03** (`layer-midi7`): the same code, moved from the
+cave to the chunk; the hooks are unchanged apart from their target, and the cave
+stays stock. It now combines with usbprobe. Checked in the emulator (boot from
+reset, the loader layout, the ISR's loops); not yet on the instrument.
+
+**Not with `midiarp`.** The bytes no longer collide, but both turn layered copies
+on MIDI tracks into MIDI. Since #179 midiarp plays a layered copy only when its own
+track's arp is on and playing it, so the overlap is smaller; the pair is still
+refused by hand (`matrix.REFUSED`, with its `matrix.NOTES` entry) until the
+maintainer re-checks it.
 
 **Evidence.** `test/test_layermidi_mod.py` (the shipped bytes, the hooks, the
 guards, the refusals); `scripts/emu_layer_midi.py` runs the ISR's **own** note

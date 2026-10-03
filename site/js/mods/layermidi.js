@@ -3,16 +3,21 @@
  *
  * The browser half of `src/dnfw/mods/layermidi.py`, which carries the evidence
  * and the hardware result. Same steps, same order: check every guard and every
- * edit's stock bytes, write the edits. `scripts/js_layermidi_check.mjs` fails
- * if the bytes differ from the Python's.
+ * edit's stock bytes, write the two hooks, then add the routines to the
+ * platform's area as a CODE chunk at 0x467d8000 (since 2026-10-03; it was a
+ * cave of the image). `scripts/js_layermidi_check.mjs` fails if the bytes
+ * differ from the Python's.
  */
 
 import { CODE } from "./layermidi-code.js";
+import * as platform from "./platform.js";
 
 export const ID = "layermidi";
 export const NAME = "Layering onto MIDI tracks";
 export const SECTION = 3;
 const BASE = 0x40000400;
+const CODE_VA = CODE.code.va;
+const BLOB = CODE.code.blob;
 
 export class ModError extends Error {}
 
@@ -20,16 +25,18 @@ const hex = (s) => Uint8Array.from(s.match(/../g) ?? [], (b) => parseInt(b, 16))
 const toHex = (a) => Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
 
 export function extents() {
-  return CODE.edits.map((e) => ({ section: SECTION, start: e.va - BASE,
-                                  length: e.new.length / 2, what: e.what }));
+  return [...CODE.edits.map((e) => ({ section: SECTION, start: e.va - BASE,
+                                      length: e.new.length / 2, what: e.what })),
+          ...platform.extents(16 + BLOB.length / 2)];
 }
 
 /** -> `{ content, notes }`, the new section 3. */
 export function apply(firmware) {
   const section = firmware.container.find(SECTION);
   if (section === null) throw new ModError("image has no MAIN OS section");
-  const original = section.unpack();
-  if (original === null) throw new ModError("MAIN OS did not depack");
+  const unpacked = section.unpack();
+  if (unpacked === null) throw new ModError("MAIN OS did not depack");
+  const [original, others] = platform.split(unpacked);
   // Longer is fine: data appended after the stock end moves no address used here.
   if (original.length < CODE.stock_length) {
     throw new ModError(`MAIN OS is ${original.length.toLocaleString()} B, shorter than `
@@ -48,13 +55,16 @@ export function apply(firmware) {
     }
   }
 
-  const content = original.slice();
-  for (const e of CODE.edits) content.set(hex(e.new), e.va - BASE);
+  const edited = original.slice();
+  for (const e of CODE.edits) edited.set(hex(e.new), e.va - BASE);
+  const blob = hex(BLOB);
+  const content = platform.join(edited, [...others, [platform.CODE, platform.codeChunk(CODE_VA, blob)]]);
 
   return {
     content,
     notes: ["TRACK WILL TRIGGER onto a MIDI track plays it over MIDI",
             "note-on as the layered note plays, note-off as it is released",
-            `${CODE.edits.length} edits in section 3, nothing appended`],
+            `${CODE.edits.length} hooks in section 3, and a ${blob.length.toLocaleString("en-US")} B CODE `
+              + `chunk at 0x${CODE_VA.toString(16).padStart(8, "0")} in the platform's area`],
   };
 }

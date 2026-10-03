@@ -334,6 +334,12 @@ def _apply(args) -> int:
         for c in conflicts:
             print(f"  CONFLICT: {c}")
         return 1
+    from ..mods import matrix
+    by_hand = matrix.refused_by_hand(mod.ID for mod in chosen)
+    if by_hand:
+        for a, b in by_hand:
+            print(f"  REFUSED: {a} + {b}: {matrix.NOTES.get(frozenset((a, b)), matrix.BY_HAND)}")
+        return 1
     if len(named) > 1:
         print(f"\n{len(named)} mods, no overlapping bytes -- "
               f"they can be combined.\n")

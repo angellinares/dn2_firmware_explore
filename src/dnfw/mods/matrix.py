@@ -15,7 +15,9 @@ For each pair, in both orders, three questions with checkable answers:
 What this cannot see is a **functional** clash: two mods that write disjoint
 bytes and still fight over one feature. Those are recorded by hand in
 `NOTES`, each with its evidence, and a pair carries its note alongside
-whatever the tooling says. Nor is any of this a hardware result -- no combined
+whatever the tooling says. A pair whose clash is bad enough to refuse is also
+listed in `REFUSED`: the matrix marks it NO and `dnfw mods apply` will not
+build it, whatever the bytes say. Nor is any of this a hardware result -- no combined
 image has been flashed -- which `docs/mods-compatibility.md` states beside the
 table.
 """
@@ -38,15 +40,21 @@ NOTES: dict[frozenset, str] = {
         "a MIDI track's arp runs the same step, so SHUF and RAND should reach MIDI tracks; "
         "not run.",
     frozenset(("bootscreen", "layermidi")):
-        "on the instrument, 2026-10-02: flashed together (a static tunnel mark), the intro "
-        "plays the mark and layering onto a MIDI track plays over MIDI; the boot check from "
-        "reset passes for the tunnel, ascii and spin animations each combined with layermidi.",
+        "on the instrument, 2026-10-02, with layermidi's cave build (layer-midi6): flashed "
+        "together (a static tunnel mark), the intro plays the mark and layering onto a MIDI "
+        "track plays over MIDI; the boot check from reset passed for the tunnel, ascii and spin "
+        "animations each combined with it. With layermidi on the platform (2026-10-03): the "
+        "boot check from reset passes with a static tunnel mark, and the loader puts both "
+        "chunks where the platform predicts (scripts/emu_platform_check.py); not yet flashed.",
     frozenset(("layermidi", "midiarp")):
-        "functional as well as bytes (both use the cave at 0x402d0664): midiarp's hook on the "
-        "voice trigger (0x400268f8) turns any record on a MIDI track into a MIDI note, layered "
-        "copies included, reading the record's inline note fields, which a sequencer trig "
-        "never fills -- random notes and lengths on the bench (2026-10-01, midiarp alone) -- "
-        "and layermidi would send the same notes again.",
+        "refused by hand, not by bytes (both run from the platform, at 0x467d8000 and "
+        "0x467d0000): both turn layered copies on MIDI tracks into MIDI notes. midiarp's hook "
+        "on the voice trigger (0x400268f8) used to play every layered copy on a MIDI track, "
+        "from the inline note fields a sequencer trig never fills (random notes and lengths "
+        "on the bench, 2026-10-01). Since 2026-10-03 (#179) it plays a copy only when its own "
+        "track's arp is on and playing it, so the overlap is smaller, but layermidi would "
+        "still send those notes again. Kept refused at the maintainer's request until they "
+        "re-check the pair.",
     frozenset(("fxmod", "lfo4")):
         "emulator, 2026-09-26: the LFO4 slot harness and a turn of all eight LFO4 dials match "
         "lfo4 alone; fxmod's DEST checks and names match fxmod alone; every LFO page, LFO4's "
@@ -59,6 +67,18 @@ NOTES: dict[frozenset, str] = {
         "measured: with moddest applied first, all 13 masks it opens are in lfo4's "
         "relocated table (test/test_lfo4_mod.py).",
 }
+
+# Pairs refused whatever the bytes say: a functional clash, each with its NOTES
+# entry. `pairs` marks them refused in both orders and `dnfw mods apply` stops.
+REFUSED: frozenset[frozenset] = frozenset({
+    frozenset(("layermidi", "midiarp")),
+})
+BY_HAND = "refused by hand: they fight over one feature (see the note)"
+
+
+def refused_by_hand(ids) -> list[tuple[str, str]]:
+    """-> every pair among `ids` that `REFUSED` lists, sorted."""
+    return [(a, b) for a, b in combinations(sorted(set(ids)), 2) if frozenset((a, b)) in REFUSED]
 
 
 @dataclass
@@ -121,6 +141,8 @@ def pairs(firmware, registry: dict, apply_one, stage) -> list[Pair]:
                 payloads.update(apply_one(second, stage(firmware, payloads)).payloads)
             except ModError as exc:
                 pair.refused[f"{first.ID}+{second.ID}"] = f"{second.ID} refuses after {first.ID}: {exc}"
+        if frozenset((a_id, b_id)) in REFUSED:
+            pair.refused = {f"{a_id}+{b_id}": BY_HAND, f"{b_id}+{a_id}": BY_HAND}
         out.append(pair)
     return out
 
@@ -137,6 +159,8 @@ def cell(pair: Pair) -> str:
 def _short(pair: Pair) -> str:
     """Why a pair is refused or ordered, in one clause a reader can use."""
     why = pair.reason()
+    if why == BY_HAND:
+        return "refused by hand: they fight over one feature"
     if "both use RAM" in why:
         return "both use the same RAM"
     if "both write" in why:

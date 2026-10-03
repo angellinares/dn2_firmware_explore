@@ -114,3 +114,47 @@ wr_idle_out.:
       R11 = DM(0x2de134);
       JUMP 0xb88aab;                    // back to the idle loop's top
 .wr_idle..end:
+
+// M10b-3: PRST (reader_m9.asm's wr_mod_b had it until the reply report needed the room).
+// Entered by JUMP from wr_mod_b's end with R6 = 1 if a note started on this voice and I4
+// = the oscillator's reader block; clobbers R0, R1, R12. Back into the loop at
+// wr_t5v_modded (machine9_live.asm) either way.
+.GLOBAL wr_prst.;
+wr_prst.:
+      // PRST (m10a3): on a note, the oscillator's phase -- Off leaves it, On restarts
+      // it at 0 (every note starts alike), Random sets it from the cycle counter.
+      // The reader reads it from its block's phase word, DM(1, I4).
+      R6 = PASS R6;
+      IF EQ JUMP 0x16f5bf;              // -> wr_prst_back. (no note)
+      R0 = DM(0x2de7d4);
+      R0 = LSHIFT R0 BY -8;
+      R0 = PASS R0;
+      IF EQ JUMP 0x16f5bf;              // -> wr_prst_back. (Off: free-running)
+      R1 = 1;
+      COMP(R0, R1);
+      IF EQ JUMP 0x16f5bc;              // -> wr_prst_zero.
+      // Random: x = rotate(x, 7) + EMUCLK + 0x6d2b79f5, the state at DM 0x2ddea0
+      // (the cycle counter alone repeats: a block starts in step with the audio
+      // interrupt, and the emulator's reads 0)
+      R0 = DM(0x2ddea0);
+      R1 = LSHIFT R0 BY 7;
+      R0 = LSHIFT R0 BY -25;
+      R12 = PASS R1;
+      R0 = R12 + R0;
+      R1 = EMUCLK;
+      R12 = PASS R0;
+      R0 = R12 + R1;
+      R12 = 0x6d2b79f5;
+      R0 = R12 + R0;
+      DM(0x2ddea0) = R0;
+      DM(1, I4) = R0;
+      JUMP 0x16f5bf;                    // -> wr_prst_back.
+.GLOBAL wr_prst_zero.;
+wr_prst_zero.:
+      R0 = R0 - R0;
+      DM(1, I4) = R0;
+.GLOBAL wr_prst_back.;
+wr_prst_back.:
+      JUMP 0x16edf3;                    // -> wr_t5v_modded. (machine9_live.asm)
+.wr_prst..end:
+      .type wr_prst.,STT_FUNC;

@@ -141,7 +141,7 @@ shape per detent can't be shown in the emulator, which delivers a detent as a de
 - WaveTone's Noise controls are unchanged.
 
 Owner's follow-up: "Osc1 Move Shape" was too long for the header, so the long names are
-Osc1 / Osc2 M.Shape.
+Osc1 / Osc2 M.Shape, and likewise M.Rate, M.Pos and M.Level.
 
 Still to come in M10b:
 - page-3 options for a beat-synced RATE and for smoothing the square's edges;

@@ -21,6 +21,7 @@ from ..mods import arpmodes as arpmodes_mod
 from ..mods import arpplocks as arpplocks_mod
 from ..mods import bootscreen as bootscreen_mod
 from ..mods import fxmod as fxmod_mod
+from ..mods import layermidi as layermidi_mod
 from ..mods import lfo4 as lfo4_mod
 from ..mods import lfowaves as lfowaves_mod
 from ..mods import midiarp as midiarp_mod
@@ -39,6 +40,7 @@ REGISTRY = {transients_mod.ID: transients_mod,
             bootscreen_mod.ID: bootscreen_mod,
             lfowaves_mod.ID: lfowaves_mod,
             midiarp_mod.ID: midiarp_mod,
+            layermidi_mod.ID: layermidi_mod,
             fxmod_mod.ID: fxmod_mod,
             arpplocks_mod.ID: arpplocks_mod,
             arpmodes_mod.ID: arpmodes_mod,
@@ -332,6 +334,12 @@ def _apply(args) -> int:
         for c in conflicts:
             print(f"  CONFLICT: {c}")
         return 1
+    from ..mods import matrix
+    by_hand = matrix.refused_by_hand(mod.ID for mod in chosen)
+    if by_hand:
+        for a, b in by_hand:
+            print(f"  REFUSED: {a} + {b}: {matrix.NOTES.get(frozenset((a, b)), matrix.BY_HAND)}")
+        return 1
     if len(named) > 1:
         print(f"\n{len(named)} mods, no overlapping bytes -- "
               f"they can be combined.\n")
@@ -473,7 +481,7 @@ def _matrix(args) -> int:
     for a in ids:
         print(f"  {a:<{width}}" + "  ".join(f"{('-' if a == b else cell[(a, b)]):>6}" for b in ids))
     print(f"\nyes = disjoint bytes and applies in both orders; order = only in the order "
-          "`apply` uses;\nNO = refused. Not a hardware result: no combined image has been flashed.\n")
+          "`apply` uses;\nNO = refused. Not a hardware result, unless a pair's note says it was flashed.\n")
     for pair in found:
         if not pair.combines or pair.order_only or pair.note:
             print(f"  {pair.a} + {pair.b}: " + (pair.reason() or next(iter(pair.refused.values()), "")))

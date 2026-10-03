@@ -11,14 +11,23 @@ and nowhere else. They are resolved here once, in the same order digikit's own
 
 | variable | what | defaults, in order |
 |---|---|---|
-| `DIGIKIT` | the digikit clone | sibling `digikit-up`, sibling `digikit` |
-| `DT2_SYX` | stock Digitone II 1.11 | `00_Resources/00_Firmware/Digitone_II_OS1.11_dist/...syx` |
+| `DIGIKIT` | the digikit clone | `digikit-up`, `digikit`, siblings of the main checkout |
+| `DT2_SYX` | stock Digitone II 1.11 | `00_Resources/00_Firmware/Digitone_II_OS1.11_dist/...syx`, in this checkout, then the main one |
 | `DT2_SECTIONS` | its extracted sections | `/root/dn2-sections-111`, `<digikit>/out/sections/dn2-1.11` |
 | `DN2_SNAPSHOTS` | this project's snapshots | `/root/dn2-snapshots/Digitone_II_OS1.11`, `<digikit>/out/snapshots/dn2-1.11` |
-| `SELMAP`, `SELAS` | selache's tools | `/root/<tool>-target/release/<tool>`, `tools/selmap/target/release/selmap` |
+| `SELMAP`, `SELAS` | selache's tools | `/root/<tool>-target/release/<tool>`, `tools/selmap/target/release/selmap` (this checkout, then the main one) |
 
 The WSL paths stay as defaults so the original setup needs no configuration;
 a sibling clone is what makes it work anywhere else.
+
+**Worktrees.** The harnesses also run from git worktrees, one per branch, under
+`.claude/worktrees/<name>/`. There `ROOT` is the worktree, but the sibling
+clones sit next to the *main* checkout, and `00_Resources` (gitignored) and
+built tools exist only there unless linked in. So siblings are looked for next
+to `MAIN`, the main checkout, and anything untracked under the checkout in
+`ROOT` first, then in `MAIN`. Outside a worktree `MAIN` is `ROOT`, and nothing
+changes. The full order for those: the variable, `ROOT`, `MAIN`, then the
+first default.
 
 Standard library only: these scripts run under digikit's venv, which has no
 `dnfw`.
@@ -28,9 +37,28 @@ from __future__ import annotations
 
 import os
 import pathlib
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+
+def main_checkout(root: pathlib.Path) -> pathlib.Path:
+    """-> the main checkout ROOT belongs to: the parent of git's common
+    directory, which is ROOT itself outside a worktree. ROOT, quietly, when
+    git is missing, too old for `--path-format`, or ROOT is not a checkout."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            capture_output=True, text=True, timeout=10, check=True).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return root
+    common = pathlib.Path(out)
+    # A submodule's common directory is `.git/modules/<name>`: not a checkout's.
+    return common.parent.resolve() if common.is_absolute() and common.name == ".git" else root
+
+
+MAIN = main_checkout(ROOT)
 
 
 def resolve(var: str, *defaults: pathlib.Path) -> pathlib.Path:
@@ -40,15 +68,21 @@ def resolve(var: str, *defaults: pathlib.Path) -> pathlib.Path:
     return next((d for d in defaults if d.exists()), defaults[0])
 
 
-DIGIKIT = resolve("DIGIKIT", ROOT.parent / "digikit-up", ROOT.parent / "digikit")
+def local(rel: str, root: pathlib.Path = ROOT, main: pathlib.Path = MAIN) -> list[pathlib.Path]:
+    """-> where an untracked REL under the checkout may be: in ROOT, then in
+    the main checkout (the same place outside a worktree)."""
+    return [root / rel] + ([main / rel] if main != root else [])
+
+
+DIGIKIT = resolve("DIGIKIT", MAIN.parent / "digikit-up", MAIN.parent / "digikit")
 SYX = resolve("DT2_SYX",
-              ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx")
+              *local("00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"))
 SECTIONS = resolve("DT2_SECTIONS", pathlib.Path("/root/dn2-sections-111"),
                    DIGIKIT / "out/sections/dn2-1.11")
 SNAPSHOTS = resolve("DN2_SNAPSHOTS", pathlib.Path("/root/dn2-snapshots/Digitone_II_OS1.11"),
                     DIGIKIT / "out/snapshots/dn2-1.11")
 SELMAP = resolve("SELMAP", pathlib.Path("/root/selmap-target/release/selmap"),
-                 ROOT / "tools/selmap/target/release/selmap")
+                 *local("tools/selmap/target/release/selmap"))
 SELAS = resolve("SELAS", pathlib.Path("/root/selache-target/release/selas"))
 
 

@@ -151,9 +151,12 @@ def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
         assert last < at and at + dsp.TABLE_BYTES <= 0x80A00000
         assert bootstream.read_span(built, at, dsp.TABLE_BYTES) == \
             reference.dsp_bytes(dsp.tables()[k])
-    # L1 keeps only code and state: the modulator's span now runs to the region's end
-    mod = [(at, p) for what, at, p in dsp.spans() if "wr_mod" in what]
-    assert len(mod) == 1 and mod[0][0] + len(mod[0][1]) == dsp.dm_to_load(dsp.REGION[1])
+    # L1 keeps only code and state: MOVE's shapes and their random state (M10b-4) sit
+    # where table 0 began, and the state runs to the region's end
+    sp = {what: (at, p) for what, at, p in dsp.spans()}
+    assert sp["shapes.asm (wr_shape)"][0] == dsp.dm_to_load(0x2DF000)
+    at, p = sp["MOVE's random state (zeros)"]
+    assert at + len(p) == dsp.dm_to_load(dsp.REGION[1]) and not any(p)
 
 
 # -- the contract -------------------------------------------------------------------------------
@@ -264,9 +267,10 @@ def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
     assert all(e == a for e, a in zip(ends, at[1:]))           # no unwritten gap
     obj = dsp.objects()
     code_spans = [x for x in sp if "asm" in x[0]]
-    assert len(code_spans) == 6                               # + modulator.asm (M10a)
+    assert len(code_spans) == 7                               # + modulator.asm (M10a), shapes.asm (M10b-4)
     for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["idle_load"],
-                                                     obj["block_count"], obj["entry_mark"])):
+                                                     obj["block_count"], obj["entry_mark"], obj["modulator"],
+                                                     obj["shapes"])):
         assert payload[:len(code)] == code
         assert len(payload) - len(code) >= 64 and not any(payload[len(code):]), what
 
@@ -370,24 +374,80 @@ def test_move_rate_is_one_second_at_50_and_doubles_every_10():
 
 
 def test_move_shapes():
-    up, down, tri, sq = 0x0100, 0x0000, 0x0300, 0x0400
-    assert live.move_shape(0, down) == 0xFFFF and live.move_shape(0xFFFFFFFF, down) == 0
-    assert live.move_shape(0x40000000, up) == 0x4000
-    assert live.move_shape(0x40000000, tri) == 0x8000 and live.move_shape(0xC0000000, tri) == 0x7FFE
+    up, down, tri, upl, downl, tril, sq = 0x0000, 0x0100, 0x0400, 0x0500, 0x0600, 0x0700, 0x0800
+    for d in (down, downl):
+        assert live.move_shape(0, d) == 0xFFFF and live.move_shape(0xFFFFFFFF, d) == 0
+    for u in (up, upl):
+        assert live.move_shape(0x40000000, u) == 0x4000
+    for t in (tri, tril):
+        assert live.move_shape(0x40000000, t) == 0x8000 and live.move_shape(0xC0000000, t) == 0x7FFE
     assert live.move_shape(0x10000000, sq) == 0xFFFF and live.move_shape(0x90000000, sq) == 0
+
+
+def test_exp_shapes_curve_from_end_to_end():
+    up, down = 0x0200, 0x0300
+    assert live.move_shape(0, up) == 0 and live.move_shape(0xFFFFFFFF, up) >= 0xFFFC
+    assert live.move_shape(0x80000000, up) == 0x2000               # half way: an eighth
+    assert live.move_shape(0, down) >= 0xFFFC and live.move_shape(0xFFFFFFFF, down) == 0
+    assert live.move_shape(0x80000000, down) == 0x1FFF
+    xs = [live.move_shape(p << 24, up) for p in range(256)]
+    assert all(b >= a for a, b in zip(xs, xs[1:]))
+
+
+def test_names_sort_the_shapes_by_nature_and_a_value_past_the_last_is_the_last():
+    assert live.MOVE_SHAPES[:live.ONE_SHOTS] == ("Ramp Up", "Ramp Down", "Exp Up", "Exp Down", "Tri Once")
+    assert live.MOVE_SHAPES[live.RND_HOLD:] == ("Rnd Hold", "Rnd Glide")
+    assert live.move_band(0x7F00) == live.RND_GLIDE
+    assert all(len(n) <= 9 and "&" not in n for n in live.MOVE_SHAPES)   # the header, the font
 
 
 def test_one_shots_hold_their_end_and_loops_wrap():
     near = 0xFFFF0000
-    assert live.move_step(near, 0x6400, 0x0100, 0, False) == 0xFFFFFFFF    # ramp up: holds
-    assert live.move_step(near, 0x6400, 0x0300, 0, False) < near           # looping triangle: wraps
+    for one in range(live.ONE_SHOTS):
+        assert live.move_step(near, 0x6400, one << 8, 0, False) == 0xFFFFFFFF   # holds
+    for loop in range(live.ONE_SHOTS, len(live.MOVE_SHAPES)):
+        assert live.move_step(near, 0x6400, loop << 8, 0, False) < near         # wraps
+
+
+def test_random_shapes_draw_on_a_wrap_and_on_a_restart_only():
+    r = live.MoveRandom()
+    hold = live.RND_HOLD << 8
+    r.step(0, 0x1000, 0x2000, hold, False)                       # moving on: no draw
+    assert r.values(0) == [0, 0] and r.x == 0
+    r.step(0, 0xFFFF0000, 0x10, hold, False)                     # a wrap: a new value
+    first = live.rnd_next(0) >> 16
+    assert r.values(0) == [0, first]
+    r.step(0, 0, 0x10, hold, True)                               # a restart: another
+    assert r.values(0) == [first, live.rnd_next(live.rnd_next(0)) >> 16]
+    r.step(1, 0xFFFF0000, 0x10, 0x0700, False)                   # not a random shape
+    assert r.values(1) == [0, 0]
+    assert live.move_shape(0x12345678, hold, (5, 9)) == 9
+
+
+def test_glide_runs_from_the_value_before_to_the_new_one_smoothly():
+    g = live.RND_GLIDE << 8
+    assert live.move_shape(0, g, (1000, 5000)) == 1000
+    assert live.move_shape(0x80000000, g, (1000, 5000)) == 3000
+    assert live.move_shape(0xFFFFFFFF, g, (1000, 5000)) in (4999, 5000)
+    assert live.move_shape(0x80000000, g, (5000, 1000)) == 3000
+    ys = [live.move_shape(p << 24, g, (0, 0xFFFF)) for p in range(256)]
+    assert all(b >= a for a, b in zip(ys, ys[1:]))
+    assert ys[1] - ys[0] < ys[128] - ys[127]                     # slow at the ends
+
+
+def test_the_random_generator_does_not_repeat_soon():
+    x, seen = 0, set()
+    for _ in range(100_000):
+        x = live.rnd_next(x)
+        assert x not in seen
+        seen.add(x)
 
 
 def test_trig_restarts_only_when_on():
     p = 0x12345678
-    assert live.move_step(p, 0, 0x0300, live.TRIG_RESTART, True) == live.MOVE_RATE[0]
-    assert live.move_step(p, 0, 0x0300, 0x100, True) == p + live.MOVE_RATE[0]    # TRIG 1: free
-    assert live.move_step(p, 0, 0x0300, live.TRIG_RESTART, False) == p + live.MOVE_RATE[0]
+    assert live.move_step(p, 0, 0x0700, live.TRIG_RESTART, True) == live.MOVE_RATE[0]
+    assert live.move_step(p, 0, 0x0700, 0x100, True) == p + live.MOVE_RATE[0]    # TRIG 1: free
+    assert live.move_step(p, 0, 0x0700, live.TRIG_RESTART, False) == p + live.MOVE_RATE[0]
 
 
 def test_mpos_and_mlev_full_depth():

@@ -172,7 +172,7 @@ static int heard(int v, u32 id)
 #define MPOS_ID(o) ((o) ? 250u : 246u)          /* OFS1 / OFS2 (pages.PAGES) */
 #define RATE_ID(o) ((o) ? 244u : 240u)          /* PD1 / PD2 */
 
-#define MOVE_ID(o) ((o) ? 257u : 253u)          /* M.Shape: the shape index << 8, 4 = Square */
+#define MOVE_ID(o) ((o) ? 257u : 253u)          /* M.Shape: the shape index << 8 (live.MOVE_SHAPES) */
 
 /* MOVE's POS shift at shape byte S (the report's high byte, or 0 / 255 for its ends) */
 static int move_offset_at(int v, int o, int s)
@@ -204,10 +204,22 @@ static int move_offset(int v, int o)
  * with TRIG on restart. A looping shape never stands still, so without this the page
  * kept its first voice and jumped whenever the rotation retriggered that one
  * (instrument, m10b3f/g, 2026-10-03: unison, 3-note chords, Tri on osc 2). Not for
- * Square, which jumps by design, nor past RATE 60 (2 cycles a second: a Tri moves
- * about 51 steps in a 50 ms gap between polls), where motion could pass for a jump. */
+ * the shapes that jump by themselves (JUMPS: Up Loop and Down Loop at each wrap,
+ * Square, Rnd Hold at each new value; M10b-4), nor past RATE 60 (2 cycles a second:
+ * a Tri moves about 51 steps in a 50 ms gap between polls), where motion could pass
+ * for a jump. */
 #define JUMP      96
 #define JUMP_RATE 60
+#define SHAPE_LAST 10                           /* Rnd Glide; past it is it, as on the DSP */
+#define JUMPS ((1u << 5) | (1u << 6) | (1u << 8) | (1u << 9))
+
+static int jumps_by_itself(int v, int o)
+{
+    u32 shape = heard(v, MOVE_ID(o)) >> 8;
+    if (shape > SHAPE_LAST)
+        shape = SHAPE_LAST;
+    return JUMPS >> shape & 1;
+}
 static u8 seen[32] __attribute__((section(".data"))) = { 0 };
 static u32 seen_at[32] __attribute__((section(".data"))) = { 0 };
 
@@ -230,7 +242,7 @@ static void follow(u32 now, int o)
             continue;                       /* not the track's yet: the start stays pending */
         if ((k & 1) == o && v != c) {
             int d = a > was ? a - was : was - a;
-            int restart = d > JUMP && (heard(v, MOVE_ID(o)) >> 8) < 4
+            int restart = d > JUMP && !jumps_by_itself(v, o)
                 && (heard(v, RATE_ID(o)) >> 8) <= JUMP_RATE;
             if (restart || now - seen_at[k] > STILL)
                 chosen = c = v;

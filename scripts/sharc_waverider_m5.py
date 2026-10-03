@@ -185,7 +185,7 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
     state = init
     out = {"machine": [], "amp_in": [], "amp_out": [], "buffers": [], "buffer_bits": [], "t5_inputs": [],
            "reader_blocks": [], "reader_blocks2": [], "loop_entries": 0, "setup": [],
-           "reply_tail": [], "move_phases": []}
+           "reply_tail": [], "move_phases": [], "move_random": []}
     instr = wall = 0
     for b in range(blocks):
         tap = {}
@@ -240,6 +240,9 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
             tap["reply_tail"] = [m2.word(r.state, REPLY_TAIL_DM + (page << 12) + 4 * k) or 0
                                  for k in range(8)]
             tap["move_phases"] = [m2.word(r.state, dsp.MOVE_PHASES_DM + 4 * k) or 0 for k in range(32)]
+            # M10b-4: the random shapes' (a, b) per voice and oscillator, then the generator
+            tap["move_random"] = [m2.word(r.state, dsp.MOVE_RANDOM_DM + 4 * k) or 0 for k in range(64)] + [
+                m2.word(r.state, dsp.MOVE_RANDOM_GEN_DM) or 0]
 
         def amp(r):
             if m2.word_reg(r, "R12") == tap["bufs"][0] and "amp_in" not in tap:
@@ -282,6 +285,7 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
         out["reader_blocks2"].append(tap.get("reader_blocks2", {}))
         out["reply_tail"].append(tap.get("reply_tail"))
         out["move_phases"].append(tap.get("move_phases"))
+        out["move_random"].append(tap.get("move_random"))
         instr += res[2]
         state = r
     return {**out, "ok": True, "blocks": blocks, "instructions": instr, "wall_s": round(wall, 1),
@@ -640,15 +644,30 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
                                                            TUN2: TUN1_ZERO + 12 * 256}), blocks),
             # M10a: MOVE. POS swept up by a fast ramp (osc 1 alone); LEV shaped by a fast
             # looping triangle (rising over these blocks); the same ramp free-running (TRIG 0), which the trigger at
-            # block 1 does not restart; osc 2's own modulator on its own controls
+            # block 1 does not restart; osc 2's own modulator on its own controls. (M10b-4's
+            # order: 0 Ramp Up, 7 Tri Loop.)
             "move_pos": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400,
-                                                           MOVE1: 0x0100, RATE1: 0x6400}), blocks),
+                                                           MOVE1: 0x0000, RATE1: 0x6400}), blocks),
             "move_lev": run_blocks(init, frames(overrides={**solo, WAV1: 0x4000, MLEV1: 0x7f00,
-                                                           MOVE1: 0x0300, RATE1: 0x6400}), blocks),
+                                                           MOVE1: 0x0700, RATE1: 0x6400}), blocks),
             "move_free": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400, TRIG: 0x100,
-                                                            MOVE1: 0x0100, RATE1: 0x6400}), blocks),
+                                                            MOVE1: 0x0000, RATE1: 0x6400}), blocks),
             "move_osc2": run_blocks(init, frames(overrides={LEV1: 0, WAV2: 0x7800, MPOS2: 0,
-                                                            MOVE2: 0x0100, RATE2: 0x6400}), blocks),
+                                                            MOVE2: 0x0000, RATE2: 0x6400}), blocks),
+            # M10b-4: the new shapes on POS, osc 1 alone: Exp Up, Down Loop, Rnd Hold, Rnd
+            # Glide; and both random shapes at once (Hold on osc 1, Glide on osc 2), which
+            # share the generator and keep their own (a, b)
+            "move_exp": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400,
+                                                           MOVE1: 0x0200, RATE1: 0x6400}), blocks),
+            "move_downloop": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400,
+                                                                MOVE1: 0x0600, RATE1: 0x6400}), blocks),
+            "move_hold": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400,
+                                                            MOVE1: 0x0900, RATE1: 0x6400}), blocks),
+            "move_glide": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400,
+                                                             MOVE1: 0x0a00, RATE1: 0x6400}), blocks),
+            "move_rnd_both": run_blocks(init, frames(overrides={WAV1: 0, MPOS1: 0x6400, MOVE1: 0x0900,
+                                                                RATE1: 0x6400, WAV2: 0, MPOS2: 0x6400,
+                                                                MOVE2: 0x0a00, RATE2: 0x6400}), blocks),
             # PRST (m10a3): the oscillators at the note (block 1) -- Off keeps running, Random
             # starts from the cycle counter (no reference: its tap is not compared)
             "prst_off": run_blocks(init, frames(overrides={**solo, PRST: 0}), blocks),
@@ -688,14 +707,15 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
 
     def tail_ok(name):
         run = runs[name]
-        for b, (ins, phases) in enumerate(zip(run["t5_inputs"], run["move_phases"])):
-            if not phases:
+        for b, (ins, phases, rnd) in enumerate(zip(run["t5_inputs"], run["move_phases"], run["move_random"])):
+            if not phases or not rnd:
                 return False
             for t, i in (ins or {}).items():
                 for osc, key in ((0, "move1"), (1, "move2")):
                     if osc and not (i["osc2"][3] & 0xFFFF):
                         continue                    # osc 2 at LEV 0 is not run (M9b)
-                    want = live.move_shape(phases[2 * t + osc], i[key][3]) >> 8
+                    k = 2 * t + osc
+                    want = live.move_shape(phases[k], i[key][3], (rnd[2 * k], rnd[2 * k + 1])) >> 8
                     if tail_byte(run, b, t, osc) != want:
                         return False
         return True
@@ -705,6 +725,15 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
 
     def pos_seq2(k, allb):
         return [b[0][3] for b in allb.get(k, []) if b.get(0)]
+
+    def rnd_last(k):
+        r = runs[k]["move_random"] if runs[k]["ok"] else []
+        return r[-1] if r and r[-1] else [0] * 65
+    gen1 = live.rnd_next(0)
+    gen2 = live.rnd_next(gen1)
+    p_exp, p_ramp = pos_seq("move_exp", rb_all), pos_seq("move_pos", rb_all)
+    p_down, p_hold = pos_seq("move_downloop", rb_all), pos_seq("move_hold", rb_all)
+    p_glide = pos_seq("move_glide", rb_all)
     inc60, inc72 = (rb["pos120"] or [0] * 6)[2], (rb["note72"] or [0] * 6)[2]
     inc_up, inc_down = (rb["tune_up12"] or [0] * 6)[2], (rb["tune_down12"] or [0] * 6)[2]
     zc_up = zero_crossings(track_series(runs["tune_up12"], 0)) if runs["tune_up12"]["ok"] else 0
@@ -799,8 +828,27 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
         "the reply report: after every MOVE block, byte 2t + osc of the live reply tail is the "
         "high byte of the shape at the phase the DSP stored, for every Waverider voice and "
         "oscillator it ran; and the ramp's byte changes from block to block (M10b-3)":
-            all(tail_ok(name) for name in ("move_pos", "move_lev", "move_osc2"))
+            all(tail_ok(name) for name in ("move_pos", "move_lev", "move_osc2", "move_exp", "move_downloop",
+                                           "move_hold", "move_glide", "move_rnd_both"))
             and len({tail_byte(runs["move_pos"], b, 0, 0) for b in range(len(runs["move_pos"]["reply_tail"]))}) >= 3,
+        "Exp Up sweeps POS up below the ramp: rising, and at or under Ramp Up's position in every "
+        "block after the note (M10b-4)":
+            len(set(p_exp)) >= 3 and p_exp == sorted(p_exp) and len(p_exp) == len(p_ramp)
+            and all(e <= r for e, r in zip(p_exp[1:], p_ramp[1:])) and p_exp[-1] < p_ramp[-1],
+        "Down Loop sweeps POS down from the top after the note (M10b-4)":
+            len(set(p_down[1:])) >= 3 and p_down[1:] == sorted(p_down[1:], reverse=True),
+        "Rnd Hold: the note draws one value, held in every block after it; the DSP's generator "
+        "took one step (M10b-4)":
+            len(p_hold) == blocks and p_hold[0] == 0 and len(set(p_hold[1:])) == 1 and p_hold[1] > 0
+            and rnd_last("move_hold")[1] == gen1 >> 16 and rnd_last("move_hold")[64] == gen1,
+        "Rnd Glide: from the value before (0) towards the drawn one, rising and below Hold's level "
+        "(M10b-4)":
+            len(set(p_glide[1:])) >= 3 and p_glide[1:] == sorted(p_glide[1:])
+            and 0 < p_glide[-1] < p_hold[-1] and rnd_last("move_glide")[1] == gen1 >> 16,
+        "both random shapes: osc 1 draws first, osc 2 next, from one generator, each oscillator "
+        "keeping its own value (M10b-4)":
+            rnd_last("move_rnd_both")[1] == gen1 >> 16 and rnd_last("move_rnd_both")[3] == gen2 >> 16
+            and rnd_last("move_rnd_both")[64] == gen2,
         "PRST On (the default) restarts the oscillator at the note: osc 1's reader phase is 0 at "
         "block 1; Off keeps it running (not 0); Random gives neither (m10a3)":
             bool(phase_at("init_solo", 1)) is False and phase_at("init_solo", 1) == 0

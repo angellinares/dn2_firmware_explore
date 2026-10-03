@@ -186,23 +186,28 @@ static int move_offset(int v, int o)
  * is taken as soon as it qualifies; with none chosen, the first that moves is taken. */
 #define STILL   (TICK_HZ / 2)
 static u8 seen[32] __attribute__((section(".data"))) = { 0 };
-static u32 seen_at[16] __attribute__((section(".data"))) = { 0 };
+static u32 seen_at[32] __attribute__((section(".data"))) = { 0 };
 
-static void follow(u32 now)
+/* Each oscillator's byte is watched on its own, and only the shown one's (O) can
+ * switch: judged on both, a MOVE running on the other oscillator kept every voice
+ * from ever standing still, so page 1 never followed while osc 2 looped
+ * (instrument, m10b3e, 2026-10-03). Both are tracked every poll, so turning the
+ * page does not read old changes as new notes. */
+static void follow(u32 now, int o)
 {
     int c = voice();
     u32 t = ACTIVE_TRACK;
-    for (int v = 0; v < 16; v++) {
-        u8 a = REPLY_TAIL[2 * v], b = REPLY_TAIL[2 * v + 1];
-        if (a == seen[2 * v] && b == seen[2 * v + 1])
+    for (int k = 0; k < 32; k++) {
+        int v = k >> 1;
+        u8 a = REPLY_TAIL[k];
+        if (a == seen[k])
             continue;
-        seen[2 * v] = a;
-        seen[2 * v + 1] = b;
+        seen[k] = a;
         if (OWNER(v) != t || MACHINE(v) != NEW_TYPE)
             continue;                       /* not the track's yet: the start stays pending */
-        if (v != c && now - seen_at[v] > STILL)
+        if ((k & 1) == o && v != c && now - seen_at[k] > STILL)
             chosen = c = v;
-        seen_at[v] = now;
+        seen_at[k] = now;
     }
 }
 
@@ -332,7 +337,7 @@ static void sweep(int k, int off, u32 now)
 int wr_poll(void *screen)
 {
     u32 now = TICKS;
-    follow(now);
+    follow(now, osc_of(shown_page));
     if (now - drawn_at < SHOWN && now - asked_at >= FRAME
             && (settling || signature() != drawn_sig)) {
         asked_at = now;

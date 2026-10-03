@@ -1,8 +1,7 @@
 """Does an FX parameter round-trip between a `DEST` code and a list entry?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
-        scripts/emu_fxbrowser.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_fxbrowser.py
 
 **What this can and cannot reach.** The emulator has no destination browser —
 no panel, no page view, no encoder — so "the list shows `Feedback Gain` and
@@ -38,12 +37,13 @@ import os
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from emulib import paths                                      # noqa: E402
 from emulib.image import differences                          # noqa: E402
 from emulib.machine import Machine                            # noqa: E402
 
-ROOT = "/mnt/d/01_Code/Z_Personal/dn2_firmware"
+ROOT = str(paths.ROOT)
 BUILD = os.environ.get("DT2_BUILD", "out/fxbrowser")
 BUILT = f"{ROOT}/{BUILD}/section_3_MAIN_OS.bin"
 
@@ -74,7 +74,7 @@ def probe(m, label: str) -> dict:
 
 
 def main() -> int:
-    stock_path = os.path.join(os.environ["DT2_SECTIONS"], "section_3_MAIN_OS.bin")
+    stock_path = str(paths.SECTIONS / "section_3_MAIN_OS.bin")
     stock_image = open(stock_path, "rb").read()
     built_image = open(BUILT, "rb").read()
     runs = differences(stock_image, built_image)

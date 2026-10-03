@@ -1,8 +1,7 @@
 """Does the panel write LFO4's values under the key the engine reads them by?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        DT2_BUILD=out/lfo4-ui /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_keys.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    DT2_BUILD=out/lfo4-ui <digikit>/.venv/bin/python -u scripts/emu_lfo4_keys.py
 
 From the instrument, 2026-09-22:
 
@@ -26,14 +25,15 @@ import os
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths
 from emulib.image import code_chunks, differences, load_build
 from emulib.machine import SNAP, Machine
 from emulib.panel import MOD, Panel
 from unicorn import UC_HOOK_CODE
 from unicorn.m68k_const import UC_M68K_REG_A7
 
-BUILD = os.path.join("/mnt/d/01_Code/Z_Personal/dn2_firmware",
+BUILD = os.path.join(str(paths.ROOT),
                      os.environ.get("DT2_BUILD", "out/lfo4-ui"))
 
 LIVE_CONTAINER = 0x800052A0     # the pointer the firmware's own routine reads

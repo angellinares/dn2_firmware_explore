@@ -1,8 +1,7 @@
 """How far does one press of DOWN move the MOD pages, and does the dwell decide?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_page_timing.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_page_timing.py
 
 `emu_param_setter.py` walked the pages and found LFO1 on the first page and
 **LFO3** on the second -- two pages of travel for one press. Two readings fit
@@ -26,9 +25,10 @@ dwell, because if the dwell is what doubles the press, a shorter one stops it.
 from __future__ import annotations
 
 import argparse
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from emulib.machine import SNAP, Machine                   # noqa: E402
 from emulib.panel import DOWN, MOD, Panel                   # noqa: E402

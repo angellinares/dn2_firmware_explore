@@ -1,7 +1,7 @@
 """The whole of LFO4, with the sound address derived the firmware's way.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u         scripts/emu_lfo4_chain.py [--frames 40]
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_lfo4_chain.py [--frames 40]
 
 `emu_lfo4_bridge.py` asks the same question and says outright where it cannot
 help: *"the sound address comes from the build's own `lfo4_sound_of`, so the
@@ -23,16 +23,20 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import pathlib
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from emulib import paths  # noqa: E402
+
+paths.use_digikit()
 
 from emu_lfo4_tick import (DEST_SLOT, EVAL_A, MIRROR_AT, MIRROR_BYTES, MIRROR_SLOTS,  # noqa: E402
                            RATE, REST, SET_FRAC, STATE, STATE_LEN, TRACKS, differences)
 from lfo4_harness import SNAP, Machine, check, code_chunk, report  # noqa: E402
 
-BUILD = "/mnt/d/01_Code/Z_Personal/dn2_firmware/out/lfo4-value"
+BUILD = str(paths.ROOT / "out/lfo4-value")
 FW_SOUND_OF = 0x40025BDA        # the firmware's own track -> sound
 TRACK = 1                                  # 0-based: the second track
 FAST = (0x7000, 0x0100, 0x4000, DEST_SLOT << 8, 0x0100, 0x0000, 0x0000, 0x5000)

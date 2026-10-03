@@ -1,8 +1,7 @@
 """Four taps on [MOD], and a picture of each page.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_screens.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_lfo4_screens.py
 
 Everything else about step 4b is a number. This is the screen.
 
@@ -27,10 +26,12 @@ from __future__ import annotations
 
 import argparse
 import os
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
+from emulib import paths                                          # noqa: E402
 from emulib.image import code_chunks, differences, load_build     # noqa: E402
 from emulib.machine import SNAP, Machine                          # noqa: E402
 from emulib.panel import MOD, Panel                               # noqa: E402
@@ -38,7 +39,7 @@ from emulib.report import check, report                           # noqa: E402
 
 # Which build to look at, so the same probe can check a fix as well as measure
 # the fault it was written for: `DT2_BUILD=out/lfo4-ui2`.
-BUILD = os.path.join("/mnt/d/01_Code/Z_Personal/dn2_firmware",
+BUILD = os.path.join(str(paths.ROOT),
                      os.environ.get("DT2_BUILD", "out/lfo4-value"))
 MODE_OBJECT = 0x447BF800
 VEC_BEGIN, VEC_END, CURRENT = 124, 128, 144

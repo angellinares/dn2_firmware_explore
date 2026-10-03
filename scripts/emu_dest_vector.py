@@ -1,8 +1,7 @@
 """The destination list as a vector: what is in it, per LFO page.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_dest_vector.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_dest_vector.py
 
 Reading the browser screen by screen settled the *rule* -- LFO N offers LFO
 1..N-1 minus DEST, seven entries each -- but not the mechanism. The renderer at
@@ -25,9 +24,10 @@ contents.
 from __future__ import annotations
 
 import argparse
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from emulib.machine import SNAP, Machine                        # noqa: E402
 from emulib.panel import DOWN, MOD, NO, Panel                   # noqa: E402

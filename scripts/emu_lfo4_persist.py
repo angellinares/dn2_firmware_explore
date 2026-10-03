@@ -1,6 +1,6 @@
 """Does the firmware's own working-state save carry LFO4?
 
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
+    <digikit>/.venv/bin/python -u \
         scripts/emu_lfo4_persist.py --build out/lfo4-everyvoice
 
 **The symptom.** LFO4 settings never survive a reboot, while every other page's
@@ -48,8 +48,10 @@ import os
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths                                      # noqa: E402
+
+paths.use_digikit()
 
 import emu_boot_engine as eng                                  # noqa: E402
 from emu import dspboot                                        # noqa: E402

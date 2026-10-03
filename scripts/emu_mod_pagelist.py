@@ -1,8 +1,7 @@
 """What holds the MOD pages, and is there room for a fourth?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_mod_pagelist.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_mod_pagelist.py
 
 The header the screens showed -- `MOD (3/3)` -- is **not** drawn from a
 constant. At `0x40063f84` the renderer computes
@@ -29,9 +28,10 @@ instruction that loads it.
 from __future__ import annotations
 
 import argparse
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from emulib.machine import SNAP, Machine                       # noqa: E402
 from emulib.panel import DOWN, MOD, Panel                      # noqa: E402

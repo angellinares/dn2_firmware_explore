@@ -1,8 +1,8 @@
 """Does the UI edit LFO4 under the same key the tick reads it back with?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_BUILD=out/lfo4-meterkeep \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_uikey.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    DT2_BUILD=out/lfo4-meterkeep \
+        <digikit>/.venv/bin/python -u scripts/emu_lfo4_uikey.py
 
 **Why this and not more disassembly.** On the instrument LFO4 modulates on
 roughly one trig in fifteen. A wrong cell would never work; one in fifteen is a
@@ -47,13 +47,14 @@ import argparse
 import os
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths                                           # noqa: E402
 from emulib.image import code_chunks, differences, load_build      # noqa: E402
 from emulib.machine import SNAP, Machine                           # noqa: E402
 from emulib.panel import DOWN, MOD, Panel                          # noqa: E402
 
 LIVE_CONTAINER, SOUND_AT, SOUND_STRIDE = 0x800052A0, 52, 1163
-BUILD = os.path.join("/mnt/d/01_Code/Z_Personal/dn2_firmware",
+BUILD = os.path.join(str(paths.ROOT),
                      os.environ.get("DT2_BUILD", "out/lfo4-meterkeep"))
 
 

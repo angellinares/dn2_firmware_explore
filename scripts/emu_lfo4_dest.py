@@ -1,8 +1,7 @@
 """Which of the destination browser's hard-coded LFO gates does LFO4 fail?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_dest.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_lfo4_dest.py
 
 `scripts/scan_lfo_triples.py` finds six places that compare a parameter entry
 against **78, 88 and 98** -- the `DEST` entries of LFO1, LFO2 and LFO3, written
@@ -19,7 +18,8 @@ of this, and a site that fires on both is not where LFO4 is being turned away.
 import os
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths
 from emulib.image import code_chunks, differences, load_build
 from emulib.machine import SNAP, Machine
 from emulib.panel import MOD, Panel
@@ -28,7 +28,7 @@ from unicorn.m68k_const import UC_M68K_REG_A0, UC_M68K_REG_D0
 
 # Which build to look at. `lfo4-value` is where the fault was measured;
 # `DT2_BUILD=out/lfo4-ui` is where the fix is checked with the same probe.
-BUILD = os.path.join("/mnt/d/01_Code/Z_Personal/dn2_firmware",
+BUILD = os.path.join(str(paths.ROOT),
                      os.environ.get("DT2_BUILD", "out/lfo4-value"))
 
 # `moveq #78` ... `#88` ... `#98`, the three `DEST` entries as literals.

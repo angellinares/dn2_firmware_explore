@@ -1,10 +1,10 @@
 """Waverider in the ColdFire emulator: MACHINE SEL offers it, choosing it sets type 5,
 and the frame the ColdFire builds carries it.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \\
+    # with digikit's venv (docs/emulator.md):
+    <digikit>/.venv/bin/python -u \\
         scripts/emu_waverider_menu.py --build out/waverider-m5 \\
-        --snapshot /root/wr-m5/wr-ui800M.snap [--steps "..."] [--json OUT]
+        --snapshot <dir>/wr-ui800M.snap [--steps "..."] [--json OUT]
 
 **The snapshot matters.** The MACHINE SEL view builds its rows once, at about
 67 M instructions after `boot400M` (its constructor `0x4005b6de` calls the SYN

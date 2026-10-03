@@ -1,7 +1,7 @@
 """Maintenance mode under the emulator: what it starts, and what the service task answers.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python \\
+    # with digikit's venv (docs/emulator.md):
+    <digikit>/.venv/bin/python \\
         scripts/emu_service_mode.py [--limit 150000000] [--cmd "#HELLO" ...]
 
 A cold boot of stock 1.11 from reset. The boot-flags word `0x40287520` gets bit
@@ -29,17 +29,17 @@ from __future__ import annotations
 import argparse
 import re
 import struct
-import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
+from emulib import paths  # noqa: E402
+
+paths.use_digikit()
 
 from emu import dspboot  # noqa: E402
 from unicorn import UC_HOOK_CODE  # noqa: E402
 from unicorn.m68k_const import UC_M68K_REG_A7, UC_M68K_REG_D0, UC_M68K_REG_PC  # noqa: E402
 
-SYX = ("/mnt/d/01_Code/Z_Personal/dn2_firmware/00_Resources/00_Firmware/"
-       "Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx")
-MAIN = "/root/dn2-sections-111/section_3_MAIN_OS.bin"
+SYX = str(paths.SYX)
+MAIN = str(paths.SECTIONS / "section_3_MAIN_OS.bin")
 FLAGS, FLAG_TEST = 0x40287520, 0x400CF086
 TASK, USB_MODE = 0x400CD48E, 0x40006C52
 INIT_TASK = 0x400CEC98          # the priority-1 task whose body tests the flag

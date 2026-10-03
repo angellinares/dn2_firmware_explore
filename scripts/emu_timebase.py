@@ -1,7 +1,7 @@
 """Watch the transport's 32-bit marks change, instead of inferring what they are.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python \\
+    # with digikit's venv (docs/emulator.md):
+    <digikit>/.venv/bin/python \\
         scripts/emu_timebase.py [--limit 60000000]
 
 `docs/dsp-control-block.md` reads `0x80005394` / `0x80005398` three times from
@@ -29,16 +29,17 @@ from __future__ import annotations
 import argparse
 import collections
 import os
-import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
+from emulib import paths  # noqa: E402
+
+paths.use_digikit()
 
 from emu import dspboot  # noqa: E402
 from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE  # noqa: E402
 from unicorn.m68k_const import UC_M68K_REG_PC  # noqa: E402
 
-ROOT = "/mnt/d/01_Code/Z_Personal/dn2_firmware"
-SYX = f"{ROOT}/00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
+ROOT = str(paths.ROOT)
+SYX = str(paths.SYX)
 
 WATCH = {0x42C4E900: "cursor +0", 0x42C4E904: "cursor +4",
          0x42C4E908: "cursor +8", 0x42C4E90C: "cursor +c",

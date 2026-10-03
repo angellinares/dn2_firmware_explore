@@ -11,15 +11,17 @@ so the scripts written before the split keep working unchanged.
 
 from __future__ import annotations
 
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from emulib import paths                                                # noqa: E402
 
 from emulib.image import code_chunk, differences, load_build, sites     # noqa: F401,E402
 from emulib.machine import SCRATCH, SNAP, STACK, SYX, Machine           # noqa: F401,E402
 from emulib.report import check, failures, report                       # noqa: F401,E402
 
-BUILD = "/mnt/d/01_Code/Z_Personal/dn2_firmware/out/lfo4-ext"
+BUILD = str(paths.ROOT / "out/lfo4-ext")
 SOUND, KIT = 1163, 23921          # one live sound; the block that holds sixteen
 PARAMS = 8
 

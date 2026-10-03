@@ -1,8 +1,7 @@
 """Does a turn on parameter id 101 land in the extension table?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_slots.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_lfo4_slots.py
 
 Step 4a puts `lfo4_set_stub` in place of the setter's own `slot > 100` bound,
 so ids 101-108 reach `ext_set` instead of being dropped. There is no page that
@@ -29,16 +28,18 @@ from __future__ import annotations
 import argparse
 import collections
 import os
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
+from emulib import paths                                          # noqa: E402
 from emulib.image import code_chunk, differences, load_build      # noqa: E402
 from emulib.machine import SNAP, Machine                          # noqa: E402
 from emulib.panel import MOD, Panel                               # noqa: E402
 from emulib.report import check, report                           # noqa: E402
 
-BUILD = "/mnt/d/01_Code/Z_Personal/dn2_firmware/out/lfo4-slots"
+BUILD = str(paths.ROOT / "out/lfo4-slots")
 SET_BOUND = 0x40037BD0
 KIT = 0x4210C08C
 SOUND = KIT + 52

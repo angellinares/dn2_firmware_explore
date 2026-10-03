@@ -1,8 +1,7 @@
 """Does `fxblock16`'s cave run, and does it move the halfword it claims to?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
-        scripts/emu_fxblock16.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_fxblock16.py
 
 **Why this exists, instead of `emu_boot_engine.py`.** That gate asks the right
 question for the LFO4 ladder and is the wrong instrument for this build: it
@@ -43,17 +42,18 @@ zero is a failure here, not an ambiguity.
 from __future__ import annotations
 
 import struct
-import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
+from emulib import paths                                      # noqa: E402
+
+paths.use_digikit()
 
 from emu import dspboot                                       # noqa: E402
 from unicorn import UC_HOOK_CODE, UC_PROT_ALL, UcError        # noqa: E402
 from unicorn.m68k_const import (UC_M68K_REG_A7, UC_M68K_REG_PC,   # noqa: E402
                                 UC_M68K_REG_SR)
 
-ROOT = "/mnt/d/01_Code/Z_Personal/dn2_firmware"
-SYX = f"{ROOT}/00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
+ROOT = str(paths.ROOT)
+SYX = str(paths.SYX)
 SECTION = f"{ROOT}/out/fxblock16/section_3_MAIN_OS.bin"
 
 REPORTER = 0x4011EA6A            # the firmware's own EXCEPTION formatter

@@ -1,9 +1,8 @@
 """LFO4 step 1 under the emulator: the extension table, driven through the real
 `memcpy` and `memset`.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python \
-        scripts/emu_lfo4_ext.py [--snapshot ...]
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python scripts/emu_lfo4_ext.py [--snapshot ...]
 
 `docs/lfo4-build-plan.md` §8 asks step 1 for a direct-call harness: whole-sound,
 kit and pattern copies, clears, overlaps, a full table, and the cost per call.
@@ -21,9 +20,10 @@ proved it) and the boot itself (`scripts/emu_lfo4_boot.py`).
 from __future__ import annotations
 
 import argparse
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from lfo4_harness import KIT, PARAMS, SOUND, SNAP, Harness, check, load_build, report  # noqa: E402
 

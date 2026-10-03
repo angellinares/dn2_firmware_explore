@@ -1,7 +1,7 @@
 """Which LFO index does the waveform-preview dispatch see on each MOD page?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx>         /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_wave.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_lfo4_wave.py
 
 `0x4010e1f4` onward is the waveform preview: the glyph with the start-phase
 braces that LFO1-3 draw across their `WAVE` and `SPH` columns. It is **three
@@ -15,14 +15,15 @@ dispatch hand LFO4? If it were something other than 3, or varied, a fourth
 block would need a different hook.
 """
 import os, sys
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths
 from emulib.image import code_chunks, differences, load_build
 from emulib.machine import SNAP, Machine
 from emulib.panel import MOD, Panel
 from unicorn import UC_HOOK_CODE
 from unicorn.m68k_const import UC_M68K_REG_D0
 
-BUILD = "/mnt/d/01_Code/Z_Personal/dn2_firmware/out/lfo4-value"
+BUILD = str(paths.ROOT / "out/lfo4-value")
 DISPATCH = 0x4010E278          # moveq #2,%d1 ; cmpl %d0,%d1 -- d0 is the index
 FALLBACK = 0x4010E2F0          # where an index the code has no block for lands
 

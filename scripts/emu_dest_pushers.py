@@ -1,8 +1,7 @@
 """Who pushes the LFO destinations into the list?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_dest_pushers.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_dest_pushers.py
 
 Two instructions looked like the builder and neither was. `0x400392fc` writes
 entry values because it is the **swap inside a sort partition**, comparator
@@ -26,9 +25,10 @@ from __future__ import annotations
 
 import argparse
 import collections
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from emulib.machine import SNAP, Machine                        # noqa: E402
 from emulib.panel import DOWN, MOD, NO, Panel                   # noqa: E402

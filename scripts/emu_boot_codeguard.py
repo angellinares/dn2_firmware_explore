@@ -1,8 +1,7 @@
 """Does anything overwrite our code chunk during a boot from reset?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
-        scripts/emu_boot_codeguard.py --build out/lfo4-bridge
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_boot_codeguard.py --build out/lfo4-bridge
 
 `lfo4-bridge` faults at boot on the instrument. One hypothesis is specific
 enough to test on its own: the build's C lives at `0x46800000`, chosen as
@@ -25,16 +24,17 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
+from emulib import paths                                      # noqa: E402
+
+paths.use_digikit()
 
 from emu import dspboot                                       # noqa: E402
 from unicorn import UC_HOOK_MEM_WRITE                         # noqa: E402
 from unicorn.m68k_const import UC_M68K_REG_PC                 # noqa: E402
 
-ROOT = "/mnt/d/01_Code/Z_Personal/dn2_firmware"
-SYX = f"{ROOT}/00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
+ROOT = str(paths.ROOT)
+SYX = str(paths.SYX)
 CODE_VA = 0x46800000
 
 

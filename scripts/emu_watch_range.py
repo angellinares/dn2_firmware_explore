@@ -1,6 +1,6 @@
 """Boot from reset and report every write into a RAM range, and every entry to an address.
 
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
+    <digikit>/.venv/bin/python -u \
         scripts/emu_watch_range.py IMAGE --lo 0x46700000 --len 320 --entry 0x46700000
 
 For a fault on the instrument whose PC is in RAM a mod put code in: was the code
@@ -11,16 +11,16 @@ to --entry, or at the limit.
 from __future__ import annotations
 
 import argparse
-import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
+from emulib import paths                                      # noqa: E402
+
+paths.use_digikit()
 
 from emu import dspboot                                       # noqa: E402
 from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE           # noqa: E402
 from unicorn.m68k_const import UC_M68K_REG_PC                 # noqa: E402
 
-SYX = ("/mnt/d/01_Code/Z_Personal/dn2_firmware/00_Resources/00_Firmware/"
-       "Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx")
+SYX = str(paths.SYX)
 
 
 def main() -> int:

@@ -1,6 +1,6 @@
 """Who writes the mirror rows, and which row does each writer touch?
 
-    /root/dn2-emu-venv/bin/python -u scripts/emu_mirror_writers.py --build out/lfo4-tlm
+    <digikit>/.venv/bin/python -u scripts/emu_mirror_writers.py --build out/lfo4-tlm
 
 **The question, and why this shape of it.** LFO4's row table is keyed by track
 and the engine's index is a voice (`docs/lfo4-build-plan.md`, "the engine's
@@ -35,8 +35,10 @@ import pathlib
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths                                       # noqa: E402
+
+paths.use_digikit()
 
 import emu_boot_engine as eng                                  # noqa: E402
 from emu import dspboot                                        # noqa: E402

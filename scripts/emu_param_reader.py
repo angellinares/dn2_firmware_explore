@@ -1,8 +1,7 @@
 """Who reads a parameter record, and how is its address formed?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_param_reader.py
+    # with digikit's venv (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_param_reader.py
 
 `docs/lfo4-build-plan.md` says a page record's eight entries are parameter
 table indices plus one, on the strength of the names lining up. Three static
@@ -24,9 +23,10 @@ from __future__ import annotations
 
 import argparse
 import collections
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from emulib.machine import SNAP, Machine                       # noqa: E402
 from emulib.panel import DOWN, MOD, Panel                      # noqa: E402

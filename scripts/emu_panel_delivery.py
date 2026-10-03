@@ -1,8 +1,7 @@
 """Do our panel bytes reach the firmware, and does it act on each one?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_panel_delivery.py
+    # with digikit's venv (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_panel_delivery.py
 
 `emu_mod_pages.py` showed a key that works **once**: three taps of DOWN moved
 the page once, two taps of UP moved it once, and a different key always moved
@@ -27,9 +26,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from emulib.machine import SNAP, Machine                       # noqa: E402
 from emulib import panel as panelmod                           # noqa: E402

@@ -1,8 +1,7 @@
 """LFO4 step 0 under the emulator: cold-boot the C-hello build, and a stock control.
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python \\
-        scripts/emu_c_hello.py [--limit 60000000]
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python scripts/emu_c_hello.py [--limit 60000000]
 
 Boots from reset -- not from a snapshot, because the thing under test is the
 startup loader, which a snapshot has already run past -- first the stock MAIN
@@ -26,16 +25,17 @@ import argparse
 import json
 import os
 import struct
-import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
+from emulib import paths  # noqa: E402
+
+paths.use_digikit()
 
 from emu import dspboot  # noqa: E402
 from unicorn import UC_HOOK_CODE  # noqa: E402
 
-ROOT = "/mnt/d/01_Code/Z_Personal/dn2_firmware"
-SYX = f"{ROOT}/00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
-BUILD = f"{ROOT}/out/c-hello"
+ROOT = str(paths.ROOT)
+SYX = str(paths.SYX)
+BUILD = str(paths.ROOT / "out/c-hello")
 MEMCPY, CALLS_VA = 0x40134490, 0x4000053E
 
 failures = []

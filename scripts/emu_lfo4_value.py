@@ -1,8 +1,7 @@
 """Does the page read LFO4's value from the table instead of from the sound?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_value.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_lfo4_value.py
 
 Step 4a diverted the **write** at the firmware's `slot > 100` guard. Step 4c
 diverts the **read** at the identical guard six bytes wide, `0x4003717c`, which
@@ -36,14 +35,15 @@ import argparse
 import os
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths                                          # noqa: E402
 
 from emulib.image import code_chunks, differences, load_build     # noqa: E402
 from emulib.machine import SNAP, Machine                          # noqa: E402
 from emulib.panel import MOD, Panel                               # noqa: E402
 from emulib.report import check, report                           # noqa: E402
 
-BUILD = "/mnt/d/01_Code/Z_Personal/dn2_firmware/out/lfo4-value"
+BUILD = str(paths.ROOT / "out/lfo4-value")
 GET_BOUND, GET_RETURN = 0x4003717C, 0x4003719C
 KIT, SOUND_AT, SOUND_STRIDE, TRACKS = 0x4210C08C, 52, 1163, 16
 SLOT, PARAM = 101, 0

@@ -1,8 +1,7 @@
 """LFO4 step 1 from reset: does hooking `memcpy` and `memset` still boot?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python \\
-        scripts/emu_lfo4_boot.py [--limit 60000000]
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python scripts/emu_lfo4_boot.py [--limit 60000000]
 
 `scripts/emu_lfo4_ext.py` asks whether the table is carried correctly. This asks
 the other question, and only that one: the build puts a stub in front of two
@@ -22,15 +21,16 @@ import argparse
 import json
 import os
 import struct
-import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
+from emulib import paths  # noqa: E402
+
+paths.use_digikit()
 
 from emu import dspboot  # noqa: E402
 from unicorn import UC_HOOK_CODE  # noqa: E402
 
-ROOT = "/mnt/d/01_Code/Z_Personal/dn2_firmware"
-SYX = f"{ROOT}/00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
+ROOT = str(paths.ROOT)
+SYX = str(paths.SYX)
 BUILD = f"{ROOT}/out/lfo4-ext"
 MEMCPY, MEMSET, CALLS_VA = 0x40134490, 0x401344D8, 0x4000053E
 LOAD_SITE, SAVE_SITE = 0x400DD282, 0x400DD724

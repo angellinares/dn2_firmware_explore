@@ -1,6 +1,6 @@
 """Do the save and load leave the LFO4 table alone for sounds with no LFO4?
 
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
+    <digikit>/.venv/bin/python -u \
         scripts/emu_lfo4_pollution.py --build out/lfo4-everyvoice2
 
 **Why this exists.** Until 2026-09-25 `lfo4_on_save` wrote LFO4's default row
@@ -32,8 +32,10 @@ import os
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths                                      # noqa: E402
+
+paths.use_digikit()
 
 import emu_boot_engine as eng                                  # noqa: E402
 from emu import dspboot                                        # noqa: E402

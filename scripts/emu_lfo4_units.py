@@ -1,8 +1,7 @@
 """Are the values the panel writes the values the engine expects?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        DT2_BUILD=out/lfo4-browser /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_units.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    DT2_BUILD=out/lfo4-browser <digikit>/.venv/bin/python -u scripts/emu_lfo4_units.py
 
 `scripts/emu_lfo4_sweep.py` shows LFO4 oscillating cleanly when the table holds
 `tick7`'s row -- 399 changes over 400 frames, turning round, from a table entry
@@ -24,12 +23,13 @@ beside the row that is known to sweep.
 import os
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths
 from emulib.image import code_chunks, differences, load_build
 from emulib.machine import SNAP, Machine
 from emulib.panel import MOD, Panel
 
-BUILD = os.path.join("/mnt/d/01_Code/Z_Personal/dn2_firmware",
+BUILD = os.path.join(str(paths.ROOT),
                      os.environ.get("DT2_BUILD", "out/lfo4-browser"))
 
 LIVE_CONTAINER, SOUND_AT, SOUND_STRIDE = 0x800052A0, 52, 1163

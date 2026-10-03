@@ -1,6 +1,6 @@
 """Where does `param_5` sit, relative to the frame pointer our stub is handed?
 
-    /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_frame.py --build out/lfo4-tlm
+    <digikit>/.venv/bin/python -u scripts/emu_lfo4_frame.py --build out/lfo4-tlm
 
 **Why this is the right instrument and the hardware sweep was not.** The sweep
 asked 32 words "are you a pointer whose byte looks like a voice?" and could only
@@ -24,8 +24,10 @@ import pathlib
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths                                      # noqa: E402
+
+paths.use_digikit()
 
 import emu_boot_engine as eng                                  # noqa: E402
 from emu import dspboot                                        # noqa: E402

@@ -1,7 +1,7 @@
 """After the move, is the parameter table read where it used to be?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
+    # with digikit's venv (docs/emulator.md):
+    <digikit>/.venv/bin/python -u \
         scripts/emu_table_watch.py [--build out/lfo4-table]
 
 `build_lfo4_table.py` moves the 320-record parameter table into the appended
@@ -33,8 +33,11 @@ import argparse
 import os
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from emulib import paths                                       # noqa: E402
+
+paths.use_digikit()
 
 from emu import dspboot                                        # noqa: E402
 from unicorn import (UC_HOOK_CODE, UC_HOOK_MEM_READ,           # noqa: E402

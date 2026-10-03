@@ -1,8 +1,7 @@
 """Is `track = 16` a rejected value, or a lane the firmware already has?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_lane16_maps.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_lane16_maps.py
 
 DNX measured the instrument clearing a lock record with `track = 16`, and the
 first reading of that was "the sentinel is dead". A static read of the two
@@ -31,9 +30,10 @@ answers off the machine:
 from __future__ import annotations
 
 import argparse
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from emulib.machine import SNAP, Machine  # noqa: E402
 

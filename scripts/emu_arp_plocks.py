@@ -1,7 +1,7 @@
 """Call the arp p-lock routines under digikit's emulator, one by one.
 
-    # in WSL, with digikit's venv:
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python \\
+    # with digikit's venv; paths from scripts/emulib/paths.py:
+    <digikit>/.venv/bin/python \\
         scripts/emu_arp_plocks.py out/film/<build>.ranges.json [snapshot]
 
 The sequencer does not play under the emulator (the audio-frame chain needs the
@@ -23,7 +23,9 @@ import json
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
+from emulib import paths  # noqa: E402
+
+paths.use_digikit()
 
 from emu.longrun import build  # noqa: E402
 from unicorn import UC_PROT_ALL, UcError  # noqa: E402
@@ -33,9 +35,8 @@ from unicorn.m68k_const import (UC_M68K_REG_A6, UC_M68K_REG_A7,  # noqa: E402
 
 KEPT = ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "A0", "A1", "A2", "A3", "A4", "A5"]
 
-SNAP = "/root/dn2-snapshots/Digitone_II_OS1.11/grid-rec.snap"
-SYX = ("/mnt/d/01_Code/Z_Personal/dn2_firmware/00_Resources/00_Firmware/"
-       "Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx")
+SNAP = str(paths.SNAPSHOTS / "grid-rec.snap")
+SYX = str(paths.SYX)
 
 SHADOW, SHADOW_STRIDE, LAST_NOTE = 0x467C0000, 1164, 0x467C4900
 EXT_MASK, EXT_VALUES = 828, 832

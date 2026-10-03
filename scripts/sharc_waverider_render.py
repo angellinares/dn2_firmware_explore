@@ -54,6 +54,7 @@ from dnfw.cli.files import read_image                      # noqa: E402
 from dnfw.firmware.load import load                        # noqa: E402
 from dnfw.image import bootstream, sharc_object           # noqa: E402
 from dnfw.waverider import render, testtable             # noqa: E402
+from emulib import paths                                  # noqa: E402
 
 SOURCE = ROOT / "csrc" / "waverider" / "sharc" / "reader.asm"
 ASSEMBLED = ROOT / "csrc" / "waverider" / "sharc" / "reader.json"
@@ -62,8 +63,12 @@ OUT = ROOT / "out" / "waverider"
 
 DN2_111_SECTION7 = "336e340aa0cdcd34e314cfa44849f709a3134f6bd4cd57dfc7e15702c83115e2"
 DIGIKIT_MEASURED_AT = "6f812e9"
-SELAS = "/root/selache-target/release/selas"
-SELMAP = "/root/selmap-target/release/selmap"
+if os.name == "nt":                # selache runs in WSL: these are WSL's paths, not this host's
+    SELAS = "/root/selache-target/release/selas"
+    SELMAP = "/root/selmap-target/release/selmap"
+else:
+    SELAS = str(paths.SELAS)
+    SELMAP = str(paths.SELMAP)
 
 # Where our blocks go. Every byte must be one the DN2 1.11 stream never loads
 # (checked in `place`): unloaded by the boot stream, NOT proven unused at run time.
@@ -121,14 +126,17 @@ def gate1(dk, memory) -> dict:
 
 def _wsl_path(p: pathlib.Path) -> str:
     p = p.resolve()
+    if os.name != "nt":
+        return str(p)
     return f"/mnt/{p.drive[0].lower()}{p.as_posix()[2:]}"
 
 
 def _wsl(script: str, work: pathlib.Path) -> subprocess.CompletedProcess:
-    """Run a shell script in WSL from a file -- never an inline string."""
+    """Run a shell script in WSL (natively off Windows) from a file -- never an inline string."""
     sh = work / "run.sh"
     sh.write_bytes(script.encode())
-    return subprocess.run(["wsl", "-e", "sh", _wsl_path(sh)], capture_output=True, text=True)
+    argv = ["wsl", "-e", "sh", _wsl_path(sh)] if os.name == "nt" else ["sh", str(sh)]
+    return subprocess.run(argv, capture_output=True, text=True)
 
 
 def assemble(work: pathlib.Path) -> bytes:

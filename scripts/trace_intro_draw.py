@@ -13,9 +13,9 @@ attributed to the return address of its `setPixel` call, via
 `emu.hle.LAST_PIXEL_CALLER` (digikit branch `emu/setpixel-caller`). Nothing is
 kept per frame -- only per caller -- so a 400M-instruction run stays small.
 
-    DIGIKIT=/mnt/d/01_Code/Z_Personal/digikit \\
-    DT2_SECTIONS=/root/dt2-sections-115c \\
-    /root/dn2-emu-venv/bin/python scripts/trace_intro_draw.py \\
+    DIGIKIT=<digikit> \\
+    DT2_SECTIONS=<Digitakt II 1.15C sections> \\
+    <digikit>/.venv/bin/python scripts/trace_intro_draw.py \\
         snapshots/dt2_115c_ext400M.snap 40000000 out/intro-dt2.json
 
 Output, per caller: pixels set, pixels lit, the bounding box on its bitmap, the

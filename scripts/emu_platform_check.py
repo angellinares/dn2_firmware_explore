@@ -1,7 +1,7 @@
 """Does the real loader lay out the platform's area the way `dnfw.mods.platform` says?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
+    # with digikit's venv (docs/emulator.md):
+    <digikit>/.venv/bin/python -u \
         scripts/emu_platform_check.py out/platform/trio/section_3_MAIN_OS.bin
 
 Boots the image from reset and stops at the one moment the question has an
@@ -25,16 +25,18 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/digikit-up")
 
-from emu import dspboot                                       # noqa: E402
+from emulib import paths                                      # noqa: E402
+
+paths.use_digikit()
+
+from emu import dspboot                                     # noqa: E402
 from unicorn import UC_HOOK_CODE                              # noqa: E402
 
 from dnfw.mods import platform                                # noqa: E402
 from dnfw.patch import area                                   # noqa: E402
 
-SYX = ("/mnt/d/01_Code/Z_Personal/dn2_firmware/00_Resources/00_Firmware/"
-       "Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx")
+SYX = str(paths.SYX)
 BSS_CLEAR = 0x400004B2
 
 

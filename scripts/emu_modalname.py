@@ -1,8 +1,7 @@
 """What string does the destination modal hand its section headers?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 /root/dn2-emu-venv/bin/python -u \
-        scripts/emu_modalname.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_modalname.py
 
 `fxbrowser2` works — the FX destinations are selectable and they modulate — but
 the **Chorus section header draws `ERR`** while Delay and Reverb draw `DEL` and
@@ -53,12 +52,15 @@ import os
 import struct
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from emulib import paths                                      # noqa: E402
+
+paths.use_digikit()           # main() reads DT2_SECTIONS before any Machine exists
 
 from emulib.image import differences                          # noqa: E402
 from emulib.machine import Machine                            # noqa: E402
 
-ROOT = "/mnt/d/01_Code/Z_Personal/dn2_firmware"
+ROOT = str(paths.ROOT)
 BUILD = os.environ.get("DT2_BUILD", "out/fxbrowser2")
 BUILT = f"{ROOT}/{BUILD}/section_3_MAIN_OS.bin"
 

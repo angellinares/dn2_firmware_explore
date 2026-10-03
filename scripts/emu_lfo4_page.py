@@ -1,8 +1,7 @@
 """Does a fourth MOD page get built, and does the accessor answer for it?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_lfo4_page.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_lfo4_page.py
 
 Step 4b's page is two stubs over structures the UI builds at startup: a page
 record for an id the firmware's table has no room for, and a fourth entry in
@@ -25,15 +24,17 @@ from __future__ import annotations
 
 import argparse
 import os
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
+from emulib import paths                                          # noqa: E402
 from emulib.image import code_chunks, differences, load_build     # noqa: E402
 from emulib.machine import SNAP, Machine                          # noqa: E402
 from emulib.report import check, report                           # noqa: E402
 
-BUILD = "/mnt/d/01_Code/Z_Personal/dn2_firmware/out/lfo4-page"
+BUILD = str(paths.ROOT / "out/lfo4-page")
 PAGE_TABLE, PAGE_STRIDE = 0x42432C00, 44
 LFO3_PAGE, LFO4_PAGE = 6, 37
 ACCESSOR = 0x400C2474

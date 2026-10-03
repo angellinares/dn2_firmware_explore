@@ -1,8 +1,7 @@
 """What mask does each LFO page pass to the destination builder?
 
-    # in WSL, with digikit's venv (docs/emulator.md):
-    DT2_SECTIONS=/root/dn2-sections-111 DT2_SYX=<the 1.11 .syx> \
-        /root/dn2-emu-venv/bin/python -u scripts/emu_dest_mask.py
+    # with digikit's venv; paths from scripts/emulib/paths.py (docs/emulator.md):
+    <digikit>/.venv/bin/python -u scripts/emu_dest_mask.py
 
 `emu_dest_lookup.py` ruled out the lookup: all three pages call the same
 `0x40036720` **and pass the same object** `0x446ce950`, so it cannot be what
@@ -26,9 +25,10 @@ from __future__ import annotations
 
 import argparse
 import collections
+import pathlib
 import sys
 
-sys.path.insert(0, "/mnt/d/01_Code/Z_Personal/dn2_firmware/scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from emulib.machine import SNAP, Machine                        # noqa: E402
 from emulib.panel import DOWN, MOD, NO, Panel                   # noqa: E402

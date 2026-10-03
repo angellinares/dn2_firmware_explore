@@ -282,8 +282,19 @@ def _check_idle_site(stock: bytes, obj: dict) -> None:
         raise DspError("sw 0xb88abb is not the stock idle loop's `jump (pc,-0x10)`")
 
 
+# The ColdFire's DSP loader (MAIN OS 0x400cf4f8) reads section 7 into one of two 1 MiB
+# buffers and refuses a stored section over 1 MiB (0x400cf5ac) or a boot stream whose
+# length + 1 is over 1 MiB (0x400cf5e4): the DSP then never boots -- no audio and no
+# sequencer clock (waverider-bigtable2, 2026-10-04: 1,400,876 B, silent). Stock's is
+# about 909 KB. Tables therefore load from the +Drive at run time, never in section 7.
+STREAM_LIMIT = 0x100000 - 1
+
+
 def _finish(out: bytearray) -> bytes:
     result = bytes(out)
+    if len(result) > STREAM_LIMIT:
+        raise DspError(f"section 7 is {len(result):,} B: the ColdFire loads at most {STREAM_LIMIT:,} "
+                       "(a 1 MiB buffer), so the DSP would never boot")
     walked = bootstream.walk(result)
     if not walked.complete or walked.stopped_at != len(result):
         raise DspError(f"the result does not walk as a boot stream ({walked.reason})")

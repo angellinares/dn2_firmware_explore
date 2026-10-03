@@ -45,16 +45,21 @@ NOTES: dict[frozenset, str] = {
         "track plays over MIDI; the boot check from reset passed for the tunnel, ascii and spin "
         "animations each combined with it. With layermidi on the platform (2026-10-03): the "
         "boot check from reset passes with a static tunnel mark, and the loader puts both "
-        "chunks where the platform predicts (scripts/emu_platform_check.py); not yet flashed.",
+        "chunks where the platform predicts (scripts/emu_platform_check.py), and on the "
+        "instrument, 2026-10-03, flashed with usbprobe as well: works.",
     frozenset(("layermidi", "midiarp")):
         "refused by hand, not by bytes (both run from the platform, at 0x467d8000 and "
         "0x467d0000): both turn layered copies on MIDI tracks into MIDI notes. midiarp's hook "
         "on the voice trigger (0x400268f8) used to play every layered copy on a MIDI track, "
         "from the inline note fields a sequencer trig never fills (random notes and lengths "
         "on the bench, 2026-10-01). Since 2026-10-03 (#179) it plays a copy only when its own "
-        "track's arp is on and playing it, so the overlap is smaller, but layermidi would "
-        "still send those notes again. Kept refused at the maintainer's request until they "
-        "re-check the pair.",
+        "track's arp is on and playing it. Checked in the emulator with the refusal bypassed "
+        "(the maintainer, 2026-10-03, on emu_midiarp_layered.py's rig): a layered copy that is "
+        "an arp step, on a MIDI track with its arp on, is sent twice -- midiarp sends the "
+        "arp's note and layermidi sends it again; an arp step that is not a copy is sent once; "
+        "with the arp off, or the arp without layering, the pair behaves. So the one clash is "
+        "layering onto a MIDI track whose arp is on, and the pair stays refused until "
+        "layermidi leaves those copies to midiarp.",
     frozenset(("fxmod", "lfo4")):
         "emulator, 2026-09-26: the LFO4 slot harness and a turn of all eight LFO4 dials match "
         "lfo4 alone; fxmod's DEST checks and names match fxmod alone; every LFO page, LFO4's "

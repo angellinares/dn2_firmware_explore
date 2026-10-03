@@ -12,7 +12,8 @@ history, and `scripts/build_layer_midi.py` the assembly and evidence.
 
 **Moved onto the mod platform 2026-10-03** (`layer-midi7`): the same code, now a
 platform `CODE` chunk at `0x467d8000` instead of a cave in the image, so it
-combines with usbprobe. Checked in the emulator, not yet on the instrument.
+combines with usbprobe. **Passed on the instrument on 2026-10-03** with bootscreen
+and usbprobe in the same image.
 
 ## How it works
 

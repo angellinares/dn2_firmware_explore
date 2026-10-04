@@ -216,3 +216,103 @@ voices busy:
 `waverider-m10b3h-usbprobe` / `-prof` (2026-10-03), the owner: the wave follows MOVE on
 both pages, from the first trig after a reboot, on every note under unison and chords,
 with loops restarting cleanly and no hopping on Square.
+
+# The tables in DDR
+
+The two wavetables (32 KB: 16 frames x 512 int16 each) moved from L1 block 1's free
+tail (`0x2df000`, `0x2e3000`) to the SHARC's DDR (`0x80600000`, `0x80604000`). L1 is the
+fast memory; its free tail was about 43 KB in all, and the modulator's 512-byte slot
+before table 0 was full. Now L1 holds only code and state, and the modulator's span runs
+to the region's end (about 33 KB). The reader is unchanged: the loop takes each table's
+address from the directory (`machine9_live.asm`, `0x2de608`), so only `dsp.py` moved.
+
+**Why that DDR is free.**
+- The stock stream's last DDR byte is `0x8052fbe0` (`dnfw ldr`).
+- No aligned data word in L1, L2 or DDR names DDR above it. The 24 hits are pairs of
+  negative int16 samples, and the control finds 36 words naming the image's own DDR.
+- No code immediate does either, in selmap's disassembly of every code region. The
+  control finds 73 naming the image's own DDR; the few hits are absolute operands of
+  data read as code.
+- `0x80600000` sits 720 KB above the image and below `0x80a00000`, where the Digitakt II,
+  on the same board, keeps its 32 MiB sample pool. So the memory exists, and a ported
+  pool would not collide.
+- DDR has no `0x28` load alias, so a table's boot block targets its own address.
+
+Limit, as for the block-1 region: this cannot exclude an address computed at run time.
+The instrument is the check.
+
+**On the instrument** (2026-10-03, A: `m10b3h-prof`, tables in L1; B:
+`waverider-ddr-usbprobe`, identical but for the table addresses; Waverider on every
+track). `dn2sharc_load.py --idle`, 10 intervals each:
+
+| state | A: L1 | B: DDR | change |
+|---|---|---|---|
+| heavy chords, all voices | 51.8 % (C 48.3) | 52.5 % (C 49.0) | +0.7 |
+| one note | 51.6 % (held) | 52.7 % held, 52.3 % sequenced | +0.7 to +1.1 |
+| silent | 51.6 % | 52.3 % (C 48.9) | +0.7 |
+
+- It sounds the same (owner).
+- DDR costs about 0.7 points of the SHARC, about 4,700 cycles a frame, nearly constant,
+  and all of it in part C, where the reader runs. With Waverider on every track the
+  reader runs each block whether or not a note sounds, so silence still reads the tables.
+- Decision (owner): keep the tables in DDR. The 32 KB of L1 goes to code and per-voice
+  state (M10b-4's shapes first), and tables loaded from the +Drive will live in DDR
+  anyway.
+
+# M10b-4: eleven shapes
+
+MOVE now has eleven shapes, sorted by nature (owner, 2026-10-03). Index 0..10 is what
+the DSP reads; any value past 10 is the last shape.
+
+| index | shape | value at x = phase >> 16 |
+|---|---|---|
+| 0 | Ramp Up | x |
+| 1 | Ramp Down | 0xffff - x |
+| 2 | Exp Up | x^3 / 2^32, float32 |
+| 3 | Exp Down | (0xffff - x)^3 / 2^32 |
+| 4 | Tri Once | up to 0xffff at half the cycle, then down |
+| 5 | Up Loop | as 0, looping |
+| 6 | Down Loop | as 1, looping |
+| 7 | Tri Loop | as 4, looping |
+| 8 | Square | 0xffff for the first half, then 0 |
+| 9 | Rnd Hold | b, held for the cycle |
+| 10 | Rnd Glide | a + (b - a) u^2 (3 - 2u), u = x / 2^16, float32 |
+
+Shapes 0..4 stop at their end (the phase saturates); 5..10 wrap.
+
+**The random shapes.** Each voice and oscillator keeps the value before (a) and the
+value now (b) at DM `0x2df400 + 8 (2t + osc)`. A new value is drawn on a cycle's wrap,
+and on a note when TRIG is Retrig: a takes b, and b the generator's high half. All the
+voices share one generator at `0x2df500`: x = rotate(x, 7) + 0x6d2b79f5. That's PRST
+Random's step without the cycle counter, so a render repeats and the gate can check it.
+In tests it doesn't repeat within 5M draws, its buckets are even, and its lag-1
+correlation is -0.01. The page's names avoid "&": no stock UI string uses it, so the
+font may not draw it.
+
+**Where it runs.** `csrc/waverider/sharc/shapes.asm`, at sw `0x16f800` (DM `0x2df000`),
+in the L1 the tables left when they moved to DDR. `wr_mod_b` hands it the phase and
+gets the value back at `wr_mod_have`. That shortened the reader's span by 112 bytes.
+`scripts/sharc_resolve_jumps.py` now resolves a jump into another of our sources from
+that source's own layout.
+
+**The page.** The restart rule leaves out every shape whose report jumps by itself: Up
+Loop and Down Loop at each wrap, Square, and Rnd Hold at each new value. Before, it
+left out only Square. Known: at a slow RATE, Rnd Hold stands still and then changes,
+which the stillness rule can take for a new note on another voice.
+
+**The gate.** `scripts/sharc_waverider_m5.py`, 43/43 on `waverider-m10b4`: Exp Up, Down
+Loop, Rnd Hold, Rnd Glide, and both random shapes at once. Every run is bit-exact
+against `live.render_two`, and the report check reads the DSP's random pair. Its first
+run failed on Rnd Glide alone: the code kept b in R0 and then wrote F0, which is the
+same register. A probe of just that case showed the DSP's position pinned at the top
+from block 0.
+
+Sounds saved with M10b-1's five shapes read the new order: old 0 Ramp Down reads Ramp
+Up, 1 Ramp Down, 2 Exp Up, 3 Exp Down and 4 Tri Once.
+
+**On the instrument** (2026-10-04, `waverider-driveread-usbprobe`, whose section 7 is
+m10b4's), all four steps passed:
+- every shape is named in the header, one per detent, and sounds as in
+  `m10b4_shapes.wav`;
+- osc 2's MOVE does the same;
+- with 3 voices on Up Loop, Down Loop, Square or Rnd Hold, the page stays on one voice.

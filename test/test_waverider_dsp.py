@@ -17,6 +17,7 @@ import pytest
 
 from dnfw.image import bootstream, sharc_object
 from dnfw.waverider import dsp, harmonics, live, reduce, render, testtable
+from dnfw.waverider import render as reference
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 IMAGE = ROOT / "00_Resources" / "00_Firmware" / "Digitone_II_OS1.11_dist.zip"
@@ -88,9 +89,12 @@ def test_every_added_span_is_in_block_1s_free_tail_and_outside_every_stock_block
     # Milestone 5c: M5's L1 block 2 silenced the instrument (docs/waverider-dsp-silence.md)
     stock_blocks = [b for b in bootstream.walk(stock7).blocks if b.count]
     for what, at, payload in dsp.spans():
-        lo, hi = at - dsp.LOAD_ALIAS, at - dsp.LOAD_ALIAS + len(payload)
-        assert 0x2DD52C <= lo and hi <= 0x2E8000, what          # above stock, below a 32 KB DM cache
-        assert not (0x300000 <= lo < 0x320000), what            # nothing left in block 2
+        if at >= 0x80000000:                                    # the tables, in DDR above the image
+            assert 0x8052FBE0 <= at and at + len(payload) <= 0x80A00000, what
+        else:
+            lo, hi = at - dsp.LOAD_ALIAS, at - dsp.LOAD_ALIAS + len(payload)
+            assert 0x2DD52C <= lo and hi <= 0x2E8000, what      # above stock, below a 32 KB DM cache
+            assert not (0x300000 <= lo < 0x320000), what        # nothing left in block 2
         for b in stock_blocks:
             assert not (b.target < at + len(payload) and at < b.target + b.count), what
 
@@ -100,7 +104,7 @@ def test_loaded_image_holds_our_bytes(built):
         assert bootstream.read_span(built, at, len(payload)) == payload, what
 
 
-def test_the_four_patches_and_nothing_else_in_the_stock_blocks(stock7, built):
+def test_the_six_patches_and_nothing_else_in_the_stock_blocks(stock7, built):
     entry = bootstream.read_span(built, dsp.sw_to_load(dsp.ENTRY_SW), 8)
     assert entry == bytes.fromhex("3e06160000f60100")          # jump 0x16f600 (the block counter) ; nop
     lookup = struct.unpack("<8I", bootstream.read_span(built, dsp.dm_to_load(dsp.LOOKUP_DM), 32))
@@ -127,14 +131,81 @@ def test_the_four_patches_and_nothing_else_in_the_stock_blocks(stock7, built):
     look_off = bootstream.spans(stock7, dsp.dm_to_load(dsp.LOOKUP_DM + 20), 4)[0][0]
     idle_off = bootstream.spans(stock7, dsp.l2_sw_to_load(dsp.IDLE_SITE_SW), 6)[0][0]
     call_off = bootstream.spans(stock7, dsp.sw_to_load(dsp.CALL_SITE_SW), 6)[0][0]
+    table_off = bootstream.spans(stock7, dsp.sw_to_load(dsp.TABLE_SITE_SW), 6)[0][0]
+    bound_off = bootstream.spans(stock7, dsp.sw_to_load(dsp.BOUND_SITE_SW), 6)[0][0]
     allowed = (set(range(entry_off, entry_off + 8)) | set(range(look_off, look_off + 4))
-               | set(range(idle_off, idle_off + 6)) | set(range(call_off, call_off + 6)))
+               | set(range(idle_off, idle_off + 6)) | set(range(call_off, call_off + 6))
+               | set(range(table_off, table_off + 6)) | set(range(bound_off, bound_off + 6)))
     assert diff and set(diff) <= allowed
+
+
+def test_the_command_dispatch_takes_eight_commands_from_the_moved_table(stock7, built):
+    """`i4 = 0x268a68` -> `i4 = 0x2dfa00` and `lshift by -2` -> `-3`, each one field of a
+    48-bit instruction (16-bit little-endian parcels); the moved table keeps the stock
+    four, puts load.asm at 4 and case 0's code at 5..7, as stock does for 4 and up."""
+    for sw, old, new in ((dsp.TABLE_SITE_SW, dsp.TABLE_SITE_STOCK, dsp.TABLE_SITE_NEW),
+                         (dsp.BOUND_SITE_SW, dsp.BOUND_SITE_STOCK, dsp.BOUND_SITE_NEW)):
+        assert bootstream.read_span(stock7, dsp.sw_to_load(sw), 6) == old
+        assert bootstream.read_span(built, dsp.sw_to_load(sw), 6) == new
+    # the immediate: parcels 2 and 3 hold 0x00268a68 / 0x002dfa00
+    assert struct.unpack("<HH", dsp.TABLE_SITE_NEW[2:]) == (0x002D, 0xFA00) == (dsp.CMD_TABLE_DM >> 16,
+                                                                                dsp.CMD_TABLE_DM & 0xFFFF)
+    # the shift: the immediate byte -2 -> -3, the sign bits (0x78) stock's
+    assert dsp.BOUND_SITE_NEW[:5] == dsp.BOUND_SITE_STOCK[:5] and dsp.BOUND_SITE_NEW[5] == 0xFD
+    assert struct.unpack("<4I", bootstream.read_span(stock7, dsp.dm_to_load(0x268A68), 16)) == dsp.CMD_STOCK
+    table = struct.unpack("<8I", bootstream.read_span(built, dsp.dm_to_load(dsp.CMD_TABLE_DM), 32))
+    assert table == (*dsp.CMD_STOCK, dsp.LOAD_SW, dsp.CMD_STOCK[0], dsp.CMD_STOCK[0], dsp.CMD_STOCK[0])
+
+
+def test_the_loader_renders_through_case_3_from_the_frame_copy():
+    spec = json.loads((SHARC / "load.json").read_text(encoding="utf-8"))
+    assert int(spec["load_sw"], 16) == dsp.LOAD_SW == 0x16FB00
+    be = bytes.fromhex(spec["object_parcels_be"])
+    assert be[spec["instruction_offsets"][-1]:].hex() == "063e001c9f0f"      # JUMP 0x1c9f0f, case 3
+    src = [ln.split("//", 1)[0].strip() for ln in (SHARC / "load.asm").read_text().splitlines()]
+    assert {c for c in src if c.startswith("DM(0x")} == {
+        "DM(0x2dfa20) = R10;", "DM(0x2dfa24) = R10;",                       # its state words
+        "DM(0x2c49dc) = R10;", "DM(0x2c59dc) = R10;",                       # reply word 3, both pages
+        "DM(0x2c49e0) = R10;", "DM(0x2c59e0) = R10;"}                       # reply word 4
+    assert "I3 = 0x25c48c;" in src                                          # the frame copy, case 3's argument
+    # what the dispatch set for case 3, restored before the jump (sw 0x1c9da2..0x1c9dbd)
+    tail = src[src.index("I3 = 0x25c48c;") - 4:src.index("I3 = 0x25c48c;")]
+    assert tail == ["R0 = 8;", "R11 = 8;", "R12 = 2;", "R13 = 4;"]
+    # the bounds it checks are the build's own
+    assert "R0 = 668;" in src and dsp.LOAD_MAX_WORDS == 668 == (2688 - 16) // 4
+    assert "R0 = 0x80800000;" in src and dsp.LOAD_AREA[0] == 0x80800000
+    assert "R0 = 0x200000;" in src and dsp.LOAD_AREA[1] - dsp.LOAD_AREA[0] == 0x200000
+    assert "R0 = 0xffe00003;" in src                                        # below 2 MB, 4-aligned
+    # the load area is DDR the stock image does not use, above both baked tables
+    assert dsp.DDR_REGION[0] <= dsp.TABLES_DM[-1] + dsp.TABLE_BYTES <= dsp.LOAD_AREA[0]
+    assert dsp.LOAD_AREA[1] <= dsp.DDR_REGION[1]
+    assert dsp.LOAD_STATE_DM >= dsp.CMD_TABLE_DM + 32
 
 
 def test_directory_names_both_tables():
     d = dsp.directory()
-    assert struct.unpack_from("<4I", d) == (0x57525431, 2, 0x2DF000, 0x2E3000)
+    assert struct.unpack_from("<4I", d) == (0x57525431, 2, 0x80600000, 0x80604000)
+
+
+def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
+    # the stock stream's last DDR byte is 0x8052fbe0; the tables sit above it, below
+    # the Digitakt II's pool at 0x80a00000, at their own addresses (no load alias)
+    last = max(b.target + b.count for b in bootstream.walk(stock7).blocks
+               if b.count and b.target >= 0x80000000)
+    assert last == dsp.STOCK_DDR_END
+    for k, at in enumerate(dsp.TABLES_DM):
+        assert last < at and at + dsp.TABLE_BYTES <= 0x80A00000
+        assert bootstream.read_span(built, at, dsp.TABLE_BYTES) == \
+            reference.dsp_bytes(dsp.tables()[k])
+    # L1 keeps only code and state: MOVE's shapes and their random state (M10b-4) sit
+    # where table 0 began; after them the loader, its command table and its state,
+    # which runs to the region's end
+    sp = {what: (at, p) for what, at, p in dsp.spans()}
+    assert sp["shapes.asm (wr_shape)"][0] == dsp.dm_to_load(0x2DF000)
+    at, p = sp["MOVE's random state (zeros)"]
+    assert at + len(p) == dsp.dm_to_load(dsp.LOAD_DM) and not any(p)
+    at, p = sp["load state (zeros)"]
+    assert at + len(p) == dsp.dm_to_load(dsp.REGION[1]) and not any(p)
 
 
 # -- the contract -------------------------------------------------------------------------------
@@ -238,16 +309,17 @@ def test_tables_are_original_and_distinct():
 
 
 def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
-    sp = dsp.spans()
+    sp = [x for x in dsp.spans() if x[1] < 0x80000000]       # L1 (the tables are in DDR)
     at = [a - dsp.LOAD_ALIAS for _, a, _ in sp]
     ends = [a - dsp.LOAD_ALIAS + len(p) for _, a, p in sp]
     assert at[0] == dsp.REGION[0] and ends[-1] == dsp.REGION[1]
     assert all(e == a for e, a in zip(ends, at[1:]))           # no unwritten gap
     obj = dsp.objects()
     code_spans = [x for x in sp if "asm" in x[0]]
-    assert len(code_spans) == 6                               # + modulator.asm (M10a)
+    assert len(code_spans) == 8                               # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm
     for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["idle_load"],
-                                                     obj["block_count"], obj["entry_mark"])):
+                                                     obj["block_count"], obj["entry_mark"], obj["modulator"],
+                                                     obj["shapes"], obj["load"])):
         assert payload[:len(code)] == code
         assert len(payload) - len(code) >= 64 and not any(payload[len(code):]), what
 
@@ -351,24 +423,80 @@ def test_move_rate_is_one_second_at_50_and_doubles_every_10():
 
 
 def test_move_shapes():
-    up, down, tri, sq = 0x0100, 0x0000, 0x0300, 0x0400
-    assert live.move_shape(0, down) == 0xFFFF and live.move_shape(0xFFFFFFFF, down) == 0
-    assert live.move_shape(0x40000000, up) == 0x4000
-    assert live.move_shape(0x40000000, tri) == 0x8000 and live.move_shape(0xC0000000, tri) == 0x7FFE
+    up, down, tri, upl, downl, tril, sq = 0x0000, 0x0100, 0x0400, 0x0500, 0x0600, 0x0700, 0x0800
+    for d in (down, downl):
+        assert live.move_shape(0, d) == 0xFFFF and live.move_shape(0xFFFFFFFF, d) == 0
+    for u in (up, upl):
+        assert live.move_shape(0x40000000, u) == 0x4000
+    for t in (tri, tril):
+        assert live.move_shape(0x40000000, t) == 0x8000 and live.move_shape(0xC0000000, t) == 0x7FFE
     assert live.move_shape(0x10000000, sq) == 0xFFFF and live.move_shape(0x90000000, sq) == 0
+
+
+def test_exp_shapes_curve_from_end_to_end():
+    up, down = 0x0200, 0x0300
+    assert live.move_shape(0, up) == 0 and live.move_shape(0xFFFFFFFF, up) >= 0xFFFC
+    assert live.move_shape(0x80000000, up) == 0x2000               # half way: an eighth
+    assert live.move_shape(0, down) >= 0xFFFC and live.move_shape(0xFFFFFFFF, down) == 0
+    assert live.move_shape(0x80000000, down) == 0x1FFF
+    xs = [live.move_shape(p << 24, up) for p in range(256)]
+    assert all(b >= a for a, b in zip(xs, xs[1:]))
+
+
+def test_names_sort_the_shapes_by_nature_and_a_value_past_the_last_is_the_last():
+    assert live.MOVE_SHAPES[:live.ONE_SHOTS] == ("Ramp Up", "Ramp Down", "Exp Up", "Exp Down", "Tri Once")
+    assert live.MOVE_SHAPES[live.RND_HOLD:] == ("Rnd Hold", "Rnd Glide")
+    assert live.move_band(0x7F00) == live.RND_GLIDE
+    assert all(len(n) <= 9 and "&" not in n for n in live.MOVE_SHAPES)   # the header, the font
 
 
 def test_one_shots_hold_their_end_and_loops_wrap():
     near = 0xFFFF0000
-    assert live.move_step(near, 0x6400, 0x0100, 0, False) == 0xFFFFFFFF    # ramp up: holds
-    assert live.move_step(near, 0x6400, 0x0300, 0, False) < near           # looping triangle: wraps
+    for one in range(live.ONE_SHOTS):
+        assert live.move_step(near, 0x6400, one << 8, 0, False) == 0xFFFFFFFF   # holds
+    for loop in range(live.ONE_SHOTS, len(live.MOVE_SHAPES)):
+        assert live.move_step(near, 0x6400, loop << 8, 0, False) < near         # wraps
+
+
+def test_random_shapes_draw_on_a_wrap_and_on_a_restart_only():
+    r = live.MoveRandom()
+    hold = live.RND_HOLD << 8
+    r.step(0, 0x1000, 0x2000, hold, False)                       # moving on: no draw
+    assert r.values(0) == [0, 0] and r.x == 0
+    r.step(0, 0xFFFF0000, 0x10, hold, False)                     # a wrap: a new value
+    first = live.rnd_next(0) >> 16
+    assert r.values(0) == [0, first]
+    r.step(0, 0, 0x10, hold, True)                               # a restart: another
+    assert r.values(0) == [first, live.rnd_next(live.rnd_next(0)) >> 16]
+    r.step(1, 0xFFFF0000, 0x10, 0x0700, False)                   # not a random shape
+    assert r.values(1) == [0, 0]
+    assert live.move_shape(0x12345678, hold, (5, 9)) == 9
+
+
+def test_glide_runs_from_the_value_before_to_the_new_one_smoothly():
+    g = live.RND_GLIDE << 8
+    assert live.move_shape(0, g, (1000, 5000)) == 1000
+    assert live.move_shape(0x80000000, g, (1000, 5000)) == 3000
+    assert live.move_shape(0xFFFFFFFF, g, (1000, 5000)) in (4999, 5000)
+    assert live.move_shape(0x80000000, g, (5000, 1000)) == 3000
+    ys = [live.move_shape(p << 24, g, (0, 0xFFFF)) for p in range(256)]
+    assert all(b >= a for a, b in zip(ys, ys[1:]))
+    assert ys[1] - ys[0] < ys[128] - ys[127]                     # slow at the ends
+
+
+def test_the_random_generator_does_not_repeat_soon():
+    x, seen = 0, set()
+    for _ in range(100_000):
+        x = live.rnd_next(x)
+        assert x not in seen
+        seen.add(x)
 
 
 def test_trig_restarts_only_when_on():
     p = 0x12345678
-    assert live.move_step(p, 0, 0x0300, live.TRIG_RESTART, True) == live.MOVE_RATE[0]
-    assert live.move_step(p, 0, 0x0300, 0x100, True) == p + live.MOVE_RATE[0]    # TRIG 1: free
-    assert live.move_step(p, 0, 0x0300, live.TRIG_RESTART, False) == p + live.MOVE_RATE[0]
+    assert live.move_step(p, 0, 0x0700, live.TRIG_RESTART, True) == live.MOVE_RATE[0]
+    assert live.move_step(p, 0, 0x0700, 0x100, True) == p + live.MOVE_RATE[0]    # TRIG 1: free
+    assert live.move_step(p, 0, 0x0700, live.TRIG_RESTART, False) == p + live.MOVE_RATE[0]
 
 
 def test_mpos_and_mlev_full_depth():

@@ -77,7 +77,17 @@ READER_BLOCKS_DM, READER_BLOCK_BYTES = 0x2DDF00, 32
 INC_TABLE_DM = 0x2DE200
 DIRECTORY_DM = 0x2DE600
 DIRECTORY_MAGIC = 0x57525431                 # 'WRT1'
-TABLES_DM = (0x2DF000, 0x2E3000)
+# The tables live in the SHARC's DDR, not in L1 (2026-10-03): 32 KB of L1's 43 KB free
+# tail is better spent on code and per-voice state, and tables loaded from the +Drive
+# at run time will live in DDR anyway. The stock image's last DDR byte is 0x8052fbe0
+# (`dnfw ldr`); no aligned data word and no code immediate names DDR above it (the
+# scan in docs/waverider-m10-move.md, "The tables in DDR"). DDR_REGION sits 720 KB
+# above it and below 0x80a00000, where the Digitakt II, on the same board, keeps its
+# sample pool. DDR has no 0x28 load alias: a block's target is the address itself.
+STOCK_DDR_END = 0x8052FBE0
+DDR_REGION = (0x80600000, 0x80A00000)
+TABLE_BYTES = 0x4000                         # 16 frames x 512 int16
+TABLES_DM = (0x80600000, 0x80604000)
 
 IDLE_DM = 0x2DEA00                           # idle_load.asm, in the gap before table 0
 IDLE_SW = IDLE_DM // 2                       # 0x16f500
@@ -92,6 +102,18 @@ MOD_SW = MOD_DM // 2                         # 0x16f700
 MOVE_PHASES_DM = 0x2DE700                    # 16 voices x 2 oscillators, a u32 phase each
 MOVE_OFFSETS_DM = 0x2DE780                   # per oscillator, 32 bytes: frame offsets of RATE MPOS MLEV MOVE TRIG
 MOVE_RATE_DM = 0x2DE7D8                      # F[0..9], the rate table
+SHAPES_DM = 0x2DF000                         # shapes.asm (M10b-4): MOVE's eleven shapes, in L1 the tables left
+SHAPES_SW = SHAPES_DM // 2                   # 0x16f800
+MOVE_RANDOM_DM = 0x2DF400                    # 16 voices x 2 oscillators: the random shapes' (a, b), a u32 each
+MOVE_RANDOM_GEN_DM = 0x2DF500                # their generator's state
+MOVE_RANDOM_BYTES = 0x200                    # both, zeros at boot
+# Loading tables at run time (load.asm): command 4 copies a chunk of the frame into DDR.
+LOAD_DM = 0x2DF600                           # load.asm, after MOVE's random state
+LOAD_SW = LOAD_DM // 2                       # 0x16fb00: the command table's entry 4
+CMD_TABLE_DM = 0x2DFA00                      # the handler's command table, moved here with 8 entries
+LOAD_STATE_DM, LOAD_STATE_BYTES = 0x2DFA20, 8  # the chunk's sequence and checksum while it is copied
+LOAD_AREA = (0x80800000, 0x80A00000)         # DDR the ColdFire's chunks may write: 2 MB, the top of DDR_REGION
+LOAD_MAX_WORDS = 668                         # payload words in one 2,688-byte frame, after the 4-word header
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 
 # stock sites
@@ -105,6 +127,17 @@ IDLE_SITE_STOCK = bytes.fromhex("3e07ff00f0ff")
 IDLE_RETURN_SW = 0xB88AAB                    # the loop's top: call prvCheckTasksWaitingTermination
 CALL_SITE_SW = 0x1C9FB9                      # the handler's `r4 = 0x268438` before `cjump 0x1c2712`
 CALL_SITE_STOCK = bytes.fromhex("040f26003884")
+# The per-frame handler's command dispatch (sw 0x1c9d6b): the table's address and the
+# bound. Stock: `i4 = 0x268a68` (four entries, the string "Audio Task" after them) and
+# `r1 = lshift r2 by -2`, so commands 4 and up take case 0's code (sw 0x1c9daf). Here:
+# `i4 = 0x2dfa00` (CMD_TABLE_DM) and `by -3`, commands 0..7, each a 16-bit immediate edit.
+TABLE_SITE_SW = 0x1C9D9F
+TABLE_SITE_STOCK = bytes.fromhex("140f2600688a")
+TABLE_SITE_NEW = bytes.fromhex("140f2d0000fa")
+BOUND_SITE_SW = 0x1C9DAA
+BOUND_SITE_STOCK = bytes.fromhex("3e02007812fe")
+BOUND_SITE_NEW = bytes.fromhex("3e02007812fd")
+CMD_STOCK = (0x1C9DC2, 0x1C9E76, 0x1C9EDA, 0x1C9F0F)   # the stock table: cases 0..3
 
 
 class DspError(ValueError):
@@ -140,7 +173,7 @@ def objects() -> dict[str, bytes]:
     spec = _code()
     return {name: sharc_object.load_bytes(bytes.fromhex(spec[name]["object_parcels_be"]))
             for name in ("reader", "machine5_live", "entry_jump", "idle_load", "idle_jump", "block_count",
-                         "entry_mark", "emark_jump", "modulator")}
+                         "entry_mark", "emark_jump", "modulator", "shapes", "load")}
 
 
 def directory() -> bytes:
@@ -157,6 +190,12 @@ def directory() -> bytes:
     at = MOVE_RATE_DM - DIRECTORY_DM
     out[at:at + 4 * len(live.MOVE_RATE)] = struct.pack("<%dI" % len(live.MOVE_RATE), *live.MOVE_RATE)
     return bytes(out)
+
+
+def command_table() -> bytes:
+    """The handler's command table, moved: the stock four, load.asm at 4, and 5..7 on
+    case 0's code, where any command of 4 or more went before."""
+    return struct.pack("<8I", *CMD_STOCK, LOAD_SW, CMD_STOCK[0], CMD_STOCK[0], CMD_STOCK[0])
 
 
 def spans() -> list[tuple[str, int, bytes]]:
@@ -177,8 +216,11 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("block_count.asm (wr_count)", COUNT_DM, obj["block_count"]),
         ("entry_mark.asm (wr_emark)", EMARK_DM, obj["entry_mark"]),
         ("modulator.asm (wr_mod)", MOD_DM, obj["modulator"]),
-        ("table 0: saw -> sine (testtable reversed)", TABLES_DM[0], reference.dsp_bytes(t[0])),
-        ("table 1: the overtone series (harmonics)", TABLES_DM[1], reference.dsp_bytes(t[1])),
+        ("shapes.asm (wr_shape)", SHAPES_DM, obj["shapes"]),
+        ("MOVE's random state (zeros)", MOVE_RANDOM_DM, bytes(MOVE_RANDOM_BYTES)),
+        ("load.asm (wr_load)", LOAD_DM, obj["load"]),
+        ("command table, 8 entries", CMD_TABLE_DM, command_table()),
+        ("load state (zeros)", LOAD_STATE_DM, bytes(LOAD_STATE_BYTES)),
     ]
     out = []
     for k, (what, at, payload) in enumerate(raw):
@@ -188,6 +230,12 @@ def spans() -> list[tuple[str, int, bytes]]:
         if "asm" in what and end - at - len(payload) < 64:
             raise DspError(f"{what} leaves fewer than 64 bytes of NOP padding")
         out.append((what, dm_to_load(at), payload + bytes(end - at - len(payload))))
+    for what, at, frames in (("table 0: saw -> sine (testtable reversed)", TABLES_DM[0], t[0]),
+                             ("table 1: the overtone series (harmonics)", TABLES_DM[1], t[1])):
+        payload = reference.dsp_bytes(frames)
+        if len(payload) != TABLE_BYTES:
+            raise DspError(f"{what} is {len(payload)} bytes, not {TABLE_BYTES}")
+        out.append((what, at, payload))                  # DDR: the target is the address
     return out
 
 
@@ -213,27 +261,34 @@ def _check_free(stock: bytes, span_list) -> None:
     blocks = [b for b in bootstream.walk(stock).blocks if b.count]
     for what, at, payload in span_list:
         lo, hi = at, at + len(payload)
-        if not (dm_to_load(REGION[0]) <= lo and hi <= dm_to_load(REGION[1])):
-            raise DspError(f"{what} at {lo:#x} leaves the block-1 region {REGION}")
+        in_l1 = dm_to_load(REGION[0]) <= lo and hi <= dm_to_load(REGION[1])
+        in_ddr = DDR_REGION[0] <= lo and hi <= DDR_REGION[1]
+        if not (in_l1 or in_ddr):
+            raise DspError(f"{what} at {lo:#x} leaves the block-1 region {REGION} "
+                           f"and the DDR region {DDR_REGION}")
         for b in blocks:
             if b.target < hi and lo < b.target + b.count:
                 raise DspError(f"{what} at {lo:#x}+{len(payload):#x} overlaps the stock "
                                f"block at {b.target:#x}+{b.count:#x}")
     if not (STOCK_BLOCK1_END <= REGION[0] and REGION[1] <= DM_CACHE_32K):
         raise DspError(f"the region {REGION} is not between block 1's last stock byte and a 32 KB DM cache")
+    if DDR_REGION[0] < STOCK_DDR_END:
+        raise DspError(f"the DDR region {DDR_REGION} starts below the stock image's last DDR byte")
     ordered = sorted((at, at + len(p), w) for w, at, p in span_list)
     for (a0, a1, w0), (b0, b1, w1) in zip(ordered, ordered[1:]):
         if b0 < a1:
             raise DspError(f"{w0} and {w1} overlap")
 
 
-IDLE_STATE_BYTES = 0x40                      # idle: saves, LAST, total, passes, BEFORE, AFTER; count: blocks, saves, MARK; MARK0
+IDLE_PAD_END = 0x2DF000
+IDLE_STATE_BYTES = 0x40                     # idle: saves, LAST, total, passes, BEFORE, AFTER; count: blocks, saves, MARK; MARK0
 
 
 def idle_spans() -> list[tuple[str, int, bytes]]:
-    """The idle stub's own blocks: its zeroed state, and its code padded to table 0."""
+    """The idle stub's own blocks: its zeroed state, and its code padded to 0x2df000
+    (where table 0 began until the tables moved to DDR, so this build is unchanged)."""
     code = objects()["idle_load"]
-    end = TABLES_DM[0]
+    end = IDLE_PAD_END
     if end - IDLE_DM - len(code) < 64:
         raise DspError("idle_load.asm leaves fewer than 64 bytes of NOP padding")
     return [("idle_load state (zeros)", dm_to_load(IDLE_STATE_DM), bytes(IDLE_STATE_BYTES)),
@@ -294,6 +349,12 @@ def section7(stock: bytes) -> bytes:
         raise DspError("sw 0xb88abb is not the stock idle loop's `jump (pc,-0x10)`")
     if bootstream.read_span(stock, sw_to_load(CALL_SITE_SW), len(CALL_SITE_STOCK)) != CALL_SITE_STOCK:
         raise DspError("sw 0x1c9fb9 is not the stock `r4 = 0x268438`")
+    if bootstream.read_span(stock, sw_to_load(TABLE_SITE_SW), 6) != TABLE_SITE_STOCK:
+        raise DspError("sw 0x1c9d9f is not the stock `i4 = 0x268a68`")
+    if bootstream.read_span(stock, sw_to_load(BOUND_SITE_SW), 6) != BOUND_SITE_STOCK:
+        raise DspError("sw 0x1c9daa is not the stock `r1 = lshift r2 by -2`")
+    if struct.unpack("<4I", bootstream.read_span(stock, dm_to_load(0x268A68), 16)) != CMD_STOCK:
+        raise DspError("the command table at 0x268a68 is not stock")
     if len(obj["emark_jump"]) != len(CALL_SITE_STOCK):
         raise DspError(f"the entry-mark JUMP is {len(obj['emark_jump'])} bytes, not {len(CALL_SITE_STOCK)}")
     lookup = struct.unpack("<8I", bootstream.read_span(stock, dm_to_load(LOOKUP_DM), 32))
@@ -308,6 +369,8 @@ def section7(stock: bytes) -> bytes:
     bootstream.write_span(out, dm_to_load(LOOKUP_DM + 20), struct.pack("<I", 5))
     bootstream.write_span(out, l2_sw_to_load(IDLE_SITE_SW), obj["idle_jump"])
     bootstream.write_span(out, sw_to_load(CALL_SITE_SW), obj["emark_jump"])
+    bootstream.write_span(out, sw_to_load(TABLE_SITE_SW), TABLE_SITE_NEW)
+    bootstream.write_span(out, sw_to_load(BOUND_SITE_SW), BOUND_SITE_NEW)
     result = bytes(out)
     walked = bootstream.walk(result)
     if not walked.complete or walked.stopped_at != len(result):

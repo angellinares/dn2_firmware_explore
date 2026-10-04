@@ -11,6 +11,10 @@ is stock. On, it asks first:
 YES reloads exactly as FUNC + NO does (the same call, the same arguments); NO
 leaves the pattern alone. A performer switches it off for the immediate reload.
 
+**Passed on the instrument on 2026-10-04** as `reload-confirm2` (this mod's MAIN OS,
+byte for byte): off is stock; on, NO keeps the edits and YES reverts them; the switch
+survives a power cycle without SAVE PROJECT.
+
 `scripts/build_reload_confirm.py` carries the reading of the firmware and the
 emulator evidence: the key handler's NO case, the stock YES/NO prompt the
 pattern menu's RELOAD uses, why our prompt drops the release of the NO that

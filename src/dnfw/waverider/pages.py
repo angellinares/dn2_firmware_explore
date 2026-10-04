@@ -54,7 +54,7 @@ from __future__ import annotations
 from .live import MOVE_SHAPES
 
 LOAD = 0x4670C000                 # RAM above BSS, clear of every declared range (docs/mods-compatibility.md)
-C_LOAD = LOAD + 0x600             # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b)
+C_LOAD = LOAD + 0x700             # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4)
 C_END = 0x46710000                # the platform runtime starts here
 ACTIVE_TRACK = 0x42431A6C         # byte: the UI's active track, 0..15
 KIT_POINTER = 0x800052A0          # the live kit; sound t at + 52 + 1163 t

@@ -102,6 +102,11 @@ MOD_SW = MOD_DM // 2                         # 0x16f700
 MOVE_PHASES_DM = 0x2DE700                    # 16 voices x 2 oscillators, a u32 phase each
 MOVE_OFFSETS_DM = 0x2DE780                   # per oscillator, 32 bytes: frame offsets of RATE MPOS MLEV MOVE TRIG
 MOVE_RATE_DM = 0x2DE7D8                      # F[0..9], the rate table
+SHAPES_DM = 0x2DF000                         # shapes.asm (M10b-4): MOVE's eleven shapes, in L1 the tables left
+SHAPES_SW = SHAPES_DM // 2                   # 0x16f800
+MOVE_RANDOM_DM = 0x2DF400                    # 16 voices x 2 oscillators: the random shapes' (a, b), a u32 each
+MOVE_RANDOM_GEN_DM = 0x2DF500                # their generator's state
+MOVE_RANDOM_BYTES = 0x200                    # both, zeros at boot
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 
 # stock sites
@@ -150,7 +155,7 @@ def objects() -> dict[str, bytes]:
     spec = _code()
     return {name: sharc_object.load_bytes(bytes.fromhex(spec[name]["object_parcels_be"]))
             for name in ("reader", "machine5_live", "entry_jump", "idle_load", "idle_jump", "block_count",
-                         "entry_mark", "emark_jump", "modulator")}
+                         "entry_mark", "emark_jump", "modulator", "shapes")}
 
 
 def directory() -> bytes:
@@ -187,6 +192,8 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("block_count.asm (wr_count)", COUNT_DM, obj["block_count"]),
         ("entry_mark.asm (wr_emark)", EMARK_DM, obj["entry_mark"]),
         ("modulator.asm (wr_mod)", MOD_DM, obj["modulator"]),
+        ("shapes.asm (wr_shape)", SHAPES_DM, obj["shapes"]),
+        ("MOVE's random state (zeros)", MOVE_RANDOM_DM, bytes(MOVE_RANDOM_BYTES)),
     ]
     out = []
     for k, (what, at, payload) in enumerate(raw):

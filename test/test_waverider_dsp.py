@@ -104,7 +104,7 @@ def test_loaded_image_holds_our_bytes(built):
         assert bootstream.read_span(built, at, len(payload)) == payload, what
 
 
-def test_the_four_patches_and_nothing_else_in_the_stock_blocks(stock7, built):
+def test_the_six_patches_and_nothing_else_in_the_stock_blocks(stock7, built):
     entry = bootstream.read_span(built, dsp.sw_to_load(dsp.ENTRY_SW), 8)
     assert entry == bytes.fromhex("3e06160000f60100")          # jump 0x16f600 (the block counter) ; nop
     lookup = struct.unpack("<8I", bootstream.read_span(built, dsp.dm_to_load(dsp.LOOKUP_DM), 32))
@@ -131,9 +131,55 @@ def test_the_four_patches_and_nothing_else_in_the_stock_blocks(stock7, built):
     look_off = bootstream.spans(stock7, dsp.dm_to_load(dsp.LOOKUP_DM + 20), 4)[0][0]
     idle_off = bootstream.spans(stock7, dsp.l2_sw_to_load(dsp.IDLE_SITE_SW), 6)[0][0]
     call_off = bootstream.spans(stock7, dsp.sw_to_load(dsp.CALL_SITE_SW), 6)[0][0]
+    table_off = bootstream.spans(stock7, dsp.sw_to_load(dsp.TABLE_SITE_SW), 6)[0][0]
+    bound_off = bootstream.spans(stock7, dsp.sw_to_load(dsp.BOUND_SITE_SW), 6)[0][0]
     allowed = (set(range(entry_off, entry_off + 8)) | set(range(look_off, look_off + 4))
-               | set(range(idle_off, idle_off + 6)) | set(range(call_off, call_off + 6)))
+               | set(range(idle_off, idle_off + 6)) | set(range(call_off, call_off + 6))
+               | set(range(table_off, table_off + 6)) | set(range(bound_off, bound_off + 6)))
     assert diff and set(diff) <= allowed
+
+
+def test_the_command_dispatch_takes_eight_commands_from_the_moved_table(stock7, built):
+    """`i4 = 0x268a68` -> `i4 = 0x2dfa00` and `lshift by -2` -> `-3`, each one field of a
+    48-bit instruction (16-bit little-endian parcels); the moved table keeps the stock
+    four, puts load.asm at 4 and case 0's code at 5..7, as stock does for 4 and up."""
+    for sw, old, new in ((dsp.TABLE_SITE_SW, dsp.TABLE_SITE_STOCK, dsp.TABLE_SITE_NEW),
+                         (dsp.BOUND_SITE_SW, dsp.BOUND_SITE_STOCK, dsp.BOUND_SITE_NEW)):
+        assert bootstream.read_span(stock7, dsp.sw_to_load(sw), 6) == old
+        assert bootstream.read_span(built, dsp.sw_to_load(sw), 6) == new
+    # the immediate: parcels 2 and 3 hold 0x00268a68 / 0x002dfa00
+    assert struct.unpack("<HH", dsp.TABLE_SITE_NEW[2:]) == (0x002D, 0xFA00) == (dsp.CMD_TABLE_DM >> 16,
+                                                                                dsp.CMD_TABLE_DM & 0xFFFF)
+    # the shift: the immediate byte -2 -> -3, the sign bits (0x78) stock's
+    assert dsp.BOUND_SITE_NEW[:5] == dsp.BOUND_SITE_STOCK[:5] and dsp.BOUND_SITE_NEW[5] == 0xFD
+    assert struct.unpack("<4I", bootstream.read_span(stock7, dsp.dm_to_load(0x268A68), 16)) == dsp.CMD_STOCK
+    table = struct.unpack("<8I", bootstream.read_span(built, dsp.dm_to_load(dsp.CMD_TABLE_DM), 32))
+    assert table == (*dsp.CMD_STOCK, dsp.LOAD_SW, dsp.CMD_STOCK[0], dsp.CMD_STOCK[0], dsp.CMD_STOCK[0])
+
+
+def test_the_loader_renders_through_case_3_from_the_frame_copy():
+    spec = json.loads((SHARC / "load.json").read_text(encoding="utf-8"))
+    assert int(spec["load_sw"], 16) == dsp.LOAD_SW == 0x16FB00
+    be = bytes.fromhex(spec["object_parcels_be"])
+    assert be[spec["instruction_offsets"][-1]:].hex() == "063e001c9f0f"      # JUMP 0x1c9f0f, case 3
+    src = [ln.split("//", 1)[0].strip() for ln in (SHARC / "load.asm").read_text().splitlines()]
+    assert {c for c in src if c.startswith("DM(0x")} == {
+        "DM(0x2dfa20) = R10;", "DM(0x2dfa24) = R10;",                       # its state words
+        "DM(0x2c49dc) = R10;", "DM(0x2c59dc) = R10;",                       # reply word 3, both pages
+        "DM(0x2c49e0) = R10;", "DM(0x2c59e0) = R10;"}                       # reply word 4
+    assert "I3 = 0x25c48c;" in src                                          # the frame copy, case 3's argument
+    # what the dispatch set for case 3, restored before the jump (sw 0x1c9da2..0x1c9dbd)
+    tail = src[src.index("I3 = 0x25c48c;") - 4:src.index("I3 = 0x25c48c;")]
+    assert tail == ["R0 = 8;", "R11 = 8;", "R12 = 2;", "R13 = 4;"]
+    # the bounds it checks are the build's own
+    assert "R0 = 668;" in src and dsp.LOAD_MAX_WORDS == 668 == (2688 - 16) // 4
+    assert "R0 = 0x80800000;" in src and dsp.LOAD_AREA[0] == 0x80800000
+    assert "R0 = 0x200000;" in src and dsp.LOAD_AREA[1] - dsp.LOAD_AREA[0] == 0x200000
+    assert "R0 = 0xffe00003;" in src                                        # below 2 MB, 4-aligned
+    # the load area is DDR the stock image does not use, above both baked tables
+    assert dsp.DDR_REGION[0] <= dsp.TABLES_DM[-1] + dsp.TABLE_BYTES <= dsp.LOAD_AREA[0]
+    assert dsp.LOAD_AREA[1] <= dsp.DDR_REGION[1]
+    assert dsp.LOAD_STATE_DM >= dsp.CMD_TABLE_DM + 32
 
 
 def test_directory_names_both_tables():
@@ -152,10 +198,13 @@ def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
         assert bootstream.read_span(built, at, dsp.TABLE_BYTES) == \
             reference.dsp_bytes(dsp.tables()[k])
     # L1 keeps only code and state: MOVE's shapes and their random state (M10b-4) sit
-    # where table 0 began, and the state runs to the region's end
+    # where table 0 began; after them the loader, its command table and its state,
+    # which runs to the region's end
     sp = {what: (at, p) for what, at, p in dsp.spans()}
     assert sp["shapes.asm (wr_shape)"][0] == dsp.dm_to_load(0x2DF000)
     at, p = sp["MOVE's random state (zeros)"]
+    assert at + len(p) == dsp.dm_to_load(dsp.LOAD_DM) and not any(p)
+    at, p = sp["load state (zeros)"]
     assert at + len(p) == dsp.dm_to_load(dsp.REGION[1]) and not any(p)
 
 
@@ -267,10 +316,10 @@ def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
     assert all(e == a for e, a in zip(ends, at[1:]))           # no unwritten gap
     obj = dsp.objects()
     code_spans = [x for x in sp if "asm" in x[0]]
-    assert len(code_spans) == 7                               # + modulator.asm (M10a), shapes.asm (M10b-4)
+    assert len(code_spans) == 8                               # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm
     for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["idle_load"],
                                                      obj["block_count"], obj["entry_mark"], obj["modulator"],
-                                                     obj["shapes"])):
+                                                     obj["shapes"], obj["load"])):
         assert payload[:len(code)] == code
         assert len(payload) - len(code) >= 64 and not any(payload[len(code):]), what
 

@@ -17,6 +17,7 @@ import pytest
 
 from dnfw.image import bootstream, sharc_object
 from dnfw.waverider import dsp, harmonics, live, reduce, render, testtable
+from dnfw.waverider import render as reference
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 IMAGE = ROOT / "00_Resources" / "00_Firmware" / "Digitone_II_OS1.11_dist.zip"
@@ -88,9 +89,12 @@ def test_every_added_span_is_in_block_1s_free_tail_and_outside_every_stock_block
     # Milestone 5c: M5's L1 block 2 silenced the instrument (docs/waverider-dsp-silence.md)
     stock_blocks = [b for b in bootstream.walk(stock7).blocks if b.count]
     for what, at, payload in dsp.spans():
-        lo, hi = at - dsp.LOAD_ALIAS, at - dsp.LOAD_ALIAS + len(payload)
-        assert 0x2DD52C <= lo and hi <= 0x2E8000, what          # above stock, below a 32 KB DM cache
-        assert not (0x300000 <= lo < 0x320000), what            # nothing left in block 2
+        if at >= 0x80000000:                                    # the tables, in DDR above the image
+            assert 0x8052FBE0 <= at and at + len(payload) <= 0x80A00000, what
+        else:
+            lo, hi = at - dsp.LOAD_ALIAS, at - dsp.LOAD_ALIAS + len(payload)
+            assert 0x2DD52C <= lo and hi <= 0x2E8000, what      # above stock, below a 32 KB DM cache
+            assert not (0x300000 <= lo < 0x320000), what        # nothing left in block 2
         for b in stock_blocks:
             assert not (b.target < at + len(payload) and at < b.target + b.count), what
 
@@ -134,7 +138,22 @@ def test_the_four_patches_and_nothing_else_in_the_stock_blocks(stock7, built):
 
 def test_directory_names_both_tables():
     d = dsp.directory()
-    assert struct.unpack_from("<4I", d) == (0x57525431, 2, 0x2DF000, 0x2E3000)
+    assert struct.unpack_from("<4I", d) == (0x57525431, 2, 0x80600000, 0x80604000)
+
+
+def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
+    # the stock stream's last DDR byte is 0x8052fbe0; the tables sit above it, below
+    # the Digitakt II's pool at 0x80a00000, at their own addresses (no load alias)
+    last = max(b.target + b.count for b in bootstream.walk(stock7).blocks
+               if b.count and b.target >= 0x80000000)
+    assert last == dsp.STOCK_DDR_END
+    for k, at in enumerate(dsp.TABLES_DM):
+        assert last < at and at + dsp.TABLE_BYTES <= 0x80A00000
+        assert bootstream.read_span(built, at, dsp.TABLE_BYTES) == \
+            reference.dsp_bytes(dsp.tables()[k])
+    # L1 keeps only code and state: the modulator's span now runs to the region's end
+    mod = [(at, p) for what, at, p in dsp.spans() if "wr_mod" in what]
+    assert len(mod) == 1 and mod[0][0] + len(mod[0][1]) == dsp.dm_to_load(dsp.REGION[1])
 
 
 # -- the contract -------------------------------------------------------------------------------
@@ -238,7 +257,7 @@ def test_tables_are_original_and_distinct():
 
 
 def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
-    sp = dsp.spans()
+    sp = [x for x in dsp.spans() if x[1] < 0x80000000]       # L1 (the tables are in DDR)
     at = [a - dsp.LOAD_ALIAS for _, a, _ in sp]
     ends = [a - dsp.LOAD_ALIAS + len(p) for _, a, p in sp]
     assert at[0] == dsp.REGION[0] and ends[-1] == dsp.REGION[1]

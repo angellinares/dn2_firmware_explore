@@ -365,7 +365,7 @@ dnfw mods apply firmware.syx --mod lfowaves --mod moddest --mod midiarp -o modde
   <dl class="facts">
     <dt>Adds</dt><dd>MIDI note-on and note-off for every note layered onto a MIDI track; unlayered tracks are stock</dd>
     <dt>Changes</dt><dd>2 hooks in section 3, and 324&nbsp;B of code in the platform's appended area, copied to RAM at start-up</dd>
-    <dt>Tested</dt><dd>Flashed 2026-10-02 and recorded from an external synth: sequenced notes, chords, retrigs, probability, INF, held keys; two sources into one MIDI track and one source into several. Moved onto the mod platform 2026-10-03 (same code); that build is checked in the emulator, not yet flashed</dd>
+    <dt>Tested</dt><dd>Flashed 2026-10-02 and recorded from an external synth: sequenced notes, chords, retrigs, probability, INF, held keys; two sources into one MIDI track and one source into several. Moved onto the mod platform 2026-10-03 (same code), and flashed again that day with the Boot screen and the USB SysEx probe: works</dd>
     <dt>Combines</dt><dd><!-- dnfw:combines layermidi -->With Arpeggiator SHUF and RAND, Arpeggiator p-locks, Boot screen, LFO modulation of the FX, A fourth LFO, New LFO waveforms, More modulation destinations, Reload confirm, Song guard, FM drum transients, USB SysEx probe (diagnostic), Waverider, a sixth machine; <strong>not</strong> with Arpeggiator on MIDI tracks (refused by hand: they fight over one feature). See the compatibility table<!-- /dnfw:combines --></dd>
   </dl>
 

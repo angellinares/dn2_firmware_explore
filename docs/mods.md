@@ -698,7 +698,10 @@ on either end. Six bench builds got there -- `docs/flashing.md` has each, and
 **On the platform, 2026-10-03** (`layer-midi7`): the same code, moved from the
 cave to the chunk; the hooks are unchanged apart from their target, and the cave
 stays stock. It now combines with usbprobe. Checked in the emulator (boot from
-reset, the loader layout, the ISR's loops); not yet on the instrument.
+reset, the loader layout, the ISR's loops), and **passed on the instrument
+2026-10-03**, flashed with bootscreen and usbprobe in one image. With the source
+track's arp on, the MIDI track gets the original notes, not the arp's steps -- as
+stock layering does between audio tracks.
 
 **Not with `midiarp`.** The bytes no longer collide, but both turn layered copies
 on MIDI tracks into MIDI. Since #179 midiarp plays a layered copy only when its own

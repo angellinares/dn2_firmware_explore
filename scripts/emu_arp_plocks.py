@@ -234,6 +234,28 @@ def main(ranges, snapshot=SNAP):
     e.call(at["clear_hook"], [model, 0, 6])
     check("record freed when empty", e.read(t, 2) == b"\xff\xff", e.read(t, 2).hex())
 
+    print("clear: the step's lock count drops the arp locks it cleared (0x400558f8 frees a step only at 0)")
+    t = e.table()
+    e.record(t, 0, 2, 0x20, {5: 0x0007})
+    model = e.model(t)
+    e.write(t + COUNTS + 5, b"\x01")                # as the recount left it when the lock was made
+    e.write(t + COUNTS + 9, b"\x03")                # a step with no arp lock: the control
+    e.call(at["clear_hook"], [model, 0, 5])
+    check("the count of a step whose arp lock was cleared is 0", e.read(t + COUNTS + 5, 1) == b"\x00",
+          e.read(t + COUNTS + 5, 1).hex())
+    e.call(at["clear_hook"], [model, 0, 9])
+    check("a step with no arp lock keeps its count (no recount)", e.read(t + COUNTS + 9, 1) == b"\x03",
+          e.read(t + COUNTS + 9, 1).hex())
+    e.record(t, 1, 2, 0x20, {7: 0x0002})
+    e.record(t, 2, 17, 0x00, {7: 0x1234})           # and a stock lock on the same step
+    e.write(t + COUNTS + 7, b"\x02")
+    e.call(at["clear_hook"], [model, 0, 7])
+    # the stock clear runs after the hook and takes the stock lock too, then recounts
+    check("an arp and a stock lock on one step: both cleared, count 0",
+          e.u16(t + REC + 2 + 14) == 0xFFFF and e.u16(t + 2 * REC + 2 + 14) == 0xFFFF
+          and e.read(t + COUNTS + 7, 1) == b"\x00",
+          f"{e.u16(t + REC + 2 + 14):04x} {e.u16(t + 2 * REC + 2 + 14):04x} {e.read(t + COUNTS + 7, 1).hex()}")
+
     print("pattern load: arp ids back to tagged records, free and stock records as stock")
     stored = e.alloc(REC * RECS)
     e.write(stored, b"\xff" * (REC * RECS))

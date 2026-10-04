@@ -15,6 +15,18 @@ shifts the UI cave by 10 bytes, and it is checked in the emulator
 (`scripts/emu_arp_modes.py`, `scripts/emu_arp_plocks.py`), not yet on the
 instrument.
 
+**Fixed 2026-10-05: a lock trig with arp locks can be removed again.** On the
+instrument (owner, 2026-10-05), FUNC + TRIG on a yellow lock trig carrying arp locks
+turned it red and blinking instead of removing it, until a reboot. The stock clear
+of a step's locks (`0x4003d14e`) recounts the step's lock count (table `+0x56f0`)
+only when it clears a stock value itself; `clear_hook` cleared the arp locks before
+it but never recounted, and the trig tidy-up (`0x400558f8`) frees a step only when
+that count is 0. `clear_hook` now runs the stock recount (`0x4003ce3c`) whenever it
+clears an arp lock. Measured in the emulator (the Rust core, `panel_drive`): the count
+stayed 1 after FUNC + TRIG before, and is 0 after, as with a stock p-lock (the
+control). `scripts/emu_arp_plocks.py` checks it (45/45; the old build fails the new
+check). A quick tap leaving a locked lock trig in place is stock behaviour.
+
 ## How it applies
 
 The code is assembled ahead of time (`scripts/gen_arpplocks_code.py` ->
@@ -24,7 +36,7 @@ The code is assembled ahead of time (`scripts/gen_arpplocks_code.py` ->
    differs is refused;
 2. the edits are written: four code caves, the hooks and a few byte patches.
 
-Since 2026-10-02 its code is a platform `CODE` chunk (`dnfw.mods.platform`): 1,944
+Since 2026-10-02 its code is a platform `CODE` chunk (`dnfw.mods.platform`): 1,984
 bytes assembled to run at `0x467c8000`, copied there by the platform's start-up
 loader. Until then it sat in seven code caves of the image, two of them shared with
 usbprobe and fxmod, so it combined with neither. The hooks and patches in MAIN OS

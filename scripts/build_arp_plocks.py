@@ -820,23 +820,33 @@ UI_LABELS = tuple(e[2] for e in EDITS) + ("trigless_hook",)
 CLEAR_SRC = f"""
 | Clearing a step's locks (0x4003d14e (model, track, step), reached by removing a
 | trig, clearing, and every paste before it writes): the step's arp locks too,
-| a record freed (ff ff) once every step is empty. Then the stock routine.
+| a record freed (ff ff) once every step is empty. When one was cleared, the stock
+| recount, so the step's lock count (table +0x56f0) drops it: the stock clear
+| recounts only when it clears a stock value itself, and a count left above 0
+| keeps the step from being freed (0x400558f8 frees it only at 0) -- a lock trig
+| with arp locks turned red and blinking on FUNC + TRIG instead of going, until a
+| reboot recounted (owner, 2026-10-05). Then the stock routine.
 clear_hook:                             | +4 model, +8 track, +12 step
-    lea     %sp@(-16),%sp
-    moveml  %d2-%d4/%a2,%sp@            | model +20, track +24, step +28
-    movea.l %sp@(20),%a0
+    lea     %sp@(-20),%sp
+    moveml  %d2-%d5/%a2,%sp@            | model +24, track +28, step +32
+    moveq   #0,%d5                      | an arp lock cleared?
+    movea.l %sp@(24),%a0
     jsr     @model_sound@               | vt[40]: the pattern's lock table here
     beq.s   9f
     movea.l %d0,%a2
-    move.l  %sp@(24),%d2
+    move.l  %sp@(28),%d2
     ori.l   #{EXT_TAG},%d2
-    move.l  %sp@(28),%d3
+    move.l  %sp@(32),%d3
     add.l   %d3,%d3
     moveq   #80,%d4
 1:  move.b  %a2@(1),%d0
     cmp.b   %d2,%d0
     bne.s   4f
-    moveq   #-1,%d0
+    mvs.w   %a2@(2,%d3:l),%d0
+    addq.l  #1,%d0
+    beq.s   6f                          | no lock on this step
+    moveq   #1,%d5
+6:  moveq   #-1,%d0
     move.w  %d0,%a2@(2,%d3:l)
     moveq   #0,%d0                      | empty now?
 2:  mvs.w   %a2@(2,%d0:l),%d1
@@ -851,8 +861,15 @@ clear_hook:                             | +4 model, +8 track, +12 step
 5:  lea     %a2@(258),%a2
     subq.l  #1,%d4
     bne.s   1b
-9:  moveml  %sp@,%d2-%d4/%a2
-    lea     %sp@(16),%sp
+9:  tst.l   %d5
+    beq.s   8f
+    move.l  %sp@(32),%sp@-              | RECOUNT(model, track, step): step,
+    move.l  %sp@(32),%sp@-              | then track, then model, each at +32
+    move.l  %sp@(32),%sp@-              | once the pushes before it are counted
+    jsr     {RECOUNT:#010x}
+    lea     %sp@(12),%sp
+8:  moveml  %sp@,%d2-%d5/%a2
+    lea     %sp@(20),%sp
     lea     %sp@(-40),%sp               | the stock entry, replayed
     moveml  %d2-%d7/%a2-%a5,%sp@
     jmp     {CLEAR + 8:#010x}

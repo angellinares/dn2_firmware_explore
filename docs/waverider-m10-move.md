@@ -309,3 +309,10 @@ from block 0.
 
 Sounds saved with M10b-1's five shapes read the new order: old 0 Ramp Down reads Ramp
 Up, 1 Ramp Down, 2 Exp Up, 3 Exp Down and 4 Tri Once.
+
+**On the instrument** (2026-10-04, `waverider-driveread-usbprobe`, whose section 7 is
+m10b4's), all four steps passed:
+- every shape is named in the header, one per detent, and sounds as in
+  `m10b4_shapes.wav`;
+- osc 2's MOVE does the same;
+- with 3 voices on Up Loop, Down Loop, Square or Rnd Hold, the page stays on one voice.

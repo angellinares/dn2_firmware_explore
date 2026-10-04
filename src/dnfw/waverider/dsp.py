@@ -107,6 +107,13 @@ SHAPES_SW = SHAPES_DM // 2                   # 0x16f800
 MOVE_RANDOM_DM = 0x2DF400                    # 16 voices x 2 oscillators: the random shapes' (a, b), a u32 each
 MOVE_RANDOM_GEN_DM = 0x2DF500                # their generator's state
 MOVE_RANDOM_BYTES = 0x200                    # both, zeros at boot
+# Loading tables at run time (load.asm): command 4 copies a chunk of the frame into DDR.
+LOAD_DM = 0x2DF600                           # load.asm, after MOVE's random state
+LOAD_SW = LOAD_DM // 2                       # 0x16fb00: the command table's entry 4
+CMD_TABLE_DM = 0x2DFA00                      # the handler's command table, moved here with 8 entries
+LOAD_STATE_DM, LOAD_STATE_BYTES = 0x2DFA20, 8  # the chunk's sequence and checksum while it is copied
+LOAD_AREA = (0x80800000, 0x80A00000)         # DDR the ColdFire's chunks may write: 2 MB, the top of DDR_REGION
+LOAD_MAX_WORDS = 668                         # payload words in one 2,688-byte frame, after the 4-word header
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 
 # stock sites
@@ -120,6 +127,17 @@ IDLE_SITE_STOCK = bytes.fromhex("3e07ff00f0ff")
 IDLE_RETURN_SW = 0xB88AAB                    # the loop's top: call prvCheckTasksWaitingTermination
 CALL_SITE_SW = 0x1C9FB9                      # the handler's `r4 = 0x268438` before `cjump 0x1c2712`
 CALL_SITE_STOCK = bytes.fromhex("040f26003884")
+# The per-frame handler's command dispatch (sw 0x1c9d6b): the table's address and the
+# bound. Stock: `i4 = 0x268a68` (four entries, the string "Audio Task" after them) and
+# `r1 = lshift r2 by -2`, so commands 4 and up take case 0's code (sw 0x1c9daf). Here:
+# `i4 = 0x2dfa00` (CMD_TABLE_DM) and `by -3`, commands 0..7, each a 16-bit immediate edit.
+TABLE_SITE_SW = 0x1C9D9F
+TABLE_SITE_STOCK = bytes.fromhex("140f2600688a")
+TABLE_SITE_NEW = bytes.fromhex("140f2d0000fa")
+BOUND_SITE_SW = 0x1C9DAA
+BOUND_SITE_STOCK = bytes.fromhex("3e02007812fe")
+BOUND_SITE_NEW = bytes.fromhex("3e02007812fd")
+CMD_STOCK = (0x1C9DC2, 0x1C9E76, 0x1C9EDA, 0x1C9F0F)   # the stock table: cases 0..3
 
 
 class DspError(ValueError):
@@ -155,7 +173,7 @@ def objects() -> dict[str, bytes]:
     spec = _code()
     return {name: sharc_object.load_bytes(bytes.fromhex(spec[name]["object_parcels_be"]))
             for name in ("reader", "machine5_live", "entry_jump", "idle_load", "idle_jump", "block_count",
-                         "entry_mark", "emark_jump", "modulator", "shapes")}
+                         "entry_mark", "emark_jump", "modulator", "shapes", "load")}
 
 
 def directory() -> bytes:
@@ -172,6 +190,12 @@ def directory() -> bytes:
     at = MOVE_RATE_DM - DIRECTORY_DM
     out[at:at + 4 * len(live.MOVE_RATE)] = struct.pack("<%dI" % len(live.MOVE_RATE), *live.MOVE_RATE)
     return bytes(out)
+
+
+def command_table() -> bytes:
+    """The handler's command table, moved: the stock four, load.asm at 4, and 5..7 on
+    case 0's code, where any command of 4 or more went before."""
+    return struct.pack("<8I", *CMD_STOCK, LOAD_SW, CMD_STOCK[0], CMD_STOCK[0], CMD_STOCK[0])
 
 
 def spans() -> list[tuple[str, int, bytes]]:
@@ -194,6 +218,9 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("modulator.asm (wr_mod)", MOD_DM, obj["modulator"]),
         ("shapes.asm (wr_shape)", SHAPES_DM, obj["shapes"]),
         ("MOVE's random state (zeros)", MOVE_RANDOM_DM, bytes(MOVE_RANDOM_BYTES)),
+        ("load.asm (wr_load)", LOAD_DM, obj["load"]),
+        ("command table, 8 entries", CMD_TABLE_DM, command_table()),
+        ("load state (zeros)", LOAD_STATE_DM, bytes(LOAD_STATE_BYTES)),
     ]
     out = []
     for k, (what, at, payload) in enumerate(raw):
@@ -322,6 +349,12 @@ def section7(stock: bytes) -> bytes:
         raise DspError("sw 0xb88abb is not the stock idle loop's `jump (pc,-0x10)`")
     if bootstream.read_span(stock, sw_to_load(CALL_SITE_SW), len(CALL_SITE_STOCK)) != CALL_SITE_STOCK:
         raise DspError("sw 0x1c9fb9 is not the stock `r4 = 0x268438`")
+    if bootstream.read_span(stock, sw_to_load(TABLE_SITE_SW), 6) != TABLE_SITE_STOCK:
+        raise DspError("sw 0x1c9d9f is not the stock `i4 = 0x268a68`")
+    if bootstream.read_span(stock, sw_to_load(BOUND_SITE_SW), 6) != BOUND_SITE_STOCK:
+        raise DspError("sw 0x1c9daa is not the stock `r1 = lshift r2 by -2`")
+    if struct.unpack("<4I", bootstream.read_span(stock, dm_to_load(0x268A68), 16)) != CMD_STOCK:
+        raise DspError("the command table at 0x268a68 is not stock")
     if len(obj["emark_jump"]) != len(CALL_SITE_STOCK):
         raise DspError(f"the entry-mark JUMP is {len(obj['emark_jump'])} bytes, not {len(CALL_SITE_STOCK)}")
     lookup = struct.unpack("<8I", bootstream.read_span(stock, dm_to_load(LOOKUP_DM), 32))
@@ -336,6 +369,8 @@ def section7(stock: bytes) -> bytes:
     bootstream.write_span(out, dm_to_load(LOOKUP_DM + 20), struct.pack("<I", 5))
     bootstream.write_span(out, l2_sw_to_load(IDLE_SITE_SW), obj["idle_jump"])
     bootstream.write_span(out, sw_to_load(CALL_SITE_SW), obj["emark_jump"])
+    bootstream.write_span(out, sw_to_load(TABLE_SITE_SW), TABLE_SITE_NEW)
+    bootstream.write_span(out, sw_to_load(BOUND_SITE_SW), BOUND_SITE_NEW)
     result = bytes(out)
     walked = bootstream.walk(result)
     if not walked.complete or walked.stopped_at != len(result):

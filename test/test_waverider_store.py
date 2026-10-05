@@ -99,3 +99,23 @@ def test_dnx_fixed_extent_plan_replays():
                        "hash": DNX_PLAN_FIXED_SUPERBLOCK_HASH}
     sb = S.superblock(1, 1, S.index_bytes({0: ENTRY}), data_end=0x11000)
     assert sb[:64] == DNX_SUPERBLOCK_FIXED_64
+
+
+# DNX's plan at 512 KiB slots (2026-10-05): data_end 0x41000. Data and index unchanged.
+DNX_SUPERBLOCK_512K_64 = bytes.fromhex(
+    "57 52 54 42 00 01 00 40 00 00 00 01 00 00 00 01"
+    "00 00 01 00 00 00 00 80 8E 82 B3 DF 00 00 10 00"
+    "00 04 10 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    "00 00 00 00 00 00 00 00 00 00 00 00 A3 07 CB C7")
+
+
+def test_dnx_512k_plan_replays():
+    plan = S.plan_writes("A", 1, {0: ENTRY}, {0: PAYLOAD}, data_end=S.DATA_END)
+    assert plan[:2] == DNX_PLAN[:2]
+    assert plan[2]["hash"] == 0x80C77E1C
+    assert S.superblock(1, 1, S.index_bytes({0: ENTRY}), data_end=S.DATA_END)[:64] == DNX_SUPERBLOCK_512K_64
+
+
+def test_a_slot_is_exactly_tonverks_largest_table():
+    # the reason for 512 KiB: 64 waves x 4,096 points of int16, with nothing spare
+    assert 64 * 4096 * 2 == S.SLOT_SECTORS * S.SECTOR

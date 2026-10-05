@@ -27,6 +27,7 @@
  */
 
 #include "loader.h"
+#include "events.h"
 
 #define FRAME_WORDS   1344                /* 2,688 bytes, the frame the stock ISR sends */
 #define HEADER_WORDS  8                   /* 4 DSP words: command|count, dest, seq, sum */
@@ -75,6 +76,8 @@ static u32 reply_long(u32 offset)
 void *wr_frame_src(void *frame)
 {
     u32 clear = quiet((const u8 *)frame);
+
+    wr_note_seen((const u8 *)frame);      /* every frame, before it may be replaced */
 
     if (in_flight) {
         struct chunk *c = &queue[tail % QUEUE];

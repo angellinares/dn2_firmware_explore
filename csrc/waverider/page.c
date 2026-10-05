@@ -22,10 +22,13 @@
  * from dnfw.waverider.pages and .wave.
  */
 #include "wr_gen.h"
+#define WAVERIDER_PAGE 1
 #include "pool.h"
+#include "events.h"
 
 typedef unsigned int u32;
 typedef unsigned char u8;
+typedef unsigned short u16;
 
 #define GET_VALUE  ((int (*)(void *, u32, u8 *))0x4006538E)   /* (view, id, &flag) */
 #define SET_PIXEL  ((void (*)(void *, int, int, int))0x40113B90)  /* (canvas, x, y, on) */
@@ -175,16 +178,42 @@ static int osc_of(int page)
  * -1: none (the track has not played; nothing is shown, as before the first PLAY). */
 static int chosen __attribute__((section(".data"))) = -1;
 
+/* After CLEAR TRK PRESET, every voice still holds what it last played: the old
+ * preset's modulation, shown while the sequencer is stopped. So from a clear on, a
+ * voice counts only once it has played a note since (events.c counts both); until
+ * then nothing is followed, and the page shows the knobs alone (owner, 2026-10-05). */
+static u32 clears_seen __attribute__((section(".data"))) = 0;
+static u8 notes_at_clear[16] __attribute__((section(".data"))) = { 0 };
+static u16 stale __attribute__((section(".data"))) = 0;       /* voices not heard since */
+
+static void forget_after_clear(void)
+{
+    const struct wr_drive_head *h = WR_DRIVE_HEAD;
+    if (h->magic != WR_DRIVE_MAGIC)
+        return;
+    if (h->events->clears != clears_seen) {
+        clears_seen = h->events->clears;
+        for (int v = 0; v < 16; v++)
+            notes_at_clear[v] = h->events->notes[v];
+        stale = 0xFFFF;
+        chosen = -1;
+    }
+    for (int v = 0; v < 16; v++)
+        if (stale >> v & 1 && h->events->notes[v] != notes_at_clear[v])
+            stale &= (u16)~(1u << v);
+}
+
 static int voice(void)
 {
     u32 t = ACTIVE_TRACK;
     if (t > 15)
         return -1;
-    if (chosen >= 0 && OWNER(chosen) == t && MACHINE(chosen) == NEW_TYPE)
+    forget_after_clear();
+    if (chosen >= 0 && OWNER(chosen) == t && MACHINE(chosen) == NEW_TYPE && !(stale >> chosen & 1))
         return chosen;
     chosen = -1;
     for (int v = 0; v < 16; v++)
-        if (OWNER(v) == t && MACHINE(v) == NEW_TYPE) {
+        if (OWNER(v) == t && MACHINE(v) == NEW_TYPE && !(stale >> v & 1)) {
             chosen = v;
             break;
         }

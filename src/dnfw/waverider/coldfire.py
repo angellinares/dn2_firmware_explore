@@ -287,9 +287,11 @@ IDENTITY_SITES = (
     (0x4002DB2C, "4eb9", "re-commit of the track's own machine type (0x40031880)"),
     (0x400D5A72, "4eb9", "the track state message: machine type byte"),
     (0x400D675E, "4eb9", "an incoming machine type, compared with the track's before commit"),
-    (0x40071EB6, "4eb9", "CLEAR TRK PRESET (TRK + PLAY, 0x40071e80): the machine the new preset keeps "
-                         "(owner, 2026-10-05: a cleared Waverider track came back as WaveTone)"),
 )
+# CLEAR TRK PRESET (TRK + PLAY, 0x40071e80) asks the machine its new preset keeps at
+# drive.CLEAR_SITE: the real type there too (owner, 2026-10-05: a cleared Waverider
+# track came back as WaveTone). With the +Drive chunk, the call goes to its
+# wr_clear_type, which also counts the clear for the page; without it, to raw_track.
 
 # -- 7b. getMachineType(model, track) 0x4003134e: the real type -------------------------
 # The model-level question -- "what machine does track t have?" -- is 0x4003134e,
@@ -541,6 +543,10 @@ def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
         _need(content, op_va, bytes.fromhex(op), f"{what}: the instruction")
         edit(op_va + 2, _long(layout["raw_track"]), f"{what}: asks for the real type",
              _long(TRACK_TYPE_FN))
+    if not build_drive:
+        _need(content, drive.CLEAR_SITE, bytes.fromhex("4eb9"), "CLEAR TRK PRESET's getter call")
+        edit(drive.CLEAR_SITE + 2, _long(layout["raw_track"]),
+             "CLEAR TRK PRESET (TRK + PLAY): asks for the real type", _long(TRACK_TYPE_FN))
 
     # 7b. getMachineType(model, track): the real type, for MACHINE SEL and the re-commits
     _need(content, MODEL_TRACK_TYPE_JMP, bytes.fromhex("4ef9"), "0x4003134e's tail jump")
@@ -556,7 +562,7 @@ def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
     # 9. the +Drive chunk: the route, the loader and the pool (dnfw.waverider.drive)
     dchunk = None
     if build_drive:
-        dimage, dsyms = drive.compile_drive(build_drive)
+        dimage, dsyms = drive.compile_drive(build_drive, layout["raw_track"])
         for va, new, old, what in drive.hooks(dsyms):
             edit(va, new, what, old)
         dchunk = {"load": drive.LOAD, "code": dimage}

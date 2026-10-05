@@ -60,6 +60,15 @@ where to look, and the magic is what authorises the write. The index hash sits i
 the superblock hash's range, so a torn superblock can't point at a stale index. Keep
 it there if the fields are ever reordered.
 
+**The hash is the firmware's own.** xxHash32 is the DN2 image's routine at
+`0x4014be0e`, `XXH32(data, len, seed)`. Its result is the definition, and DNX follows
+it. Run on its own code in Unicorn (2026-10-05): the empty input gives `0x02cc5d05`,
+the 39 bytes `Nobody inspects the spammish repetition` give `0xe2293b2f`, and 16,384
+bytes of `(i * 7) & 0xff` give `0x831953bc`. All seed 0, at even and odd addresses
+alike, and the same from an independent implementation. xxHash32 reads its input as
+little-endian 32-bit words, while every field here is big-endian. That mixture is
+correct, not a bug.
+
 ## Index entry (128 bytes; a free entry is all zeros)
 
 | offset | field |

@@ -15,7 +15,7 @@ struct wr_load {
     u32 held;                             /* exchanges a ready chunk waited for a free frame */
     u32 read_errors, last_rc;
     u32 want_sector, want_bytes, want_dest; /* the extent being loaded */
-    u32 done_bytes;
+    u32 done_bytes;                       /* of it, read into the queue: NOT acknowledged (acked counts that) */
     u32 failed;                           /* 1: the DSP stopped answering; so did the loader */
     u32 queue, queue_chunks;              /* where the chunks are (2,688 B each), and how many */
 };

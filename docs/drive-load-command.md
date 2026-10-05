@@ -219,16 +219,24 @@ wr_pool  467f1de6  57 52 50 4c | 00 00 00 05 | 00 00 00 00 | 00 00 00 01 | 00 00
 wr_load  467f2294  57 52 4c 44 | 00 00 00 01 | 00 00 00 08 | 00 00 00 07 | 00 00 00 00 | 00 00 00 00 | 00 00 00 08 ...
                    'WRLD'       queued 1        sent 8        resent 7      acked 0       refused 0     timeouts 8
                    ... want_bytes 0x204, want_dest 0x1ff000 (the directory), done 0x204, failed 1
-reply    800053a4  three reads a second or two apart (words 0-5):
+                   (done_bytes counts bytes read into the queue, not acknowledged: the
+                   516-byte directory was queued; acked counts acknowledged chunks)
+reply    800053a4  a first read of 32 bytes (words 0-7), then three of 24 (words 0-5),
+                   a second or two apart:
+                   00064f6f 0b9b72ab 00035a17 2d317df4 efcf5650 00000000 00000000 00000000
                    00064e59 b01bb42e 0003c95c 330dce89 39825d4a 00000000
                    00064edb b49a3b37 0003ca8d 331e2ce7 3d0c4409 00000000
                    000653aa b9459710 0003cbc9 332edea4 40b485c6 00000000
 ```
 
-- Word 3 (`+0x0c`) and word 4 (`+0x10`) grow between reads. They are `idle_load.asm`'s
-  totals, not anything `load.asm` wrote.
+- Words 0 to 4 all climb between reads. Word 3 (`+0x0c`) and word 4 (`+0x10`) are
+  `idle_load.asm`'s totals, not anything `load.asm` wrote.
 - The directory chunk's answer would have read `4c440001`, or `cc440001` refused.
-- Word 6 (`+0x18`, the last column) read `00000000`.
+- Word 6 (`+0x18`) appears in the first read only, as `00000000`.
+- The sixth column is word 5 (`+0x14..+0x17`): zero here, idle. It holds the
+  compressor's gain reduction at `+0x16`, which moves while playing (the scan's
+  played samples saw word 5 change). So that row's "no" means "in use while
+  sound plays".
 
 The retry-and-stop path worked as designed on its first contact with hardware: 8
 timeouts, then stop, nothing written to the +Drive, and the sound untouched. That

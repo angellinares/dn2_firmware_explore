@@ -105,14 +105,36 @@ with `I6 = 0` and halts at its return ("return target 0x1"). The stock image beh
 the same. The other gates call the render directly. So part 1 stops at the call, and
 part 2 calls it directly. A candidate finding for digikit, not yet traced.
 
+## The trigger masks are one-frame events (instrument, 2026-10-05)
+
+`tools/dn2trigmask.py` polled frame bytes 34..41 of the live frame (`0x80005e60`)
+over the USB probe, about 345 readings a second, for 60 s
+(`out/probe-frames/trigmask_run2.*`):
+
+| phase (owner) | what the masks showed |
+|---|---|
+| track 1 playing, a trig on all 16 steps, 120 BPM (0-27 s) | 1-6 caught a second, a single bit each, the bit moving through all 16 positions |
+| STOP, then the trig key (28-43 s) | one capture at a key press (+34 = `0001`, 34.5 s), then zero |
+| taps, the last one held for at least 10 s (44-60 s) | on and off caught apart for the taps (`0020` on at 44.69 s, off at 44.78 s, and so on); the held note's onset at 50.33 s (`0004`), then zero until the end |
+| the whole idle run before (45 s) | zero in all 15,533 readings |
+
+- **No mask is a held gate.** A held note shows only its onset. Loading does not need
+  to pause while a note is held.
+- **+34 is the note-on mask and +36 the note-off mask.** +38 always equals +34 and +40
+  always equals +36, in all 20,674 readings. Each event is caught at about the rate a
+  one-frame event would be (a 0.67 ms frame against a reading every ~2.9 ms).
+- **The bit is not the track.** With only track 1 playing, the bit cycles through all
+  16 positions, one step to the next, and a note's off bit is its on bit. It looks
+  like a voice index. `dnfw.waverider.frame` says "bit t = track t". That holds for
+  the single-voice frames our gates build. **[unverified]**: what the DSP indexes by
+  this bit.
+
+So the rule stands as written: **replace a frame only when it and the frame before it
+have all four masks at zero.** At 8 notes a second that leaves almost every frame free.
+
 ## Open, before the ColdFire half
 
-1. **Which frames a load frame may replace.** A load frame replays the previous frame
-   whole, so it replays that frame's four trigger masks (frame offsets 34..40) too.
-   The rule: replace a frame only when it **and** the frame before it have all four
-   masks at zero. Whether any mask is a held gate rather than a one-frame trigger is
-   **not yet measured**. It decides whether loading pauses while a note is held. To
-   measure: the probe's frame capture with a note held.
+1. ~~Which frames a load frame may replace.~~ Measured above.
 2. **The ColdFire half.**
    - The +Drive reader (`WR_DRIVEREAD` proved the sector reads) fills a chunk queue
      from the UI task.

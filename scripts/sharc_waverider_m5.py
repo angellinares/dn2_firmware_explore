@@ -239,6 +239,8 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
             # the count word down to 0, so the contract is read on entry, not at resume
             blk = m2.word_reg(r, "R4") or 0
             t = (blk - dsp.READER_BLOCKS_DM) // 32
+            if not (0 <= t < 16 or OSC2_BLOCKS // 32 <= t < OSC2_BLOCKS // 32 + 16):
+                return                          # DCLK's one-sample call on its scratch block (M10b-2)
             words = [m2.word(r.state, blk + 4 * k) or 0 for k in range(6)]
             if t >= OSC2_BLOCKS // 32:          # osc 2's blocks (M9b), 0x2de800 + 32t
                 tap.setdefault("reader_in2", {})[t - OSC2_BLOCKS // 32] = words

@@ -28,6 +28,7 @@
 
 #include "loader.h"
 #include "events.h"
+#include "sync.h"
 
 #define FRAME_WORDS   1344                /* 2,688 bytes, the frame the stock ISR sends */
 #define HEADER_WORDS  8                   /* 4 DSP words: command|count, dest, seq, sum */
@@ -78,6 +79,7 @@ void *wr_frame_src(void *frame)
     u32 clear = quiet((const u8 *)frame);
 
     wr_note_seen((const u8 *)frame);      /* every frame, before it may be replaced */
+    wr_sync_frame((u8 *)frame);           /* MOVE's SYNC: the song position (sync.c) */
 
     if (in_flight) {
         struct chunk *c = &queue[tail % QUEUE];

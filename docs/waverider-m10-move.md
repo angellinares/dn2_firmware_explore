@@ -348,3 +348,70 @@ short fade applies to LEV for a Square on LEV.
 The fast-knob crackle the owner heard on sharp tables (POS stepping once per block) is
 a separate fix: POS smoothing, or POS interpolated sample by sample. It stays with
 M10b-2's glide and is not decided yet.
+
+# M10b-2: SYNC, MOVE locked to the tempo
+
+Each oscillator's MOVE can follow the project tempo and start its cycle on step 1. Page 3's
+E and F are SYN1 and SYN2, Off or On.
+
+## The controls
+
+| control | record | slot | why this record |
+|---|---|---|---|
+| SYN1 | 248, Osc Mod | 37 | its default is 0, so every sound saved before SYNC reads Off |
+| SYN2 | 260, Noise Character | 47 | the same |
+
+The other three spare records (254 HOLD, 255 DEC, 258 WDTH) default to `0x7f00`, and every
+Waverider sound saved so far holds that value. A control on them must read 127 as "off".
+That rules them out for SYNC, and it decides how SMTH and DCLK work.
+
+**RATE with SYNC on** keeps its 0..100 range, and plays one of 24 note lengths: 1/32 to 4 bars,
+each also as a triplet and dotted (owner, 2026-10-06). The mapping picks the length closest to
+RATE's own free cycle at 120 BPM (`live.SYNC_INDEX`), so a sound keeps about its speed when SYNC
+turns on: RATE 50 is a second free and a half note synced. Straight lengths get 5 values of
+RATE, dotted ones 3 and triplets 2. The header names the length ("Osc1 M.Rate=1 bar T"). With
+SYNC off it shows the stock number.
+
+## How it works
+
+**The ColdFire** (`csrc/waverider/sync.c`, in the +Drive chunk; model `dnfw.waverider.songpos`)
+writes the song position into every frame, at frame bytes 2644..2647 (unused in the tail):
+- **The steps:** track 1's current and next step (`docs/sequencer-playhead.md`). Both 0 for 8
+  frames in a row is STOP, which resets the position to step 1 and holds it there. A torn read
+  shows them equal for one frame at most.
+- **Between steps:** the frame's tempo (+0xd8, BPM x 120) summed each frame, against 2,700,000
+  a sixteenth. It holds just short of the next step during a pause.
+- **The scale:** 2^32 is 384 sixteenths, 24 bars. That is the least common multiple of every
+  length, the triplets and the dotted ones included, so each length's phase is the position
+  times a whole number `a << k` (a = 1, 3 or 9), exact in 32 bits, and continuous where the
+  position wraps.
+
+**The DSP** (`csrc/waverider/sharc/sync.asm`, sw `0x170000`; its table, a word per RATE, at DM
+`0x2e0400`) is entered from `modulator.asm` in place of RATE's arithmetic. It reads SYNC
+through the offset row's seventh word.
+- **SYNC off:** back to the free RATE, untouched.
+- **TRIG Free:** the phase becomes position x (a << k): the cycle starts on step 1 after every
+  PLAY, and stays on the grid.
+- **TRIG Retrig:** the step per block is tempo x (a << k) x 2^32 / (384 x 2,700,000), in
+  float32: the length holds from each note, and the note itself is on a step.
+
+**Limits:**
+- Track 1's steps are the clock. With one length and one scale for the pattern, every track
+  reads the same (measured). Per-track lengths and scales are not handled.
+- A one-step pattern reads as stopped.
+- A frame the loader replaces with a table chunk carries no new position, so a synced MOVE
+  stands still for that block (0.7 ms, only while tables load).
+
+## The gates
+
+- `test/test_waverider_songpos.py`: the position's arithmetic, STOP, PLAY, a pause, a torn
+  read, and sync.c's constants against the model.
+- `scripts/sharc_waverider_m5.py`, four new runs, each bit-exact against `live.render_two`:
+  Free (the phase equals position x 1152 for 1/32 T after every block, across the position's
+  wrap), Retrig (a half note at 120 BPM steps 2^32 / 1500 a block), osc 2's own SYNC, and SYNC
+  off with a position present (identical to the run without one). A check also confirms the
+  DSP's frame copy holds the position and tempo the frames carried.
+- The emulator (`waverider-sync1`): page 3 shows SYN1 and SYN2 as two segments; turning SYN1
+  reads "Osc1 M.Sync=On"; RATE 47 then reads "Osc1 M.Rate=1 bar T", and "48%" with SYN1 off.
+- The reference: `scripts/waverider_sync_preview.py` writes three WAVs with a click track. In
+  the gate WAV, the level opens at PLAY and then every 250 ms (1/8 at 120 BPM).

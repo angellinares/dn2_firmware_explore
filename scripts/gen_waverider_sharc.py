@@ -9,6 +9,7 @@ anywhere. This writes `src/dnfw/waverider/sharc_code.json` from:
   `shapes.json` (M10b-4: its shapes, at sw 0x16f800);
   `load.json` (command 4: a table chunk from the frame into DDR, at sw 0x16fb00) and
   `pool.json` (a slot past the baked tables, from the load area's pool, at sw 0x16fe00);
+  `sync.json` (M10b-2: SYNC, MOVE locked to the tempo, at sw 0x170000);
 - `csrc/waverider/sharc/reader_m9.json` and `machine9_live.json` (Milestone 9a: M5's
   reader and loop with osc 1's level as a gain; the M5 sources stay beside them) --
   each (re)written from its `.asm` with selas when `--assemble` (WSL + selache). The
@@ -90,6 +91,7 @@ def main(argv=None) -> int:
             shapes = assemble("shapes", dsp.SHAPES_SW, work)
             load = assemble("load", dsp.LOAD_SW, work)
             pool = assemble("pool", dsp.POOL_SW, work)
+            sync = assemble("sync", dsp.SYNC_SW, work)
             ejump = one_jump(EMARK_LINE, dsp.CALL_SITE_SW, work)
             jump = one_jump(ENTRY_LINE, dsp.ENTRY_SW, work)
             ijump = one_jump(IDLE_LINE, dsp.IDLE_SITE_SW, work)
@@ -103,6 +105,7 @@ def main(argv=None) -> int:
             shapes = committed("shapes")
             load = committed("load")
             pool = committed("pool")
+            sync = committed("sync")
             ejump = old["emark_jump"]
             if "entry_jump" not in old or "idle_jump" not in old:
                 raise SystemExit("no entry or idle JUMP committed yet: run with --assemble")
@@ -119,7 +122,8 @@ def main(argv=None) -> int:
             "modulator": {k: v for k, v in mod.items() if k != "instruction_offsets"},
             "shapes": {k: v for k, v in shapes.items() if k != "instruction_offsets"},
             "load": {k: v for k, v in load.items() if k != "instruction_offsets"},
-            "pool": {k: v for k, v in pool.items() if k != "instruction_offsets"}}
+            "pool": {k: v for k, v in pool.items() if k != "instruction_offsets"},
+            "sync": {k: v for k, v in sync.items() if k != "instruction_offsets"}}
     dsp.CODE.write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"wrote {dsp.CODE.relative_to(ROOT)}: reader {len(reader['object_parcels_be']) // 2} B, "
           f"loop {len(loop['object_parcels_be']) // 2} B, entry {len(jump['object_parcels_be']) // 2} B")

@@ -75,6 +75,34 @@ static void drive_poll(void)
         wr_tbl_names[WR_TABLES + j] = j < n ? (const char *)h->pool->names[j] : dash;
 }
 
+/* M10b-2: with SYNC on, RATE (0..100, unchanged) plays a note length (dnfw.waverider.
+ * live.SYNC_INDEX), and its value text names it. The firmware's value text (wr_fmt)
+ * reads a {names, count} pair per oscillator here: count 0 is RATE's own number. Kept
+ * each UI pass from the active track's sound: its value array is at sound + 20, a u16
+ * per slot (slot 101 is +0xDE, the machine type), and a sound can sit at an odd address
+ * (stride 1163), so it is read a byte at a time. */
+#define KIT        (*(u8 *const *)0x800052A0u)
+#define SOUND(t)   (KIT + 52u + 1163u * (t))
+#define SYNC_SLOT(o) ((o) ? 47u : 37u)                    /* SYN1 MOD, SYN2 CHAR */
+const void *wr_rate_fmt[2][2] __attribute__((section(".data"))) = { { 0, 0 }, { 0, 0 } };
+
+static u32 sound_value(const u8 *sound, u32 slot)
+{
+    const u8 *at = sound + 20u + 2u * slot;
+    return (u32)at[0] << 8 | at[1];
+}
+
+static void rate_names_poll(void)
+{
+    u32 t = *(volatile u8 *)0x42431A6Cu;                  /* the active track */
+    const u8 *sound = SOUND(t);
+    for (int o = 0; o < 2; o++) {
+        int on = t < 16 && sound[0xDE] == 5 && sound_value(sound, SYNC_SLOT(o)) != 0;
+        wr_rate_fmt[o][0] = on ? (const void *)wr_sync_by_rate : 0;
+        wr_rate_fmt[o][1] = (const void *)(on ? WR_SYNC_RATES : 0);
+    }
+}
+
 static const int *limits(u32 id)
 {
     if (id == WR_TBL_ID || id == WR_TBL2_ID)
@@ -470,6 +498,7 @@ int wr_poll(void *screen)
 {
     u32 now = TICKS;
     drive_poll();
+    rate_names_poll();
 #ifdef WR_DRIVEREAD
     drive_read_once(now);
 #endif
@@ -488,6 +517,7 @@ int wr_poll(void *screen)
 int wr_poll(void *screen)
 {
     drive_poll();
+    rate_names_poll();
     return IS_DIRTY(screen);
 }
 #endif

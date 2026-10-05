@@ -197,8 +197,8 @@ def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
         assert bootstream.read_span(built, at, dsp.TABLE_BYTES) == \
             reference.dsp_bytes(dsp.tables()[k])
     # L1 keeps only code and state: MOVE's shapes and their random state (M10b-4) sit
-    # where table 0 began; after them the loader, its command table and its state, then
-    # the pool lookup, which runs to the region's end
+    # where table 0 began; after them the loader, its command table and its state, the
+    # pool lookup, then SYNC (M10b-2) and its note table, which runs to the region's end
     sp = {what: (at, p) for what, at, p in dsp.spans()}
     assert sp["shapes.asm (wr_shape)"][0] == dsp.dm_to_load(0x2DF000)
     at, p = sp["MOVE's random state (zeros)"]
@@ -206,7 +206,10 @@ def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
     at, p = sp["load state (zeros)"]
     assert at + len(p) == dsp.dm_to_load(dsp.POOL_DM) and not any(p)
     at, p = sp["pool.asm (wr_pool)"]
-    assert at + len(p) == dsp.dm_to_load(dsp.REGION[1])
+    assert at + len(p) == dsp.dm_to_load(dsp.SYNC_DM)
+    at, p = sp["SYNC's note table, a word per RATE"]
+    assert at == dsp.dm_to_load(dsp.SYNC_TABLE_DM) and at + len(p) == dsp.dm_to_load(dsp.REGION[1])
+    assert struct.unpack_from("<101I", p) == live.sync_table()
 
 
 def test_the_pool_directory_starts_empty_inside_the_load_area(built):
@@ -325,10 +328,10 @@ def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
     assert all(e == a for e, a in zip(ends, at[1:]))           # no unwritten gap
     obj = dsp.objects()
     code_spans = [x for x in sp if "asm" in x[0]]
-    assert len(code_spans) == 9                               # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm
+    assert len(code_spans) == 10                              # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm, sync.asm (M10b-2)
     for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["idle_load"],
                                                      obj["block_count"], obj["entry_mark"], obj["modulator"],
-                                                     obj["shapes"], obj["load"], obj["pool"])):
+                                                     obj["shapes"], obj["load"], obj["pool"], obj["sync"])):
         assert payload[:len(code)] == code
         assert len(payload) - len(code) >= 64 and not any(payload[len(code):]), what
 

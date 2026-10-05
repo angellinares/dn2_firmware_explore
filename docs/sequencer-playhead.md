@@ -20,6 +20,28 @@ note-on counter (`csrc/waverider/events.c`) as the reference for step 1.
 - **STOP and PLAY:** STOP on step 5 set it to 0 (step 1) and held it there. PLAY started from 0, with the note (`out/probe-frames/playhead_stopplay.json`).
 - **Length:** it wraps at the pattern's length (8 here). All 16 tracks read the same with one length for the pattern; per-track lengths are not yet measured.
 
+## Static, not heap (2026-10-06)
+
+`0x4464xxxx` is the end of the firmware's static `.bss`, not the heap: the code names these
+arrays by absolute address. A scan of the image's literals (the emulator's RAM, 8 MB from
+`0x40000000`) finds the three arrays loaded together, three times:
+
+| site | instruction |
+|---|---|
+| `0x400d79e8` | `lea 0x446483f0,%a4` (the previous step) |
+| `0x400d79f2` | `lea 0x446483d0,%a4` (the current step) |
+| `0x400d79fe` | `lea 0x446483e0,%a4` (the next step) |
+
+The same three also load at `0x400d8158..0x400d816e` and `0x400da1c8..0x400da1e8`, beside
+`0x44648400`, `0x44648440`, `0x44648480` and `0x446484c4`, which are more of the same
+object. In the emulator the neighbouring words match the instrument's (`0x44672bf0` at
+`0x44648518` in both), while a heap object nearby (`0x44644220`) differs. So the address is
+fixed for 1.11. For 1.12, look for `lea` of three 16-byte arrays 0x10 apart in that routine.
+
+**The STOP test MOVE's SYNC uses** (`csrc/waverider/sync.c`): while playing, the next step is
+the current one plus one (mod the length). STOP sets both to 0. PLAY starts with 0 and 1, so
+both bytes 0 means stopped, for any pattern longer than one step.
+
 ## What looked like it and wasn't
 
 - **`0x4058f198` / `0x4058f39c`, the bar clocks:** they move in 32nds and 16ths, and freeze with a pause. But they wrap every bar whatever the pattern's length (8 or 16 steps), and they are **not reset by STOP and PLAY**. After a restart the pattern was on step 1 while the clock carried on from 29. Once, while the pattern played, the 32nd clock also stood still. So they are a beat grid, not the pattern's position.

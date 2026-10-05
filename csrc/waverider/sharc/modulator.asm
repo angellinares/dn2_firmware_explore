@@ -21,6 +21,8 @@
 //         five bands of about 25; M10b-1 had five shapes, 0..4.)
 //   TRIG  (TYPE 46, shared; 0..2, default 0): 0 restarts the phase on a note on this
 //         voice (the frame's note-trigger mask, offset 34, bit t); 1, 2 free-running.
+//   SYNC  (MOD 37 / CHAR 47; Off / On, M10b-2): sync.asm, entered at wr_mod_run, steps
+//         the phase from the tempo and the song position instead of RATE's table.
 //   PRST  (RSET 39, shared; Off / On / Random, default On): the OSCILLATOR's phase on
 //         a note -- left running, restarted at 0, or set from the cycle counter.
 //         Applied by wr_mod_b to the reader block's phase word (DM(1, I4)).
@@ -40,7 +42,7 @@
 //   0x2ddea0  PRST Random's generator state (wr_mod_b), zero at boot
 //   0x2de700  16 voices x 2 oscillators: the phase, a u32 (zeros at boot)
 //   0x2de780  per oscillator, 32 bytes: the frame byte offsets (168 + 2s) of RATE,
-//             MPOS, MLEV, MOVE, TRIG and PRST
+//             MPOS, MLEV, MOVE, TRIG and PRST, then SYNC (sync.asm reads that one)
 //   0x2de7c0  the six 16-bit values this call read, one a word
 //   0x2de7d8  F[0..9], the rate table
 //
@@ -117,6 +119,10 @@ wr_mod_low.:
       R15 = R15 - R15;
 .GLOBAL wr_mod_run.;
 wr_mod_run.:
+      // M10b-2: SYNC (sync.asm) gives the step itself when it is on, at wr_mod_inc
+      JUMP 0x170000;                    // -> wr_sync. (sync.asm)
+.GLOBAL wr_mod_free.;
+wr_mod_free.:
       // RATE: r = word >> 8, k = r div 10, j = r mod 10, inc = F[j] << k
       R0 = DM(0x2de7c0);
       R0 = LSHIFT R0 BY -8;
@@ -127,11 +133,11 @@ wr_mod_run.:
 .GLOBAL wr_mod_div.;
 wr_mod_div.:
       COMP(R0, R1);
-      IF LT JUMP 0x16f78b;              // -> wr_mod_divd.
+      IF LT JUMP 0x16f78e;              // -> wr_mod_divd.
       R0 = R0 - R1;
       R2 = 1;
       R8 = R8 + R2;
-      JUMP 0x16f780;                    // -> wr_mod_div.
+      JUMP 0x16f783;                    // -> wr_mod_div.
 .GLOBAL wr_mod_divd.;
 wr_mod_divd.:
       R0 = LSHIFT R0 BY 2;
@@ -141,6 +147,8 @@ wr_mod_divd.:
       R0 = DM(0, I0);                   // F[j]
       R0 = LSHIFT R0 BY R8;             // the increment
 
+.GLOBAL wr_mod_inc.;
+wr_mod_inc.:
       // MOVE: the shape, 0..10, in R11 (M10b: the control steps shape by shape;
       // a value past 10 -- an LFO's overshoot -- is the last shape)
       R1 = DM(0x2de7cc);

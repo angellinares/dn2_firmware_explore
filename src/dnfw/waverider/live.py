@@ -133,9 +133,60 @@ EXP_SCALE = 2.0 ** -32             # Exp: x^3 / 2^32, in float32
 GLIDE_IN, GLIDE_TWO, GLIDE_THREE = 2.0 ** -16, 2.0, 3.0
 
 
+# -- M10b-2: SYNC, MOVE locked to the tempo (sync.asm; the ColdFire's csrc/waverider/sync.c) --
+# Per oscillator, Off (0) or On: WaveTone's MOD (slot 37) for osc 1 and CHAR (47) for
+# osc 2, the two spare records whose default is 0, so every sound saved before SYNC
+# reads Off. The modulator reads it as the seventh word of its offset row.
+SYNC_SLOTS = (37, 47)
+# The note lengths SYNC steps through, slowest first, in sixteenths: each is
+# SYNC_LOOP / (a << k) for a whole a in (1, 3, 9), so a phase is the position times
+# (a << k), exactly, in 32 bits. (name, a, k)
+SYNC_LOOP = 384                    # sixteenths in 2^32 of the frame's position: 24 bars
+SYNC_NOTES = (("4 bars D", 1, 2), ("4 bars", 3, 1), ("2 bars D", 1, 3), ("4 bars T", 9, 0),
+              ("2 bars", 3, 2), ("1 bar D", 1, 4), ("2 bars T", 9, 1), ("1 bar", 3, 3),
+              ("1/2 D", 1, 5), ("1 bar T", 9, 2), ("1/2", 3, 4), ("1/4 D", 1, 6),
+              ("1/2 T", 9, 3), ("1/4", 3, 5), ("1/8 D", 1, 7), ("1/4 T", 9, 4),
+              ("1/8", 3, 6), ("1/16 D", 1, 8), ("1/8 T", 9, 5), ("1/16", 3, 7),
+              ("1/32 D", 1, 9), ("1/16 T", 9, 6), ("1/32", 3, 8), ("1/32 T", 9, 7))
+SYNC_POSITION = 2644               # frame bytes 2644..2647: the song position (sync.c)
+SYNC_TEMPO = 0xD8                  # frame bytes: BPM x 120
+# a block's phase step per unit of tempo x multiplier: 2^32 / (SYNC_LOOP x 2,700,000),
+# where a sixteenth is 2,700,000 / tempo blocks (1500 a second)
+SYNC_K = 2.0 ** 32 / (SYNC_LOOP * 2_700_000)
+
+
+def sync_multiplier(note: int) -> int:
+    _, a, k = SYNC_NOTES[note]
+    return a << k
+
+
+def sync_note_for(rate: int) -> int:
+    """RATE (0..100) -> the note length SYNC plays: the one nearest, on a log scale, to
+    the cycle RATE gives free-running at 120 BPM (2^(8 - r/10) sixteenths), so a sound
+    keeps about its speed when SYNC turns on (RATE 50: 1 s free, a half note synced)."""
+    cycle = 2.0 ** (8 - rate / 10)
+    return min(range(len(SYNC_NOTES)),
+               key=lambda i: abs(math.log2(SYNC_LOOP / sync_multiplier(i) / cycle)))
+
+
+SYNC_INDEX = tuple(sync_note_for(r) for r in range(101))
+
+
+def sync_table() -> tuple[int, ...]:
+    """The DSP's table (sync.asm), one word per RATE 0..100: k | s << 8, where the
+    multiplier is 1 << k for s = 0 and (1 + (1 << s)) << k otherwise (a = 3: s 1; 9: 3)."""
+    s_of = {1: 0, 3: 1, 9: 3}
+    out = []
+    for r in range(101):
+        _, a, k = SYNC_NOTES[SYNC_INDEX[r]]
+        out.append(k | s_of[a] << 8)
+    return tuple(out)
+
+
 def move_offsets() -> tuple[tuple[int, ...], ...]:
-    """Per oscillator, the frame byte offsets (168 + 2 s) the modulator reads."""
-    return tuple(tuple(168 + 2 * s for s in slots) for slots in MOVE_SLOTS)
+    """Per oscillator, the frame byte offsets (168 + 2 s) the modulator reads: RATE,
+    MPOS, MLEV, MOVE, TRIG, PRST, then SYNC (M10b-2)."""
+    return tuple(tuple(168 + 2 * s for s in (*slots, sync)) for slots, sync in zip(MOVE_SLOTS, SYNC_SLOTS))
 
 
 def move_band(move: int) -> int:
@@ -148,12 +199,23 @@ def move_restarts(trig_mode: int, triggered: bool) -> bool:
     return not (trig_mode & 0xFFFF) >> 8 and triggered
 
 
-def move_step(phase: int, rate: int, move: int, trig_mode: int, triggered: bool) -> int:
-    """The phase after one block, as the modulator steps it."""
+def move_step(phase: int, rate: int, move: int, trig_mode: int, triggered: bool,
+              sync: int = 0, position: int = 0, tempo: int = 0) -> int:
+    """The phase after one block, as the modulator steps it. With SYNC on (M10b-2),
+    RATE is a note length (`SYNC_INDEX`): on Free the phase IS the frame's song
+    position times the length's multiplier, so the cycle starts on step 1; on Retrig
+    the step comes from the tempo (BPM x 120), so the length holds from each note."""
     if move_restarts(trig_mode, triggered):
         phase = 0
     r = min((rate & 0xFFFF) >> 8, 100)
-    inc = (MOVE_RATE[r % 10] << (r // 10)) & 0xFFFFFFFF
+    if sync & 0xFFFF:
+        m = sync_multiplier(SYNC_INDEX[r])
+        if (trig_mode & 0xFFFF) >> 8:
+            inc = (position * m - phase) & 0xFFFFFFFF
+        else:
+            inc = trunc(_f32(_f32(_f32(float(tempo & 0xFFFF)) * _f32(float(m))) * _f32(SYNC_K)))
+    else:
+        inc = (MOVE_RATE[r % 10] << (r // 10)) & 0xFFFFFFFF
     new = (phase + inc) & 0xFFFFFFFF
     if move_band(move) < ONE_SHOTS and new < phase:
         new = 0xFFFFFFFF
@@ -286,8 +348,9 @@ def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
 
 def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> list[float]:
     """The loop's output with both oscillators (Milestone 9b), each block
-    (note, osc1, osc2[, (TRIG, triggered)]) with each osc (WAV, TBL, TUN, LEV[, RATE,
-    MPOS, MLEV, MOVE]), the frame's 16-bit words. With the M10a fields the modulator
+    (note, osc1, osc2[, (TRIG, triggered[, PRST[, position, tempo]])]) with each osc
+    (WAV, TBL, TUN, LEV[, RATE, MPOS, MLEV, MOVE[, SYNC]]), the frame's 16-bit words
+    (the position is the frame's u32 at SYNC_POSITION). With the M10a fields the modulator
     (move_step / move_shape / move_apply) moves POS and LEV first, per oscillator.
     Osc 1 writes y1 x gain1; osc 2, unless its LEV is 0 (the loop then skips it), adds
     y2 x gain2 to that, both rounded to float32 as reader_m9.asm does. Osc 2's TUN is
@@ -302,6 +365,7 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
         note, oscs = blk[0], blk[1:3]
         trig_mode, triggered, *rest = blk[3] if len(blk) > 3 else (TRIG_RESTART, False)
         prst = rest[0] if rest else PRST_OFF
+        song, tempo = (rest[1], rest[2]) if len(rest) > 2 else (0, 0)
         mixed: list[float] = []
         for k, osc in enumerate(oscs):
             wav, tbl, tun, lev = osc[:4]
@@ -309,9 +373,10 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
                 continue
             if len(osc) > 4:                    # M10a: RATE, MPOS, MLEV, MOVE
                 rate, mpos, mlev, move = osc[4:8]
+                sync = osc[8] if len(osc) > 8 else 0
                 restarted = move_restarts(trig_mode, triggered)
                 start = 0 if restarted else mphase[k]
-                mphase[k] = move_step(mphase[k], rate, move, trig_mode, triggered)
+                mphase[k] = move_step(mphase[k], rate, move, trig_mode, triggered, sync, song, tempo)
                 rnd.step(k, start, mphase[k], move, restarted)
                 wav, lev = move_apply(wav, lev, mpos, mlev,
                                       move_shape(mphase[k], move, tuple(rnd.values(k))))

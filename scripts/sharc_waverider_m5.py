@@ -75,7 +75,7 @@ RATE, BLOCK = 48000, 32
 LOOP_RESUME = 0x1C944C          # where machine5_live rejoins the per-track chain
 
 
-SHIPPED_KEYS = (("reader", "READER_SW"), ("machine5_live", "LOOP_SW"), ("modulator", "MOD_SW"))
+SHIPPED_KEYS = (("reader", "READER_SW"), ("machine5_live", "LOOP_SW"), ("modulator", "MOD_SW"), ("sync", "SYNC_SW"))
 
 
 def shipped_sources() -> tuple[str, ...]:
@@ -101,6 +101,9 @@ RATE1, MPOS1, MLEV1, MOVE1 = live.MOVE_SLOTS[0][:4]   # M10a: PD1, OFS1, DRIF, A
 RATE2, MPOS2, MLEV2, MOVE2 = live.MOVE_SLOTS[1][:4]   # PD2, OFS2, NLEV, BASE
 TRIG = live.MOVE_SLOTS[0][4]                          # TYPE, shared (0: restart on a note)
 PRST = live.MOVE_SLOTS[0][5]                          # RSET, shared: the oscillators Off/On/Random
+SYNC1, SYNC2 = live.SYNC_SLOTS                        # M10b-2: MOD, CHAR (Off / On)
+SYNC_TEMPO = 14400                                    # BPM x 120: 120 BPM
+SYNC_P0 = 0xFFFD0000                                  # a position that wraps in block 4
 TUN1_ZERO = 0x4000              # the frame word for 0 semitones: the sound's own (probe, 2026-09-30)
 FRAME_COPY = 0x25C48C           # where sw 0x1c2712 copies the frame image
 OSC2_BLOCKS = 0x900             # osc 2's reader blocks are osc 1's + 0x900 (M9b): 0x2de800 + 32t
@@ -214,6 +217,13 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
                                              for s in live.MOVE_SLOTS[1][:4]),
                               "trig": frame_word(r.state, FR.slot_offset(t, TRIG)),
                               "prst": frame_word(r.state, FR.slot_offset(t, PRST)),
+                              # M10b-2: SYNC per oscillator; the song position and the
+                              # tempo, as the DSP's frame copy holds them
+                              "sync": (frame_word(r.state, FR.slot_offset(t, SYNC1)),
+                                       frame_word(r.state, FR.slot_offset(t, SYNC2))),
+                              "song": frame_word(r.state, live.SYNC_POSITION)
+                                      | frame_word(r.state, live.SYNC_POSITION + 2) << 16,
+                              "tempo": frame_word(r.state, live.SYNC_TEMPO),
                               "triggered": bool(frame_word(r.state, FR.TRIG_NOTE) >> t & 1)}
             tap["t5_inputs"] = ins
 
@@ -306,8 +316,10 @@ def track_series(run, t) -> list[float]:
 def reference_for(run, t, tables, precision="float32") -> list[float]:
     """live.render_two fed the DSP's own unpacked inputs for track T, block by block:
     both oscillators (M9b), osc 2 from its own four frame words."""
-    seq = [(i[t]["note"], (i[t]["wav1"], i[t]["tbl1"], i[t]["tun1"], i[t]["lev1"], *i[t]["move1"]),
-            (*i[t]["osc2"], *i[t]["move2"]), (i[t]["trig"], i[t]["triggered"], i[t]["prst"]))
+    seq = [(i[t]["note"], (i[t]["wav1"], i[t]["tbl1"], i[t]["tun1"], i[t]["lev1"], *i[t]["move1"],
+                           i[t]["sync"][0]),
+            (*i[t]["osc2"], *i[t]["move2"], i[t]["sync"][1]),
+            (i[t]["trig"], i[t]["triggered"], i[t]["prst"], i[t]["song"], i[t]["tempo"]))
            for i in run["t5_inputs"] if t in i]
     return live.render_two(tables, seq, BLOCK, precision)
 
@@ -621,10 +633,19 @@ def step_map(dk, snap, m2mach, m5: Image, stock: bytes, init, sound, machines) -
 # -- step 3 -------------------------------------------------------------------------------------------
 
 def step_voice(init, sound, machines, blocks, tables) -> dict:
-    def frames(**kw):
+    def frames(song=None, **kw):
         def fb(b):
-            return base_frame(sound, machines, trigger=(b == 1), **kw).to_bytes()
+            f = base_frame(sound, machines, trigger=(b == 1), **kw)
+            if song is not None:                # M10b-2: what the ColdFire's sync.c writes
+                p = song(b)
+                f.put(live.SYNC_POSITION, p & 0xFFFF)
+                f.put(live.SYNC_POSITION + 2, p >> 16)
+                f.put(live.SYNC_TEMPO, SYNC_TEMPO)
+            return f.to_bytes()
         return fb
+
+    def song(b):                                # 120 BPM, a block a frame
+        return (SYNC_P0 + b * live.trunc(SYNC_TEMPO * live.SYNC_K)) & 0xFFFFFFFF
 
     solo = {LEV2: 0}                    # osc 1 alone: the loop skips osc 2 (M9b)
     runs = {"init": run_blocks(init, frames(), blocks),
@@ -668,6 +689,18 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             "move_rnd_both": run_blocks(init, frames(overrides={WAV1: 0, MPOS1: 0x6400, MOVE1: 0x0900,
                                                                 RATE1: 0x6400, WAV2: 0, MPOS2: 0x6400,
                                                                 MOVE2: 0x0a00, RATE2: 0x6400}), blocks),
+            # M10b-2: SYNC. Free: the phase is the position x the note's multiplier (RATE 100
+            # is 1/32 T, x 1152), through the position's wrap; Retrig: RATE 50 is a half note,
+            # a second at 120 BPM, so the step is 2^32 / 1500; osc 2's own SYNC; and SYNC off
+            # with the same position, which must ignore it (the free ramp's run, moved)
+            "sync_free": run_blocks(init, frames(song=song, overrides={**solo, WAV1: 0, MPOS1: 0x6400, TRIG: 0x100,
+                                                                       MOVE1: 0x0500, RATE1: 0x6400, SYNC1: 0x100}), blocks),
+            "sync_retrig": run_blocks(init, frames(song=song, overrides={**solo, WAV1: 0, MPOS1: 0x6400,
+                                                                         MOVE1: 0x0500, RATE1: 0x3200, SYNC1: 0x100}), blocks),
+            "sync_osc2": run_blocks(init, frames(song=song, overrides={LEV1: 0, WAV2: 0x7800, MPOS2: 0, TRIG: 0x100,
+                                                                       MOVE2: 0x0500, RATE2: 0x6400, SYNC2: 0x100}), blocks),
+            "sync_off": run_blocks(init, frames(song=song, overrides={**solo, WAV1: 0, MPOS1: 0x6400, TRIG: 0x100,
+                                                                      MOVE1: 0x0000, RATE1: 0x6400}), blocks),
             # PRST (m10a3): the oscillators at the note (block 1) -- Off keeps running, Random
             # starts from the cycle counter (no reference: its tap is not compared)
             "prst_off": run_blocks(init, frames(overrides={**solo, PRST: 0}), blocks),
@@ -725,6 +758,19 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
 
     def pos_seq2(k, allb):
         return [b[0][3] for b in allb.get(k, []) if b.get(0)]
+
+    def phases(k, key):
+        """voice 0's MOVE phase after each block, osc KEY (0, 1)"""
+        return [ph[key] if ph else None for ph in runs[k]["move_phases"]] if runs[k]["ok"] else []
+
+    def frame_carries(k):
+        """the DSP's frame copy held the position and the tempo the frames carried"""
+        r = runs[k]
+        return r["ok"] and all(i.get(0) and i[0]["song"] == song(b) and i[0]["tempo"] == SYNC_TEMPO
+                               for b, i in enumerate(r["t5_inputs"]))
+    m_fast = live.sync_multiplier(live.SYNC_INDEX[100])
+    half = live.trunc(live._f32(live._f32(float(SYNC_TEMPO) * float(live.sync_multiplier(live.SYNC_INDEX[50])))
+                                * live._f32(live.SYNC_K)))
 
     def rnd_last(k):
         r = runs[k]["move_random"] if runs[k]["ok"] else []
@@ -858,6 +904,25 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
         "(both increments 2 x note 60's within 1e-6, and equal) (M9b)":
             bool(rb2["tune_both"]) and bool(rb["tune_both"]) and bool(inc60)
             and rb2["tune_both"][2] == rb["tune_both"][2] and abs(rb["tune_both"][2] / inc60 - 2.0) < 1e-6,
+        "the DSP's frame copy carries the tail's song position (2644) and the tempo (0xd8), "
+        "as the frames put them (M10b-2)":
+            all(frame_carries(k) for k in ("sync_free", "sync_retrig", "sync_osc2", "sync_off")),
+        "SYNC Free: osc 1's MOVE phase is the song position x 1152 (RATE 100, 1/32 T) mod 2^32 "
+        "after every block, through the position's wrap (M10b-2)":
+            len(phases("sync_free", 0)) == blocks and m_fast == 1152
+            and all(ph == (song(b) * m_fast) & 0xFFFFFFFF for b, ph in enumerate(phases("sync_free", 0)))
+            and any(song(b) < song(b - 1) for b in range(1, blocks)),
+        "SYNC Retrig: RATE 50 is a half note, so at 120 BPM the phase steps 2^32 / 1500 a block "
+        "(within 1 in 1e5) from 0 at the note (M10b-2)":
+            abs(half - 2 ** 32 / 1500) < 2 ** 32 / 1500 * 1e-5 and len(phases("sync_retrig", 0)) == blocks
+            and all(phases("sync_retrig", 0)[b] == (b - 1) * half + half for b in range(1, blocks)),
+        "SYNC on osc 2 reads osc 2's own SYNC (CHAR): its phase is the position x 1152 (M10b-2)":
+            len(phases("sync_osc2", 1)) == blocks
+            and all(ph == (song(b) * m_fast) & 0xFFFFFFFF for b, ph in enumerate(phases("sync_osc2", 1))),
+        "SYNC off ignores the position: the free ramp's phases match the run without one (M10b-2)":
+            runs["sync_off"]["ok"] and runs["move_free"]["ok"]
+            and phases("sync_off", 0) == phases("move_free", 0)
+            and track_series(runs["sync_off"], 0) == track_series(runs["move_free"], 0),
         "control: no trigger is silent at the amp's output (peak < 0.01)":
             n["silent_amp_out_peak"] is not None and n["silent_amp_out_peak"] < 0.01,
     }

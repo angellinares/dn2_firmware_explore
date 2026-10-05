@@ -51,10 +51,10 @@ This module is pure: it builds the source; `coldfire.compose` assembles and plac
 
 from __future__ import annotations
 
-from .live import MOVE_SHAPES
+from .live import MOVE_SHAPES, SYNC_INDEX, SYNC_NOTES
 
 LOAD = 0x4670C000                 # RAM above BSS, clear of every declared range (docs/mods-compatibility.md)
-C_LOAD = LOAD + 0x700             # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4)
+C_LOAD = LOAD + 0x800             # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2)
 C_END = 0x46710000                # the platform runtime starts here
 ACTIVE_TRACK = 0x42431A6C         # byte: the UI's active track, 0..15
 KIT_POINTER = 0x800052A0          # the live kit; sound t at + 52 + 1163 t
@@ -78,7 +78,10 @@ LABELS = {238: "TUNE", 241: "LEV", 239: "POS", 247: "TBL",
           # M10a: MOVE, the modulator (WaveTone records Waverider does not use)
           240: "RATE", 246: "MPOS", 252: "MLEV", 253: "MOVE",
           244: "RATE", 250: "MPOS", 256: "MLEV", 257: "MOVE",
-          249: "PRST", 259: "TRIG"}
+          249: "PRST", 259: "TRIG",
+          # M10b-2: SYNC, MOVE locked to the tempo (WaveTone's Osc Mod and Noise Character:
+          # the two spare records whose default is 0, so a saved sound reads Off)
+          248: "SYN1", 260: "SYN2"}
 # record id -> Waverider's long name, in the stock "Osc1 Waveform" style: what the
 # header shows while a knob turns ("Osc1 Position=65"), and the LFO destination
 # browser on a Waverider track
@@ -86,20 +89,22 @@ LONG_NAMES = {238: "Osc1 Tune", 239: "Osc1 Position", 247: "Osc1 Table",
               242: "Osc2 Detune", 243: "Osc2 Position", 251: "Osc2 Table",
               240: "Osc1 M.Rate", 246: "Osc1 M.Pos", 252: "Osc1 M.Level",
               253: "Osc1 M.Shape", 244: "Osc2 M.Rate", 250: "Osc2 M.Pos",
-              256: "Osc2 M.Level", 257: "Osc2 M.Shape", 259: "Move Retrig"}
+              256: "Osc2 M.Level", 257: "Osc2 M.Shape", 259: "Move Retrig",
+              248: "Osc1 M.Sync", 260: "Osc2 M.Sync"}
 
 # the two pages, encoders A..H; 0 is an empty place
 PAGES = (
     (238, 241, 239, 247, 240, 246, 252, 253),   # OSC 1: TUNE LEV POS TBL RATE MPOS MLEV MOVE
     (242, 245, 243, 251, 244, 250, 256, 257),   # OSC 2: DETN LEV POS TBL RATE MPOS MLEV MOVE
-    (249, 259, 0, 0, 0, 0, 0, 0),               # PRST (RSET: Off/On/Random), TRIG (TYPE: 0 restart)
-)
+    (249, 259, 0, 0, 248, 260, 0, 0),           # PRST (RSET: Off/On/Random), TRIG (TYPE: 0 restart);
+)                                               # SYN1, SYN2 (M10b-2)
 
 # M10b: the controls whose steps and value text are Waverider's own. The records stay
 # WaveTone's (MOVE1 is its Noise Attack, MOVE2 the noise filter Base, TRIG the Noise
 # Type), so wr_range and wr_fmt answer for them on a Waverider track only: MOVE steps
 # shape by shape and the header names the shape; TRIG reads Retrig / Free.
-VALUE_NAMES = {253: MOVE_SHAPES, 257: MOVE_SHAPES, 259: ("Retrig", "Free")}
+VALUE_NAMES = {253: MOVE_SHAPES, 257: MOVE_SHAPES, 259: ("Retrig", "Free"),
+               248: ("Off", "On"), 260: ("Off", "On")}
 # record id -> (min, max, default), as the firmware's limits getter returns them
 RANGES = {rid: (0, (len(names) - 1) << 8, 0) for rid, names in VALUE_NAMES.items()}
 FORMAT_S = 0x40219C2D             # "%s", the stock naming routines' format
@@ -135,7 +140,10 @@ def c_header() -> str:
     ids = ",\n".join(" {" + ", ".join(str(r) for r in page) + "}" for page in PAGES)
     names = ",\n".join(" {" + ", ".join(f'"{label(r)}"' for r in page) + "}" for page in PAGES)
     ranges = ",\n".join(f" {{{rid}, {lo}, {hi}, {d}}}" for rid, (lo, hi, d) in RANGES.items())
+    sync = ", ".join(f'"{SYNC_NOTES[i][0]}"' for i in SYNC_INDEX)
     return (f"#define WR_PAGES {len(PAGES)}\n"
+            f"#define WR_SYNC_RATES {len(SYNC_INDEX)}\n"
+            f"static const char *const wr_sync_by_rate[WR_SYNC_RATES] = {{{sync}}};\n"
             f"static const unsigned short wr_ids[WR_PAGES][8] = {{\n{ids}\n}};\n"
             f"static const char wr_labels[WR_PAGES][8][6] = {{\n{names}\n}};\n"
             f"#define WR_RANGES {len(RANGES)}\n"
@@ -143,14 +151,17 @@ def c_header() -> str:
 
 
 TBL_IDS = (247, 251)              # TBL1, TBL2: their range and names are the page's (the pool)
+RATE_IDS = (240, 244)             # RATE1, RATE2: named as note lengths while SYNC is on (the page's)
 TBL_NAMES = 2 + 127               # the baked tables, then the +Drive pool's (csrc/waverider/pool.h)
 
 
-def source(page_draw: int, tbl_range: int, tbl_names: int) -> str:
+def source(page_draw: int, tbl_range: int, tbl_names: int, rate_fmt: int) -> str:
     """The chunk's assembly (GNU as, ColdFire), linked at LOAD. PAGE_DRAW is the C
     renderer's entry, `wr_page_draw(view, canvas)`; TBL_RANGE and TBL_NAMES its
     `wr_tbl_range` ({min, max, default}) and `wr_tbl_names` (a name per slot), which
-    it keeps as the +Drive pool fills, so TBL steps through the pool and names it."""
+    it keeps as the +Drive pool fills, so TBL steps through the pool and names it;
+    RATE_FMT its `wr_rate_fmt`, a {names, count} pair per oscillator that it sets from
+    the active track's SYNC (count 0: RATE's own number)."""
     table = "\n".join(f"    .long {rid}, lab_{rid}" for rid in LABELS)
     strings = "\n".join(f'lab_{rid}: .asciz "{name}"' for rid, name in LABELS.items())
     long_table = "\n".join(f"    .long {60 * rid}, long_{rid}" for rid in LONG_NAMES)
@@ -161,8 +172,12 @@ def source(page_draw: int, tbl_range: int, tbl_names: int) -> str:
                      f"    .long {', '.join(str(e) for e in entries)}\n"
                      f"    .long {TAG}")
     page_data = "\n".join(pages)
-    fmt_table = "\n".join([f"    .long {60 * rid}, names_{rid}, {len(names)}" for rid, names in VALUE_NAMES.items()]
-                          + [f"    .long {60 * rid}, {tbl_names:#010x}, {TBL_NAMES}" for rid in TBL_IDS])
+    # a row is an id and where its {names, count} pair is: TBL's and RATE's pairs change
+    fmt_table = "\n".join([f"    .long {60 * rid}, pair_{rid}" for rid in VALUE_NAMES]
+                          + [f"    .long {60 * rid}, pair_tbl" for rid in TBL_IDS]
+                          + [f"    .long {60 * rid}, {rate_fmt + 8 * k:#010x}" for k, rid in enumerate(RATE_IDS)])
+    fmt_pairs = "\n".join([f"pair_{rid}: .long names_{rid}, {len(names)}" for rid, names in VALUE_NAMES.items()]
+                          + [f"pair_tbl: .long {tbl_names:#010x}, {TBL_NAMES}"])
     name_lists = "\n".join(f"names_{rid}:\n" + "\n".join(f"    .long name_{rid}_{k}" for k in range(len(names)))
                            for rid, names in VALUE_NAMES.items())
     name_strings = "\n".join(f'name_{rid}_{k}: .asciz "{n}"' for rid, names in VALUE_NAMES.items()
@@ -329,8 +344,9 @@ wr_grid9:
 | jsr %a0@`, 6 bytes: call the record's naming routine with the value and the buffer),
 | now jsr here. a0 = the record table, d0 = 60 x id; the stack is the routine's own:
 | our return (0x400c246a), the value, the buffer. A Waverider track and a control in
-| fmt_table: its name for value >> 8 (the last name past the end), printed as the stock
-| routines print theirs. Anything else: the record's routine, by a tail jump.
+| fmt_table whose names-and-count pair has names (count not 0): its name for value >> 8
+| (the last name past the end), printed as the stock routines print theirs. Anything
+| else: the record's routine (still in a1), by a tail jump.
 wr_fmt:
     movea.l %a0@(0x34,%d0:l),%a1
     move.l  %d0,%d1
@@ -343,10 +359,12 @@ wr_fmt_named:
     beq.s   9f
     cmp.l   %d0,%d1
     beq.s   2f
-    addq.l  #8,%a0
+    addq.l  #4,%a0
     bra.s   1b
-2:  movea.l %a0@+,%a1
-    move.l  %a0@,%d1
+2:  movea.l %a0@,%a0
+    move.l  %a0@(4),%d1
+    beq.s   9f
+    movea.l %a0@,%a0
     move.l  %sp@(4),%d0
     asr.l   #8,%d0
     bpl.s   3f
@@ -356,7 +374,7 @@ wr_fmt_named:
     move.l  %d1,%d0
     subq.l  #1,%d0
 4:  lsl.l   #2,%d0
-    move.l  %a1@(0,%d0:l),%sp@-
+    move.l  %a0@(0,%d0:l),%sp@-
     pea     {FORMAT_S:#010x}
     move.l  %sp@(16),%sp@-
     jsr     {SPRINTF:#010x}
@@ -414,6 +432,7 @@ wr_range:
 fmt_table:
 {fmt_table}
     .long 0
+{fmt_pairs}
 range_table:
 {range_table}
     .long 0

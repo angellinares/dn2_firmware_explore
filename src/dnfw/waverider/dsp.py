@@ -100,7 +100,7 @@ MOD_DM = 0x2DEE00                            # modulator.asm (M10a): MOVE, the p
 MOD_SW = MOD_DM // 2                         # 0x16f700
 # the directory block's tail (M9b/M10a): what the loop and the modulator keep there
 MOVE_PHASES_DM = 0x2DE700                    # 16 voices x 2 oscillators, a u32 phase each
-MOVE_OFFSETS_DM = 0x2DE780                   # per oscillator, 32 bytes: frame offsets of RATE MPOS MLEV MOVE TRIG
+MOVE_OFFSETS_DM = 0x2DE780                   # per oscillator, 32 bytes: frame offsets of RATE MPOS MLEV MOVE TRIG PRST SYNC
 MOVE_RATE_DM = 0x2DE7D8                      # F[0..9], the rate table
 SHAPES_DM = 0x2DF000                         # shapes.asm (M10b-4): MOVE's eleven shapes, in L1 the tables left
 SHAPES_SW = SHAPES_DM // 2                   # 0x16f800
@@ -120,6 +120,9 @@ POOL_DIR = LOAD_AREA[1] - 0x1000             # 0x809ff000: the pool directory, t
 POOL_MAGIC = 0x57525031                      # 'WRP1'
 POOL_SLOTS = (POOL_DIR - LOAD_AREA[0]) // TABLE_BYTES   # 127 tables of 16 KB below the directory
 POOL_ZEROS = 0x200                           # the directory's first bytes, zeros at boot: no pool yet
+SYNC_DM = 0x2E0000                           # sync.asm (M10b-2): MOVE locked to the tempo and the song position
+SYNC_SW = SYNC_DM // 2                       # 0x170000
+SYNC_TABLE_DM = 0x2E0400                     # its table: a word per RATE 0..100 (live.sync_table)
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 
 # stock sites
@@ -179,7 +182,7 @@ def objects() -> dict[str, bytes]:
     spec = _code()
     return {name: sharc_object.load_bytes(bytes.fromhex(spec[name]["object_parcels_be"]))
             for name in ("reader", "machine5_live", "entry_jump", "idle_load", "idle_jump", "block_count",
-                         "entry_mark", "emark_jump", "modulator", "shapes", "load", "pool")}
+                         "entry_mark", "emark_jump", "modulator", "shapes", "load", "pool", "sync")}
 
 
 def directory() -> bytes:
@@ -228,6 +231,8 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("command table, 8 entries", CMD_TABLE_DM, command_table()),
         ("load state (zeros)", LOAD_STATE_DM, bytes(LOAD_STATE_BYTES)),
         ("pool.asm (wr_pool)", POOL_DM, obj["pool"]),
+        ("sync.asm (wr_sync)", SYNC_DM, obj["sync"]),
+        ("SYNC's note table, a word per RATE", SYNC_TABLE_DM, struct.pack("<101I", *live.sync_table())),
     ]
     out = []
     for k, (what, at, payload) in enumerate(raw):

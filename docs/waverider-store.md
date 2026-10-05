@@ -85,7 +85,7 @@ correct, not a bug.
 | 24 | source hash: xxHash32 of the source audio file, **then** |
 | 28 | source size u32 (the order is hash, then size) |
 | 32 | name: 64 bytes, Windows-1252, NUL-padded. For display only: nothing reads meaning from it |
-| 96 | applied gain u32, 16.16 fixed point: what the conversion multiplied the source by |
+| 96 | applied gain u32, 16.16 fixed point: the level change the conversion applied, `1 / peak` (1.0 for a full-scale source, 4.0 for one peaking at -12 dBFS). It is not the float-to-int16 scale. A source peaking below 1/65536 is refused, never clamped |
 | 100..127 | reserved, zero |
 
 - **The geometry lives in the index**, never in the name. DNX may write Tonverk's

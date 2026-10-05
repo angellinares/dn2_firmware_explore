@@ -195,7 +195,7 @@ containers):
 | offset | field | /waverider/<n> |
 |---|---|---|
 | `0x0D` | content kind | `0x57` ('W'), ours. Stock: 1 project, 3 sound, 5 kit |
-| `0x11` | object version | 1, the store format |
+| `0x11` | object version | 1: **the store format's version**, its own namespace. Elektron's project object versions (1.11 writes 5, and `/projects` refuses above 5) say nothing about it |
 | `0x15` | index, bank × 256 + slot | n: the bank byte is 0, and byte `0x18` is the slot, stamped by the device |
 | `0x19` | uncompressed length | the payload's byteLength |
 | `0x1D` | 1 = LZ4, 0 = raw | 0 |
@@ -203,3 +203,8 @@ containers):
 
 A byte-exact verify expects `0x18` = n and kind `0x57`, then compares the payload with
 the table hash.
+
+**Writes use the same form as reads: raw** (`0x1D` = 0). The `/waverider` writer is
+ours, and it takes what a read returns, so a slot round-trips unchanged. A client
+checks `0x1D` per route: 1 for the stock roots, which store LZ4, and 0 for
+`/waverider`.

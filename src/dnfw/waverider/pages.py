@@ -142,9 +142,15 @@ def c_header() -> str:
             f"static const int wr_ranges[WR_RANGES][4] = {{\n{ranges}\n}};\n")
 
 
-def source(page_draw: int) -> str:
+TBL_IDS = (247, 251)              # TBL1, TBL2: their range and names are the page's (the pool)
+TBL_NAMES = 2 + 127               # the baked tables, then the +Drive pool's (csrc/waverider/pool.h)
+
+
+def source(page_draw: int, tbl_range: int, tbl_names: int) -> str:
     """The chunk's assembly (GNU as, ColdFire), linked at LOAD. PAGE_DRAW is the C
-    renderer's entry, `wr_page_draw(view, canvas)`."""
+    renderer's entry, `wr_page_draw(view, canvas)`; TBL_RANGE and TBL_NAMES its
+    `wr_tbl_range` ({min, max, default}) and `wr_tbl_names` (a name per slot), which
+    it keeps as the +Drive pool fills, so TBL steps through the pool and names it."""
     table = "\n".join(f"    .long {rid}, lab_{rid}" for rid in LABELS)
     strings = "\n".join(f'lab_{rid}: .asciz "{name}"' for rid, name in LABELS.items())
     long_table = "\n".join(f"    .long {60 * rid}, long_{rid}" for rid in LONG_NAMES)
@@ -155,12 +161,15 @@ def source(page_draw: int) -> str:
                      f"    .long {', '.join(str(e) for e in entries)}\n"
                      f"    .long {TAG}")
     page_data = "\n".join(pages)
-    fmt_table = "\n".join(f"    .long {60 * rid}, names_{rid}, {len(names)}" for rid, names in VALUE_NAMES.items())
+    fmt_table = "\n".join([f"    .long {60 * rid}, names_{rid}, {len(names)}" for rid, names in VALUE_NAMES.items()]
+                          + [f"    .long {60 * rid}, {tbl_names:#010x}, {TBL_NAMES}" for rid in TBL_IDS])
     name_lists = "\n".join(f"names_{rid}:\n" + "\n".join(f"    .long name_{rid}_{k}" for k in range(len(names)))
                            for rid, names in VALUE_NAMES.items())
     name_strings = "\n".join(f'name_{rid}_{k}: .asciz "{n}"' for rid, names in VALUE_NAMES.items()
                              for k, n in enumerate(names))
-    range_table = "\n".join(f"    .long {rid}, {lo}, {hi}, {d}" for rid, (lo, hi, d) in RANGES.items())
+    range_table = "\n".join([f"    .long {rid}, range_{rid}" for rid in RANGES]
+                            + [f"    .long {rid}, {tbl_range:#010x}" for rid in TBL_IDS])
+    range_values = "\n".join(f"range_{rid}: .long {lo}, {hi}, {d}" for rid, (lo, hi, d) in RANGES.items())
     return f"""
 | -- is the active track a Waverider? d0 = 1 if so, else 0; every other register kept
 is_wr:
@@ -375,7 +384,8 @@ wr_vfmt:
 | Every clamp asks it -- the knob turn 0x40036adc among 14 callers. A Waverider track
 | and a control in range_table: ours, and straight back to the caller with d0 = a0, as
 | the getter returns. Anything else: the two displaced instructions, then on at
-| 0x400dbff6.
+| 0x400dbff6. A row is an id and where its triple is: TBL's is the C page's, which the
+| +Drive pool changes.
 wr_range:
     move.l  %sp@(8),%d1
     bsr.w   is_wr
@@ -386,9 +396,10 @@ wr_range:
     beq.s   9f
     cmp.l   %d0,%d1
     beq.s   2f
-    lea     %a1@(12),%a1
+    addq.l  #4,%a1
     bra.s   1b
-2:  move.l  %a1@+,%a0@
+2:  movea.l %a1@,%a1
+    move.l  %a1@+,%a0@
     move.l  %a1@+,%a0@(4)
     move.l  %a1@,%a0@(8)
     move.l  %a0,%d0
@@ -406,6 +417,7 @@ fmt_table:
 range_table:
 {range_table}
     .long 0
+{range_values}
 {name_lists}
 labels:
 {table}

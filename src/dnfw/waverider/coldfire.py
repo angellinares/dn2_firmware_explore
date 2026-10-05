@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import struct
 
-from . import pages, wave
+from . import drive, pages, wave
 from dataclasses import dataclass
 
 BASE = 0x40000400
@@ -368,12 +368,14 @@ def _cave_free(content: bytes, cave: tuple[int, int]) -> None:
         raise ComposeError(f"the cave at {at:#010x} (+{cap}) is not free")
 
 
-def compose(stock: bytes, assemble, compile_c) -> dict:
-    """-> {"content", "edits", "layout", "chunk"}. ASSEMBLE(source, base=...) -> bytes;
-    COMPILE_C(header, base=...) -> (image, symbols, bss): csrc/waverider/page.c linked at
-    BASE with `header` as its generated `wr_gen.h`."""
+def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
+    """-> {"content", "edits", "layout", "chunk", "drive"}. ASSEMBLE(source, base=...) ->
+    bytes; COMPILE_C(header, base=...) -> (image, symbols, bss): csrc/waverider/page.c
+    linked at BASE with `header` as its generated `wr_gen.h`. BUILD_DRIVE (cbuild.build)
+    links the +Drive chunk (`dnfw.waverider.drive`) and hooks it in; without it "drive"
+    is None and the page finds no drive chunk (its head check)."""
     content = bytearray(stock)
-    for va, want, why in GUARDS:
+    for va, want, why in GUARDS + (drive.GUARDS if build_drive else ()):
         _need(content, va, bytes.fromhex(want), why)
     edits: list[Edit] = []
 
@@ -385,7 +387,8 @@ def compose(stock: bytes, assemble, compile_c) -> dict:
     if pages.C_LOAD + len(cimage) > pages.C_END:
         raise ComposeError(f"the page renderer ends past {pages.C_END:#010x}")
     ptable = "\n    .align 2\n" + "\n".join(f"    .long {n}" for n in pages.LABELS_OUT) + "\n"
-    pblob = assemble(pages.source(csyms["wr_page_draw"]) + ptable, base=pages.LOAD)
+    pblob = assemble(pages.source(csyms["wr_page_draw"], csyms["wr_tbl_range"], csyms["wr_tbl_names"])
+                     + ptable, base=pages.LOAD)
     asm = pblob[:-4 * len(pages.LABELS_OUT)]
     if len(asm) > pages.C_LOAD - pages.LOAD:
         raise ComposeError(f"the pages assembly ({len(asm)} B) runs into the renderer")
@@ -548,10 +551,18 @@ def compose(stock: bytes, assemble, compile_c) -> dict:
     edit(VALID_SITE, bytes.fromhex("4eb9") + _long(layout["canon_valid"]),
          "the sound's parameter-ownership test: type 5 owns WaveTone's machine parameters",
          VALID_STOCK)
+    # 9. the +Drive chunk: the route, the loader and the pool (dnfw.waverider.drive)
+    dchunk = None
+    if build_drive:
+        dimage, dsyms = drive.compile_drive(build_drive)
+        for va, new, old, what in drive.hooks(dsyms):
+            edit(va, new, what, old)
+        dchunk = {"load": drive.LOAD, "code": dimage}
+        layout.update({k: dsyms[k] for k in drive.ENTRIES + list(drive.STATUS)})
     layout.update(playout)
     # the wave spans are data (signed sample bytes): where they lie, so the RAM check
     # (dnfw.mods.ramcheck) can tell four of their bytes from an address
     layout["wr_spans"] = csyms["wr_spans"]
     layout["wr_spans_end"] = csyms["wr_spans"] + wave.TABLES * wave.FRAMES * 2 * wave.WIDTH
     return {"content": bytes(content), "edits": edits, "layout": layout,
-            "chunk": {"load": pages.LOAD, "code": chunk}}
+            "chunk": {"load": pages.LOAD, "code": chunk}, "drive": dchunk}

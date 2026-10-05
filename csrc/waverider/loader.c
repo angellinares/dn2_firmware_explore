@@ -16,16 +16,16 @@
  *
  * One chunk is in flight at a time. The DSP echoes its sequence in reply word 3 when
  * the sum matched, or in word 4 when it refused it; neither within TIMEOUT frames
- * sends it again. Byte order: the ColdFire sends 16-bit words big-endian, and DSP word
+ * sends it again. GIVE_UP timeouts in a row (a DSP that never answers: one without
+ * load.asm renders a load frame as silence) stop the loader for good, so a broken
+ * DSP half costs a few dropped frames, never a stream of them. Byte order: the ColdFire sends 16-bit words big-endian, and DSP word
  * k is ColdFire words 2k (low half) and 2k+1 (high half), so a payload of int16
  * samples in order, as the ColdFire holds them, lands in DDR as the samples in order.
  * The DSP writes the echoes with the halves swapped, so a ColdFire long read of
  * reply +0x0c / +0x10 is the sequence as sent.
  */
 
-typedef unsigned char u8;
-typedef unsigned short u16;
-typedef unsigned int u32;
+#include "loader.h"
 
 #define FRAME_WORDS   1344                /* 2,688 bytes, the frame the stock ISR sends */
 #define HEADER_WORDS  8                   /* 4 DSP words: command|count, dest, seq, sum */
@@ -33,6 +33,7 @@ typedef unsigned int u32;
 #define PAYLOAD_BYTES (CHUNK_SECTORS * 512)   /* 2,560 B, 640 DSP words (the DSP takes 668) */
 #define QUEUE         3
 #define TIMEOUT       24                  /* frames, 16 ms: the reply trails by two or three */
+#define GIVE_UP       8                   /* timeouts in a row */
 #define SEQ_TAG       0x4C440000u         /* 'LD': no stock reply value looks like it */
 #define AREA_BYTES    0x200000u           /* the DSP's load area, 0x80800000.. */
 
@@ -42,19 +43,14 @@ typedef unsigned int u32;
 
 struct chunk { u16 w[FRAME_WORDS]; };
 
-/* The probe reads this (PEEK); the counters only grow. */
-struct wr_load {
-    u32 magic;                            /* 'WRLD' */
-    u32 queued, sent, resent, acked, refused, timeouts;
-    u32 held;                             /* exchanges a ready chunk waited for a free frame */
-    u32 read_errors, last_rc;
-    u32 want_sector, want_sectors, want_dest; /* the extent being loaded */
-    u32 done_sectors;
-};
-volatile struct wr_load wr_load __attribute__((section(".data"))) =
-    { 0x57524C44u, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+static const u8 *want_memory __attribute__((section(".data"))) = 0;   /* 0: the +Drive */
+static wr_load_seen want_seen __attribute__((section(".data"))) = 0;
+static u32 timeouts_in_a_row __attribute__((section(".data"))) = 0;
 
 static struct chunk queue[QUEUE] __attribute__((section(".data"), aligned(16))) = { { { 0 } } };
+/* after the queue, which it names for the probe */
+volatile struct wr_load wr_load __attribute__((section(".data"))) =
+    { 0x57524C44u, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (u32)queue, QUEUE };
 static volatile u32 head __attribute__((section(".data"))) = 0;    /* UI task: next to fill */
 static volatile u32 tail __attribute__((section(".data"))) = 0;    /* ISR: the oldest */
 static u32 seq __attribute__((section(".data"))) = 0;
@@ -83,6 +79,7 @@ void *wr_frame_src(void *frame)
         if (reply_long(0x0C) == mine) {                           /* accepted */
             wr_load.acked++;
             in_flight = 0;
+            timeouts_in_a_row = 0;
             tail++;
         } else if (reply_long(0x10) == mine) {                    /* refused: send it again */
             wr_load.refused++;
@@ -91,10 +88,13 @@ void *wr_frame_src(void *frame)
         } else if (++in_flight > TIMEOUT) {
             wr_load.timeouts++;
             in_flight = 0;
-            wr_load.resent++;
+            if (++timeouts_in_a_row >= GIVE_UP)
+                wr_load.failed = 1;
+            else
+                wr_load.resent++;
         }
     }
-    if (!in_flight && tail != head) {
+    if (!in_flight && tail != head && !wr_load.failed) {
         if (clear && last_clear) {
             in_flight = 1;
             wr_load.sent++;
@@ -106,44 +106,64 @@ void *wr_frame_src(void *frame)
     return frame;
 }
 
-/* Ask for SECTORS sectors from SECTOR to go to DEST in the load area. One extent at a
- * time: -> 0 if one is still loading or it does not fit. */
-int wr_load_extent(u32 sector, u32 sectors, u32 dest)
+static int extent(u32 sector, const u8 *memory, u32 bytes, u32 dest, wr_load_seen seen)
 {
-    if (wr_load.done_sectors < wr_load.want_sectors || dest % 4
-            || dest + sectors * 512 > AREA_BYTES || dest + sectors * 512 < dest)
+    if (wr_load.failed || wr_load.done_bytes < wr_load.want_bytes || dest % 4 || bytes % 4
+            || !bytes || dest + bytes > AREA_BYTES || dest + bytes < dest)
         return 0;
     wr_load.want_sector = sector;
     wr_load.want_dest = dest;
-    wr_load.done_sectors = 0;
-    wr_load.want_sectors = sectors;
+    want_memory = memory;
+    want_seen = seen;
+    wr_load.done_bytes = 0;
+    wr_load.want_bytes = bytes;
     return 1;
+}
+
+int wr_load_extent(u32 sector, u32 sectors, u32 dest, wr_load_seen seen)
+{
+    return extent(sector, 0, sectors * 512, dest, seen);
+}
+
+int wr_load_memory(const void *memory, u32 bytes, u32 dest)
+{
+    return extent(0, (const u8 *)memory, bytes, dest, 0);
+}
+
+int wr_load_idle(void)
+{
+    return wr_load.failed || (wr_load.done_bytes >= wr_load.want_bytes && head == tail && !in_flight);
 }
 
 /* The UI task, once a pass: fill free chunks from the extent being loaded. */
 void wr_load_poll(void)
 {
-    while (wr_load.done_sectors < wr_load.want_sectors && head - tail < QUEUE) {
+    while (!wr_load.failed && wr_load.done_bytes < wr_load.want_bytes && head - tail < QUEUE) {
         struct chunk *c = &queue[head % QUEUE];
-        u32 n = wr_load.want_sectors - wr_load.done_sectors;
-        u32 bytes, words, sum = 0;
-        int rc;
-        if (n > CHUNK_SECTORS)
-            n = CHUNK_SECTORS;
-        bytes = n * 512;
-        rc = DRIVE_READ(wr_load.want_sector + wr_load.done_sectors, bytes, &c->w[HEADER_WORDS]);
-        wr_load.last_rc = (u32)rc;
-        if (rc < 0) {                     /* an out-of-range sector leaves the buffer stale */
-            wr_load.read_errors++;
-            wr_load.want_sectors = wr_load.done_sectors;          /* give up this extent */
-            return;
+        u8 *payload = (u8 *)&c->w[HEADER_WORDS];
+        u32 bytes = wr_load.want_bytes - wr_load.done_bytes;
+        u32 words, sum = 0;
+        if (bytes > PAYLOAD_BYTES)
+            bytes = PAYLOAD_BYTES;
+        if (want_memory) {
+            for (u32 i = 0; i < bytes; i++)
+                payload[i] = want_memory[wr_load.done_bytes + i];
+        } else {
+            /* a +Drive extent is whole sectors (wr_load_extent), so is each chunk */
+            int rc = DRIVE_READ(wr_load.want_sector + wr_load.done_bytes / 512, bytes, payload);
+            wr_load.last_rc = (u32)rc;
+            if (rc < 0) {                 /* an out-of-range sector leaves the buffer stale */
+                wr_load.read_errors++;
+                wr_load.want_bytes = wr_load.done_bytes;          /* give up this extent */
+                return;
+            }
         }
         words = bytes / 4;
         for (u32 i = 0; i < words; i++)
             sum += ((u32)c->w[HEADER_WORDS + 2 * i + 1] << 16) | c->w[HEADER_WORDS + 2 * i];
         seq = (seq + 1) & 0xFFFFu;
         {
-            u32 dest = wr_load.want_dest + wr_load.done_sectors * 512;
+            u32 dest = wr_load.want_dest + wr_load.done_bytes;
             u32 s = SEQ_TAG | seq;
             c->w[0] = 4;
             c->w[1] = (u16)words;
@@ -153,8 +173,12 @@ void wr_load_poll(void)
             c->w[5] = (u16)(s >> 16);
             c->w[6] = (u16)sum;
             c->w[7] = (u16)(sum >> 16);
+            for (u32 i = HEADER_WORDS + 2 * words; i < FRAME_WORDS; i++)
+                c->w[i] = 0;              /* past the payload: zeros, as loadframes has it */
+            if (want_seen)
+                want_seen(dest, &c->w[HEADER_WORDS], bytes);
         }
-        wr_load.done_sectors += n;
+        wr_load.done_bytes += bytes;
         wr_load.queued++;
         head++;                           /* published last: the ISR sees a whole chunk */
     }

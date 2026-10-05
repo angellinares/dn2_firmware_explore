@@ -32,13 +32,14 @@ from dnfw.mods import platform                            # noqa: E402
 from dnfw.patch import cbuild                             # noqa: E402
 
 STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-SOURCE = ROOT / "csrc/wrstore/route.c"
+SOURCES = [ROOT / "csrc/wrstore/store.c", ROOT / "csrc/wrstore/route.c"]   # the route alone; the
+# Waverider mod links them into its +Drive chunk (dnfw.waverider.drive)
 BASE = 0x40000400
 MAIN_OS = 3
 CODE_VA = 0x467E8000                 # after reloadconfirm's chunk (0x467e0000, 1,208 B)
 HOOK = 0x4002BB70
 HOOK_STOCK = bytes.fromhex("700113c04059cd20")   # moveq #1,%d0; move.b %d0,0x4059cd20
-ENTRIES = ["wr_add", "wr_root_entry", "wr_list_invoker", "wr_register", "wr_nop", "wr_route"]
+ENTRIES = ["wr_add", "wr_root_entry", "wr_list_invoker", "wr_register", "wr_nop", "wr_route", "wr_store"]
 # the code the route relies on, asserted (docs/data-api-routes.md)
 CONTEXT = [
     (0x4002BB4C, "48794059cd24", "the builder passes the registry to the add, for the kits"),
@@ -58,7 +59,7 @@ def compose(stock: bytes) -> tuple[bytes, bytes, dict[str, int]]:
             raise SystemExit(f"{va:#010x} is not as expected ({why}): not stock 1.11")
     if bytes(content[HOOK - BASE:HOOK - BASE + 8]) != HOOK_STOCK:
         raise SystemExit(f"{HOOK:#010x} is not stock")
-    linked = cbuild.build([SOURCE], base=CODE_VA, entries=ENTRIES)
+    linked = cbuild.build(SOURCES, base=CODE_VA, entries=ENTRIES)
     if linked.bss:
         raise SystemExit(f"{linked.bss} bytes of BSS: nothing zeroes it")
     blob = linked.image + bytes(-len(linked.image) % 4)

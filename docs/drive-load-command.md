@@ -144,6 +144,67 @@ way.
 So the rule stands as written: **replace a frame only when it and the frame before it
 have all four masks at zero.** At 8 notes a second that leaves almost every frame free.
 
+## The pool: from the store to TBL (2026-10-05, both emulators)
+
+**What plays.** TBL 0 and 1 are the baked tables. TBL 2 and up are the pool's:
+TBL slot 2 + j is pool entry j.
+- **The DSP** (`csrc/waverider/sharc/pool.asm`, sw `0x16fe00`): the loop jumps there
+  for a slot at or past the baked directory's count.
+  - It reads the **pool directory** at the load area's last 4 KB, `0x809ff000`:
+    magic `WRP1`, count, then entry[j], pool table j's DDR address (0 for none).
+  - Any miss plays slot 0, as an out-of-range slot did before: no directory, j past
+    the count, or an empty entry.
+  - The boot stream writes the directory's first 512 bytes as zeros. So nothing past
+    slot 1 plays until the ColdFire has sent a directory.
+- **Pool table j** lives at `0x80800000 + j x 16 KiB`. It has the baked tables' layout:
+  16 x 512 int16, little-endian, frame-major. 127 tables fit below the directory.
+
+**The ColdFire** (`csrc/waverider/pool.c` over `loader.c`, in the +Drive chunk at
+`0x467f0000`, `dnfw.waverider.drive`). From the UI pass, 5 s after boot:
+1. it reads the store's current index (`csrc/wrstore/store.c`, shared with the route);
+2. it gives pool entry j to the j-th used slot, in slot order, whose table has that
+   geometry. A table of another geometry stays stored and listed, but is not played;
+3. it sends each table from the store's sectors, five sectors a chunk;
+4. it sends the directory **last**.
+
+Once the directory is acknowledged, the page offers TBL up to 1 + count:
+- the limits getter (`wr_range`) and the value text (`wr_fmt`) read the page's own
+  `wr_tbl_range` and `wr_tbl_names`;
+- a pool slot is named by the first five characters of its name in the store;
+- the wave display draws a pool table from spans that `pool.c` makes as its chunks
+  pass (`0x46a00000`, as `dnfw.waverider.wave.pool_spans`).
+
+After a write or a delete through `/waverider` (`wr_store.changes`), the next UI pass
+fills the pool again: not 5 s later, but the next pass. The page reads the drive chunk
+through its head (`wr_drive_head`, magic `WRDV`), so without that chunk TBL stays at
+two tables.
+
+**The exchange.** The frame hook (`0x40025e82`, `wr_frame_hook`) sends a chunk in
+place of a frame:
+- only when that frame and the one before it carry no note events (masks 34..41);
+- one chunk in flight at a time;
+- word 3 accepts it, word 4 sends it again, and so does no answer within 24 frames;
+- after 8 timeouts in a row the loader stops for good (`wr_load.failed`), and the pool
+  reads failed, offering nothing.
+
+**One description of the frames:** `dnfw.waverider.loadframes`. Three gates hold to it:
+
+| gate | what | result |
+|---|---|---|
+| `scripts/sharc_waverider_pool.py` | load frames through the real handler into DDR, then type-5 render blocks. The cases: no pool (slot 0); the table and its directory (every chunk accepted, DDR holds the table, slot 2 plays it with the reader's pointer at pool entry 0, bit-exact to `dnfw.waverider.live`); slot 1 still baked; slot 3 past a pool of 1 (slot 0); an empty entry (slot 0) | **PASS 9/9** |
+| `scripts/emu_waverider_pool.py` (Rust emulator, `panel_drive --card-extent`) | a store on the +Drive (slot 0 the pool test table, slot 3 the baked test table, slot 5 32 waves). The emulator runs no audio ISR (0 hits at `0x400cf7be` and `0x40025e82`), so the script calls `wr_frame_src` from the UI loop and acknowledges in reply word 3 as `load.asm` would. All 15 frames (2 x 7 chunks, then the directory) are the model's, byte for byte; the pool is ready with slots 0 and 3, named "Pulse" and "Saw t"; the spans equal the model's; a run never acknowledged gives up after 8 timeouts | **PASS 8/8** |
+| the same frames, captured, into `sharc_waverider_pool.py --load-frames` | the ColdFire's own frames played by the DSP | see below |
+
+Byte order is still a hypothesis until an instrument plays a table DNX wrote. Both
+halves agree on it, but within one implementation.
+
+**Not yet:**
+- a table's own hash is not checked when it is loaded (the route checks it when the
+  table is written);
+- a refill rewrites tables in place while the old directory still names them;
+- pool slots are given out in slot order, not per project as on Tonverk;
+- one geometry only.
+
 ## Open, before the ColdFire half
 
 1. ~~Which frames a load frame may replace.~~ Measured above.

@@ -17,16 +17,9 @@
  * groups' superblocks, then the current group's index. A slot is used when its
  * entry's flags say so. Nothing here writes to the +Drive. */
 
-typedef unsigned char u8;
-typedef unsigned short u16;
-typedef unsigned int u32;
+#include "store.h"
 
-/* The firmware returns every value in d0. This GCC (m68k-linux) returns pointers in
- * a0, so nothing called here is declared to return a pointer: values are u32, and
- * our own fill functions return u32 too. */
-#define NEW_RAW      ((u32 (*)(u32))0x40120264u)
-#define NEW(n)       ((void *)NEW_RAW(n))
-#define DELETE       ((void (*)(void *))0x40120270u)
+/* Our fill functions return u32 too: the firmware's code calls them (store.h). */
 #define STR_CSTR     ((void (*)(void *, const char *, void *))0x401ce69eu)
 #define STR_DTOR     ((void (*)(void *))0x401ccbeeu)
 #define SPLIT        ((void (*)(void *, void *))0x400ec394u)
@@ -44,16 +37,6 @@ typedef unsigned int u32;
 #define MANAGER      ((void *)0x400eb0b6u)  /* ProjectHandler's: a 4-byte closure */
 #define EMPTY_STR    0x44647a74u            /* the empty std::string's pointer */
 #define TYPEINFO     0x401feb54u            /* RouteTypeHandler's typeinfo */
-#define DRIVE_READ   ((int (*)(u32, u32, void *))0x4012c59au)
-#define XXH32        ((u32 (*)(const void *, u32, u32))0x4014be0eu)
-
-#define REGION        0x600000u
-#define GROUP_B       0x400u
-#define SLOTS         256
-#define DATA_START    0x1000u               /* sectors, from the region's start */
-#define SLOT_SECTORS  1024u                 /* 512 KiB: slot n's fixed extent */
-#define ENTRY_BYTES   128
-#define INDEX_BYTES   (SLOTS * ENTRY_BYTES)
 #define SLOT_SIZE     524288u               /* the fixed 512 KiB extent every slot reports */
 /* A user slot: DNX writes when & 0x6c == 0x6c. (0x12, write-protected, while there
  * was no writer: an info with empty callbacks ends in abort() on a write.) */
@@ -82,54 +65,8 @@ static const u32 vtable[6] __attribute__((aligned(4))) = {
 };
 
 /* The probe reads this (PEEK): what the last listing found. */
-struct wr_route { u32 magic, lists, group, generation, used, read_errors; };
-volatile struct wr_route wr_route __attribute__((section(".data"))) = { 0x57525254u, 0, 0, 0, 0, 0 };
-
-static u32 be32(const u8 *p) { return (u32)p[0] << 24 | (u32)p[1] << 16 | (u32)p[2] << 8 | p[3]; }
-
-/* -> the superblock's generation if it checks (magic, version, sizes, own hash), else 0 */
-static u32 superblock_ok(const u8 *sb, u32 *index_hash)
-{
-    if (sb[0] != 'W' || sb[1] != 'R' || sb[2] != 'T' || sb[3] != 'B'
-            || be32(sb + 4) != 0x00010040u || be32(sb + 16) != SLOTS
-            || be32(sb + 20) != ENTRY_BYTES || be32(sb + 60) != XXH32(sb, 60, 0))
-        return 0;
-    *index_hash = be32(sb + 24);
-    return be32(sb + 8) ? be32(sb + 8) : 0;
-}
-
-/* -> the current group's index (INDEX_BYTES, to be freed), or 0 for an empty store */
-static u8 *read_index(void)
-{
-    u8 *sb = NEW(512), *index = NEW(INDEX_BYTES), *chosen = 0;
-    u32 best = 0;
-    for (u32 g = 0; g < 2; g++) {
-        u32 base = REGION + g * GROUP_B, hash, gen;
-        if (DRIVE_READ(base, 512, sb) < 0) {
-            wr_route.read_errors++;
-            continue;
-        }
-        gen = superblock_ok(sb, &hash);
-        if (!gen || gen <= best)                  /* a tie keeps A, read first */
-            continue;
-        if (DRIVE_READ(base + 1, INDEX_BYTES, index) < 0) {
-            wr_route.read_errors++;
-            continue;
-        }
-        if (XXH32(index, INDEX_BYTES, 0) != hash)
-            continue;
-        best = gen;
-        wr_route.group = g;
-        if (!chosen)
-            chosen = NEW(INDEX_BYTES);
-        for (u32 i = 0; i < INDEX_BYTES; i++)
-            chosen[i] = index[i];
-    }
-    DELETE(sb);
-    DELETE(index);
-    wr_route.generation = best;
-    return chosen;
-}
+struct wr_route { u32 magic, lists, used; };     /* the store's own status is wr_store */
+volatile struct wr_route wr_route __attribute__((section(".data"))) = { 0x57525254u, 0, 0 };
 
 /* The root entry: "waverider", 256 slots. */
 u32 wr_root_fill(u32 *out)
@@ -144,7 +81,7 @@ u32 wr_root_fill(u32 *out)
 u32 wr_list_fill(u32 *out)
 {
     struct entry *v = NEW(SLOTS * sizeof(struct entry));
-    u8 *index = read_index();
+    u8 *index = wr_store_index();
     u32 used = 0;
     for (u32 n = 0; n < SLOTS; n++) {
         struct entry *e = &v[n];
@@ -337,7 +274,7 @@ u32 wr_check_fill(u32 *out, void *any, u8 *info, u32 ret)
         ((u8 *)out)[0] = 1;
         return (u32)out;
     }
-    index = read_index();
+    index = wr_store_index();
     if (!index || !(index[n * ENTRY_BYTES + 1] & 1)) {
         if (index)
             DELETE(index);
@@ -451,10 +388,10 @@ static void commit_index(u32 n, const u8 *entry)
     u8 *index, *sb;
     u32 generation = 0, target = 0, used = 0;
     /* 2. the index, into the group that is not current */
-    index = read_index();
+    index = wr_store_index();
     if (index) {
-        generation = wr_route.generation;
-        target = wr_route.group ^ 1;
+        generation = wr_store.generation;
+        target = wr_store.group ^ 1;
     } else {
         index = NEW(INDEX_BYTES);
         for (u32 i = 0; i < INDEX_BYTES; i++)
@@ -491,6 +428,7 @@ static void commit_index(u32 n, const u8 *entry)
     }
     DELETE(sb);
     wr_write.generation = generation + 1;
+    wr_store.changes++;                           /* what was loaded from the store is stale */
     wr_write.last = W_OK;
 }
 

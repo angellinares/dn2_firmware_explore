@@ -55,10 +55,9 @@ typedef unsigned int u32;
 #define ENTRY_BYTES   128
 #define INDEX_BYTES   (SLOTS * ENTRY_BYTES)
 #define SLOT_SIZE     524288u               /* the fixed 512 KiB extent every slot reports */
-/* 0x12, write-protected, until step 2's writer exists, in the listing and the file
- * info alike, so no client offers a write it can't complete. 0x7e (a user slot: DNX
- * writes when & 0x6c == 0x6c) once writes work. */
-#define PERMISSIONS   0x12
+/* A user slot: DNX writes when & 0x6c == 0x6c. (0x12, write-protected, while there
+ * was no writer: an info with empty callbacks ends in abort() on a write.) */
+#define PERMISSIONS   0x7e
 
 struct fn { void *data[2]; void *manager; void *invoker; };       /* std::function, 16 B */
 struct route { void *comps[3]; struct fn fn; };                    /* 28 B */
@@ -188,13 +187,18 @@ u32 wr_list_fill(u32 *out)
  * byteLength bytes, as stored. */
 #define RESULT_WORDS 33                       /* 4 + 4 + 124 bytes */
 
-static void fail(u32 *out, const char *why)
+/* A refusal: ok 0 and the message, in a result of WORDS longs (the caller's size: 33
+ * for a file's info, 2 for a pre-check, 3 for the header check). Writing more than
+ * the caller has overruns its stack. */
+static void fail_in(u32 *out, u32 words, const char *why)
 {
     u8 alloc;
-    for (u32 i = 0; i < RESULT_WORDS; i++)
+    for (u32 i = 0; i < words; i++)
         out[i] = 0;
     STR_CSTR(&out[1], why, &alloc);
 }
+
+static void fail(u32 *out, const char *why) { fail_in(out, RESULT_WORDS, why); }
 
 static char *put_u32(char *at, u32 n)
 {
@@ -210,7 +214,7 @@ static char *put_u32(char *at, u32 n)
 }
 
 /* "slot N: RULE", the shape DNX's messages use too */
-static void fail_slot(u32 *out, u32 n, const char *rule)
+static void fail_slot_in(u32 *out, u32 words, u32 n, const char *rule)
 {
     char text[80];
     char *at = text;
@@ -222,13 +226,66 @@ static void fail_slot(u32 *out, u32 n, const char *rule)
     while (*rule && at < text + 79)
         *at++ = *rule++;
     *at = 0;
-    fail(out, text);
+    fail_in(out, words, text);
 }
 
+static void fail_slot(u32 *out, u32 n, const char *rule) { fail_slot_in(out, RESULT_WORDS, n, rule); }
+
+/* --- A slot's file: [128-byte index entry][table], through one RAM buffer ---------
+ *
+ * Measured in the emulator (docs/data-api-routes.md):
+ * - the info's kind 1 makes the stock session read from / write to memory:
+ *   MemoryStreamReader / MemoryStreamWriter (0x400efef6 / 0x400f00ac) at the info's
+ *   +12 (an address) for +16 bytes;
+ * - a READ open calls the info's callback at +28 first, with the info itself, and
+ *   reads only after it says ok (0x400e9f7a). A write open does not;
+ * - a WRITE calls the header validator at +108 on the first chunk, with a pointer to
+ *   the container's 31-byte header (an empty one ends in abort());
+ * - after the commit's own checks (footer, hash), the session calls the callback at
+ *   +76 with a pointer to the header, or 0 if the transfer failed. Its result is
+ *   ignored: the reply is already decided.
+ * So the slot is staged in RAM. A read's pre-check fills the buffer from the +Drive
+ * and sets the length. A write lands in the buffer, and only the commit callback,
+ * after checking the entry and the table's hash, writes the +Drive: the table into
+ * the slot's own extent, then the other group's index, then its superblock
+ * (docs/waverider-store.md). Nothing touches the +Drive before that. One buffer
+ * serves one transfer at a time, as DNX makes them. */
+#define DRIVE_WRITE  ((int (*)(u32, u32, const void *))0x4012c780u)
+#define TABLE_MAX    (SLOT_SECTORS * 512)              /* 512 KiB */
+#define FILE_MAX     (ENTRY_BYTES + TABLE_MAX)
+#define DATA_END     (DATA_START + SLOTS * SLOT_SECTORS)  /* 0x41000 */
+#define CONTENT_KIND 0x57u                             /* 'W' (stock: 1 project, 3 sound, 5 kit) */
+
+void wr_check_invoker(void);
+void wr_header_invoker(void);
+void wr_commit_invoker(void);
+
+static u8 *stage __attribute__((section(".data"))) = 0;   /* FILE_MAX + 512, allocated once */
+
+/* The probe reads this: the last write's outcome. 0 none yet, 1 written, else why not. */
+struct wr_write { u32 magic, commits, last, slot, generation; };
+volatile struct wr_write wr_write __attribute__((section(".data"))) = { 0x57525754u, 0, 0, 0, 0 };
+enum { W_OK = 1, W_ABORTED, W_ENTRY, W_HASH, W_DRIVE, W_RANGE };
+
+static void put32(u8 *p, u32 v) { p[0] = (u8)(v >> 24); p[1] = (u8)(v >> 16); p[2] = (u8)(v >> 8); p[3] = (u8)v; }
+
+static void make_fn(struct fn *f, u32 n, void *invoker)
+{
+    u32 *closure = NEW(4);
+    *closure = n;
+    f->data[0] = closure;
+    f->data[1] = 0;
+    f->manager = MANAGER;
+    f->invoker = invoker;
+}
+
+static u32 closure_slot(void *any) { return **(u32 **)any; }
+
+/* The file invoker, read and write alike: kind 1 over the stage, at its full size
+ * (a write's capacity). A read's pre-check then trims it to the slot's file. */
 u32 wr_file_fill(u32 *out, void *any, void *args)
 {
     u32 params[3] = { 0, 0, 0 }, n = 0, ok;
-    u8 *index;
     (void)any;
     PATH_ARGS(params, args);
     ok = params[0] != params[1] && PARSE_U32(params[0], &n);
@@ -241,43 +298,180 @@ u32 wr_file_fill(u32 *out, void *any, void *args)
         fail_slot(out, n, "out of range, the slots are 0..255");
         return (u32)out;
     }
+    if (!stage)
+        stage = NEW(FILE_MAX + 512);
+    for (u32 i = 0; i < RESULT_WORDS; i++)
+        out[i] = 0;
+    ((u8 *)out)[0] = 1;
+    out[1] = EMPTY_STR;
+    out[2] = CONTENT_KIND;                            /* info +0: the content kind */
+    out[3] = 1;                                       /* +4 kind 1: a memory stream */
+    ((u16 *)out)[8] = PERMISSIONS;                    /* +8 */
+    out[5] = (u32)stage;                              /* +12 the stage */
+    out[6] = FILE_MAX;                                /* +16 a write's capacity */
+    out[7] = n;                                       /* +20 index: the container's slot byte */
+    out[8] = 1;                                       /* +24 object version: store format 1 */
+    make_fn((struct fn *)&out[2 + 7], n, (void *)wr_check_invoker);    /* +28 read pre-check */
+    make_fn((struct fn *)&out[2 + 19], n, (void *)wr_commit_invoker);  /* +76 commit */
+    make_fn((struct fn *)&out[2 + 27], n, (void *)wr_header_invoker);  /* +108 header check */
+    return (u32)out;
+}
+
+/* +28, before a transfer: {u8 ok; std::string error}, 8 bytes. Both the read open
+ * (0x400e9f7a, returning to 0x400e9fc2) and a write's first chunk (0x400ea266,
+ * returning to 0x400ea2ae) call it, with the info. A read fills the stage with the
+ * slot's entry and table and sets the info's length; a write keeps the full
+ * capacity and passes. RET is where it was called from. 1.11 address: for 1.12,
+ * find again the read open's `jsr (a1)` after `tstl %a4@(36)`. */
+#define READ_OPEN_RETURN 0x400e9fc2u
+
+u32 wr_check_fill(u32 *out, void *any, u8 *info, u32 ret)
+{
+    u32 n = closure_slot(any);
+    u8 *index;
+    const u8 *raw;
+    u32 start, length;
+    out[0] = 0;
+    out[1] = EMPTY_STR;
+    if (ret != READ_OPEN_RETURN) {
+        ((u8 *)out)[0] = 1;
+        return (u32)out;
+    }
     index = read_index();
     if (!index || !(index[n * ENTRY_BYTES + 1] & 1)) {
         if (index)
             DELETE(index);
-        fail_slot(out, n, "empty");
+        fail_slot_in(out, 2, n, "empty");
         return (u32)out;
     }
-    {
-        const u8 *raw = index + n * ENTRY_BYTES;
-        u32 start = be32(raw + 12), length = be32(raw + 16);
+    raw = index + n * ENTRY_BYTES;
+    start = be32(raw + 12);
+    length = be32(raw + 16);
+    if (start != DATA_START + n * SLOT_SECTORS || !length || length > TABLE_MAX) {
         DELETE(index);
-        if (start != DATA_START + n * SLOT_SECTORS) {
-            fail_slot(out, n, "the index puts it outside its own extent");
-            return (u32)out;
-        }
-        if (!length || length > SLOT_SECTORS * 512) {
-            fail_slot(out, n, "the index gives a length of 0 or over 512 KiB");
-            return (u32)out;
-        }
-        for (u32 i = 0; i < RESULT_WORDS; i++)
-            out[i] = 0;
-        ((u8 *)out)[0] = 1;
-        out[1] = EMPTY_STR;
-        out[2] = 0x57;                                /* +0 content kind: 'W', ours (1 project, 3 sound, 5 kit) */
-        out[3] = 2;                                   /* +4 kind 2: the eMMC stream */
-        /* +8: write-protected (0x12) until step 2's writer exists. The stock write path
-         * calls the info's writer callback unconditionally, and an empty one ends in
-         * abort() (0x40138d92, measured in the emulator): with 0x12 the stock open
-         * refuses the write instead, while a read only needs bit 1. The listing still
-         * says 0x7e, the contract. */
-        ((u16 *)out)[8] = PERMISSIONS;
-        out[5] = (REGION + start) * 512;              /* +12 the byte offset: < 4 GiB */
-        out[6] = length;                              /* +16 size */
-        out[7] = n;                                   /* +20 index */
-        out[8] = 1;                                   /* +24 object version: store format 1 */
+        fail_slot_in(out, 2, n, "the index entry is not valid for this slot");
+        return (u32)out;
     }
+    for (u32 i = 0; i < ENTRY_BYTES; i++)
+        stage[i] = raw[i];
+    DELETE(index);
+    if (DRIVE_READ(REGION + start, (length + 511) & ~511u, stage + ENTRY_BYTES) < 0) {
+        fail_slot_in(out, 2, n, "the +Drive read failed");
+        return (u32)out;
+    }
+    *(u32 *)(info + 16) = ENTRY_BYTES + length;
+    ((u8 *)out)[0] = 1;
     return (u32)out;
+}
+
+/* +108, a write's first chunk: the container header. -> {u8 ok; string; u8 value}. */
+u32 wr_header_fill(u32 *out, void *any, const u8 *header)
+{
+    u32 n = closure_slot(any), length = be32(header + 25);
+    out[0] = out[1] = out[2] = 0;
+    if (be32(header + 13) != CONTENT_KIND) {
+        fail_slot_in(out, 3, n, "the file is not a Waverider table (container kind)");
+        return (u32)out;
+    }
+    if (be32(header + 17) != 1) {
+        fail_slot_in(out, 3, n, "unknown store format version");
+        return (u32)out;
+    }
+    if (header[29] != 0) {
+        fail_slot_in(out, 3, n, "the body must be raw, not LZ4");
+        return (u32)out;
+    }
+    if (length <= ENTRY_BYTES || length > FILE_MAX) {
+        fail_slot_in(out, 3, n, "the file must be a 128-byte entry and a table of at most 512 KiB");
+        return (u32)out;
+    }
+    ((u8 *)out)[0] = 1;
+    out[1] = EMPTY_STR;
+    ((u8 *)out)[8] = 1;
+    return (u32)out;
+}
+
+/* +76, the commit: the stage holds [entry][table]. Check, then write. */
+void wr_commit_fill(void *any, const u8 *header)
+{
+    u32 n = closure_slot(any);
+    u32 length, start, table_len, flags;
+    u8 *entry = stage, *index, *sb;
+    u32 generation = 0, target = 0, used = 0;
+
+    wr_write.commits++;
+    wr_write.slot = n;
+    if (!header) {
+        wr_write.last = W_ABORTED;
+        return;
+    }
+    length = be32(header + 25);
+    table_len = length - ENTRY_BYTES;
+    flags = (u32)entry[0] << 8 | entry[1];
+    start = be32(entry + 12);
+    if (!(flags & 1) || (entry[2] << 8 | entry[3]) != 1 || (entry[8] << 8 | entry[9]) != 1
+            || start != DATA_START + n * SLOT_SECTORS || be32(entry + 16) != table_len
+            || (u32)(entry[4] << 8 | entry[5]) * (u32)(entry[6] << 8 | entry[7]) * 2 != table_len) {
+        wr_write.last = W_ENTRY;
+        return;
+    }
+    if (XXH32(stage + ENTRY_BYTES, table_len, 0) != be32(entry + 20)) {
+        wr_write.last = W_HASH;
+        return;
+    }
+    if (REGION + start + SLOT_SECTORS > REGION + DATA_END) {
+        wr_write.last = W_RANGE;
+        return;
+    }
+    /* 1. the table, its last sector padded with zeros */
+    for (u32 i = ENTRY_BYTES + table_len; i < ENTRY_BYTES + ((table_len + 511) & ~511u); i++)
+        stage[i] = 0;
+    if (DRIVE_WRITE(REGION + start, (table_len + 511) & ~511u, stage + ENTRY_BYTES) < 0) {
+        wr_write.last = W_DRIVE;
+        return;
+    }
+    /* 2. the index, into the group that is not current */
+    index = read_index();
+    if (index) {
+        generation = wr_route.generation;
+        target = wr_route.group ^ 1;
+    } else {
+        index = NEW(INDEX_BYTES);
+        for (u32 i = 0; i < INDEX_BYTES; i++)
+            index[i] = 0;
+    }
+    for (u32 i = 0; i < ENTRY_BYTES; i++)
+        index[n * ENTRY_BYTES + i] = entry[i];
+    for (u32 k = 0; k < SLOTS; k++)
+        used += index[k * ENTRY_BYTES + 1] & 1;
+    if (DRIVE_WRITE(REGION + target * GROUP_B + 1, INDEX_BYTES, index) < 0) {
+        DELETE(index);
+        wr_write.last = W_DRIVE;
+        return;
+    }
+    /* 3. its superblock, generation + 1: the moment the change takes effect */
+    sb = NEW(512);
+    for (u32 i = 0; i < 512; i++)
+        sb[i] = 0;
+    sb[0] = 'W'; sb[1] = 'R'; sb[2] = 'T'; sb[3] = 'B';
+    put32(sb + 4, 0x00010040u);
+    put32(sb + 8, generation + 1);
+    put32(sb + 12, used);
+    put32(sb + 16, SLOTS);
+    put32(sb + 20, ENTRY_BYTES);
+    put32(sb + 24, XXH32(index, INDEX_BYTES, 0));
+    put32(sb + 28, DATA_START);
+    put32(sb + 32, DATA_END);
+    put32(sb + 60, XXH32(sb, 60, 0));
+    DELETE(index);
+    if (DRIVE_WRITE(REGION + target * GROUP_B, 512, sb) < 0) {
+        DELETE(sb);
+        wr_write.last = W_DRIVE;
+        return;
+    }
+    DELETE(sb);
+    wr_write.generation = generation + 1;
+    wr_write.last = W_OK;
 }
 
 /* One route: PATTERN with INVOKER into the route vector at registry + AT, as
@@ -353,6 +547,30 @@ __asm__(
 "	move.l	%a0,-(%sp)\n"
 "	jsr	wr_file_fill\n"
 "	lea	12(%sp),%sp\n"
+"	rts\n"
+"	.globl	wr_check_invoker\n"
+"wr_check_invoker:\n"
+"	move.l	(%sp),-(%sp)\n"
+"	move.l	12(%sp),-(%sp)\n"
+"	move.l	12(%sp),-(%sp)\n"
+"	move.l	%a0,-(%sp)\n"
+"	jsr	wr_check_fill\n"
+"	lea	16(%sp),%sp\n"
+"	rts\n"
+"	.globl	wr_header_invoker\n"
+"wr_header_invoker:\n"
+"	move.l	8(%sp),-(%sp)\n"
+"	move.l	8(%sp),-(%sp)\n"
+"	move.l	%a0,-(%sp)\n"
+"	jsr	wr_header_fill\n"
+"	lea	12(%sp),%sp\n"
+"	rts\n"
+"	.globl	wr_commit_invoker\n"
+"wr_commit_invoker:\n"
+"	move.l	8(%sp),-(%sp)\n"
+"	move.l	8(%sp),-(%sp)\n"
+"	jsr	wr_commit_fill\n"
+"	addq.l	#8,%sp\n"
 "	rts\n"
 "	.globl	wr_nop\n"
 "wr_nop:\n"

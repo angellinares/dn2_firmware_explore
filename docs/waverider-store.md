@@ -208,3 +208,33 @@ the table hash.
 ours, and it takes what a read returns, so a slot round-trips unchanged. A client
 checks `0x1D` per route: 1 for the stock roots, which store LZ4, and 0 for
 `/waverider`.
+
+## Writing a slot (measured in the emulator, 2026-10-05)
+
+**A `/waverider/<n>` file is `[128-byte index entry][table]`, both ways.** A write
+sends it, a read returns it, inside the container above (kind `0x57`, version 1,
+raw). The entry is exactly the index entry the device will store.
+
+Through the stock write session (`0x57`, `0x58`, `0x59`), on a formatted +Drive image,
+with build `wrroute9`:
+
+| what | what the device does |
+|---|---|
+| a valid file to an empty store | the commit writes the table to slot n's extent, then group A's index, then its superblock (generation 1). The listing shows the slot, and a read returns the same bytes, with byte `0x18` stamped n |
+| a second slot | the index and superblock go to the other group (generation 2), and the first slot carries over |
+| a table whose hash doesn't match the entry's | **the commit still answers ok** (the stock session decides the reply before our callback runs), and **nothing is written**: the slot doesn't appear |
+| container kind not `0x57`, version not 1, `0x1D` not 0, or a length outside 129 .. 128 + 512 KiB | refused at the first chunk: `slot N: the file is not a Waverider table (container kind)`, `... unknown store format version`, `... the body must be raw, not LZ4`, `... the file must be a 128-byte entry and a table of at most 512 KiB`. The commit then answers `Header was not processed` |
+| `0x1D` = 1 on a raw body | the stock decompressor refuses first: `Failed to write data: Error decompressing stream; invalid buffer length` |
+
+**Checked at the commit** (silently refused, as above): the entry is used, kind 1,
+format 1; its start is slot n's own; its length is the table's, and is waves ×
+points × 2; and the table's xxHash32 equals the entry's table hash. **So a write is
+confirmed only by reading back:** list the slot, read it, and compare. The device's
+last outcome is also in `wr_write` (probe PEEK): commits, last (1 written,
+2 aborted, 3 entry, 4 hash, 5 drive, 6 range), slot, generation.
+
+**How (docs/data-api-routes.md):** kind 1, a memory stream over one RAM stage of
+128 + 512 KiB + 512. The info's callbacks are a pre-check (+28), the commit (+76) and
+the header check (+108). The pre-check tells a read open from a write by its return
+address (`0x400e9fc2`, the read open's: 1.11 only, to be found again for 1.12). One
+transfer at a time.

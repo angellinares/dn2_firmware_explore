@@ -243,7 +243,9 @@ timeouts, then stop, nothing written to the +Drive, and the sound untouched. Tha
 bounded give-up is why this wrong build cost a reflash and not the store.
 
 **Which reply words are free**, from `tools/dn2replyscan.py` (70 samples, idle and
-playing) and a static read of every ColdFire site naming the reply:
+playing) and a static read of every ColdFire site naming the reply. The scan samples
+both states on purpose: word 5 is zero at rest and in use while sound plays, so an
+idle-only scan would have offered it. Copy the method for the next field:
 
 | reply bytes | what | free? |
 |---|---|---|

@@ -8,6 +8,12 @@ distinct values: a word that reads 0 in every sample, idle and while playing, is
 candidate for a value of our own the DSP writes and the ColdFire does not use. A
 candidate is not proof: the ColdFire's reads must be checked statically too.
 
+**Run it twice, idle and while the instrument plays a busy pattern.** Many words are
+zero only at rest. Word 5 (`+0x14`, the compressor's gain reduction at `+0x16`) read 0 in
+every idle sample and moves while sound plays (2026-10-05). An idle-only scan would
+have offered it, and the bug would have shown only on the instrument, only while
+notes played.
+
 Read-only: PEEK only. Quit Transfer first (memory probe-after-flash).
 """
 

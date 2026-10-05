@@ -131,6 +131,16 @@ over the USB probe, about 345 readings a second, for 60 s
   track t"; that held only because our gates build single-voice frames, voice 0 on
   track 0. Not yet read on the DSP side: which per-voice cells the bit raises.
 
+**Confirmed with unison (instrument, 2026-10-05).** Track 1 set to unison 3, a
+1/16-length note on every step at 120 BPM, 20 s (`out/probe-frames/trigmask_unison3.*`):
+every note-on caught (29) and every note-off caught (56) has **exactly three bits
+set**, and the group changes from note to note (`8003`, `0b00`, `800c`, `40c0`, ...).
+One note, three voices, three bits: the masks are voice masks. The earlier run's
+three-bit values (`e000`, `1c00`) were the owner's first pattern, a three-note chord
+on step 1. Note-offs were caught about twice as often as note-ons in the same notes,
+so a note-off may stay in the mask for two frames; the rule below covers it either
+way.
+
 So the rule stands as written: **replace a frame only when it and the frame before it
 have all four masks at zero.** At 8 notes a second that leaves almost every frame free.
 

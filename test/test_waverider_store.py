@@ -79,3 +79,22 @@ def test_current_group_rules():
     bad = (bytearray(b[0]), index)
     bad[0][20] ^= 1                                                  # superblock hash fails
     assert S.current_group({"A": a, "B": (bytes(bad[0]), index)}) == "A"
+
+
+# DNX's plan after fixed extents (2026-10-05): the same table, data_end 0x11000. Only
+# the superblock moved: its data_end and its own hash.
+DNX_PLAN_FIXED_SUPERBLOCK_HASH = 0x22136DE2
+DNX_SUPERBLOCK_FIXED_64 = bytes.fromhex(
+    "57 52 54 42 00 01 00 40 00 00 00 01 00 00 00 01"
+    "00 00 01 00 00 00 00 80 8E 82 B3 DF 00 00 10 00"
+    "00 01 10 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    "00 00 00 00 00 00 00 00 00 00 00 00 ED 48 D8 83")
+
+
+def test_dnx_fixed_extent_plan_replays():
+    plan = S.plan_writes("A", 1, {0: ENTRY}, {0: PAYLOAD}, data_end=S.DATA_END)
+    assert plan[:2] == DNX_PLAN[:2]                                  # data and index unchanged
+    assert plan[2] == {"what": "superblock", "sector": 0, "length": 512,
+                       "hash": DNX_PLAN_FIXED_SUPERBLOCK_HASH}
+    sb = S.superblock(1, 1, S.index_bytes({0: ENTRY}), data_end=S.DATA_END)
+    assert sb[:64] == DNX_SUPERBLOCK_FIXED_64

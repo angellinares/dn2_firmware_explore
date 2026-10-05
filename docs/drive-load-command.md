@@ -193,7 +193,7 @@ place of a frame:
 |---|---|---|
 | `scripts/sharc_waverider_pool.py` | load frames through the real handler into DDR, then type-5 render blocks. The cases: no pool (slot 0); the table and its directory (every chunk accepted, DDR holds the table, slot 2 plays it with the reader's pointer at pool entry 0, bit-exact to `dnfw.waverider.live`); slot 1 still baked; slot 3 past a pool of 1 (slot 0); an empty entry (slot 0) | **PASS 9/9** |
 | `scripts/emu_waverider_pool.py` (Rust emulator, `panel_drive --card-extent`) | a store on the +Drive (slot 0 the pool test table, slot 3 the baked test table, slot 5 32 waves). The emulator runs no audio ISR (0 hits at `0x400cf7be` and `0x40025e82`), so the script calls `wr_frame_src` from the UI loop and acknowledges in reply word 3 as `load.asm` would. All 15 frames (2 x 7 chunks, then the directory) are the model's, byte for byte; the pool is ready with slots 0 and 3, named "Pulse" and "Saw t"; the spans equal the model's; a run never acknowledged gives up after 8 timeouts | **PASS 8/8** |
-| the same frames, captured, into `sharc_waverider_pool.py --load-frames` | the ColdFire's own frames played by the DSP | see below |
+| the same frames, captured, into `sharc_waverider_pool.py --load-frames` | the ColdFire's own 15 frames through the DSP's handler: all accepted, both tables and the directory in DDR, slot 2 bit-exact to the reference | **PASS 9/9** |
 
 Byte order is still a hypothesis until an instrument plays a table DNX wrote. Both
 halves agree on it, but within one implementation.

@@ -123,11 +123,13 @@ over the USB probe, about 345 readings a second, for 60 s
 - **+34 is the note-on mask and +36 the note-off mask.** +38 always equals +34 and +40
   always equals +36, in all 20,674 readings. Each event is caught at about the rate a
   one-frame event would be (a 0.67 ms frame against a reading every ~2.9 ms).
-- **The bit is not the track.** With only track 1 playing, the bit cycles through all
-  16 positions, one step to the next, and a note's off bit is its on bit. It looks
-  like a voice index. `dnfw.waverider.frame` says "bit t = track t". That holds for
-  the single-voice frames our gates build. **[unverified]**: what the DSP indexes by
-  this bit.
+- **The bit is the voice, not the track.** With only track 1 playing, the bit cycles
+  through all 16 positions, one step to the next, and a note's off bit is its on bit:
+  the voice allocator handing each note the next voice. The owner reads it the same
+  way, and it matches the per-voice engine elsewhere (`docs/modulation-mask.md`: the
+  modulated sound parameters are per voice). `dnfw.waverider.frame` called it "bit t =
+  track t"; that held only because our gates build single-voice frames, voice 0 on
+  track 0. Not yet read on the DSP side: which per-voice cells the bit raises.
 
 So the rule stands as written: **replace a frame only when it and the frame before it
 have all four masks at zero.** At 8 notes a second that leaves almost every frame free.

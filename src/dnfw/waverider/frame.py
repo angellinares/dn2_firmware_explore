@@ -57,7 +57,10 @@ LEVEL = 116         # DSP: record +0x22c, value / 32512
 MACHINE = 148       # DSP: record +0x1b4, the machine type sw 0x1c8ef1 dispatches on
 FILTER = 180        # DSP: record +0x1dc, through FILTER_TO_DSP
 
-# trigger masks: one 16-bit word each, bit t = track t. The first is the note
+# trigger masks: one 16-bit word each, bit v = voice v (on the instrument the
+# allocator hands each note the next voice; our gates use voice 0 for track 0, so
+# `trigger(track)` sets bit `track`). +34 is note-on and +36 note-off, measured;
+# +38/+40 carry copies (docs/drive-load-command.md). The first is the note
 # trigger (the byte cell engine +0x138fc + t that Milestone 3 poked by hand); the
 # other three raise byte cells at engine +0x1391c, +0x1393c and +0x1394c.
 TRIG_NOTE = 34

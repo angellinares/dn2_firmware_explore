@@ -226,6 +226,7 @@ with build `wrroute9`:
 | a table whose hash doesn't match the entry's | **the commit still answers ok** (the stock session decides the reply before our callback runs), and **nothing is written**: the slot doesn't appear |
 | container kind not `0x57`, version not 1, `0x1D` not 0, or a length outside 129 .. 128 + 512 KiB | refused at the first chunk: `slot N: the file is not a Waverider table (container kind)`, `... unknown store format version`, `... the body must be raw, not LZ4`, `... the file must be a 128-byte entry and a table of at most 512 KiB`. The commit then answers `Header was not processed` |
 | `0x1D` = 1 on a raw body | the stock decompressor refuses first: `Failed to write data: Error decompressing stream; invalid buffer length` |
+| **delete**, `0x5c` with the slashed path `/waverider/n/` | answers `01`. Slot n's index entry is freed in the other group, with generation + 1, and the other slots are kept. The listing drops it, and an open says `slot n: empty`. The table's sectors are left as they are: the index is what counts |
 
 **Checked at the commit** (silently refused, as above): the entry is used, kind 1,
 format 1; its start is slot n's own; its length is the table's, and is waves ×
@@ -239,3 +240,15 @@ last outcome is also in `wr_write` (probe PEEK): commits, last (1 written,
 the header check (+108). The pre-check tells a read open from a write by its return
 address (`0x400e9fc2`, the read open's: 1.11 only, to be found again for 1.12). One
 transfer at a time.
+
+**Read with STORED_FORM** (`0x54` with the trailing `0x01`): the stock session
+LZ4-compresses the body on the way out. A 16 KiB table came back as a 428-byte
+container with `0x1D` = 1 and the slot byte still n. Without the flag it comes back raw,
+byte-identical to the write. So **a verify or a backup of a `/waverider` slot reads
+without the flag**, or decompresses before comparing. Measured 2026-10-05, build
+`wrroute10`.
+
+**Not measurable in the emulator yet:** stock deletes and moves. digikit's card model
+answers the erase commands (CMD35/36/38) without erasing, so a stock `0x5c` on
+`/projects/n/` answers `01` and leaves the slot listed, and a `0x5a` looks like a copy.
+Our delete doesn't depend on erase.

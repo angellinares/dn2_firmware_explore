@@ -391,17 +391,28 @@ u32 wr_header_fill(u32 *out, void *any, const u8 *header)
     return (u32)out;
 }
 
-/* +76, the commit: the stage holds [entry][table]. Check, then write. */
-void wr_commit_fill(void *any, const u8 *header)
+/* +76, called with the header after an upload, or 0. 0 comes from two places, told
+ * apart by the caller: a delete (0x5c, the stock delete 0x400ea3fc zeroes the stage
+ * and calls this from 0x40127f8e) and a failed upload (from 0x401287a4). 1.11
+ * addresses: for 1.12, find the delete's kind-1 arm again. */
+#define DELETE_RETURN 0x40127f8eu
+static void commit_index(u32 n, const u8 *entry);
+
+void wr_commit_fill(void *any, const u8 *header, u32 ret)
 {
     u32 n = closure_slot(any);
     u32 length, start, table_len, flags;
-    u8 *entry = stage, *index, *sb;
-    u32 generation = 0, target = 0, used = 0;
+    u8 *entry = stage;
 
     wr_write.commits++;
     wr_write.slot = n;
     if (!header) {
+        if (ret == DELETE_RETURN) {
+            for (u32 i = 0; i < ENTRY_BYTES; i++)
+                stage[i] = 0;
+            commit_index(n, stage);           /* a free entry: the slot is gone */
+            return;
+        }
         wr_write.last = W_ABORTED;
         return;
     }
@@ -430,6 +441,15 @@ void wr_commit_fill(void *any, const u8 *header)
         wr_write.last = W_DRIVE;
         return;
     }
+    commit_index(n, entry);
+}
+
+/* Steps 2 and 3: slot n's index entry becomes ENTRY (all zero frees it), in the group
+ * that is not current, then its superblock with generation + 1. */
+static void commit_index(u32 n, const u8 *entry)
+{
+    u8 *index, *sb;
+    u32 generation = 0, target = 0, used = 0;
     /* 2. the index, into the group that is not current */
     index = read_index();
     if (index) {
@@ -567,10 +587,11 @@ __asm__(
 "	rts\n"
 "	.globl	wr_commit_invoker\n"
 "wr_commit_invoker:\n"
-"	move.l	8(%sp),-(%sp)\n"
-"	move.l	8(%sp),-(%sp)\n"
+"	move.l	(%sp),-(%sp)\n"
+"	move.l	12(%sp),-(%sp)\n"
+"	move.l	12(%sp),-(%sp)\n"
 "	jsr	wr_commit_fill\n"
-"	addq.l	#8,%sp\n"
+"	lea	12(%sp),%sp\n"
 "	rts\n"
 "	.globl	wr_nop\n"
 "wr_nop:\n"

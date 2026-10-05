@@ -252,3 +252,7 @@ without the flag**, or decompresses before comparing. Measured 2026-10-05, build
 answers the erase commands (CMD35/36/38) without erasing, so a stock `0x5c` on
 `/projects/n/` answers `01` and leaves the slot listed, and a `0x5a` looks like a copy.
 Our delete doesn't depend on erase.
+
+## Does a firmware update leave the store alone? (instrument, 2026-10-05)
+
+A stock 1.11 reflash, done over MIDI by the owner, kept the +Drive's projects intact. DNX listed all 18 project names before and after, and they were identical, including slot 18, which DNX had written over USB minutes before. **Our region at sector `0x600000` was still empty then, so its survival is not yet shown.** The test is to check the store after the first reflash with a table stored there. DNX has the before state.

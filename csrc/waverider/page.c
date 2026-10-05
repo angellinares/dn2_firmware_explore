@@ -84,7 +84,9 @@ static void drive_poll(void)
 #define KIT        (*(u8 *const *)0x800052A0u)
 #define SOUND(t)   (KIT + 52u + 1163u * (t))
 #define SYNC_SLOT(o) ((o) ? 47u : 37u)                    /* SYN1 MOD, SYN2 CHAR */
-const void *wr_rate_fmt[2][2] __attribute__((section(".data"))) = { { 0, 0 }, { 0, 0 } };
+/* Row 2 is SMTH's, fixed: its time constant, Off at 127 (dnfw.waverider.live.smth_names). */
+const void *wr_rate_fmt[3][2] __attribute__((section(".data"))) =
+    { { 0, 0 }, { 0, 0 }, { wr_smth_names, (const void *)WR_SMTH_VALUES } };
 
 static u32 sound_value(const u8 *sound, u32 slot)
 {

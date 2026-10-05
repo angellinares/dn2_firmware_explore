@@ -198,7 +198,8 @@ def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
             reference.dsp_bytes(dsp.tables()[k])
     # L1 keeps only code and state: MOVE's shapes and their random state (M10b-4) sit
     # where table 0 began; after them the loader, its command table and its state, the
-    # pool lookup, then SYNC (M10b-2) and its note table, which runs to the region's end
+    # pool lookup, then SYNC, SMTH and DCLK (M10b-2), their tables, and their state, which
+    # runs to the region's end
     sp = {what: (at, p) for what, at, p in dsp.spans()}
     assert sp["shapes.asm (wr_shape)"][0] == dsp.dm_to_load(0x2DF000)
     at, p = sp["MOVE's random state (zeros)"]
@@ -208,8 +209,11 @@ def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
     at, p = sp["pool.asm (wr_pool)"]
     assert at + len(p) == dsp.dm_to_load(dsp.SYNC_DM)
     at, p = sp["SYNC's note table, a word per RATE"]
-    assert at == dsp.dm_to_load(dsp.SYNC_TABLE_DM) and at + len(p) == dsp.dm_to_load(dsp.REGION[1])
+    assert at == dsp.dm_to_load(dsp.SYNC_TABLE_DM) and at + len(p) == dsp.dm_to_load(dsp.SMOOTH_DM)
     assert struct.unpack_from("<101I", p) == live.sync_table()
+    at, p = sp["SMTH's and DCLK's state (zeros)"]
+    assert at == dsp.dm_to_load(dsp.SMOOTH_STATE_DM) and at + len(p) == dsp.dm_to_load(dsp.REGION[1]) and not any(p)
+    assert struct.unpack_from("<128f", sp["SMTH's coefficients, 128 float32"][1]) == live.smth_table()
 
 
 def test_the_pool_directory_starts_empty_inside_the_load_area(built):
@@ -328,10 +332,11 @@ def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
     assert all(e == a for e, a in zip(ends, at[1:]))           # no unwritten gap
     obj = dsp.objects()
     code_spans = [x for x in sp if "asm" in x[0]]
-    assert len(code_spans) == 10                              # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm, sync.asm (M10b-2)
+    assert len(code_spans) == 12                              # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm, sync/smooth/dclk.asm (M10b-2)
     for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["idle_load"],
                                                      obj["block_count"], obj["entry_mark"], obj["modulator"],
-                                                     obj["shapes"], obj["load"], obj["pool"], obj["sync"])):
+                                                     obj["shapes"], obj["load"], obj["pool"], obj["sync"],
+                                                     obj["smooth"], obj["dclk"])):
         assert payload[:len(code)] == code
         assert len(payload) - len(code) >= 64 and not any(payload[len(code):]), what
 

@@ -75,7 +75,8 @@ RATE, BLOCK = 48000, 32
 LOOP_RESUME = 0x1C944C          # where machine5_live rejoins the per-track chain
 
 
-SHIPPED_KEYS = (("reader", "READER_SW"), ("machine5_live", "LOOP_SW"), ("modulator", "MOD_SW"), ("sync", "SYNC_SW"))
+SHIPPED_KEYS = (("reader", "READER_SW"), ("machine5_live", "LOOP_SW"), ("modulator", "MOD_SW"), ("sync", "SYNC_SW"),
+                ("smooth", "SMOOTH_SW"), ("dclk", "DCLK_SW"))
 
 
 def shipped_sources() -> tuple[str, ...]:
@@ -102,6 +103,9 @@ RATE2, MPOS2, MLEV2, MOVE2 = live.MOVE_SLOTS[1][:4]   # PD2, OFS2, NLEV, BASE
 TRIG = live.MOVE_SLOTS[0][4]                          # TYPE, shared (0: restart on a note)
 PRST = live.MOVE_SLOTS[0][5]                          # RSET, shared: the oscillators Off/On/Random
 SYNC1, SYNC2 = live.SYNC_SLOTS                        # M10b-2: MOD, CHAR (Off / On)
+SMTH1, SMTH2 = live.SMTH_SLOTS                        # DEC, WDTH: 127 no glide
+DCLK = live.DCLK_SLOT                                 # HOLD, shared: 0 Off, else On
+JUMP_AT = 4                                           # the SMTH / DCLK runs' POS jump
 SYNC_TEMPO = 14400                                    # BPM x 120: 120 BPM
 SYNC_P0 = 0xFFFD0000                                  # a position that wraps in block 4
 TUN1_ZERO = 0x4000              # the frame word for 0 semitones: the sound's own (probe, 2026-09-30)
@@ -224,6 +228,9 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
                               "song": frame_word(r.state, live.SYNC_POSITION)
                                       | frame_word(r.state, live.SYNC_POSITION + 2) << 16,
                               "tempo": frame_word(r.state, live.SYNC_TEMPO),
+                              "smth": (frame_word(r.state, FR.slot_offset(t, SMTH1)),
+                                       frame_word(r.state, FR.slot_offset(t, SMTH2))),
+                              "dclk": frame_word(r.state, FR.slot_offset(t, DCLK)),
                               "triggered": bool(frame_word(r.state, FR.TRIG_NOTE) >> t & 1)}
             tap["t5_inputs"] = ins
 
@@ -317,9 +324,9 @@ def reference_for(run, t, tables, precision="float32") -> list[float]:
     """live.render_two fed the DSP's own unpacked inputs for track T, block by block:
     both oscillators (M9b), osc 2 from its own four frame words."""
     seq = [(i[t]["note"], (i[t]["wav1"], i[t]["tbl1"], i[t]["tun1"], i[t]["lev1"], *i[t]["move1"],
-                           i[t]["sync"][0]),
-            (*i[t]["osc2"], *i[t]["move2"], i[t]["sync"][1]),
-            (i[t]["trig"], i[t]["triggered"], i[t]["prst"], i[t]["song"], i[t]["tempo"]))
+                           i[t]["sync"][0], i[t]["smth"][0]),
+            (*i[t]["osc2"], *i[t]["move2"], i[t]["sync"][1], i[t]["smth"][1]),
+            (i[t]["trig"], i[t]["triggered"], i[t]["prst"], i[t]["song"], i[t]["tempo"], i[t]["dclk"]))
            for i in run["t5_inputs"] if t in i]
     return live.render_two(tables, seq, BLOCK, precision)
 
@@ -633,9 +640,11 @@ def step_map(dk, snap, m2mach, m5: Image, stock: bytes, init, sound, machines) -
 # -- step 3 -------------------------------------------------------------------------------------------
 
 def step_voice(init, sound, machines, blocks, tables) -> dict:
-    def frames(song=None, **kw):
+    def frames(song=None, jump=None, **kw):
         def fb(b):
             f = base_frame(sound, machines, trigger=(b == 1), **kw)
+            if jump is not None and b >= JUMP_AT:      # M10b-2: POS jumps, no note
+                f.param(0, WAV1, jump)
             if song is not None:                # M10b-2: what the ColdFire's sync.c writes
                 p = song(b)
                 f.put(live.SYNC_POSITION, p & 0xFFFF)
@@ -701,6 +710,14 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
                                                                        MOVE2: 0x0500, RATE2: 0x6400, SYNC2: 0x100}), blocks),
             "sync_off": run_blocks(init, frames(song=song, overrides={**solo, WAV1: 0, MPOS1: 0x6400, TRIG: 0x100,
                                                                       MOVE1: 0x0000, RATE1: 0x6400}), blocks),
+            # M10b-2: SMTH and DCLK, osc 1 alone, POS jumping from 0 to 120 at JUMP_AT with no
+            # note: SMTH 127 (the default) does not glide, SMTH 60 does; DCLK On (the
+            # default, 127) ramps the jump in, Off does not
+            "smth_off": run_blocks(init, frames(jump=0x7800, overrides={**solo, WAV1: 0, DCLK: 0}), blocks),
+            "smth_glide": run_blocks(init, frames(jump=0x7800, overrides={**solo, WAV1: 0, DCLK: 0,
+                                                                          SMTH1: 0x3c00}), blocks),
+            "dclk_on": run_blocks(init, frames(jump=0x7800, overrides={**solo, WAV1: 0}), blocks),
+            "dclk_off": run_blocks(init, frames(jump=0x7800, overrides={**solo, WAV1: 0, DCLK: 0}), blocks),
             # PRST (m10a3): the oscillators at the note (block 1) -- Off keeps running, Random
             # starts from the cycle counter (no reference: its tap is not compared)
             "prst_off": run_blocks(init, frames(overrides={**solo, PRST: 0}), blocks),
@@ -771,6 +788,19 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
     m_fast = live.sync_multiplier(live.SYNC_INDEX[100])
     half = live.trunc(live._f32(live._f32(float(SYNC_TEMPO) * float(live.sync_multiplier(live.SYNC_INDEX[50])))
                                 * live._f32(live.SYNC_K)))
+
+    def boundary_step(k, b):
+        """|first sample of block b - last of block b - 1| of track 0's buffer"""
+        m = runs[k]["machine"] if runs[k]["ok"] else []
+        return abs(m[b][0][0] - m[b - 1][0][-1]) if len(m) > b and m[b] and m[b - 1] else None
+
+    def block_of(k, b):
+        m = runs[k]["machine"] if runs[k]["ok"] else []
+        return m[b][0] if len(m) > b and m[b] else None
+    p_soff, p_sglide = pos_seq("smth_off", rb_all), pos_seq("smth_glide", rb_all)
+    step_on, step_off = boundary_step("dclk_on", JUMP_AT), boundary_step("dclk_off", JUMP_AT)
+    on_j, off_j = block_of("dclk_on", JUMP_AT), block_of("dclk_off", JUMP_AT)
+    dclk_diff = [x - y for x, y in zip(on_j, off_j)] if on_j and off_j else []
 
     def rnd_last(k):
         r = runs[k]["move_random"] if runs[k]["ok"] else []
@@ -923,6 +953,22 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             runs["sync_off"]["ok"] and runs["move_free"]["ok"]
             and phases("sync_off", 0) == phases("move_free", 0)
             and track_series(runs["sync_off"], 0) == track_series(runs["move_free"], 0),
+        "SMTH 127 (the default) is no glide: osc 1's pos is WAV1's, jumping to frame 15 at the "
+        "jump block (M10b-2)":
+            len(p_soff) == blocks and all(p == (live.position(0x7800) if b >= JUMP_AT else 0)
+                                          for b, p in enumerate(p_soff)),
+        "SMTH 60 glides: after the jump osc 1's pos rises block by block and stays below "
+        "frame 15 (M10b-2)":
+            len(p_sglide) == blocks and p_sglide[:JUMP_AT] == [0] * JUMP_AT
+            and 0 < p_sglide[JUMP_AT] < p_sglide[-1] < live.position(0x7800)
+            and p_sglide[JUMP_AT:] == sorted(p_sglide[JUMP_AT:]),
+        "DCLK: at the jump, On adds an offset to Off's block that decays over the block "
+        "(e^(-31/48) = 0.52: the last sample's under 0.6 of the first's), the blocks between the "
+        "note and the jump are identical (nothing changed there), and the step between the two "
+        "blocks is smaller (M10b-2)":
+            bool(dclk_diff) and abs(dclk_diff[0]) > 1e-3 and abs(dclk_diff[-1]) < 0.6 * abs(dclk_diff[0])
+            and all(block_of("dclk_on", b) == block_of("dclk_off", b) for b in range(2, JUMP_AT))
+            and step_on is not None and step_off is not None and step_on < step_off,
         "control: no trigger is silent at the amp's output (peak < 0.01)":
             n["silent_amp_out_peak"] is not None and n["silent_amp_out_peak"] < 0.01,
     }

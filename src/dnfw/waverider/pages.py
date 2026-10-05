@@ -51,7 +51,7 @@ This module is pure: it builds the source; `coldfire.compose` assembles and plac
 
 from __future__ import annotations
 
-from .live import MOVE_SHAPES, SYNC_INDEX, SYNC_NOTES
+from .live import MOVE_SHAPES, SYNC_INDEX, SYNC_NOTES, smth_names
 
 LOAD = 0x4670C000                 # RAM above BSS, clear of every declared range (docs/mods-compatibility.md)
 C_LOAD = LOAD + 0x800             # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2)
@@ -81,7 +81,10 @@ LABELS = {238: "TUNE", 241: "LEV", 239: "POS", 247: "TBL",
           249: "PRST", 259: "TRIG",
           # M10b-2: SYNC, MOVE locked to the tempo (WaveTone's Osc Mod and Noise Character:
           # the two spare records whose default is 0, so a saved sound reads Off)
-          248: "SYN1", 260: "SYN2"}
+          248: "SYN1", 260: "SYN2",
+          # DCLK (HOLD) and SMTH (DEC, WDTH): spare records whose default is 127, so 127
+          # (every sound saved before them) is On for DCLK and no glide for SMTH
+          254: "DCLK", 255: "SMT1", 258: "SMT2"}
 # record id -> Waverider's long name, in the stock "Osc1 Waveform" style: what the
 # header shows while a knob turns ("Osc1 Position=65"), and the LFO destination
 # browser on a Waverider track
@@ -90,23 +93,25 @@ LONG_NAMES = {238: "Osc1 Tune", 239: "Osc1 Position", 247: "Osc1 Table",
               240: "Osc1 M.Rate", 246: "Osc1 M.Pos", 252: "Osc1 M.Level",
               253: "Osc1 M.Shape", 244: "Osc2 M.Rate", 250: "Osc2 M.Pos",
               256: "Osc2 M.Level", 257: "Osc2 M.Shape", 259: "Move Retrig",
-              248: "Osc1 M.Sync", 260: "Osc2 M.Sync"}
+              248: "Osc1 M.Sync", 260: "Osc2 M.Sync",
+              254: "Declick", 255: "Osc1 Smooth", 258: "Osc2 Smooth"}
 
 # the two pages, encoders A..H; 0 is an empty place
 PAGES = (
     (238, 241, 239, 247, 240, 246, 252, 253),   # OSC 1: TUNE LEV POS TBL RATE MPOS MLEV MOVE
     (242, 245, 243, 251, 244, 250, 256, 257),   # OSC 2: DETN LEV POS TBL RATE MPOS MLEV MOVE
-    (249, 259, 0, 0, 248, 260, 0, 0),           # PRST (RSET: Off/On/Random), TRIG (TYPE: 0 restart);
-)                                               # SYN1, SYN2 (M10b-2)
+    (249, 259, 254, 0, 248, 260, 255, 258),     # PRST (RSET: Off/On/Random), TRIG (TYPE: 0 restart),
+)                                               # DCLK; SYN1, SYN2, SMT1, SMT2 (M10b-2)
 
 # M10b: the controls whose steps and value text are Waverider's own. The records stay
 # WaveTone's (MOVE1 is its Noise Attack, MOVE2 the noise filter Base, TRIG the Noise
 # Type), so wr_range and wr_fmt answer for them on a Waverider track only: MOVE steps
 # shape by shape and the header names the shape; TRIG reads Retrig / Free.
 VALUE_NAMES = {253: MOVE_SHAPES, 257: MOVE_SHAPES, 259: ("Retrig", "Free"),
-               248: ("Off", "On"), 260: ("Off", "On")}
+               248: ("Off", "On"), 260: ("Off", "On"), 254: ("Off", "On")}
 # record id -> (min, max, default), as the firmware's limits getter returns them
 RANGES = {rid: (0, (len(names) - 1) << 8, 0) for rid, names in VALUE_NAMES.items()}
+RANGES[254] = (0, 0x100, 0x100)   # DCLK: On by default
 FORMAT_S = 0x40219C2D             # "%s", the stock naming routines' format
 RECORD_TABLE = 0x401F7F94         # record id N at + 60 N (the naming routine at + 0x34)
 SPRINTF = 0x40000E82              # (buffer, format, ...), as the stock naming routines call it
@@ -141,9 +146,12 @@ def c_header() -> str:
     names = ",\n".join(" {" + ", ".join(f'"{label(r)}"' for r in page) + "}" for page in PAGES)
     ranges = ",\n".join(f" {{{rid}, {lo}, {hi}, {d}}}" for rid, (lo, hi, d) in RANGES.items())
     sync = ", ".join(f'"{SYNC_NOTES[i][0]}"' for i in SYNC_INDEX)
+    smth = ", ".join(f'"{n}"' for n in smth_names())
     return (f"#define WR_PAGES {len(PAGES)}\n"
             f"#define WR_SYNC_RATES {len(SYNC_INDEX)}\n"
             f"static const char *const wr_sync_by_rate[WR_SYNC_RATES] = {{{sync}}};\n"
+            f"#define WR_SMTH_VALUES {len(smth_names())}\n"
+            f"static const char *const wr_smth_names[WR_SMTH_VALUES] = {{{smth}}};\n"
             f"static const unsigned short wr_ids[WR_PAGES][8] = {{\n{ids}\n}};\n"
             f"static const char wr_labels[WR_PAGES][8][6] = {{\n{names}\n}};\n"
             f"#define WR_RANGES {len(RANGES)}\n"
@@ -152,6 +160,7 @@ def c_header() -> str:
 
 TBL_IDS = (247, 251)              # TBL1, TBL2: their range and names are the page's (the pool)
 RATE_IDS = (240, 244)             # RATE1, RATE2: named as note lengths while SYNC is on (the page's)
+SMTH_IDS = (255, 258)             # SMT1, SMT2: named by the C page's table (a time, Off at 127)
 TBL_NAMES = 2 + 127               # the baked tables, then the +Drive pool's (csrc/waverider/pool.h)
 
 
@@ -161,7 +170,7 @@ def source(page_draw: int, tbl_range: int, tbl_names: int, rate_fmt: int) -> str
     `wr_tbl_range` ({min, max, default}) and `wr_tbl_names` (a name per slot), which
     it keeps as the +Drive pool fills, so TBL steps through the pool and names it;
     RATE_FMT its `wr_rate_fmt`, a {names, count} pair per oscillator that it sets from
-    the active track's SYNC (count 0: RATE's own number)."""
+    the active track's SYNC (count 0: RATE's own number), and a third that names SMTH."""
     table = "\n".join(f"    .long {rid}, lab_{rid}" for rid in LABELS)
     strings = "\n".join(f'lab_{rid}: .asciz "{name}"' for rid, name in LABELS.items())
     long_table = "\n".join(f"    .long {60 * rid}, long_{rid}" for rid in LONG_NAMES)
@@ -175,7 +184,8 @@ def source(page_draw: int, tbl_range: int, tbl_names: int, rate_fmt: int) -> str
     # a row is an id and where its {names, count} pair is: TBL's and RATE's pairs change
     fmt_table = "\n".join([f"    .long {60 * rid}, pair_{rid}" for rid in VALUE_NAMES]
                           + [f"    .long {60 * rid}, pair_tbl" for rid in TBL_IDS]
-                          + [f"    .long {60 * rid}, {rate_fmt + 8 * k:#010x}" for k, rid in enumerate(RATE_IDS)])
+                          + [f"    .long {60 * rid}, {rate_fmt + 8 * k:#010x}" for k, rid in enumerate(RATE_IDS)]
+                          + [f"    .long {60 * rid}, {rate_fmt + 16:#010x}" for rid in SMTH_IDS])
     fmt_pairs = "\n".join([f"pair_{rid}: .long names_{rid}, {len(names)}" for rid, names in VALUE_NAMES.items()]
                           + [f"pair_tbl: .long {tbl_names:#010x}, {TBL_NAMES}"])
     name_lists = "\n".join(f"names_{rid}:\n" + "\n".join(f"    .long name_{rid}_{k}" for k in range(len(names)))

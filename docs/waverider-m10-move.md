@@ -415,3 +415,69 @@ through the offset row's seventh word.
   reads "Osc1 M.Sync=On"; RATE 47 then reads "Osc1 M.Rate=1 bar T", and "48%" with SYN1 off.
 - The reference: `scripts/waverider_sync_preview.py` writes three WAVs with a click track. In
   the gate WAV, the level opens at PLAY and then every 250 ms (1/8 at 120 BPM).
+
+# M10b-2: SMTH and DCLK
+
+Page 3 is now complete, as the owner laid it out (2026-10-06):
+- top row (the shared controls): PRST, TRIG, **DCLK**, -;
+- bottom row (per oscillator): SYN1, SYN2, **SMT1**, **SMT2**.
+
+**The records, and why 127 means "leave it alone".** These go on the three spare records whose
+default is `0x7f00`: DCLK on 254 HOLD (slot 41), SMT1 on 255 DEC (42), SMT2 on 258 WDTH (45). Every
+Waverider sound saved so far holds 127 there. So 127 must sound exactly as before SMTH and DCLK
+existed:
+- DCLK reads any value but 0 as On (its range is Off/On, default On);
+- SMTH 127 is no glide, and lower values glide more slowly, like a cutoff for POS.
+
+The header shows SMTH as the glide's time constant: 1000 ms at 0, halving every 14 steps, 2.0 ms at
+126, and "Off" at 127. A SMTH whose 0 meant "sharp", as first planned, would have made every saved
+sound glide at its slowest.
+
+## SMTH, the glide (`smooth.asm`, sw `0x170300`)
+
+The loop's store of the reader block's pos now goes through `wr_smooth`, after MOVE and the clamp.
+Each block, per voice and oscillator:
+- `s = s + (POS - s) x k[SMTH]`, in float32;
+- k is from a 128-entry table at DM `0x2e0c00`;
+- `k[127] = 1.0` exactly, so POS passes bit for bit;
+- a note on the voice snaps s to POS.
+
+The state is at DM `0x2e1100`. The page's wave still draws the unsmoothed position.
+
+## DCLK, the declick (`dclk.asm`, sw `0x170400`)
+
+The crossfade decided on 2026-10-05, built as a decaying offset rather than a second table read
+per sample:
+- **`wr_dclk_pre`:** the loop's call of the reader goes through here. It notes each oscillator's
+  table, pos, gain and starting phase.
+- **`wr_dclk_post`:** after a voice's oscillators, it asks the reader for the one sample the last
+  block's settings would play at this block's first sample, each oscillator at the phase it starts
+  on. With the carry left from before, less what this block plays there, that gives the offset O.
+  The block gets `O x e^(-i/48)` added (1 ms), and `O x e^(-N/48)` carries on into the next.
+- **Nothing changed:** O is exactly 0 and the block is untouched. So DCLK costs no sound, only
+  cycles.
+- **What it covers:** a jump of POS (a loop's reset, a Square), of LEV (a Square on MLEV, a fast
+  knob), and an oscillator starting or stopping.
+- **A note's block is left alone:** PRST may have restarted the oscillator, so there is no old
+  phase to continue.
+
+Its cost is two one-sample reader calls and a 32-sample multiply-add per voice and block, and only
+when DCLK is On.
+
+## The gates
+
+- `test/test_waverider_dclk.py`:
+  - SMTH 127 is exact;
+  - SMTH glides, and a note snaps it;
+  - an unchanged block is untouched by DCLK;
+  - a POS jump ramps in from where the old frame would have gone on.
+- `scripts/sharc_waverider_m5.py`, four runs with a POS jump at block 4 and no note, each
+  bit-exact against `live.render_two`:
+  - SMTH 127 jumps;
+  - SMTH 60 glides and stays below the target;
+  - DCLK On adds a decaying offset at the jump, leaves the blocks before it identical, and shrinks
+    the step;
+  - DCLK Off is the control.
+
+  Every other run now goes through DCLK too, since it is On by default, and all stay bit-exact.
+- The emulator (`waverider-sync2`): page 3's layout, "Osc1 Smooth=2.2 ms" at 124, "Declick=Off".

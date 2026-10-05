@@ -183,6 +183,54 @@ def sync_table() -> tuple[int, ...]:
     return tuple(out)
 
 
+# -- M10b-2: SMTH, a glide on POS (smooth.asm), and DCLK, the declick (dclk.asm) --
+# SMTH per oscillator on WaveTone's DEC (slot 42) and WDTH (45); DCLK, shared, on HOLD
+# (41). All three default to 0x7f00, and every sound saved before them holds that, so
+# 127 must leave the sound as it was: SMTH 127 is no glide, DCLK 127 (any non-zero) On.
+SMTH_SLOTS = (42, 45)
+DCLK_SLOT = 41
+SMTH_OFF = 127
+SMTH_RATE = 1500.0                 # the glide steps once a block
+
+
+def smth_tau(v: int) -> float:
+    """SMTH v (0..126) -> the glide's time constant in seconds: 1 s at 0, halving every
+    14 steps, 2 ms at 126."""
+    return 2.0 ** (-v / 14)
+
+
+def smth_table() -> tuple[float, ...]:
+    """The glide's coefficient per SMTH 0..127, float32: 1 - e^(-1 / (1500 tau)), and
+    exactly 1.0 at 127, where POS + (target - POS) x 1 is the target exactly."""
+    return tuple(_f32(1.0 - math.exp(-1.0 / (SMTH_RATE * smth_tau(v)))) for v in range(SMTH_OFF)) + (1.0,)
+
+
+def smth_names() -> tuple[str, ...]:
+    """What the header shows for SMTH 0..127: the time constant, Off at 127."""
+    out = []
+    for v in range(SMTH_OFF):
+        ms = smth_tau(v) * 1000
+        out.append(f"{ms:.0f} ms" if ms >= 10 else f"{ms:.1f} ms")
+    return tuple(out) + ("Off",)
+
+
+def smooth(s: float, target: int, smth: int, note: bool) -> float:
+    """One block of the glide, in smooth.asm's float32 order: a note snaps to the target."""
+    if note:
+        return _f32(float(target))
+    k = smth_table()[min((smth & 0xFFFF) >> 8, SMTH_OFF)]
+    d = _f32(_f32(float(target)) - s)
+    return _f32(s + _f32(d * k))
+
+
+DCLK_TAU = 48.0                    # samples: 1 ms at 48 kHz
+DCLK_TAPS = 129                    # D[0..128]: a block of up to 128 samples, and D[N] for the carry
+
+
+def dclk_table() -> tuple[float, ...]:
+    return tuple(_f32(math.exp(-i / DCLK_TAU)) for i in range(DCLK_TAPS))
+
+
 def move_offsets() -> tuple[tuple[int, ...], ...]:
     """Per oscillator, the frame byte offsets (168 + 2 s) the modulator reads: RATE,
     MPOS, MLEV, MOVE, TRIG, PRST, then SYNC (M10b-2)."""
@@ -348,9 +396,10 @@ def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
 
 def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> list[float]:
     """The loop's output with both oscillators (Milestone 9b), each block
-    (note, osc1, osc2[, (TRIG, triggered[, PRST[, position, tempo]])]) with each osc
-    (WAV, TBL, TUN, LEV[, RATE, MPOS, MLEV, MOVE[, SYNC]]), the frame's 16-bit words
-    (the position is the frame's u32 at SYNC_POSITION). With the M10a fields the modulator
+    (note, osc1, osc2[, (TRIG, triggered[, PRST[, position, tempo[, DCLK]]])]) with each
+    osc (WAV, TBL, TUN, LEV[, RATE, MPOS, MLEV, MOVE[, SYNC[, SMTH]]]), the frame's 16-bit
+    words (the position is the frame's u32 at SYNC_POSITION). SMTH glides POS (`smooth`);
+    DCLK declicks the block (`declick`); either left out is off. With the M10a fields the modulator
     (move_step / move_shape / move_apply) moves POS and LEV first, per oscillator.
     Osc 1 writes y1 x gain1; osc 2, unless its LEV is 0 (the loop then skips it), adds
     y2 x gain2 to that, both rounded to float32 as reader_m9.asm does. Osc 2's TUN is
@@ -359,6 +408,9 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
     out: list[float] = []
     phase = [0, 0]
     mphase = [0, 0]
+    smoothed = [0.0, 0.0]                       # SMTH's state: zeros at boot, as the DSP's
+    prev: list = [None, None]                   # DCLK: last block's (table, pos, gain, phase)
+    carry = 0.0
     rnd = MoveRandom()
     table_t = increment_table()
     for blk in blocks:
@@ -366,7 +418,9 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
         trig_mode, triggered, *rest = blk[3] if len(blk) > 3 else (TRIG_RESTART, False)
         prst = rest[0] if rest else PRST_OFF
         song, tempo = (rest[1], rest[2]) if len(rest) > 2 else (0, 0)
+        dclk = rest[3] & 0xFFFF if len(rest) > 3 else 0
         mixed: list[float] = []
+        cur: list = [None, None]
         for k, osc in enumerate(oscs):
             wav, tbl, tun, lev = osc[:4]
             if k and not lev & 0xFFFF:
@@ -385,15 +439,48 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
                     raise ValueError("PRST Random starts from the DSP's cycle counter: no reference")
                 phase[k] = 0                    # PRST On: the oscillator restarts
             g = gain(lev)
-            samples, phase[k] = render.render(tables[slot(tbl, len(tables))], phase[k],
+            pos = position(wav)
+            if len(osc) > 9:                    # M10b-2: SMTH, the glide on POS
+                smoothed[k] = smooth(smoothed[k], pos, osc[9], triggered)
+                pos = trunc(smoothed[k])
+            tab = tables[slot(tbl, len(tables))]
+            cur[k] = (tab, pos, g, phase[k])
+            samples, phase[k] = render.render(tab, phase[k],
                                               increment(tuned(note, tun) if k == 0 else
                                                         tuned2(note, tun, oscs[0][2]), table_t),
-                                              position(wav), block, precision)
+                                              pos, block, precision)
             y = [_f32(g * v) for v in samples] if precision == "float32" else [g * v for v in samples]
             if k == 0:
                 mixed = y
             else:
                 mixed = ([_f32(a + b) for a, b in zip(mixed, y)] if precision == "float32"
                          else [a + b for a, b in zip(mixed, y)])
+        if dclk and not triggered and precision == "float32":
+            mixed, carry = declick(mixed, prev, cur, phase, carry, precision)
+        else:
+            carry = 0.0
+        prev = cur
         out += mixed
     return out
+
+
+def declick(mixed, prev, cur, phase, carry, precision="float32"):
+    """DCLK (M10b-2, dclk.asm), on a block with no note: what the last block's settings
+    would play at this block's first sample, each oscillator at its phase there, less
+    what this block plays, plus what is left of the last offset, decays over 1 ms into
+    the block. With nothing changed the offset is exactly 0 and the block is untouched;
+    a jump of POS or LEV, or an oscillator starting or stopping, becomes a 1 ms ramp."""
+    e = 0.0
+    for k in (0, 1):
+        if prev[k] is None:
+            continue
+        tab, pos, g, _ = prev[k]
+        ph = cur[k][3] if cur[k] is not None else phase[k]
+        y, _ = render.render(tab, ph, 0, pos, 1, precision)
+        e = _f32(e + _f32(g * y[0]))
+    o = _f32(carry + _f32(e - mixed[0]))
+    if o == 0.0:
+        return mixed, 0.0
+    d = dclk_table()
+    n = len(mixed)
+    return [_f32(m + _f32(o * d[i])) for i, m in enumerate(mixed)], _f32(o * d[n])

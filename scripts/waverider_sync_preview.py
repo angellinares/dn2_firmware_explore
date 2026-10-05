@@ -14,6 +14,8 @@ heard; it is not part of the instrument's sound. Writes, 48 kHz mono 16-bit:
   1 bar: POS sweeps once a bar and starts again on step 1.
 - `m10b2_sync_retrig.wav`: SYN1 On, TRIG Retrig, the same ramp at 1/4, with a note on
   steps 1 and 7: the ramp starts at each note and lasts a quarter at the tempo.
+- `m10b2_dclk_off.wav` / `m10b2_dclk_on.wav` (no click track): a fast Up Loop on POS (RATE 70,
+  4 a second, free), DCLK Off then On: the click at each reset, then not.
 """
 
 from __future__ import annotations
@@ -41,7 +43,7 @@ def rate_for(name: str) -> int:
     return live.SYNC_INDEX.index(idx) << 8
 
 
-def blocks(osc1: dict, trig: int, notes_at_steps=(0,)) -> list:
+def blocks(osc1: dict, trig: int, notes_at_steps=(0,), sync: int = 0x100, dclk: int = 0) -> list:
     n = int(SECONDS * 1500)
     start = int(STOPPED * 1500)
     sp = songpos.SongPos()
@@ -52,9 +54,9 @@ def blocks(osc1: dict, trig: int, notes_at_steps=(0,)) -> list:
         step_f = (f - start) / per if f >= start else -1
         hit = f >= start and int(step_f) % 16 in notes_at_steps and (f - start) % per < 1
         o1 = (osc1["wav"], 0, live.TUN1_ZERO, 0x6400, osc1["rate"], osc1["mpos"], osc1["mlev"],
-              osc1["move"], 0x100)
+              osc1["move"], sync)
         o2 = (0, 0, live.TUN1_ZERO, 0)
-        out.append((NOTE, o1, o2, (trig, hit, live.PRST_ON, p, TEMPO)))
+        out.append((NOTE, o1, o2, (trig, hit, live.PRST_ON, p, TEMPO, dclk)))
     return out
 
 
@@ -98,6 +100,11 @@ def main(argv=None) -> int:
         start = int(STOPPED * 48000)
         y = [0.0] * start + y[start:]             # silent while stopped, as the amp would be
         write(a.out / f"m10b2_sync_{name}.wav", clicks(y))
+    fast = {**ramp, "rate": 70 << 8}
+    for name, dclk in (("off", 0), ("on", 0x7F00)):
+        y = live.render_two(tables, blocks(fast, 0x100, (0,), sync=0, dclk=dclk), 32)
+        start = int(STOPPED * 48000)
+        write(a.out / f"m10b2_dclk_{name}.wav", [0.0] * start + y[start:])
     return 0
 
 

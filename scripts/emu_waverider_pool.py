@@ -81,8 +81,8 @@ def store_extents(work: pathlib.Path) -> tuple[list[str], dict]:
     return args, {"tables": tables, "payloads": payloads}
 
 
-def expected_frames(stored) -> list[bytes]:
-    out, seq = [], 1
+def expected_frames(stored, seq: int = 1) -> list[bytes]:
+    out = []
     for j, n in enumerate(sorted(stored["tables"])):
         f = LF.table_frames(LF.pool_address(j) - LF.pool_address(0), stored["payloads"][n], seq)
         out += f
@@ -130,8 +130,14 @@ def main(argv=None) -> int:
         queue, slots = load0["queue"], load0["queue_chunks"]
         # the exchange, played: per chunk a quiet frame twice (the rule wants it and
         # the one before it quiet), the chunk read back, its sequence acknowledged.
+        # then a write's mark (wr_store.changes, which route.c's commit raises) and the
+        # same exchange again: the refill, its sequences going on from the first fill's
+        again = expected_frames(stored, len(want) + 1)
         steps = [f"wait:{a.wait}"]
-        for k, f in enumerate(want):
+        for k, f in enumerate(want + again):
+            if k == len(want):
+                steps += [f"send:{QUIET}", "wait:40M", *status,
+                          f"poke:{store_at + 20:#x}:00000001"]
             s = struct.unpack_from(">HH", f, 8)
             seq = s[1] << 16 | s[0]
             # the first call takes the last acknowledgement; the UI pass then queues
@@ -145,6 +151,9 @@ def main(argv=None) -> int:
         res = [r for r in run["results"] if "hex" in r]
         got = [bytes.fromhex(r["hex"]) for r in res if r.get("peek") and int(r["peek"], 16) >= queue
                and int(r["peek"], 16) < queue + FRAME * slots]
+        got, got_again = got[:len(want)], got[len(want):]
+        mids = [r for r in res if r.get("peek") == f"{pool_at:#x}"]
+        pool_first = fields(mids[0]["hex"], POOL_FIELDS)
         tail = res[-4:]
         pool, load, st = (fields(tail[0]["hex"], POOL_FIELDS), fields(tail[1]["hex"], LOAD_FIELDS),
                           fields(tail[2]["hex"], STORE_FIELDS))
@@ -169,9 +178,14 @@ def main(argv=None) -> int:
         "their names' first five characters": names == ["Pulse", "Saw t"],
         f"all {len(want)} frames are dnfw.waverider.loadframes', byte for byte":
             len(got) == len(want) and all(frames_ok),
-        "the pool reads ready with 2 tables; every chunk acked once, none resent":
-            pool["state"] == 3 and pool["count"] == 2 and load["acked"] == len(want)
-            and load["sent"] == len(want) and load["resent"] == 0 and not load["failed"],
+        "the pool reads ready with 2 tables after the first fill": pool_first["state"] == 3
+            and pool_first["count"] == 2 and pool_first["fills"] == 1,
+        "after a write's mark it fills again: the same frames, sequences going on":
+            len(got_again) == len(again) and all(g == w for g, w in zip(got_again, again))
+            and pool["state"] == 3 and pool["count"] == 2 and pool["fills"] == 2 and pool["changes_seen"] == 1,
+        "every chunk of both fills acked once, none resent":
+            load["acked"] == 2 * len(want) and load["sent"] == 2 * len(want) and load["resent"] == 0
+            and not load["failed"],
         "both pool tables' spans are wave.pool_spans'": spans == model_spans,
         "never acknowledged: the loader gives up after 8 timeouts, the pool offers nothing":
             sl["failed"] == 1 and sl["timeouts"] == 8 and sl["acked"] == 0 and sp["state"] == 5

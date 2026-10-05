@@ -108,3 +108,36 @@ carried 44" is a window `[0, 45)` over slots that start at 1.
 with its shape, so it can be found again: the registry's add `0x400ead92` (calls
 slot 3, then pushes onto `+52`), the start-up builder that calls it three times, and
 the 20-byte entry loop with its `cmpil #128`.
+
+## A file route: what opening `/projects/<n>` builds (step 2, in progress)
+
+Opening `/projects/1` for reading (`0x54`, through the bridge) answers `ok, handle 1,
+length 0x1000` on a blank card. `/waverider/0` answers `Error: Could not resolve
+path`, since step 1 registers no file route. **[emulator]**
+
+The per-slot invoker `0x400eb9b6` builds the slot's **`FileStorageInfo`** in
+`0x400eb6d4`. It refuses a bad id with `project id` / `project id out of range` /
+`Active project not supported`. The fields read so far:
+
+| offset | field | /projects/<id> |
+|---|---|---|
+| 0 | ok | 1 |
+| 4 | kind | 2 |
+| 8 | u16 permissions | `0x12` or `0x7e` (`0x4012d5a8`) |
+| 12 | byte offset on the eMMC | `(id + 10) << 24` |
+| 16 | size | 12,890,116 |
+| 20 | index | id − 1 |
+| 24 | stored length | `0x4012d6fa` |
+| 76 | `std::function` | manager `0x400eb41e`, invoker `0x400eb3d8`: forwards to a captured function |
+| 108 | `std::function` | manager `0x400eb4ac`, invoker `0x400eb2f2` |
+
+The open makes one stream: `0x400f0270` is a `make_shared` of a 0x34-byte reader,
+constructed by `0x400f0232`, with control-block vtable `0x401ff554` (the
+MmcStreamReader of `docs/drive-storage-research.md`, a 32-bit byte offset). Our
+region's first byte, 3 GiB, still fits that offset. **Not yet read:** what the
+two `std::function`s produce, and whether kind 2 changes the bytes on the way
+out. So a `/waverider/<n>` read needs either a kind that streams raw bytes, or a
+reader of our own behind those factories. The functions the open runs, found by
+counting entries in the emulator: `0x400e9202`, `0x400e9654`, `0x400e9e2c`,
+`0x400e9f7a` (the Data API's open), `0x400eb9b6` and `0x400eb6d4` (the slot's info),
+`0x400eb41e` (21 calls) and `0x400eb4ac` (10), the managers, and `0x400f0270`.

@@ -14,7 +14,7 @@ the ColdFire holds them, back to back). Then type-5 render blocks, as
 | case | must hold |
 |---|---|
 | no pool (the boot stream's zeros) | TBL1 slot 2 plays slot 0 (the reader's table pointer = baked table 0) |
-| the pool table, then its directory | every load frame accepted (reply word 3 = its sequence); DDR holds the table in the reader's layout; slot 2 plays it: the pointer = pool entry 0, the machine tap bit-exact to `dnfw.waverider.live` with the pool table as slot 2 |
+| the pool table, then its directory | every load frame accepted (reply word 6 = its sequence); DDR holds the table in the reader's layout; slot 2 plays it: the pointer = pool entry 0, the machine tap bit-exact to `dnfw.waverider.live` with the pool table as slot 2 |
 | slot 1, the same pool | still baked table 1 (the control) |
 | slot 3, past the pool's count of 1 | slot 0 |
 | a directory whose entry 0 is empty | slot 2 plays slot 0 |
@@ -44,7 +44,7 @@ from dnfw.waverider import dsp, live, render, testtable   # noqa: E402
 from dnfw.waverider import loadframes as LF    # noqa: E402
 
 SLOT = 0x0100                                  # TBL1 per slot: slot = TBL1 >> 8
-REPLY_ACK = lc.REPLY_BASE + 0x0C
+REPLY_ACK = lc.REPLY_BASE + 0x18                # reply word 6, load.asm's answer
 
 
 def send_loads(state, frames: list[bytes]) -> tuple[object, list[dict]]:

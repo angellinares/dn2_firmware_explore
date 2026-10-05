@@ -60,12 +60,16 @@ low half first):
 2. **It copies the payload** to **DDR `0x80800000 + destination`** and sums it.
    The load area is `0x80800000..0x80a00000`, the top 2 MB of Waverider's DDR
    region; the baked tables keep `0x80600000..`.
-3. **It acknowledges** in reply bytes the ColdFire never reads (`docs/sharc-load.md`),
-   on both pages, halves swapped like word 0:
-   - **reply word 3 (`+0x0c`):** the sequence of the last chunk written whose sum
-     matched;
-   - **reply word 4 (`+0x10`):** the sequence of the last chunk refused, for bounds or
+3. **It answers** in **reply word 6 (`+0x18`)**, on both pages, halves swapped like
+   word 0, so the ColdFire reads it at `0x800053bc`:
+   - **the sequence** of the last chunk written whose sum matched;
+   - **the sequence with bit 31 flipped** for the last chunk refused, for bounds or
      checksum. A chunk with a bad sum is still written; the ColdFire sends it again.
+
+   Until 2026-10-05 the answers went to words 3 and 4. On the instrument they were
+   never seen, because `idle_load.asm`'s timing totals overwrite those words on every
+   idle pass. The runner gates missed it: the runner never runs the idle task. See
+   "Where the answer goes", below.
 4. **It renders** by setting `I3 = 0x25c48c` and jumping to case 3. The block renders
    from the previous frame, so the audio of a load frame is the audio of a repeated
    frame.
@@ -88,9 +92,9 @@ From the Milestone 2 post-init snapshot, on Waverider's section 7.
 
 | frame | result |
 |---|---|
-| a load frame | `load.asm` ran; the chunk is in DDR; word 3 = the sequence; `R12 = 0x25c48c` at the render call |
-| a bad checksum | chunk written; word 4 = the sequence; word 3 untouched |
-| a destination past the area | nothing in DDR; word 4 |
+| a load frame | `load.asm` ran; the chunk is in DDR; word 6 = the sequence; `R12 = 0x25c48c` at the render call |
+| a bad checksum | chunk written; word 6 = the sequence, bit 31 flipped (refused) |
+| a destination past the area | nothing in DDR; word 6 refused |
 | a render frame | stock: `R12` = the receive page |
 | command 5 | case 0's code |
 
@@ -183,7 +187,7 @@ two tables.
 place of a frame:
 - only when that frame and the one before it carry no note events (masks 34..41);
 - one chunk in flight at a time;
-- word 3 accepts it, word 4 sends it again, and so does no answer within 24 frames;
+- word 6's answer accepts it; a refused answer sends it again, and so does no answer within 24 frames;
 - after 8 timeouts in a row the loader stops for good (`wr_load.failed`), and the pool
   reads failed, offering nothing.
 
@@ -192,11 +196,36 @@ place of a frame:
 | gate | what | result |
 |---|---|---|
 | `scripts/sharc_waverider_pool.py` | load frames through the real handler into DDR, then type-5 render blocks. The cases: no pool (slot 0); the table and its directory (every chunk accepted, DDR holds the table, slot 2 plays it with the reader's pointer at pool entry 0, bit-exact to `dnfw.waverider.live`); slot 1 still baked; slot 3 past a pool of 1 (slot 0); an empty entry (slot 0) | **PASS 9/9** |
-| `scripts/emu_waverider_pool.py` (Rust emulator, `panel_drive --card-extent`) | a store on the +Drive (slot 0 the pool test table, slot 3 the baked test table, slot 5 32 waves). The emulator runs no audio ISR (0 hits at `0x400cf7be` and `0x40025e82`), so the script calls `wr_frame_src` from the UI loop and acknowledges in reply word 3 as `load.asm` would. All 15 frames (2 x 7 chunks, then the directory) are the model's, byte for byte; the pool is ready with slots 0 and 3, named "Pulse" and "Saw t"; the spans equal the model's; a run never acknowledged gives up after 8 timeouts; after a write's mark (`wr_store.changes`) the pool fills again with the same frames, sequences going on (30 chunks acked, none resent) | **PASS 10/10** |
+| `scripts/emu_waverider_pool.py` (Rust emulator, `panel_drive --card-extent`) | a store on the +Drive (slot 0 the pool test table, slot 3 the baked test table, slot 5 32 waves). The emulator runs no audio ISR (0 hits at `0x400cf7be` and `0x40025e82`), so the script calls `wr_frame_src` from the UI loop and acknowledges in reply word 6 as `load.asm` would. All 15 frames (2 x 7 chunks, then the directory) are the model's, byte for byte; the pool is ready with slots 0 and 3, named "Pulse" and "Saw t"; the spans equal the model's; a run never acknowledged gives up after 8 timeouts; after a write's mark (`wr_store.changes`) the pool fills again with the same frames, sequences going on (30 chunks acked, none resent) | **PASS 10/10** |
 | the same frames, captured, into `sharc_waverider_pool.py --load-frames` | the ColdFire's own 15 frames through the DSP's handler: all accepted, both tables and the directory in DDR, slot 2 bit-exact to the reference | **PASS 9/9** |
 
 Byte order is still a hypothesis until an instrument plays a table DNX wrote. Both
 halves agree on it, but within one implementation.
+
+### Where the answer goes (instrument, 2026-10-05)
+
+On `waverider-pool1-usbprobe` the probe showed:
+- the pool `failed`, after its one chunk (the empty store's directory) was sent 8
+  times;
+- reply words 3 and 4 climbing like timers, both idle and playing.
+
+Those are `idle_load.asm`'s BEFORE and AFTER totals.
+
+**Which reply words are free**, from `tools/dn2replyscan.py` (70 samples, idle and
+playing) and a static read of every ColdFire site naming the reply:
+
+| reply bytes | what | free? |
+|---|---|---|
+| `+0x00` | the cycle count (reply word 0) | no |
+| `+0x04..+0x13` | words 1-4: our idle total, block count and timing totals | no, ours |
+| `+0x14..+0x15` | not read | half a word |
+| `+0x16` | the compressor's gain reduction (`0x4002795c`) | no |
+| **`+0x18..+0x1b`** | **word 6**: no code names it; 0 in every sample | **yes: the answer** |
+| `+0x1c..` | records of 84 bytes, read from base `0x800053c0` (`0x400277ae`, `0x4002540e`), copied to the audio windows `0x4e6df100` | no (zeros there are quiet channels) |
+| `+0xa9c..+0xabb` | MOVE's report (M10b-3) | no, ours |
+
+`test_only_load_asm_writes_the_answer_word` checks that no other source of ours stores
+to word 6.
 
 **Not yet:**
 - a table's own hash is not checked when it is loaded (the route checks it when the

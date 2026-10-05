@@ -14,15 +14,16 @@
  *   renders a load frame from the previous frame's copy, so an event there would play
  *   twice, and an event in the frame replaced would be lost.
  *
- * One chunk is in flight at a time. The DSP echoes its sequence in reply word 3 when
- * the sum matched, or in word 4 when it refused it; neither within TIMEOUT frames
+ * One chunk is in flight at a time. The DSP answers in reply word 6 with its
+ * sequence when the sum matched, or the sequence with bit 31 flipped when it refused
+ * it; neither within TIMEOUT frames
  * sends it again. GIVE_UP timeouts in a row (a DSP that never answers: one without
  * load.asm renders a load frame as silence) stop the loader for good, so a broken
  * DSP half costs a few dropped frames, never a stream of them. Byte order: the ColdFire sends 16-bit words big-endian, and DSP word
  * k is ColdFire words 2k (low half) and 2k+1 (high half), so a payload of int16
  * samples in order, as the ColdFire holds them, lands in DDR as the samples in order.
- * The DSP writes the echoes with the halves swapped, so a ColdFire long read of
- * reply +0x0c / +0x10 is the sequence as sent.
+ * The DSP writes the answer with the halves swapped, so a ColdFire long read of
+ * reply +0x18 is the sequence as sent.
  */
 
 #include "loader.h"
@@ -38,6 +39,8 @@
 #define AREA_BYTES    0x200000u           /* the DSP's load area, 0x80800000.. */
 
 #define REPLY   0x800053A4u               /* the stock reply copy, filled by the send */
+#define ANSWER  0x18                      /* reply word 6: load.asm's answer (the only free word) */
+#define REFUSED 0x80000000u               /* the answer for a refused chunk: its sequence ^ this */
 #define MASKS   34                        /* frame bytes 34..41: note-on, note-off, copies */
 #define DRIVE_READ ((int (*)(u32, u32, void *))0x4012C59Au)
 
@@ -76,12 +79,13 @@ void *wr_frame_src(void *frame)
     if (in_flight) {
         struct chunk *c = &queue[tail % QUEUE];
         u32 mine = ((u32)c->w[5] << 16) | c->w[4];
-        if (reply_long(0x0C) == mine) {                           /* accepted */
+        u32 answer = reply_long(ANSWER);
+        if (answer == mine) {                                      /* accepted */
             wr_load.acked++;
             in_flight = 0;
             timeouts_in_a_row = 0;
             tail++;
-        } else if (reply_long(0x10) == mine) {                    /* refused: send it again */
+        } else if (answer == (mine ^ REFUSED)) {                   /* refused: send it again */
             wr_load.refused++;
             in_flight = 0;
             wr_load.resent++;

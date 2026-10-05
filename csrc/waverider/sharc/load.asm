@@ -20,11 +20,16 @@
 // before it unpacks) becomes the argument, and this jumps to case 3 (sw 0x1c9f0f), the
 // stock render. So the audio of a load frame is the audio of a repeated frame.
 //
-// The reply (bytes the ColdFire never reads but our probe can; both pages, halves
-// swapped like reply word 0):
-//   word 3 (+0x0c)  the sequence of the last chunk written with a matching checksum
-//   word 4 (+0x10)  the sequence of the last chunk refused (bounds or checksum)
-// A chunk whose checksum fails was still written: the ColdFire sends it again.
+// The answer goes to reply word 6 (+0x18), both pages, halves swapped like reply
+// word 0, so the ColdFire reads it at 0x800053bc as the sequence it sent:
+//   the sequence            the last chunk written with a matching checksum;
+//   the sequence ^ 1 << 31  the last chunk refused (bounds or checksum).
+// Word 6 is the one reply word nothing else uses: words 1-4 are idle_load.asm's
+// timing totals (which overwrote the answers here until 2026-10-05, on the
+// instrument), +0x16 is the compressor's gain reduction, and from +0x1c the reply is
+// the ColdFire's audio and per-voice records (0x400277ae, 0x4002540e). It read 0 in
+// 70 samples on the instrument, idle and playing (tools/dn2replyscan.py). A chunk
+// whose checksum fails was still written: the ColdFire sends it again.
 //
 // In, from the dispatch: I3 = the received frame (a byte address), R1 = R15 << 8,
 // R15 = the bank word, R14 = the handler's start cycle. Uses R0, R2, R8, R10, R11,
@@ -38,7 +43,7 @@
 // DM (byte addresses):
 //   0x2dfa20  the sequence, while the chunk is copied
 //   0x2dfa24  the checksum it should have
-//   0x2c49dc, 0x2c59dc  reply word 3;  0x2c49e0, 0x2c59e0  reply word 4
+//   0x2c49e8, 0x2c59e8  reply word 6, both pages
 
 .SECTION/PM seg_pmco;
 
@@ -102,9 +107,9 @@ wr_load_word.:
       R10 = LSHIFT R2 BY 16;
       R2 = LSHIFT R2 BY -16;
       R10 = R10 OR R2;                  // halves swapped, as reply word 0
-      DM(0x2c49dc) = R10;               // reply word 3, both pages: accepted
-      DM(0x2c59dc) = R10;
-      JUMP 0x16fb84;                    // -> wr_load_render.
+      DM(0x2c49e8) = R10;               // reply word 6, both pages: accepted
+      DM(0x2c59e8) = R10;
+      JUMP 0x16fb88;                    // -> wr_load_render.
 
 .GLOBAL wr_load_refuse.;
 wr_load_refuse.:
@@ -112,8 +117,10 @@ wr_load_refuse.:
       R10 = LSHIFT R2 BY 16;
       R2 = LSHIFT R2 BY -16;
       R10 = R10 OR R2;
-      DM(0x2c49e0) = R10;               // reply word 4, both pages: refused
-      DM(0x2c59e0) = R10;
+      R2 = 0x8000;                      // the ColdFire's bit 31, in the swapped halves
+      R10 = R10 XOR R2;
+      DM(0x2c49e8) = R10;               // reply word 6, both pages: refused
+      DM(0x2c59e8) = R10;
 
 .GLOBAL wr_load_render.;
 wr_load_render.:

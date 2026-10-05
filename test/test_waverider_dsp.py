@@ -165,8 +165,7 @@ def test_the_loader_renders_through_case_3_from_the_frame_copy():
     src = [ln.split("//", 1)[0].strip() for ln in (SHARC / "load.asm").read_text().splitlines()]
     assert {c for c in src if c.startswith("DM(0x")} == {
         "DM(0x2dfa20) = R10;", "DM(0x2dfa24) = R10;",                       # its state words
-        "DM(0x2c49dc) = R10;", "DM(0x2c59dc) = R10;",                       # reply word 3, both pages
-        "DM(0x2c49e0) = R10;", "DM(0x2c59e0) = R10;"}                       # reply word 4
+        "DM(0x2c49e8) = R10;", "DM(0x2c59e8) = R10;"}                       # reply word 6, both pages
     assert "I3 = 0x25c48c;" in src                                          # the frame copy, case 3's argument
     # what the dispatch set for case 3, restored before the jump (sw 0x1c9da2..0x1c9dbd)
     tail = src[src.index("I3 = 0x25c48c;") - 4:src.index("I3 = 0x25c48c;")]
@@ -565,3 +564,22 @@ def test_the_report_writes_the_live_reply_tail():
 def test_the_boot_stream_stays_under_the_coldfire_loaders_1_mib(built):
     assert len(built) <= dsp.STREAM_LIMIT
     print(f"section 7: {len(built):,} B, {dsp.STREAM_LIMIT - len(built):,} B of headroom")
+
+
+def test_only_load_asm_writes_the_answer_word():
+    # load.asm answers in reply word 6 (both pages). idle_load.asm's timing totals in
+    # words 3 and 4 overwrote the answers there on the instrument (2026-10-05), which no
+    # runner gate saw: the runner never runs the idle task. So no other source of ours
+    # may store to word 6, and load.asm stores nowhere else in the reply's first words.
+    import pathlib
+    import re
+    root = pathlib.Path(__file__).resolve().parent.parent / "csrc" / "waverider" / "sharc"
+    store = re.compile(r"DM\((0x2c[45]9[0-9a-f]{2})\)\s*=", re.I)
+    writers = {}
+    for src in root.glob("*.asm"):
+        for line in src.read_text(encoding="utf-8").splitlines():
+            m = store.search(line.split("//", 1)[0])
+            if m:
+                writers.setdefault(int(m.group(1), 16) & 0xFFF, set()).add(src.stem)
+    assert writers.get(0x9E8) == {"load"}, writers.get(0x9E8)
+    assert all("load" not in names for off, names in writers.items() if off != 0x9E8 and off < 0x9EC)

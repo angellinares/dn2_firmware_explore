@@ -12,9 +12,9 @@ From the Milestone 2 post-init snapshot on Waverider's section 7, in two parts:
 
    | frame | must hold there |
    |---|---|
-   | a load frame, a good chunk | load.asm ran; the chunk is in DDR; reply word 3 = the sequence (halves swapped), word 4 untouched; R12 = 0x25c48c, the frame copy |
-   | the same, one checksum bit off | the chunk written; word 4 = the sequence, word 3 untouched; R12 = 0x25c48c |
-   | a destination past the area | nothing in DDR; word 4 = the sequence; R12 = 0x25c48c |
+   | a load frame, a good chunk | load.asm ran; the chunk is in DDR; reply word 6 = the sequence (halves swapped); R12 = 0x25c48c, the frame copy |
+   | the same, one checksum bit off | the chunk written; word 6 = the sequence with the ColdFire's bit 31 flipped (refused); R12 = 0x25c48c |
+   | a destination past the area | nothing in DDR; word 6 = the refused sequence; R12 = 0x25c48c |
    | a render frame (command 3) | load.asm did not run; R12 = the receive page, as stock |
    | command 5 | case 0's code (sw 0x1c9dc2), as stock does for any command of 4 or more |
 
@@ -162,7 +162,8 @@ def main(argv=None) -> int:
     payload = [(0x01000100 * (i + 1)) & 0xFFFFFFFF for i in range(dsp.LOAD_MAX_WORDS)]
     dest = 0x1230
     area = dsp.LOAD_AREA[0]
-    ack, refused = REPLY_BASE + 0x0C, REPLY_BASE + 0x10
+    answer = REPLY_BASE + 0x18                  # reply word 6 (load.asm)
+    REFUSED = 0x8000                            # the ColdFire's bit 31 in the swapped halves
 
     with tempfile.TemporaryDirectory(dir=g.OUT) as tmp:
         snap, m2mach = g.snapshot_path(dk, stock, pathlib.Path(tmp))
@@ -185,18 +186,18 @@ def main(argv=None) -> int:
             r = got["runner"]
             in_ddr = [word_at(r, area + dest + 4 * i) for i in range(len(payload))] == payload
             nothing_in_ddr = not any(area <= x < dsp.LOAD_AREA[1] for x in got["written"])
-            w3, w4 = word_at(r, ack), word_at(r, refused)
+            w6 = word_at(r, answer)
             to_copy = got["at"] == RENDER_CALL and got["R12"] == FRAME_COPY
             if name == "load":
                 checks = {"load.asm ran": got["load"], "chunk in DDR": in_ddr,
-                          "word 3 = the sequence": w3 == swapped(SEQ), "word 4 untouched": w4 == 0,
+                          "word 6 = the sequence": w6 == swapped(SEQ),
                           "R12 = the frame copy": to_copy}
             elif name == "bad sum":
-                checks = {"chunk written": in_ddr, "word 4 = the sequence": w4 == swapped(SEQ),
-                          "word 3 untouched": w3 == 0, "R12 = the frame copy": to_copy}
+                checks = {"chunk written": in_ddr, "word 6 = the refused sequence": w6 == swapped(SEQ) ^ REFUSED,
+                          "R12 = the frame copy": to_copy}
             elif name == "out of range":
-                checks = {"nothing in DDR": nothing_in_ddr, "word 4 = the sequence": w4 == swapped(SEQ),
-                          "word 3 untouched": w3 == 0, "R12 = the frame copy": to_copy}
+                checks = {"nothing in DDR": nothing_in_ddr, "word 6 = the refused sequence": w6 == swapped(SEQ) ^ REFUSED,
+                          "R12 = the frame copy": to_copy}
             elif name == "render frame":
                 checks = {"load.asm did not run": not got["load"], "nothing in DDR": nothing_in_ddr,
                           "R12 = the receive page": got["at"] == RENDER_CALL and got["R12"] == got["rx"]}

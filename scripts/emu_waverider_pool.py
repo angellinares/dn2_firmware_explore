@@ -13,8 +13,8 @@ table the pool cannot play (32 waves). The image boots from reset with `panel_dr
 0x40025e82 never execute, measured), so this plays its part and the DSP's. From the UI
 loop it calls `wr_frame_src` itself with a quiet frame, as the hook would, then reads
 the chunk the loader picked out of its queue, and acknowledges it as load.asm does:
-the chunk's sequence in reply word 3 (0x800053a4 + 0x0c), which nothing else writes
-here. A run with no acknowledgement shows the give-up instead.
+the chunk's sequence in reply word 6 (0x800053a4 + 0x18), which nothing else writes
+(on the instrument too: tools/dn2replyscan.py). A run with no acknowledgement shows the give-up instead.
 
 | check | must hold |
 |---|---|
@@ -53,7 +53,7 @@ LOAD_FIELDS = ("magic queued sent resent acked refused timeouts held read_errors
 STORE_FIELDS = "magic group generation read_errors reads changes".split()
 FRAME = LF.FRAME_BYTES
 UI_LOOP = 0x4002E464              # coldfire.POLL_SITE: the UI loop, where our calls are made
-REPLY_ACK = 0x800053A4 + 0x0C
+REPLY_ACK = 0x800053A4 + 0x18     # reply word 6, load.asm's answer
 SPANS = 0x46A00000
 SPAN_BYTES = 16 * 2 * 96
 QUIET = "00" * 44                 # a frame's first 44 bytes, its masks (32..43) zero

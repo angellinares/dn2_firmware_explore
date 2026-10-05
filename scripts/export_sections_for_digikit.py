@@ -52,7 +52,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 from dnfw.cli.files import read_image
 from dnfw.firmware.load import load
 
-# digikit's emu/extract.py NAMES, verbatim. See the module docstring on `DSP`.
+# digikit's emu/extract.py NAMES, verbatim, with its fallback name "SECTION" for
+# any other id. See the module docstring on `DSP`.
 NAMES = {2: "DSP", 3: "MAIN_OS", 4: "UPDATER", 5: "META", 7: "BLOB"}
 SOURCE_MARKER = ".source-sha256"
 
@@ -84,10 +85,9 @@ def main() -> int:
     # file that still matches the glob is how two would get mixed.
     written = []
     for section in firmware.container.sections:
-        name = NAMES.get(section.id)
-        if name is None:
-            print(f"  section {section.id}: no digikit name, skipped")
-            continue
+        # as digikit's own extract does: an id it has no name for is written as
+        # section_<id>_SECTION.bin, not skipped (section 8 on DN2 1.11 and 1.12)
+        name = NAMES.get(section.id, "SECTION")
         for stale in args.out.glob(f"section_{section.id}_*.bin"):
             stale.unlink()
         kind, payload = payload_of(section)

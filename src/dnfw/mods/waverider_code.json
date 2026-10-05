@@ -129,6 +129,12 @@
    "what": "the track's machine name, drawn from the long-name table: asks for the real type"
   },
   {
+   "va": 1074208440,
+   "stock": "4004b7f2",
+   "new": "402903c8",
+   "what": "CLEAR TRK PRESET (TRK + PLAY, 0x40071e80): the machine the new preset keeps (owner, 2026-10-05: a cleared Waverider track came back as WaveTone): asks for the real type"
+  },
+  {
    "va": 1074537572,
    "stock": "207008344e90",
    "new": "4eb94670c12a",

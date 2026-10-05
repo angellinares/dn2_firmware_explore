@@ -287,6 +287,8 @@ IDENTITY_SITES = (
     (0x4002DB2C, "4eb9", "re-commit of the track's own machine type (0x40031880)"),
     (0x400D5A72, "4eb9", "the track state message: machine type byte"),
     (0x400D675E, "4eb9", "an incoming machine type, compared with the track's before commit"),
+    (0x40071EB6, "4eb9", "CLEAR TRK PRESET (TRK + PLAY, 0x40071e80): the machine the new preset keeps "
+                         "(owner, 2026-10-05: a cleared Waverider track came back as WaveTone)"),
 )
 
 # -- 7b. getMachineType(model, track) 0x4003134e: the real type -------------------------

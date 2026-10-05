@@ -135,13 +135,17 @@ off-by-one between the path and the index entry. Each entry is long form:
 - **size is the slot's allocation** (16,384), the same on used and free slots, never
   the file length;
 - names are Windows-1252, NUL-terminated;
-- the listing is paged: honour `first`, send what fits, and **declare the
-  directory's total (256) in every reply**, so a page never passes as the whole
-  listing and the caller resumes from `first + carried`. `/projects` fits 45 named
-  entries in 885 bytes. The stock handler does not do this, and `/waverider` must not
-  copy it. Measured on stock 1.11 in the emulator: a page asked for as "from 0,
-  count 45" carried slots 1..44 and declared 44. Its window is 0-based over 1-based
-  slots, and with a page, `declared` counts the reply rather than the directory.
+- **paging is the router's, the same for every route** (measured in the emulator,
+  2026-10-05). A request's two numbers are **`(first, end)`, a half-open window over
+  the entries' index values**, not a start and a count. The router keeps the entries
+  whose index is in `[first, end)`, sets `next` to `end` clipped to the directory,
+  and `declared` to the number in this page. Without the numbers, it sends all of
+  them in one reply. `/projects (0, 45)` carries 1..44 because its indexes start at
+  1. `/projects (100, 145)` carries 100..128. `/waverider (0, 45)` carries 0..44 and
+  `(250, 300)` carries 250..255. The handler only builds the vector and never sees
+  the window, so `/waverider` can't declare the directory's total on a page. A
+  caller that pages should go on until a page comes back empty, or list unpaged as
+  DNX does. Unpaged, all 256 arrive in one reply (3,853 bytes with empty names).
 - the `/` reply that lists `waverider`: `waverider `, kind `01`, layout `01`, child
   count 256. The stock `/` lists `projects` (128), `soundbanks` (8) and `kits` (8): the
   count is whatever the next level down holds.

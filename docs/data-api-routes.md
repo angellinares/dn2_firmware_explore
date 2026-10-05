@@ -81,10 +81,11 @@ The invoker, called with a hidden result pointer in `a0`:
 The vector grows with `0x401b2584(vec, &entry)` when full; otherwise the entry is
 built in place, and the name is moved in with `0x401cdd94`.
 
-The router turns that vector into the reply and does the paging, so the paging
-behaviour DNX measured (a page from 0 for 45 carried 44 and declared 44) is the
-router's. **Not yet traced:** whether the router can be made to declare the total
-on a page, as `docs/waverider-store.md` asks of `/waverider`.
+The router turns that vector into the reply and does the paging, for every
+route alike. The page request is **`(first, end)` over the entries' index values**:
+`declared` is the page's count, and `next` is `end` clipped to the directory
+(`docs/waverider-store.md` has the measurements). DNX's "a page from 0 for 45
+carried 44" is a window `[0, 45)` over slots that start at 1.
 
 ## What `/waverider` needs (step 1, read-only)
 

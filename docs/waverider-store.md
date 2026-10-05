@@ -26,7 +26,14 @@ yet.
 |---|---|
 | `0x600000` | **group A** (its own 512 KiB erase group): superblock A in sector 0, index A in sectors 1..64 |
 | `0x600400` | **group B**: superblock B in sector 0, index B in sectors 1..64 |
-| `0x601000`.. | data: extents, each starting on an 8-sector (4 KiB) boundary |
+| `0x601000`.. | data: **slot n lives at `0x601000 + n × 256`**, its own 128 KiB, fixed. 256 slots end at `0x611000`, 34 MiB into the region, inside the pSLC |
+
+**Fixed extents (agreed with DNX, 2026-10-05).** Every slot has the same place for
+ever, `start = 0x1000 + n × 256` sectors from the region's start, at most 128 KiB.
+There is no allocator, so overlap is impossible, nothing moves, and nothing is
+compacted. Deleting a table frees its slot and touches nothing else. 128 KiB holds a
+geometry eight times today's 16 KiB: 64 waves × 1,024 points still fits. Anything
+bigger is a format change, and the version field is there for it.
 
 **Writes go data first, then index, then superblock.** A change writes the new data,
 then the index of the group that is **not** current, then that group's superblock with
@@ -49,8 +56,8 @@ with the same generation, **group A wins**. If neither is valid, the store is em
 | 16 | index entries u32 = 256: the fixed maximum |
 | 20 | entry bytes u32 = 128 |
 | 24 | index hash: xxHash32, seed 0, over the whole fixed index (256 × 128 = 32 KiB) |
-| 28 | data start sector u32 |
-| 32 | data end sector u32: the writer's ceiling for data, exclusive. DNX writes `0x21000`, 64 MiB of data space; the 256 entries are the limit that actually binds |
+| 28 | data start sector u32: `0x1000` |
+| 32 | data end sector u32, exclusive: `0x11000`, the end of slot 255. (Before fixed extents DNX wrote `0x21000`.) |
 | 36..59 | zero |
 | 60 | superblock hash: xxHash32, seed 0, over bytes 0..59 |
 
@@ -79,7 +86,7 @@ correct, not a bug.
 | 6 | points per wave u16 |
 | 8 | sample format u16: 1 = int16 big-endian (see below) |
 | 10 | reserved u16, zero |
-| 12 | start sector u32 |
+| 12 | start sector u32: always `0x1000 + n × 256` for the entry's own slot n; the device refuses anything else |
 | 16 | byte length u32 |
 | 20 | table hash: xxHash32, seed 0, of the payload |
 | 24 | source hash: xxHash32 of the source audio file, **then** |
@@ -91,9 +98,9 @@ correct, not a bug.
 - **The geometry lives in the index**, never in the name. DNX may write Tonverk's
   `_wt<size>` / `r` convention into the name for people to read; nothing reads it back.
 - **No sample rate.** A wavetable is a shape indexed by phase.
-- **DNX validates the index before writing it:** extents in bounds, not overlapping,
-  aligned. The firmware still bounds-checks each extent on its own, because a bad
-  index is exactly what a bounded reader exists to survive.
+- **DNX validates the index before writing it**, and the firmware checks each entry
+  on its own: start equals slot n's, length within 128 KiB, geometry against length.
+  A bad index is exactly what a bounded reader exists to survive.
 
 ## Payload, sample format 1
 
@@ -132,8 +139,8 @@ off-by-one between the path and the index entry. Each entry is long form:
 - **permissions `0x007e`**, as a user slot reads. DNX writes only when
   `(permissions & 0x6c) == 0x6c`;
 - **occupancy `01 01` used, `00 00` free.** DNX refuses to treat "unknown" as empty;
-- **size is the slot's allocation** (16,384), the same on used and free slots, never
-  the file length;
+- **size is the slot's allocation** (131,072: the fixed 128 KiB extent), the same on
+  used and free slots, never the file length;
 - names are Windows-1252, NUL-terminated;
 - **paging is the router's, the same for every route** (measured in the emulator,
   2026-10-05). A request's two numbers are **`(first, end)`, a half-open window over

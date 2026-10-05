@@ -1,9 +1,11 @@
 """dnfw.waverider.store against the firmware's hash and against DNX's own plan.
 
-The plan below is DNX's (2026-10-05): one table into an empty store, its write
+The plan below is DNX's first (2026-10-05): one table into an empty store, its write
 hashes and the superblock and index bytes it produced. Both sides wrote their
 encoder from docs/waverider-store.md, so a disagreement is a field-order or
-padding difference in one of them.
+padding difference in one of them. It predates fixed extents (its data_end is
+0x21000; the doc now says 0x11000), and slot 0's start is the same either way, so
+its bytes stay a cross-check of the encoder.
 """
 
 from dnfw.waverider import store as S
@@ -52,6 +54,15 @@ def test_entry_round_trips_and_free_slots_are_zero():
     assert S.Entry.from_bytes(index[:128]) == ENTRY
     assert S.Entry.from_bytes(index[128:256]) is None
     assert index[128:] == bytes(len(index) - 128)
+
+
+def test_fixed_extents():
+    assert S.slot_start(0) == 0x1000 and S.slot_start(255) == 0x10F00
+    assert S.DATA_END == 0x11000
+    moved = S.Entry("X", 16, 512, 0x1100, 0x4000, 0, 0, 0)       # slot 1's place, as slot 0
+    import pytest
+    with pytest.raises(ValueError, match="not its own"):
+        S.plan_writes("A", 1, {0: moved}, {0: PAYLOAD}, data_end=S.DATA_END)
 
 
 def test_current_group_rules():

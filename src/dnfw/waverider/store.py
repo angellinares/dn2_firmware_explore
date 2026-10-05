@@ -25,7 +25,8 @@ INDEX_ENTRIES = 256
 ENTRY_BYTES = 128
 INDEX_BYTES = INDEX_ENTRIES * ENTRY_BYTES      # 32 KiB, sectors 1..64 of a group
 SECTOR = 512
-ALIGN = 8                          # extents start on an 8-sector (4 KiB) boundary
+SLOT_SECTORS = 256                 # 128 KiB: slot n's fixed extent
+DATA_END = DATA_START + 256 * SLOT_SECTORS   # 0x11000
 
 FLAG_USED = 1
 FLAG_NO_INTERP = 2
@@ -165,6 +166,13 @@ def current_group(groups: dict[str, tuple[bytes, bytes]]) -> str | None:
     return best[0] if best else None
 
 
+def slot_start(n: int) -> int:
+    """Slot n's fixed first sector, from the region's start."""
+    if not 0 <= n < INDEX_ENTRIES:
+        raise ValueError(f"slot {n} is outside 0..{INDEX_ENTRIES - 1}")
+    return DATA_START + n * SLOT_SECTORS
+
+
 def plan_writes(group: str, generation: int, entries: dict[int, Entry],
                 payloads: dict[int, bytes], data_end: int) -> list[dict]:
     """The writes for a store change, in the order they must happen: each payload,
@@ -172,8 +180,10 @@ def plan_writes(group: str, generation: int, entries: dict[int, Entry],
     writes = []
     for n in sorted(payloads):
         e, p = entries[n], payloads[n]
-        if e.start % ALIGN or e.start < DATA_START or len(p) != e.length:
-            raise ValueError(f"slot {n}: extent misaligned, before the data, or the wrong length")
+        if e.start != slot_start(n):
+            raise ValueError(f"slot {n}: starts at {e.start:#x}, not its own {slot_start(n):#x}")
+        if len(p) != e.length or e.length > SLOT_SECTORS * SECTOR:
+            raise ValueError(f"slot {n}: length {len(p)} is not the entry's, or over 128 KiB")
         writes.append({"what": "data", "sector": e.start, "length": len(p), "hash": xxh32(p)})
     index = index_bytes(entries)
     base = GROUPS[group]

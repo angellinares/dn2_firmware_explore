@@ -48,7 +48,7 @@ typedef unsigned int u32;
 #define SLOTS         256
 #define ENTRY_BYTES   128
 #define INDEX_BYTES   (SLOTS * ENTRY_BYTES)
-#define SLOT_SIZE     16384u                /* the allocation every slot reports */
+#define SLOT_SIZE     131072u               /* the fixed 128 KiB extent every slot reports */
 #define PERMISSIONS   0x7e                  /* a user slot: DNX writes when & 0x6c == 0x6c */
 
 struct fn { void *data[2]; void *manager; void *invoker; };       /* std::function, 16 B */

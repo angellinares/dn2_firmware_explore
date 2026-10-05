@@ -550,3 +550,8 @@ def test_the_report_writes_the_live_reply_tail():
     assert 0x2C49D0 + 0xA9C == 0x2C546C
     assert "DM(0, I0) = R8;" in src
     assert not any("XOR" in c or "NOT " in c for c in src)
+
+
+def test_the_boot_stream_stays_under_the_coldfire_loaders_1_mib(built):
+    assert len(built) <= dsp.STREAM_LIMIT
+    print(f"section 7: {len(built):,} B, {dsp.STREAM_LIMIT - len(built):,} B of headroom")

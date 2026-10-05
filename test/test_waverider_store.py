@@ -57,9 +57,9 @@ def test_entry_round_trips_and_free_slots_are_zero():
 
 
 def test_fixed_extents():
-    assert S.slot_start(0) == 0x1000 and S.slot_start(255) == 0x10F00
-    assert S.DATA_END == 0x11000
-    moved = S.Entry("X", 16, 512, 0x1100, 0x4000, 0, 0, 0)       # slot 1's place, as slot 0
+    assert S.slot_start(0) == 0x1000 and S.slot_start(255) == 0x40C00
+    assert S.DATA_END == 0x41000
+    moved = S.Entry("X", 16, 512, 0x1400, 0x4000, 0, 0, 0)       # slot 1's place, as slot 0
     import pytest
     with pytest.raises(ValueError, match="not its own"):
         S.plan_writes("A", 1, {0: moved}, {0: PAYLOAD}, data_end=S.DATA_END)
@@ -81,8 +81,9 @@ def test_current_group_rules():
     assert S.current_group({"A": a, "B": (bytes(bad[0]), index)}) == "A"
 
 
-# DNX's plan after fixed extents (2026-10-05): the same table, data_end 0x11000. Only
-# the superblock moved: its data_end and its own hash.
+# DNX's plan after fixed extents, with 128 KiB slots (2026-10-05): the same table,
+# data_end 0x11000. Only the superblock moved. The slots are now 512 KiB (data_end
+# 0x41000), so this vector checks the encoder at that data_end.
 DNX_PLAN_FIXED_SUPERBLOCK_HASH = 0x22136DE2
 DNX_SUPERBLOCK_FIXED_64 = bytes.fromhex(
     "57 52 54 42 00 01 00 40 00 00 00 01 00 00 00 01"
@@ -92,9 +93,9 @@ DNX_SUPERBLOCK_FIXED_64 = bytes.fromhex(
 
 
 def test_dnx_fixed_extent_plan_replays():
-    plan = S.plan_writes("A", 1, {0: ENTRY}, {0: PAYLOAD}, data_end=S.DATA_END)
+    plan = S.plan_writes("A", 1, {0: ENTRY}, {0: PAYLOAD}, data_end=0x11000)
     assert plan[:2] == DNX_PLAN[:2]                                  # data and index unchanged
     assert plan[2] == {"what": "superblock", "sector": 0, "length": 512,
                        "hash": DNX_PLAN_FIXED_SUPERBLOCK_HASH}
-    sb = S.superblock(1, 1, S.index_bytes({0: ENTRY}), data_end=S.DATA_END)
+    sb = S.superblock(1, 1, S.index_bytes({0: ENTRY}), data_end=0x11000)
     assert sb[:64] == DNX_SUPERBLOCK_FIXED_64

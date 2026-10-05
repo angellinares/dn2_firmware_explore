@@ -26,14 +26,19 @@ yet.
 |---|---|
 | `0x600000` | **group A** (its own 512 KiB erase group): superblock A in sector 0, index A in sectors 1..64 |
 | `0x600400` | **group B**: superblock B in sector 0, index B in sectors 1..64 |
-| `0x601000`.. | data: **slot n lives at `0x601000 + n × 256`**, its own 128 KiB, fixed. 256 slots end at `0x611000`, 34 MiB into the region, inside the pSLC |
+| `0x601000`.. | data: **slot n lives at `0x601000 + n × 1024`**, its own 512 KiB, fixed. 256 slots end at `0x641000`, 130 MiB into the region. The pSLC ends at `0x618000`: slots 0..91 are in it, and the rest run on into the slower TLC (only load speed differs) |
 
 **Fixed extents (agreed with DNX, 2026-10-05).** Every slot has the same place for
-ever, `start = 0x1000 + n × 256` sectors from the region's start, at most 128 KiB.
+ever, `start = 0x1000 + n × 1024` sectors from the region's start, at most 512 KiB.
 There is no allocator, so overlap is impossible, nothing moves, and nothing is
-compacted. Deleting a table frees its slot and touches nothing else. 128 KiB holds a
-geometry eight times today's 16 KiB: 64 waves × 1,024 points still fits. Anything
-bigger is a format change, and the version field is there for it.
+compacted. Deleting a table frees its slot and touches nothing else.
+
+**512 KiB, so a Tonverk table fits at its native resolution (owner, 2026-10-05).**
+Tonverk's largest table is 64 waves × 4,096 points of int16, 512 KiB (its default,
+64 × 2,048, is 256 KiB; today's DSP geometry is 16 KiB). DNX stores tables at full
+resolution. What the DSP can hold and play at once is a separate limit: its load area
+is 2 MB, four of the largest tables. It is decided when tables are loaded, not here.
+128 KiB slots were agreed first and replaced before anything was written.
 
 **Writes go data first, then index, then superblock.** A change writes the new data,
 then the index of the group that is **not** current, then that group's superblock with
@@ -57,7 +62,7 @@ with the same generation, **group A wins**. If neither is valid, the store is em
 | 20 | entry bytes u32 = 128 |
 | 24 | index hash: xxHash32, seed 0, over the whole fixed index (256 × 128 = 32 KiB) |
 | 28 | data start sector u32: `0x1000` |
-| 32 | data end sector u32, exclusive: `0x11000`, the end of slot 255. (Before fixed extents DNX wrote `0x21000`.) |
+| 32 | data end sector u32, exclusive: `0x41000`, the end of slot 255 (130 MiB). (Earlier drafts: `0x21000`, then `0x11000`.) |
 | 36..59 | zero |
 | 60 | superblock hash: xxHash32, seed 0, over bytes 0..59 |
 
@@ -86,7 +91,7 @@ correct, not a bug.
 | 6 | points per wave u16 |
 | 8 | sample format u16: 1 = int16 big-endian (see below) |
 | 10 | reserved u16, zero |
-| 12 | start sector u32: always `0x1000 + n × 256` for the entry's own slot n; the device refuses anything else |
+| 12 | start sector u32: always `0x1000 + n × 1024` for the entry's own slot n; the device refuses anything else |
 | 16 | byte length u32 |
 | 20 | table hash: xxHash32, seed 0, of the payload |
 | 24 | source hash: xxHash32 of the source audio file, **then** |
@@ -99,7 +104,7 @@ correct, not a bug.
   `_wt<size>` / `r` convention into the name for people to read; nothing reads it back.
 - **No sample rate.** A wavetable is a shape indexed by phase.
 - **DNX validates the index before writing it**, and the firmware checks each entry
-  on its own: start equals slot n's, length within 128 KiB, geometry against length.
+  on its own: start equals slot n's, length within 512 KiB, geometry against length.
   A bad index is exactly what a bounded reader exists to survive.
 
 ## Payload, sample format 1
@@ -139,7 +144,7 @@ off-by-one between the path and the index entry. Each entry is long form:
 - **permissions `0x007e`**, as a user slot reads. DNX writes only when
   `(permissions & 0x6c) == 0x6c`;
 - **occupancy `01 01` used, `00 00` free.** DNX refuses to treat "unknown" as empty;
-- **size is the slot's allocation** (131,072: the fixed 128 KiB extent), the same on
+- **size is the slot's allocation** (524,288: the fixed 512 KiB extent), the same on
   used and free slots, never the file length;
 - names are Windows-1252, NUL-terminated;
 - **paging is the router's, the same for every route** (measured in the emulator,

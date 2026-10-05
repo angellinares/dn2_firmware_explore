@@ -25,8 +25,8 @@ INDEX_ENTRIES = 256
 ENTRY_BYTES = 128
 INDEX_BYTES = INDEX_ENTRIES * ENTRY_BYTES      # 32 KiB, sectors 1..64 of a group
 SECTOR = 512
-SLOT_SECTORS = 256                 # 128 KiB: slot n's fixed extent
-DATA_END = DATA_START + 256 * SLOT_SECTORS   # 0x11000
+SLOT_SECTORS = 1024                # 512 KiB: slot n's fixed extent (a native Tonverk table)
+DATA_END = DATA_START + 256 * SLOT_SECTORS   # 0x41000
 
 FLAG_USED = 1
 FLAG_NO_INTERP = 2
@@ -183,7 +183,7 @@ def plan_writes(group: str, generation: int, entries: dict[int, Entry],
         if e.start != slot_start(n):
             raise ValueError(f"slot {n}: starts at {e.start:#x}, not its own {slot_start(n):#x}")
         if len(p) != e.length or e.length > SLOT_SECTORS * SECTOR:
-            raise ValueError(f"slot {n}: length {len(p)} is not the entry's, or over 128 KiB")
+            raise ValueError(f"slot {n}: length {len(p)} is not the entry's, or over 512 KiB")
         writes.append({"what": "data", "sector": e.start, "length": len(p), "hash": xxh32(p)})
     index = index_bytes(entries)
     base = GROUPS[group]

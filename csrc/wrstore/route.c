@@ -35,6 +35,10 @@ typedef unsigned int u32;
 #define FN_DTOR      ((void (*)(void *))0x40188086u)
 #define STRVEC_DTOR  ((void (*)(void *))0x4018dc80u)
 #define REG_ADD      ((void (*)(void *, void *))0x400ead92u)
+#define FILE_COPY    ((void (*)(void *, const void *))0x401b27b8u)    /* file routes: copy at end */
+#define FILE_GROW    ((void (*)(void *, const void *))0x401b28d8u)    /* file routes: grow */
+#define PATH_ARGS    ((void (*)(void *, void *))0x401b250eu)          /* (vector<string> *out, args) */
+#define PARSE_U32    ((u32 (*)(u32, u32 *))0x401510ecu)              /* (string, &n) -> bool */
 #define REGISTRY     ((u8 *)0x4059cd24u)
 #define BUILT_FLAG   (*(volatile u8 *)0x4059cd20u)
 #define MANAGER      ((void *)0x400eb0b6u)  /* ProjectHandler's: a 4-byte closure */
@@ -46,9 +50,11 @@ typedef unsigned int u32;
 #define REGION        0x600000u
 #define GROUP_B       0x400u
 #define SLOTS         256
+#define DATA_START    0x1000u               /* sectors, from the region's start */
+#define SLOT_SECTORS  1024u                 /* 512 KiB: slot n's fixed extent */
 #define ENTRY_BYTES   128
 #define INDEX_BYTES   (SLOTS * ENTRY_BYTES)
-#define SLOT_SIZE     131072u               /* the fixed 128 KiB extent every slot reports */
+#define SLOT_SIZE     524288u               /* the fixed 512 KiB extent every slot reports */
 #define PERMISSIONS   0x7e                  /* a user slot: DNX writes when & 0x6c == 0x6c */
 
 struct fn { void *data[2]; void *manager; void *invoker; };       /* std::function, 16 B */
@@ -66,6 +72,7 @@ void wr_root_entry(void);
 void wr_list_invoker(void);
 void wr_nop(void);
 void wr_register(void *self, u8 *registry);
+void wr_file_invoker(void);
 
 /* offset-to-top, typeinfo, then the four slots */
 static const u32 vtable[6] __attribute__((aligned(4))) = {
@@ -170,34 +177,138 @@ u32 wr_list_fill(u32 *out)
     return (u32)out;
 }
 
-/* register_route(this, registry): the one pattern, /waverider, into the directory
- * routes (registry + 12), as ProjectHandler adds /projects. */
-void wr_register(void *self, u8 *registry)
+/* A slot's file, as the file routes return it: {u8 ok; std::string error;
+ * FileStorageInfo, 124 B} (0x400eb6d4; copied by 0x401b1cc8). A failure is ok 0, the
+ * message, and a zero info (0x401b24c8). Kind 2 is streamed by the stock eMMC reader
+ * 0x400f0270(byte offset, size, 64 KiB) with no filter, since every std::function in
+ * the info is empty. So reading /waverider/<n> gives the slot's payload: its
+ * byteLength bytes, as stored. */
+#define RESULT_WORDS 33                       /* 4 + 4 + 124 bytes */
+
+static void fail(u32 *out, const char *why)
+{
+    u8 alloc;
+    for (u32 i = 0; i < RESULT_WORDS; i++)
+        out[i] = 0;
+    STR_CSTR(&out[1], why, &alloc);
+}
+
+static char *put_u32(char *at, u32 n)
+{
+    char digits[10];
+    u32 k = 0;
+    do {
+        digits[k++] = (char)('0' + n % 10);
+        n /= 10;
+    } while (n);
+    while (k)
+        *at++ = digits[--k];
+    return at;
+}
+
+/* "slot N: RULE", the shape DNX's messages use too */
+static void fail_slot(u32 *out, u32 n, const char *rule)
+{
+    char text[80];
+    char *at = text;
+    for (const char *w = "slot "; *w; w++)
+        *at++ = *w;
+    at = put_u32(at, n);
+    *at++ = ':';
+    *at++ = ' ';
+    while (*rule && at < text + 79)
+        *at++ = *rule++;
+    *at = 0;
+    fail(out, text);
+}
+
+u32 wr_file_fill(u32 *out, void *any, void *args)
+{
+    u32 params[3] = { 0, 0, 0 }, n = 0, ok;
+    u8 *index;
+    (void)any;
+    PATH_ARGS(params, args);
+    ok = params[0] != params[1] && PARSE_U32(params[0], &n);
+    STRVEC_DTOR(params);
+    if (!ok) {
+        fail(out, "waverider: the slot is not a number");
+        return (u32)out;
+    }
+    if (n >= SLOTS) {
+        fail_slot(out, n, "out of range, the slots are 0..255");
+        return (u32)out;
+    }
+    index = read_index();
+    if (!index || !(index[n * ENTRY_BYTES + 1] & 1)) {
+        if (index)
+            DELETE(index);
+        fail_slot(out, n, "empty");
+        return (u32)out;
+    }
+    {
+        const u8 *raw = index + n * ENTRY_BYTES;
+        u32 start = be32(raw + 12), length = be32(raw + 16);
+        DELETE(index);
+        if (start != DATA_START + n * SLOT_SECTORS) {
+            fail_slot(out, n, "the index puts it outside its own extent");
+            return (u32)out;
+        }
+        if (!length || length > SLOT_SECTORS * 512) {
+            fail_slot(out, n, "the index gives a length of 0 or over 512 KiB");
+            return (u32)out;
+        }
+        for (u32 i = 0; i < RESULT_WORDS; i++)
+            out[i] = 0;
+        ((u8 *)out)[0] = 1;
+        out[1] = EMPTY_STR;
+        out[2] = 1;                                   /* info +0, 1 as for /projects */
+        out[3] = 2;                                   /* +4 kind 2: the eMMC stream */
+        ((u16 *)out)[8] = PERMISSIONS;                /* +8 */
+        out[5] = (REGION + start) * 512;              /* +12 the byte offset: < 4 GiB */
+        out[6] = length;                              /* +16 size */
+        out[7] = n;                                   /* +20 index */
+        out[8] = length;                              /* +24 stored length */
+    }
+    return (u32)out;
+}
+
+/* One route: PATTERN with INVOKER into the route vector at registry + AT, as
+ * ProjectHandler adds each of its patterns. */
+static void add_route(void *self, u8 *registry, const char *text, void *invoker, u32 at,
+                      void (*copy)(void *, const void *), void (*grow)(void *, const void *))
 {
     u8 alloc;
     u32 pattern;
     struct route r;
     u32 *closure = NEW(4);
-    u32 *end = (u32 *)(registry + 16), *cap = (u32 *)(registry + 20);
+    u32 *end = (u32 *)(registry + at + 4), *cap = (u32 *)(registry + at + 8);
 
     r.comps[0] = r.comps[1] = r.comps[2] = 0;
     r.fn.data[1] = 0;
     *closure = (u32)self;
-    STR_CSTR(&pattern, "/waverider", &alloc);
+    STR_CSTR(&pattern, text, &alloc);
     SPLIT(&pattern, r.comps);
     r.fn.data[0] = closure;
     r.fn.manager = MANAGER;
-    r.fn.invoker = (void *)wr_list_invoker;
+    r.fn.invoker = invoker;
     if (*end != *cap) {
         if (*end)
-            ROUTE_COPY((void *)*end, &r);
+            copy((void *)*end, &r);
         *end += sizeof(struct route);
     } else {
-        ROUTE_GROW(registry + 12, &r);
+        grow(registry + at, &r);
     }
     FN_DTOR(&r.fn);
     STRVEC_DTOR(r.comps);
     STR_DTOR(&pattern);
+}
+
+/* register_route(this, registry): /waverider into the directory routes (+12), as
+ * /projects; /waverider/<n> into the file routes (+24), as /projects/<n>. */
+void wr_register(void *self, u8 *registry)
+{
+    add_route(self, registry, "/waverider", (void *)wr_list_invoker, 12, ROUTE_COPY, ROUTE_GROW);
+    add_route(self, registry, "/waverider/*", (void *)wr_file_invoker, 24, FILE_COPY, FILE_GROW);
 }
 
 /* The hook at 0x4002bb70: add our handler, then set the builder's flag as stock does. */
@@ -226,6 +337,14 @@ __asm__(
 "	move.l	%a0,-(%sp)\n"
 "	jsr	wr_list_fill\n"
 "	addq.l	#4,%sp\n"
+"	rts\n"
+"	.globl	wr_file_invoker\n"
+"wr_file_invoker:\n"
+"	move.l	8(%sp),-(%sp)\n"
+"	move.l	8(%sp),-(%sp)\n"
+"	move.l	%a0,-(%sp)\n"
+"	jsr	wr_file_fill\n"
+"	lea	12(%sp),%sp\n"
 "	rts\n"
 "	.globl	wr_nop\n"
 "wr_nop:\n"

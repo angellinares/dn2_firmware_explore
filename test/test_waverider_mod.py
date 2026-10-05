@@ -51,10 +51,11 @@ def long_at(content: bytes, va: int) -> int:
 
 def test_applies_to_both_sections(applied, dn2_111):
     assert set(applied.payloads) == {3, 7}
-    # MAIN OS: the stock image, plus the platform area carrying the M7 pages chunk
+    # MAIN OS: the stock image, plus the platform area carrying the M7 pages chunk and
+    # the +Drive chunk (the route, the loader, the pool)
     main, chunks = platform.split(applied.payloads[3])
     assert len(main) == len(dn2_111.container.find(3).unpack())
-    assert [kind for kind, _ in chunks] == [platform.area.CODE]
+    assert [kind for kind, _ in chunks] == [platform.area.CODE, platform.area.CODE]
     assert len(applied.payloads[7]) > len(dn2_111.container.find(7).unpack())
 
 
@@ -185,7 +186,9 @@ def test_the_json_reproduces_the_compose(stock):
     from dnfw.waverider import cpage
     if not (available() and cpage.available()):
         pytest.skip("no m68k assembler or GCC")
-    built = CF.compose(stock, assemble, cpage.compile_page)
+    from dnfw.patch import cbuild
+    built = CF.compose(stock, assemble, cpage.compile_page, cbuild.build)
+    assert built["drive"]["code"].hex() == waverider.SPEC["drive"]["code"]
     content = bytearray(stock)
     for e in waverider.SPEC["edits"]:
         new = bytes.fromhex(e["new"])

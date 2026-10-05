@@ -316,3 +316,35 @@ m10b4's), all four steps passed:
   `m10b4_shapes.wav`;
 - osc 2's MOVE does the same;
 - with 3 voices on Up Loop, Down Loop, Square or Rnd Hold, the page stays on one voice.
+
+## Clicks at a looping shape's reset (owner, instrument, 2026-10-05; measured in the reference)
+
+The owner hears a click at each reset of a fast repeating MOVE shape, on every table.
+It comes from the POS jump at the reset, not from the oscillator's phase or a zero
+crossing.
+- POS changes once per 32-sample block. At a reset it goes from (say) frame 15 to
+  frame 0 between two samples.
+- The oscillator's phase runs on, but the output steps from one frame's value to the
+  other's at that phase.
+
+The measurement, in `dnfw.waverider.live`, which the runner matches bit for bit. Prim.,
+2 s, RATE 0x6400, MPOS 0x6400. A boundary counts when its step exceeds both in-block
+steps beside it by more than 0.05:
+
+| MOVE | jumps per cycle | boundaries that step |
+|---|---|---|
+| none | — | 0 |
+| Tri Loop | 0 | 0 |
+| Up Loop / Down Loop | 1 | 43 / 45 |
+| Square | 2 | 90 |
+
+**Decided (owner, 2026-10-05): fold a declick into M10b-2.** When POS jumps further
+than a threshold, crossfade from the old position to the new over about 1 ms; the same
+short fade applies to LEV for a Square on LEV.
+- It removes the click and keeps the jump.
+- The cost is a second table read during the fade.
+- It gets an on/off option on page 3, so the hard edge stays available.
+
+The fast-knob crackle the owner heard on sharp tables (POS stepping once per block) is
+a separate fix: POS smoothing, or POS interpolated sample by sample. It stays with
+M10b-2's glide and is not decided yet.

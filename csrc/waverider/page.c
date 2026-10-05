@@ -22,6 +22,7 @@
  * from dnfw.waverider.pages and .wave.
  */
 #include "wr_gen.h"
+#include "pool.h"
 
 typedef unsigned int u32;
 typedef unsigned char u8;
@@ -41,8 +42,40 @@ typedef unsigned char u8;
 /* {min, max, default}: the record's, or Waverider's own for the controls it steps
  * itself (M10b, `pages.RANGES`: MOVE 0..4, TRIG 0..1), as wr_range answers the
  * firmware's limits getter on a Waverider track */
+/* TBL's steps and names, past the two baked tables the +Drive pool's (pool.c): the
+ * firmware's limits getter (wr_range) and value text (wr_fmt) read these, so they are
+ * mutable, and kept by drive_poll. A slot the pool does not have reads "-" (and plays
+ * slot 0, as pool.asm falls back). */
+int wr_tbl_range[3] __attribute__((section(".data"))) = { 0, (WR_TABLES - 1) << 8, 0 };
+static const char dash[] = "-";
+const char *wr_tbl_names[WR_TABLES + POOL_SLOTS] __attribute__((section(".data"))) = {
+    (const char *)0x4021CA14u, (const char *)0x4021CA1Au   /* the stock "Prim.", "Harm." */
+};
+
+static u32 pool_count(void)
+{
+    const struct wr_drive_head *h = WR_DRIVE_HEAD;
+    return h->magic == WR_DRIVE_MAGIC ? h->pool->count : 0;
+}
+
+/* the UI task, once a pass: the drive chunk's loader, then TBL's range and names */
+static void drive_poll(void)
+{
+    const struct wr_drive_head *h = WR_DRIVE_HEAD;
+    u32 n;
+    if (h->magic != WR_DRIVE_MAGIC)
+        return;
+    h->poll();
+    n = h->pool->count;
+    wr_tbl_range[1] = (int)(WR_TABLES + n - 1) << 8;
+    for (u32 j = 0; j < POOL_SLOTS; j++)
+        wr_tbl_names[WR_TABLES + j] = j < n ? (const char *)h->pool->names[j] : dash;
+}
+
 static const int *limits(u32 id)
 {
+    if (id == WR_TBL_ID || id == WR_TBL2_ID)
+        return wr_tbl_range;
     for (int k = 0; k < WR_RANGES; k++)
         if ((u32)wr_ranges[k][0] == id)
             return &wr_ranges[k][1];
@@ -375,9 +408,42 @@ static void sweep(int k, int off, u32 now)
  * while Waverider's page is on screen (it drew in the last SHOWN) and a marker
  * would move, ask the stock redraw (0x4011d2fe), at most every FRAME. Off the
  * page, or with nothing modulated, it costs a compare and the stock call. */
+#ifdef WR_DRIVEREAD
+/* A measurement build only (scripts/build_driveread_probe.py): the first step of loading
+ * tables from the +Drive. Once, 5 s after boot, from the UI task (whose interrupts are
+ * live, as the driver needs), read three sectors with the stock block driver
+ * 0x4012c59a(sector, bytes, buf) and keep each one's return and first 32 bytes for the
+ * probe's PEEK: sector 0 (the +Drive header, BE EF BA CE: the control), project slot 0
+ * (0x58000) and our region's base (0x600000). Reads only. */
+struct wr_drive { u32 magic, state, when, rc[3]; u8 head[3][32]; };
+volatile struct wr_drive wr_drive __attribute__((section(".data"))) = { 0x57524452u, 0, 0, { 0, 0, 0 }, { { 0 } } };
+static u8 drive_buf[512] __attribute__((section(".data"), aligned(16))) = { 0 };
+
+static void drive_read_once(u32 now)
+{
+    static const u32 sectors[3] = { 0, 0x58000, 0x600000 };
+    if (wr_drive.state || now < 5 * TICK_HZ)
+        return;
+    wr_drive.state = 1;                                   /* started: a hang shows as 1 */
+    wr_drive.when = now;
+    for (int k = 0; k < 3; k++) {
+        for (int i = 0; i < 512; i++)
+            drive_buf[i] = 0xEE;                          /* a read that writes nothing shows */
+        wr_drive.rc[k] = ((int (*)(u32, u32, void *))0x4012C59Au)(sectors[k], 512, drive_buf);
+        for (int i = 0; i < 32; i++)
+            wr_drive.head[k][i] = drive_buf[i];
+    }
+    wr_drive.state = 2;                                   /* done */
+}
+#endif
+
 int wr_poll(void *screen)
 {
     u32 now = TICKS;
+    drive_poll();
+#ifdef WR_DRIVEREAD
+    drive_read_once(now);
+#endif
     follow(now, osc_of(shown_page));
     if (now - drawn_at < SHOWN && now - asked_at >= FRAME
             && (settling || signature() != drawn_sig)) {
@@ -392,6 +458,7 @@ int wr_poll(void *screen)
 /* the UI loop's redraw test, as stock: nothing on the page moves by itself */
 int wr_poll(void *screen)
 {
+    drive_poll();
     return IS_DIRTY(screen);
 }
 #endif
@@ -516,8 +583,11 @@ static void span(int tbl, int pos, int x, int *lo, int *hi)
     int fx = pos >> 3;                      /* pos * 15 * 256 / 0x7800, exactly */
     int f = fx >> 8, frac = fx & 0xFF;
     int g = f < WR_FRAMES - 1 ? f + 1 : f;
-    int l = wr_spans[tbl][f][0][x] + (((wr_spans[tbl][g][0][x] - wr_spans[tbl][f][0][x]) * frac) >> 8);
-    int h = wr_spans[tbl][f][1][x] + (((wr_spans[tbl][g][1][x] - wr_spans[tbl][f][1][x]) * frac) >> 8);
+    /* a baked table's spans, or a pool table's, made as it was loaded (pool.c) */
+    const signed char (*t)[2][WR_WIDTH] = tbl < WR_TABLES ? wr_spans[tbl]
+        : (const signed char (*)[2][WR_WIDTH])WR_POOL_SPANS[tbl - WR_TABLES];
+    int l = t[f][0][x] + (((t[g][0][x] - t[f][0][x]) * frac) >> 8);
+    int h = t[f][1][x] + (((t[g][1][x] - t[f][1][x]) * frac) >> 8);
     *lo = WAVE_CY + l * WAVE_AMP / 127;
     *hi = WAVE_CY + h * WAVE_AMP / 127;
 }
@@ -569,8 +639,8 @@ static void wave(void *c, void *view, int page)
 #else
     (void)sw;
 #endif
-    if (tbl < 0) tbl = 0;
-    if (tbl >= WR_TABLES) tbl = WR_TABLES - 1;
+    if (tbl < 0 || tbl >= (int)(WR_TABLES + pool_count()))
+        tbl = 0;                            /* what the DSP plays for a slot it has not */
     pos = clamp_pos(pos);
 
 #if WR_MARKERS

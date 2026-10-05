@@ -1,0 +1,28 @@
+{
+  "source": "csrc/waverider/sharc/pool.asm",
+  "source_sha256": "00c14d8da390486d370583923a1a9d3db8070ae6813d4fd92e414a2ab6d64afd",
+  "toolchain": "selache selas -proc ADSP-21569 (js216/selache 2b26d3b, GPL-3.0, WSL)",
+  "section": "seg_pmco",
+  "load_sw": "0x16fe00",
+  "object_parcels_be": "01802c121002809ff0000f0157525031c32106200016fe271002809ff0040180b0c206220016fe27023e000002cc0f01809ff008018011c1703e88bf92080100c22206000016fe27063e0016ee17c111063e0016ee0b",
+  "instruction_offsets": [
+    0,
+    4,
+    10,
+    16,
+    18,
+    24,
+    30,
+    34,
+    40,
+    46,
+    52,
+    56,
+    60,
+    64,
+    66,
+    72,
+    78,
+    80
+  ]
+}

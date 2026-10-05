@@ -114,6 +114,12 @@ CMD_TABLE_DM = 0x2DFA00                      # the handler's command table, move
 LOAD_STATE_DM, LOAD_STATE_BYTES = 0x2DFA20, 8  # the chunk's sequence and checksum while it is copied
 LOAD_AREA = (0x80800000, 0x80A00000)         # DDR the ColdFire's chunks may write: 2 MB, the top of DDR_REGION
 LOAD_MAX_WORDS = 668                         # payload words in one 2,688-byte frame, after the 4-word header
+POOL_DM = 0x2DFC00                           # pool.asm: a slot past the baked directory, from the load area's pool
+POOL_SW = POOL_DM // 2                       # 0x16fe00
+POOL_DIR = LOAD_AREA[1] - 0x1000             # 0x809ff000: the pool directory, the area's last 4 KB
+POOL_MAGIC = 0x57525031                      # 'WRP1'
+POOL_SLOTS = (POOL_DIR - LOAD_AREA[0]) // TABLE_BYTES   # 127 tables of 16 KB below the directory
+POOL_ZEROS = 0x200                           # the directory's first bytes, zeros at boot: no pool yet
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 
 # stock sites
@@ -173,7 +179,7 @@ def objects() -> dict[str, bytes]:
     spec = _code()
     return {name: sharc_object.load_bytes(bytes.fromhex(spec[name]["object_parcels_be"]))
             for name in ("reader", "machine5_live", "entry_jump", "idle_load", "idle_jump", "block_count",
-                         "entry_mark", "emark_jump", "modulator", "shapes", "load")}
+                         "entry_mark", "emark_jump", "modulator", "shapes", "load", "pool")}
 
 
 def directory() -> bytes:
@@ -221,6 +227,7 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("load.asm (wr_load)", LOAD_DM, obj["load"]),
         ("command table, 8 entries", CMD_TABLE_DM, command_table()),
         ("load state (zeros)", LOAD_STATE_DM, bytes(LOAD_STATE_BYTES)),
+        ("pool.asm (wr_pool)", POOL_DM, obj["pool"]),
     ]
     out = []
     for k, (what, at, payload) in enumerate(raw):
@@ -236,6 +243,7 @@ def spans() -> list[tuple[str, int, bytes]]:
         if len(payload) != TABLE_BYTES:
             raise DspError(f"{what} is {len(payload)} bytes, not {TABLE_BYTES}")
         out.append((what, at, payload))                  # DDR: the target is the address
+    out.append(("pool directory (zeros: no table loaded yet)", POOL_DIR, bytes(POOL_ZEROS)))
     return out
 
 
@@ -309,8 +317,19 @@ def _check_idle_site(stock: bytes, obj: dict) -> None:
         raise DspError("sw 0xb88abb is not the stock idle loop's `jump (pc,-0x10)`")
 
 
+# The ColdFire's DSP loader (MAIN OS 0x400cf4f8) reads section 7 into one of two 1 MiB
+# buffers and refuses a stored section over 1 MiB (0x400cf5ac) or a boot stream whose
+# length + 1 is over 1 MiB (0x400cf5e4): the DSP then never boots -- no audio and no
+# sequencer clock (waverider-bigtable2, 2026-10-04: 1,400,876 B, silent). Stock's is
+# about 909 KB. Tables therefore load from the +Drive at run time, never in section 7.
+STREAM_LIMIT = 0x100000 - 1
+
+
 def _finish(out: bytearray) -> bytes:
     result = bytes(out)
+    if len(result) > STREAM_LIMIT:
+        raise DspError(f"section 7 is {len(result):,} B: the ColdFire loads at most {STREAM_LIMIT:,} "
+                       "(a 1 MiB buffer), so the DSP would never boot")
     walked = bootstream.walk(result)
     if not walked.complete or walked.stopped_at != len(result):
         raise DspError(f"the result does not walk as a boot stream ({walked.reason})")

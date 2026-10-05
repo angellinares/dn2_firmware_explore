@@ -36,7 +36,8 @@
 //   SLOT  WaveTone's TBL1 (param 27), read from the frame image the unpack copied to
 //         0x25c48c (offset 222 + 146t): 0x0000 or 0x0100, the sound's own value
 //         (read on the instrument through the USB probe, 2026-09-30); >> 8 is the
-//         slot, resolved through the baked directory; at or above its count plays 0.
+//         slot, resolved through the baked directory; at or above its count, through
+//         the load area's pool (pool.asm), and slot 0 when the pool has no such table.
 //   POS   WaveTone's WAV1 (param 26), from the same copy (offset 220 + 146t): the
 //         sound's coarse << 8 | fine, 0..0x7800 (probe: 0x7800 at the knob's top).
 //         min(WAV1, 0x7800) << 5 is Q16 frames: 0x7800 << 5 = 15 << 16, frame 15.
@@ -132,11 +133,11 @@ wr_t5v_loop.:
       R3 = DM(I5, M6);                  // this track's buffer; I5 -> next
       R4 = 5;
       COMP(R2, R4);
-      IF NE JUMP 0x16eea4;              // -> wr_t5v_next.
+      IF NE JUMP 0x16eea6;              // -> wr_t5v_next.
       R4 = DM(0x2de600);                // the baked directory's magic
       R2 = 0x57525431;
       COMP(R4, R2);
-      IF NE JUMP 0x16eea4;              // -> wr_t5v_next. (no directory: render nothing)
+      IF NE JUMP 0x16eea6;              // -> wr_t5v_next. (no directory: render nothing)
       DM(0x2dde88) = R3;                // M9b: the buffer, for both oscillators
       R0 = R0 - R0;
       DM(0x2de6c4) = R0;                // osc 1: replace
@@ -216,7 +217,7 @@ wr_t5v_halves.:
       IF NE JUMP 0x16edf0;              // -> wr_t5v_lev_on.
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
-      IF NE JUMP 0x16eea4;              // -> wr_t5v_next.
+      IF NE JUMP 0x16eea6;              // -> wr_t5v_next.
 .GLOBAL wr_t5v_lev_on.;
 wr_t5v_lev_on.:
       // M10a: MOVE, the modulator (modulator.asm, sw 0x16f700), which offsets R4 (POS)
@@ -236,8 +237,8 @@ wr_t5v_modded.:
       R1 = LSHIFT R5 BY -8;
       R2 = DM(0x2de604);                // the directory's count
       COMPU(R1, R2);
-      IF LT JUMP 0x16ee09;                   // -> wr_t5v_slot_ok.
-      R1 = R1 - R1;                     // out of range -> slot 0
+      IF LT JUMP 0x16ee0b;                   // -> wr_t5v_slot_ok.
+      JUMP 0x16fe00;                    // -> wr_pool. (past the baked tables: the load area's pool)
 .GLOBAL wr_t5v_slot_ok.;
 wr_t5v_slot_ok.:
       R1 = LSHIFT R1 BY 2;
@@ -245,6 +246,8 @@ wr_t5v_slot_ok.:
       R1 = R12 + R1;
       I1 = R1;
       R2 = DM(0, I1);                   // directory.table[slot]
+.GLOBAL wr_t5v_pooled.;
+wr_t5v_pooled.:
       DM(0, I4) = R2;                   // the reader block's table pointer
 
       // POS = min(WAV1, 0x7800) << 5: Q16 frames, 0x7800 << 5 = 15 << 16
@@ -265,10 +268,10 @@ wr_t5v_slot_ok.:
       R12 = 0xff;
       R2 = R2 AND R12;                  // the exponent field
       COMP(R2, R12);
-      IF EQ JUMP 0x16ee3d;                   // -> wr_t5v_note0.
+      IF EQ JUMP 0x16ee3f;                   // -> wr_t5v_note0.
       R8 = PASS R8;
-      IF LT JUMP 0x16ee3d;                   // -> wr_t5v_note0.
-      JUMP 0x16ee3e;                         // -> wr_t5v_note_ok.
+      IF LT JUMP 0x16ee3f;                   // -> wr_t5v_note0.
+      JUMP 0x16ee40;                         // -> wr_t5v_note_ok.
 .GLOBAL wr_t5v_note0.;
 wr_t5v_note0.:
       R8 = R8 - R8;                     // +0.0
@@ -289,8 +292,8 @@ wr_t5v_note_ok.:
       DM(0x2dde98) = R13;
       F8 = F8 + F13;                    // note + TUN1 (osc 2: + TUN2 + TUN1)
       R8 = PASS R8;
-      IF LT JUMP 0x16ee55;                   // -> wr_t5v_tune_low.
-      JUMP 0x16ee56;                         // -> wr_t5v_tuned.
+      IF LT JUMP 0x16ee57;                   // -> wr_t5v_tune_low.
+      JUMP 0x16ee58;                         // -> wr_t5v_tuned.
 .GLOBAL wr_t5v_tune_low.;
 wr_t5v_tune_low.:
       R8 = R8 - R8;                     // below note 0 -> +0.0
@@ -321,13 +324,13 @@ wr_t5v_tuned.:
       R4 = DM(0x2dde84);                // wr_render5's argument: the reader block
       CJUMP 0x16eb00 (DB);              // wr_render5(R4 = reader block)
       DM(I7, M7) = R2;
-      DM(I7, M7) = 0x16ee8a;            // return address - 1: wr_t5v_osc_next. - 1
+      DM(I7, M7) = 0x16ee8c;            // return address - 1: wr_t5v_osc_next. - 1
 
 .GLOBAL wr_t5v_osc_next.;
 wr_t5v_osc_next.:
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
-      IF NE JUMP 0x16eea4;              // -> wr_t5v_next. (osc 2 done)
+      IF NE JUMP 0x16eea6;              // -> wr_t5v_next. (osc 2 done)
       R0 = 1;
       DM(0x2de6c4) = R0;                // osc 2: add
       R0 = 0x900;

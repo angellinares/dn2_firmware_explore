@@ -53,7 +53,7 @@ def siblings() -> dict[str, int]:
     from dnfw.waverider import dsp  # noqa: PLC0415
     return {"reader_m9": dsp.READER_SW, "machine9_live": dsp.LOOP_SW, "idle_load": dsp.IDLE_SW,
             "block_count": dsp.COUNT_SW, "entry_mark": dsp.EMARK_SW, "modulator": dsp.MOD_SW,
-            "shapes": dsp.SHAPES_SW, "load": dsp.LOAD_SW}
+            "shapes": dsp.SHAPES_SW, "load": dsp.LOAD_SW, "pool": dsp.POOL_SW}
 
 
 def external(skip: pathlib.Path, work: pathlib.Path) -> dict[str, int]:

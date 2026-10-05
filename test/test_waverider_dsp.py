@@ -165,8 +165,7 @@ def test_the_loader_renders_through_case_3_from_the_frame_copy():
     src = [ln.split("//", 1)[0].strip() for ln in (SHARC / "load.asm").read_text().splitlines()]
     assert {c for c in src if c.startswith("DM(0x")} == {
         "DM(0x2dfa20) = R10;", "DM(0x2dfa24) = R10;",                       # its state words
-        "DM(0x2c49dc) = R10;", "DM(0x2c59dc) = R10;",                       # reply word 3, both pages
-        "DM(0x2c49e0) = R10;", "DM(0x2c59e0) = R10;"}                       # reply word 4
+        "DM(0x2c49e8) = R10;", "DM(0x2c59e8) = R10;"}                       # reply word 6, both pages
     assert "I3 = 0x25c48c;" in src                                          # the frame copy, case 3's argument
     # what the dispatch set for case 3, restored before the jump (sw 0x1c9da2..0x1c9dbd)
     tail = src[src.index("I3 = 0x25c48c;") - 4:src.index("I3 = 0x25c48c;")]
@@ -198,14 +197,24 @@ def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
         assert bootstream.read_span(built, at, dsp.TABLE_BYTES) == \
             reference.dsp_bytes(dsp.tables()[k])
     # L1 keeps only code and state: MOVE's shapes and their random state (M10b-4) sit
-    # where table 0 began; after them the loader, its command table and its state,
-    # which runs to the region's end
+    # where table 0 began; after them the loader, its command table and its state, then
+    # the pool lookup, which runs to the region's end
     sp = {what: (at, p) for what, at, p in dsp.spans()}
     assert sp["shapes.asm (wr_shape)"][0] == dsp.dm_to_load(0x2DF000)
     at, p = sp["MOVE's random state (zeros)"]
     assert at + len(p) == dsp.dm_to_load(dsp.LOAD_DM) and not any(p)
     at, p = sp["load state (zeros)"]
-    assert at + len(p) == dsp.dm_to_load(dsp.REGION[1]) and not any(p)
+    assert at + len(p) == dsp.dm_to_load(dsp.POOL_DM) and not any(p)
+    at, p = sp["pool.asm (wr_pool)"]
+    assert at + len(p) == dsp.dm_to_load(dsp.REGION[1])
+
+
+def test_the_pool_directory_starts_empty_inside_the_load_area(built):
+    # the ColdFire writes the pool's directory last; until then the boot stream's zeros
+    # make pool.asm fall back to slot 0, and its tables fit below the directory
+    assert dsp.LOAD_AREA[0] + dsp.POOL_SLOTS * dsp.TABLE_BYTES <= dsp.POOL_DIR < dsp.LOAD_AREA[1]
+    assert dsp.POOL_SLOTS == 127
+    assert bootstream.read_span(built, dsp.POOL_DIR, dsp.POOL_ZEROS) == bytes(dsp.POOL_ZEROS)
 
 
 # -- the contract -------------------------------------------------------------------------------
@@ -316,10 +325,10 @@ def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
     assert all(e == a for e, a in zip(ends, at[1:]))           # no unwritten gap
     obj = dsp.objects()
     code_spans = [x for x in sp if "asm" in x[0]]
-    assert len(code_spans) == 8                               # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm
+    assert len(code_spans) == 9                               # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm
     for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["idle_load"],
                                                      obj["block_count"], obj["entry_mark"], obj["modulator"],
-                                                     obj["shapes"], obj["load"])):
+                                                     obj["shapes"], obj["load"], obj["pool"])):
         assert payload[:len(code)] == code
         assert len(payload) - len(code) >= 64 and not any(payload[len(code):]), what
 
@@ -550,3 +559,27 @@ def test_the_report_writes_the_live_reply_tail():
     assert 0x2C49D0 + 0xA9C == 0x2C546C
     assert "DM(0, I0) = R8;" in src
     assert not any("XOR" in c or "NOT " in c for c in src)
+
+
+def test_the_boot_stream_stays_under_the_coldfire_loaders_1_mib(built):
+    assert len(built) <= dsp.STREAM_LIMIT
+    print(f"section 7: {len(built):,} B, {dsp.STREAM_LIMIT - len(built):,} B of headroom")
+
+
+def test_only_load_asm_writes_the_answer_word():
+    # load.asm answers in reply word 6 (both pages). idle_load.asm's timing totals in
+    # words 3 and 4 overwrote the answers there on the instrument (2026-10-05), which no
+    # runner gate saw: the runner never runs the idle task. So no other source of ours
+    # may store to word 6, and load.asm stores nowhere else in the reply's first words.
+    import pathlib
+    import re
+    root = pathlib.Path(__file__).resolve().parent.parent / "csrc" / "waverider" / "sharc"
+    store = re.compile(r"DM\((0x2c[45]9[0-9a-f]{2})\)\s*=", re.I)
+    writers = {}
+    for src in root.glob("*.asm"):
+        for line in src.read_text(encoding="utf-8").splitlines():
+            m = store.search(line.split("//", 1)[0])
+            if m:
+                writers.setdefault(int(m.group(1), 16) & 0xFFF, set()).add(src.stem)
+    assert writers.get(0x9E8) == {"load"}, writers.get(0x9E8)
+    assert all("load" not in names for off, names in writers.items() if off != 0x9E8 and off < 0x9EC)

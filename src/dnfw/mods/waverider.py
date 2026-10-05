@@ -81,9 +81,13 @@ NOT_RAM = tuple(range(SPEC["layout"]["wr_spans"] & ~1, SPEC["layout"]["wr_spans_
 
 
 def ram() -> list[Extent]:
-    chunk = SPEC["chunk"]
+    chunk, drive = SPEC["chunk"], SPEC["drive"]
     return [Extent(RAM, chunk["load"], len(bytes.fromhex(chunk["code"])),
-                   "Waverider's SYN pages: code, descriptors, labels (M7)")]
+                   "Waverider's SYN pages: code, descriptors, labels (M7)"),
+            Extent(RAM, drive["load"], len(bytes.fromhex(drive["code"])),
+                   "Waverider's +Drive chunk: the /waverider route, the table loader, the pool"),
+            Extent(RAM, drive["spans"]["va"], drive["spans"]["bytes"],
+                   "the pool tables' display spans (127 x 16 frames x 96 columns)")]
 
 
 def _main_os(original: bytes) -> bytes:
@@ -120,9 +124,11 @@ def apply(firmware) -> Result:
         section7 = dsp.section7(stream)
     except dsp.DspError as exc:
         raise ModError(f"the DSP boot stream: {exc}") from exc
-    chunk = SPEC["chunk"]
+    chunk, drive = SPEC["chunk"], SPEC["drive"]
     code = platform.area.CodeChunk(chunk["load"], bytes.fromhex(chunk["code"])).pack()
-    content = platform.join(_main_os(main_os), others + [(platform.area.CODE, code)])
+    dcode = platform.area.CodeChunk(drive["load"], bytes.fromhex(drive["code"])).pack()
+    content = platform.join(_main_os(main_os), others + [(platform.area.CODE, code),
+                                                         (platform.area.CODE, dcode)])
     area_length = len(content) - platform.STOCK_LENGTH
     return Result(payloads={MAIN_OS: content, DSP_STREAM: section7},
                   extents=extents(firmware, area_length),

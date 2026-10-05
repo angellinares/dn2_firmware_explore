@@ -49,3 +49,27 @@ def source_frames(frames: int = reduce.FRAMES, points: int = SOURCE_POINTS,
 def table() -> list[list[int]]:
     """-> the baked 16 x 512 int16 table."""
     return reduce.to_int16(source_frames())
+
+
+def pool_source_frames(frames: int = reduce.FRAMES, points: int = reduce.POINTS,
+                       harmonics: int = 48) -> list[list[float]]:
+    """A second original table, for the +Drive pool's tests: a band-limited pulse whose
+    duty narrows from 1/2 (frame 0, a square) to 1/16 (frame 15). Unlike both baked
+    tables it is mostly even and odd harmonics at once, so a render from it is told
+    apart by ear and by its spectrum.
+
+        pulse_d(p) = sum over h = 1..48 of  sin(pi h d) / h * cos(h p),
+        d = 1/2 - (15/32) t,  t = k / 15
+    """
+    out = []
+    for k in range(frames):
+        t = k / (frames - 1) if frames > 1 else 0.0
+        d = 0.5 - (15 / 32) * t
+        out.append([sum(math.sin(math.pi * h * d) / h * math.cos(h * 2.0 * math.pi * n / points)
+                        for h in range(1, harmonics + 1)) for n in range(points)])
+    return out
+
+
+def pool_table() -> list[list[int]]:
+    """-> the pool tests' 16 x 512 int16 table."""
+    return reduce.to_int16(pool_source_frames())

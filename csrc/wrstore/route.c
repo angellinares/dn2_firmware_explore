@@ -263,7 +263,12 @@ u32 wr_file_fill(u32 *out, void *any, void *args)
         out[1] = EMPTY_STR;
         out[2] = 1;                                   /* info +0, 1 as for /projects */
         out[3] = 2;                                   /* +4 kind 2: the eMMC stream */
-        ((u16 *)out)[8] = PERMISSIONS;                /* +8 */
+        /* +8: write-protected (0x12) until step 2's writer exists. The stock write path
+         * calls the info's writer callback unconditionally, and an empty one ends in
+         * abort() (0x40138d92, measured in the emulator): with 0x12 the stock open
+         * refuses the write instead, while a read only needs bit 1. The listing still
+         * says 0x7e, the contract. */
+        ((u16 *)out)[8] = 0x12;
         out[5] = (REGION + start) * 512;              /* +12 the byte offset: < 4 GiB */
         out[6] = length;                              /* +16 size */
         out[7] = n;                                   /* +20 index */

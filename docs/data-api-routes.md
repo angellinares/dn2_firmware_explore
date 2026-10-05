@@ -141,3 +141,30 @@ reader of our own behind those factories. The functions the open runs, found by
 counting entries in the emulator: `0x400e9202`, `0x400e9654`, `0x400e9e2c`,
 `0x400e9f7a` (the Data API's open), `0x400eb9b6` and `0x400eb6d4` (the slot's info),
 `0x400eb41e` (21 calls) and `0x400eb4ac` (10), the managers, and `0x400f0270`.
+
+## Writes, measured (step 2, in progress)
+
+- **A stock write works in the emulator.** The presets project (257,942 bytes,
+  DNX's corpus; the owner allowed it for emulator tests) was written to
+  `/projects/1` on a formatted +Drive image. The open answered handle 1, the 8
+  chunks were each confirmed with the running byte total, and the commit returned the
+  total, `0x3ef96`. The chunks collect in a `MemoryStreamWriter`. **[emulator]**
+- **A write goes through the same file route as a read.** The write-open runs the
+  slot's file invoker. `/waverider/1` answered with our own refusal when slot 1 was
+  empty.
+- **The write path calls a writer callback in the file info without checking it.** A
+  write to a `/waverider` slot whose info has every callback empty ran into
+  `0x40138d92`, a `bra.s *` after an `illegal`: the firmware's `abort()`. The call to
+  the router never returned. **On the instrument that freezes the UI task.** Until
+  step 2 provides a writer, the route answers every slot's info with permissions
+  `0x12` (write-protected). The stock path then refuses at the first chunk, with
+  `Write: Permission denied`, and the commit with `Footer was not processed`. A read
+  only needs bit 1, so reads still work. The listing keeps `0x7e`, the contract.
+- `0x400eb2f2`, the `/projects` info's callback at +108, **checks the incoming
+  container's header**: its length against the slot's capacity, a format byte equal
+  to 1 (+13), and a version at +17 that isn't −1 and is at most 5. It answers
+  `Expected<bool>` with the refusals at `0x4021dd64`, `0x40213685`, `0x4021dd79` and
+  `0x40213697`.
+- **A trap in our own tooling:** Git Bash rewrites a `/projects/1` argument to
+  `C:/Program Files/Git/projects/1`. Every write that seemed refused with "Unable to
+  handle path" was that. Run the frame builders with `MSYS_NO_PATHCONV=1`.

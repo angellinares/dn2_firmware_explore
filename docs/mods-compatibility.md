@@ -86,7 +86,7 @@ What moved to get there:
   assembled to run. Its 46-byte copy stub at `0x402cf52c` is gone, and that cave
   is free again.
 - **arpplocks (2026-10-02):** its code, seven caves until then (two shared with
-  usbprobe and fxmod), is a 1,944-byte `CODE` chunk at `0x467c8000`, past its shadow
+  usbprobe and fxmod), is a 1,984-byte `CODE` chunk at `0x467c8000`, past its shadow
   sounds. The hooks and patches are the same, pointing at the chunk. It now combines
   with every mod. `scripts/emu_arp_plocks.py` passes 42/42 on the chunk build and on
   the cave build alike.

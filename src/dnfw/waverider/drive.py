@@ -35,10 +35,12 @@ SPANS = 0x46A00000                # pool.h: WR_POOL_SPANS
 SPANS_BYTES = 127 * 16 * 2 * 96
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SOURCES = (ROOT / "csrc/waverider/pool.c", ROOT / "csrc/waverider/loader.c",
+           ROOT / "csrc/waverider/events.c",
            ROOT / "csrc/wrstore/store.c", ROOT / "csrc/wrstore/route.c")
 ENTRIES = ["wr_drive_head", "wr_drive_poll", "wr_add", "wr_root_entry", "wr_list_invoker",
-           "wr_register", "wr_nop", "wr_frame_hook", "wr_frame_src"]
-STATUS = ("wr_pool", "wr_load", "wr_store", "wr_route", "wr_write")   # what the probe PEEKs
+           "wr_register", "wr_nop", "wr_frame_hook", "wr_frame_src", "wr_clear_type"]
+STATUS = ("wr_pool", "wr_load", "wr_store", "wr_route", "wr_write", "wr_events")   # what the probe PEEKs
+CLEAR_SITE = 0x40071EB6           # CLEAR TRK PRESET's jsr to the machine-type getter (events.c)
 
 ROUTE_SITE = 0x4002BB70
 ROUTE_STOCK = bytes.fromhex("700113c04059cd20")     # moveq #1,%d0 ; move.b %d0,0x4059cd20
@@ -62,9 +64,10 @@ class DriveError(ValueError):
     pass
 
 
-def compile_drive(build) -> tuple[bytes, dict[str, int]]:
-    """BUILD(sources, base=, entries=) -> a cbuild link; -> (the chunk, its symbols)."""
-    linked = build(list(SOURCES), base=LOAD, entries=ENTRIES)
+def compile_drive(build, raw_track: int) -> tuple[bytes, dict[str, int]]:
+    """BUILD(sources, base=, entries=, defines=) -> a cbuild link; RAW_TRACK the shim that
+    answers a track's real machine type; -> (the chunk, its symbols)."""
+    linked = build(list(SOURCES), base=LOAD, entries=ENTRIES, defines={"WR_RAW_TRACK": f"{raw_track:#x}"})
     if linked.bss:
         raise DriveError(f"the drive chunk has {linked.bss} bytes of BSS; nothing zeroes it")
     if linked.symbols["wr_drive_head"] != LOAD:
@@ -78,6 +81,9 @@ def compile_drive(build) -> tuple[bytes, dict[str, int]]:
 def hooks(symbols: dict[str, int]) -> list[tuple[int, bytes, bytes, str]]:
     """-> (va, new, stock, what) for each hook."""
     return [
+        (CLEAR_SITE, bytes.fromhex("4eb9") + symbols["wr_clear_type"].to_bytes(4, "big"),
+         bytes.fromhex("4eb94004b7f2"), "CLEAR TRK PRESET (TRK + PLAY): the real machine type "
+         "(the cleared track stays Waverider), and the clear counted for the page"),
         (ROUTE_SITE, bytes.fromhex("4eb9") + symbols["wr_add"].to_bytes(4, "big") + bytes.fromhex("4e71"),
          ROUTE_STOCK, "the Data API's start-up builder: add the /waverider handler (wr_add), "
                       "then set the builder's flag as stock does"),

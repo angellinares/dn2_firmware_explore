@@ -20,6 +20,7 @@
 #include "loader.h"
 #include "../wrstore/store.h"
 #include "pool.h"
+#include "events.h"
 
 #define TICKS        (*(volatile u32 *)0x466758B0u)   /* the UI's 120 Hz tick */
 #define TICK_HZ      120
@@ -179,4 +180,4 @@ void wr_drive_poll(void)
 
 /* What the page finds at the chunk's first bytes (pool.h). */
 const struct wr_drive_head wr_drive_head __attribute__((section(".text.entry"))) =
-    { WR_DRIVE_MAGIC, wr_drive_poll, &wr_pool };
+    { WR_DRIVE_MAGIC, wr_drive_poll, &wr_pool, &wr_events };

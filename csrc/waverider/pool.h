@@ -24,10 +24,12 @@ struct wr_pool {
  * poll and the pool without knowing this link's addresses. */
 #define WR_DRIVE_MAGIC 0x57524456u         /* 'WRDV' */
 #define WR_DRIVE_HEAD  ((const struct wr_drive_head *)0x467F0000u)
+struct wr_events;
 struct wr_drive_head {
     unsigned int magic;
     void (*poll)(void);
     volatile struct wr_pool *pool;
+    volatile struct wr_events *events;     /* note-ons and clears (events.h) */
 };
 
 #endif

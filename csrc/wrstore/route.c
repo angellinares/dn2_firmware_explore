@@ -55,7 +55,10 @@ typedef unsigned int u32;
 #define ENTRY_BYTES   128
 #define INDEX_BYTES   (SLOTS * ENTRY_BYTES)
 #define SLOT_SIZE     524288u               /* the fixed 512 KiB extent every slot reports */
-#define PERMISSIONS   0x7e                  /* a user slot: DNX writes when & 0x6c == 0x6c */
+/* 0x12, write-protected, until step 2's writer exists, in the listing and the file
+ * info alike, so no client offers a write it can't complete. 0x7e (a user slot: DNX
+ * writes when & 0x6c == 0x6c) once writes work. */
+#define PERMISSIONS   0x12
 
 struct fn { void *data[2]; void *manager; void *invoker; };       /* std::function, 16 B */
 struct route { void *comps[3]; struct fn fn; };                    /* 28 B */
@@ -261,18 +264,18 @@ u32 wr_file_fill(u32 *out, void *any, void *args)
             out[i] = 0;
         ((u8 *)out)[0] = 1;
         out[1] = EMPTY_STR;
-        out[2] = 1;                                   /* info +0, 1 as for /projects */
+        out[2] = 0x57;                                /* +0 content kind: 'W', ours (1 project, 3 sound, 5 kit) */
         out[3] = 2;                                   /* +4 kind 2: the eMMC stream */
         /* +8: write-protected (0x12) until step 2's writer exists. The stock write path
          * calls the info's writer callback unconditionally, and an empty one ends in
          * abort() (0x40138d92, measured in the emulator): with 0x12 the stock open
          * refuses the write instead, while a read only needs bit 1. The listing still
          * says 0x7e, the contract. */
-        ((u16 *)out)[8] = 0x12;
+        ((u16 *)out)[8] = PERMISSIONS;
         out[5] = (REGION + start) * 512;              /* +12 the byte offset: < 4 GiB */
         out[6] = length;                              /* +16 size */
         out[7] = n;                                   /* +20 index */
-        out[8] = length;                              /* +24 stored length */
+        out[8] = 1;                                   /* +24 object version: store format 1 */
     }
     return (u32)out;
 }

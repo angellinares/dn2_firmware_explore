@@ -141,8 +141,10 @@ measured in the emulator on 2026-10-05), and copying that would leave a permanen
 off-by-one between the path and the index entry. Each entry is long form:
 - kind `00`, layout `02`, then u32 index, u32 size, u16 permissions, then 2 bytes of
   occupancy;
-- **permissions `0x007e`**, as a user slot reads. DNX writes only when
-  `(permissions & 0x6c) == 0x6c`;
+- **permissions `0x007e`**, as a user slot reads, once writes work. DNX writes only
+  when `(permissions & 0x6c) == 0x6c`. **Until the writer exists, the listing and the
+  file info both say `0x0012`** (write-protected), so no client offers a write that
+  can't complete;
 - **occupancy `01 01` used, `00 00` free.** DNX refuses to treat "unknown" as empty;
 - **size is the slot's allocation** (524,288: the fixed 512 KiB extent), the same on
   used and free slots, never the file length;
@@ -183,3 +185,21 @@ delete is ours to pick, and we tell DNX.
    backup-and-verify, and a manifest (source hash, table hash, extent).
 3. **One table**, written, read back and hash-compared, then **heard** on a Waverider
    track, before any second table is written.
+
+## A slot as it reads back (measured in the emulator, 2026-10-05)
+
+`/waverider/<n>` reads as Elektron's transfer container: a 31-byte header, the payload,
+and a 12-byte trailer. The header from `0x0D` is four big-endian words (DNX, from 140
+containers):
+
+| offset | field | /waverider/<n> |
+|---|---|---|
+| `0x0D` | content kind | `0x57` ('W'), ours. Stock: 1 project, 3 sound, 5 kit |
+| `0x11` | object version | 1, the store format |
+| `0x15` | index, bank × 256 + slot | n: the bank byte is 0, and byte `0x18` is the slot, stamped by the device |
+| `0x19` | uncompressed length | the payload's byteLength |
+| `0x1D` | 1 = LZ4, 0 = raw | 0 |
+| `0x1E` | the trailer's length | 12 |
+
+A byte-exact verify expects `0x18` = n and kind `0x57`, then compares the payload with
+the table hash.

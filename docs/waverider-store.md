@@ -222,6 +222,7 @@ with build `wrroute9`:
 |---|---|
 | a valid file to an empty store | the commit writes the table to slot n's extent, then group A's index, then its superblock (generation 1). The listing shows the slot, and a read returns the same bytes, with byte `0x18` stamped n |
 | a second slot | the index and superblock go to the other group (generation 2), and the first slot carries over |
+| the same slot again | generation 3, back into group A: the slot reads back the new table, and the other slots are kept |
 | a table whose hash doesn't match the entry's | **the commit still answers ok** (the stock session decides the reply before our callback runs), and **nothing is written**: the slot doesn't appear |
 | container kind not `0x57`, version not 1, `0x1D` not 0, or a length outside 129 .. 128 + 512 KiB | refused at the first chunk: `slot N: the file is not a Waverider table (container kind)`, `... unknown store format version`, `... the body must be raw, not LZ4`, `... the file must be a 128-byte entry and a table of at most 512 KiB`. The commit then answers `Header was not processed` |
 | `0x1D` = 1 on a raw body | the stock decompressor refuses first: `Failed to write data: Error decompressing stream; invalid buffer length` |

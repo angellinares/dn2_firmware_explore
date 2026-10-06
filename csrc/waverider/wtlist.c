@@ -187,6 +187,8 @@ u32 wt_list_key(u32 code, u32 pressed, u32 released)
     }
     if (code == KEY_NO)
         return released ? 0 : 1;
+    if (code != KEY_UP && code != KEY_DOWN && code != KEY_YES && code != KEY_FUNC)
+        return 2;                                  /* not the list's: the stock handler's */
     if ((code == KEY_UP || code == KEY_DOWN) && pressed && count) {
         if (code == KEY_UP && cursor)
             cursor--;

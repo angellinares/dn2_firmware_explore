@@ -100,7 +100,10 @@ u32 wr_wt_key(void *view, void *event)
         return STOCK_KEY(view, event);
     }
     if (wr_wtmenu.page == 2 && code != KEY_PRESET) {
-        if (!wt_list_key(code, KEY_PRESS(event) & 0xff, KEY_RELEASE(event) & 0xff)) {
+        u32 r = wt_list_key(code, KEY_PRESS(event) & 0xff, KEY_RELEASE(event) & 0xff);
+        if (r == 2)
+            return STOCK_KEY(view, event);   /* UNISON, SETTINGS...: as from page 1 */
+        if (!r) {
             wr_wtmenu.page = 1;
             count_tables();                  /* the list may have changed them */
         }
@@ -129,7 +132,10 @@ u32 wr_wt_key(void *view, void *event)
         }
         return 1;
     default:
-        return 1;                            /* page 1's own keys mean nothing here */
+        /* every other key as from page 1: UNISON, SETTINGS and the rest go where they go
+         * (the owner, wtpool1: they did nothing here); leaving the menu that way opens
+         * it on page 1 next time (freshen) */
+        return STOCK_KEY(view, event);
     }
 }
 

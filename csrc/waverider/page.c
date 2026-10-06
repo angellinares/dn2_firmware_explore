@@ -61,6 +61,17 @@ static u32 pool_count(void)
     return h->magic == WR_DRIVE_MAGIC ? h->pool->count : 0;
 }
 
+/* Does pool entry j hold a table? (a cleared slot, or one whose table was deleted, plays
+ * Prim., as the DSP does for an empty directory entry; the owner, wtpool1: the page drew
+ * an empty wave there) -1 or less: a built-in, which always does */
+static int pool_has(int j)
+{
+    const struct wr_drive_head *h = WR_DRIVE_HEAD;
+    if (j < 0)
+        return 1;
+    return h->magic == WR_DRIVE_MAGIC && j < POOL_SLOTS && h->pool->slot_of[j] != 0xFF;
+}
+
 /* the UI task, once a pass: the drive chunk's loader, then TBL's range and names */
 static void drive_poll(void)
 {
@@ -729,18 +740,18 @@ static void wave(void *c, void *view, int page)
     int o = osc_of(page);
     u32 pos_id = marked[2 * o], tbl_id = marked[2 * o + 1];
     struct sweep *sw = &sweeps[2 * o];
-    int tbl = GET_VALUE(view, tbl_id, &flag) >> 8;
+    int tbl = (GET_VALUE(view, tbl_id, &flag) & 0xFFFF) >> 8;   /* the getter sign-extends */
     int pos = GET_VALUE(view, pos_id, &flag);
 #if WR_MARKERS
     int set_pos = clamp_pos(pos);
     int moved = mod_offset(pos_id);
     int speed = tier(pos_id);
     pos += moved;
-    tbl = (GET_VALUE(view, tbl_id, &flag) + mod_offset(tbl_id)) >> 8;
+    tbl = ((GET_VALUE(view, tbl_id, &flag) & 0xFFFF) + mod_offset(tbl_id)) >> 8;
 #else
     (void)sw;
 #endif
-    if (tbl < 0 || tbl >= (int)(WR_TABLES + pool_count()))
+    if (tbl < 0 || tbl >= (int)(WR_TABLES + pool_count()) || !pool_has(tbl - WR_TABLES))
         tbl = 0;                            /* what the DSP plays for a slot it has not */
     pos = clamp_pos(pos);
 

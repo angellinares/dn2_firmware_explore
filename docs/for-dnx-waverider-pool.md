@@ -114,6 +114,13 @@ and a different one uploaded into the same store slot, every pool naming that sl
 table, and nothing can tell. Carrying each entry's hash would take 127 × 6 bytes, which doesn't
 fit in 512, so this is documented rather than widened.
 
+**An upload shows up in an old project's pool by itself** (seen on the instrument,
+waverider-wtpool1, 2026-10-06). A project with no record follows the automatic pool, so tables
+uploaded to the +Drive appear in its pool with nobody having added them, while a CREATE NEW
+project (an empty list) stays empty after the same upload. Both are as designed; only whether
+a record exists separates them. Queued: the instrument's page 2 says when a project follows the
+automatic pool, where the count is, so the two don't read as a bug.
+
 **What the automatic pool can't hold steady.** Its order is store-slot order, so an upload into a
 free store slot below the others shifts every later pool index, and sounds in an automatic
 project then play other tables. That is today's behaviour, unchanged; writing an explicit record

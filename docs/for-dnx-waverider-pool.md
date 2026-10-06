@@ -317,3 +317,35 @@ is DNX's to add; the pool makes it matter more than the store alone did. So does
   - LOAD: the active track's TBL1 / TBL2 in the kit sound; no record change.
   Emulator: each step's frames, and record 0 still `[3, 5, 0]` gen 1 after a DELETE, read
   over the Data API.
+
+## Revision 4 (agreed with DNX, 2026-10-06; not built yet): 128 pool slots
+
+The owner: a pool of 128 tables, beside the 128-sound pool. Built on
+`feature/waverider-pool-128`; until then `waverider-wtpool1` is v1 (127).
+
+- **Numbers:** pool index 0..127, shown slot 001..128, coarse 0..129 (0 and 1 still Prim. and
+  Harm., 2..129 the pool; still a byte). TBL's range goes to 129. The automatic pool is the
+  first 128 playable tables in store-slot order.
+- **Record version 2:** the same 512 bytes and header; 128 × u16 entries at 16..271;
+  reserved zero 272..507; the hash at 508. The count is still the entries that are not
+  `0xFFFF`, now at most 128. **Both version fields say 2**: the container's object version
+  (`0x11`) and the record's own (offset 4). They describe the same thing and never disagree;
+  a reader checks both.
+- **Version 1 stays readable:** 127 entries, the 128th read as `0xFFFF` (v1 reserves its
+  bytes, 270..271, as zero, which would otherwise name store slot 0). Reads always return v2.
+  Writes:
+  - **a v1 write is accepted and converted**, not refused: a refusal at the commit can't
+    speak, and v1 to v2 is total, lossless and unambiguous (127 entries and an empty 128th);
+  - the firmware stores only v2; SAVE, LOAD and CREATE NEW copy as v2;
+  - **the condition, not the rule:** a future version that changes what a field *means*,
+    rather than adding one, is refused instead, because converting it would silently give
+    wrong data.
+- **Both sides model 128 entries for either version** (DNX: the last `undefined` for a v1
+  record): the version decides the bytes, not the shape a caller sees.
+- **The DSP:** the load area starts 4 KiB lower, at `0x807ff000`: the pool directory at its
+  start, table j at `0x80800000 + 16 KiB × j` as before, so 128 tables fill the 2 MiB that
+  127 and the directory shared.
+- **Vectors:** the firmware produces v2 vectors once built; DNX's three v1 vectors stay as
+  read cases (the v1 compatibility path's regression).
+- Not added: a hash per referenced table (128 of them don't fit in the reserved bytes); the
+  reused-store-slot blind spot stays documented.

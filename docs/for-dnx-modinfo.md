@@ -68,13 +68,23 @@ One bit per thing DNX does differently.
 | 0x01 | store | shows the Wavetables tab at all (`/waverider`: list, read, write a table) |
 | 0x02 | pool | shows the pool pane, not the store list alone (`/wavepool`) |
 | 0x04 | rename | enables Rename (a 128-byte body to `/waverider/<n>` renames in place) |
-| 0x08 | (unused) | was `delete` in rev 1: every build with the store has delete, so the flag said nothing. Not to be reused |
+| 0x08 | (unused) | was `delete` in rev 1: every build with the store has delete, so the flag said nothing. Not to be reused, and a reader infers nothing from it, set or clear |
 | 0x10 | pool_cas | a refused write that sent a generation means "the instrument changed this pool"; without the bit DNX can't say that |
 | 0x20 | page | the instrument has its own wavetable page (PRESET/KIT, page 2): DNX's only way to know there is a second writer of the working project's pool, so a refused write can say "the instrument changed this pool" |
 
 **Unknown bits must be ignored.** That's the opposite of the pool record's rule, where an undefined flag is refused, and the difference is deliberate:
 - a data record must not be half-understood;
 - a capability set grows by design, and an older DNX meeting newer firmware should lose features, not refuse the device.
+
+## A Waverider build without `/modinfo` (DNX's rule)
+
+Every build on the instrument before rev 1 lists `waverider` (and from the pool lists on, `wavepool`) but has no `/modinfo`. DNX reads it as **supported, capabilities unknown**:
+- **What the listing proves:** `waverider` means the store, and `wavepool` means pool lists.
+- **The rule:** an unknown capability **disables a feature and never suppresses a warning**.
+  - Rename unknown: the button is off.
+  - `page` unknown: DNX assumes there may be a second writer.
+  - `pool_cas` unknown: DNX warns before a pool write that a concurrent edit can't be detected.
+  - Name lengths unknown: DNX shows the stored name and doesn't predict the cut.
 
 ## Where it comes from
 

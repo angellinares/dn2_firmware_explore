@@ -163,7 +163,8 @@ def main() -> int:
         print(("PASS " if cond else "FAIL ") + what + (f"  ({detail})" if detail else ""))
 
     root = listing(replies["root"][0])
-    check("/ lists wavepool, 5 entries", [n for _, n, _ in root][-1:] == ["wavepool"] and len(root) == 5,
+    check("/ lists wavepool after waverider (then modinfo)",
+          [n for _, n, _ in root][3:5] == ["waverider", "wavepool"] and len(root) in (5, 6),
           [n for _, n, _ in root])
     l0 = listing(replies["list0"][0])
     check("/wavepool lists 0..128, 0 named working, none used",

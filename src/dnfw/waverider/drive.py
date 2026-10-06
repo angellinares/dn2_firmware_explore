@@ -40,6 +40,7 @@ SOURCES = (ROOT / "csrc/waverider/pool.c", ROOT / "csrc/waverider/loader.c",
            ROOT / "csrc/wrstore/store.c", ROOT / "csrc/wrstore/routekit.c",
            ROOT / "csrc/wrstore/route.c", ROOT / "csrc/wrstore/records.c",
            ROOT / "csrc/wrstore/poolroute.c", ROOT / "csrc/wrstore/projects.c",
+           ROOT / "csrc/wrstore/modinfo.c",
            ROOT / "csrc/waverider/wtmenu.c", ROOT / "csrc/waverider/wtlist.c",
            ROOT / "csrc/waverider/wtedit.c")
 ENTRIES = ["wr_drive_head", "wr_drive_poll", "wr_add", "wr_root_entry", "wr_list_invoker",

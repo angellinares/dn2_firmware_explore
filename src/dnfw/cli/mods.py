@@ -366,6 +366,9 @@ def _apply(args) -> int:
             print(f"  {note}")
         payloads.update(result.payloads)
 
+    if 3 in payloads:
+        payloads[3] = _modinfo(payloads[3], chosen, args)
+
     reps = {sid: replacement(firmware, sid, payload)
             for sid, payload in payloads.items()}
     out = rebuild(firmware, reps)
@@ -388,6 +391,39 @@ def _apply(args) -> int:
     print("and make sure the recovery route in docs/flashing.md is proven on "
           "your device first.")
     return 0
+
+
+def _modinfo(payload: bytes, chosen, args) -> bytes:
+    """MAIN OS with its /modinfo record written (docs/for-dnx-modinfo.md), when a mod
+    carries one (Waverider's +Drive chunk); every mod applied is listed with the hash of
+    its code, so two builds of the same mods differ in the image id, not only the tag."""
+    import re
+    import subprocess
+    from ..mods import modinfo
+    from ..waverider.store import xxh32
+    here = pathlib.Path(__file__).resolve().parents[1] / "mods"
+    mods = []
+    for mod in chosen:
+        code = here / f"{mod.ID}_code.json"
+        mods.append((mod.ID, xxh32(code.read_bytes()) if code.exists() else 0))
+    try:
+        root = pathlib.Path(__file__).resolve().parents[3]
+        commit = subprocess.run(["git", "rev-parse", "--short=10", "HEAD"], cwd=root,
+                                capture_output=True, text=True, timeout=30).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=root,
+                               capture_output=True, text=True, timeout=30).stdout.strip()
+        commit = commit[:10] + ("+" if dirty else "")
+    except (OSError, subprocess.SubprocessError):
+        commit = "unknown"
+    m = re.search(r"OS(\d+\.\d+[A-Z]?)", pathlib.Path(args.image).name)
+    tag = getattr(args, "probe_tag", None) or args.out.stem.split("_DN2_")[0]
+    at = modinfo.locate(payload)
+    filled = modinfo.fill(payload, mods, tag, commit, m.group(1) if m else "unknown")
+    if at is not None:
+        info = modinfo.parse(filled[at:at + modinfo.BYTES])
+        print(f"  /modinfo: image id {info['image_id']:08x}, tag {info['tag']}, commit {info['commit']}, "
+              f"{len(mods)} mods, capabilities {', '.join(info['capabilities'])}")
+    return filled
 
 
 def _apply_default(mod, firmware, scratch: pathlib.Path):

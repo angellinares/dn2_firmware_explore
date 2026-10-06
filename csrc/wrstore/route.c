@@ -29,6 +29,7 @@ void wr_nop(void);
 void wr_register(void *self, u8 *registry);
 void wr_file_invoker(void);
 void wp_add(void);
+void mi_add(void);
 
 /* offset-to-top, typeinfo, then the four slots */
 static const u32 vtable[6] __attribute__((aligned(4))) = {
@@ -416,6 +417,7 @@ void wr_add(void)
     owner = (u32)h;
     REG_ADD(REGISTRY, &owner);
     wp_add();                                     /* /wavepool after it (poolroute.c) */
+    mi_add();                                     /* then /modinfo (modinfo.c) */
     BUILT_FLAG = 1;
 }
 

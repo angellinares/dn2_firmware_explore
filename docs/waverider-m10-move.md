@@ -444,25 +444,51 @@ Each block, per voice and oscillator:
 
 The state is at DM `0x2e1100`. The page's wave still draws the unsmoothed position.
 
-## DCLK, the declick (`dclk.asm`, sw `0x170400`)
+## DCLK, the crossfade (`dclk.asm`, sw `0x170400`)
 
-The crossfade decided on 2026-10-05, built as a decaying offset rather than a second table read
-per sample:
-- **`wr_dclk_pre`:** the loop's call of the reader goes through here. It notes each oscillator's
-  table, pos, gain and starting phase.
-- **`wr_dclk_post`:** after a voice's oscillators, it asks the reader for the one sample the last
-  block's settings would play at this block's first sample, each oscillator at the phase it starts
-  on. With the carry left from before, less what this block plays there, that gives the offset O.
-  The block gets `O x e^(-i/48)` added (1 ms), and `O x e^(-N/48)` carries on into the next.
-- **Nothing changed:** O is exactly 0 and the block is untouched. So DCLK costs no sound, only
-  cycles.
-- **What it covers:** a jump of POS (a loop's reset, a Square), of LEV (a Square on MLEV, a fast
-  knob), and an oscillator starting or stopping.
-- **A note's block is left alone:** PRST may have restarted the oscillator, so there is no old
-  phase to continue.
+**First built as a 1 ms offset declick.** At each block boundary, it added the difference between
+what the old settings would have played and what the new ones did, decaying over 1 ms. The owner
+heard that it helped but didn't fully solve the click. Measured (a scratch prototype, the Up Loop
+test, energy above 6 kHz, where the table holds nothing at note 48):
 
-Its cost is two one-sample reader calls and a 32-sample multiply-add per voice and block, and only
-when DCLK is On.
+| technique | click vs no declick | reset vs the rest of the cycle |
+|---|---|---|
+| none | 0 dB | +32 dB |
+| offset, 1 ms (as first built) | -23.6 dB | +9.5 dB |
+| offset, 5 / 20 / 100 ms | -22.8 / -22.6 / -22.6 dB | +10.5 dB at 100 ms |
+| crossfade, 3 / 10 / 30 ms | -31.7 / -39.5 / -48.8 dB | +0.7 / -7 / -16 dB |
+| switch at the oscillator's cycle start | -28.8 dB | +3.6 dB |
+| POS per sample | -25.2 dB | +7.9 dB |
+| POS glide, 2 / 5 ms | -7 / -11 dB | a "zip" instead |
+
+The offset only joins up the *value*: the wave still changes shape between two samples, and a
+longer decay does nothing for that. A true crossfade does. **Decided (owner, 2026-10-06):** the
+crossfade, with its time as the control, from 1 to 100 ms (long ones are for expressive use).
+
+**The control:**
+- DCLK (HOLD, slot 41): 0 Off, 1..127 = 1..100 ms, x10 every 63 steps.
+- A new or cleared sound starts at 31 = 3.0 ms, `live.DCLK_DEFAULT`. It reaches a cleared sound
+  through `wr_range`'s default. In the emulator, CLEAR TRK PRESET on a Waverider track set slot 41
+  to `0x1f00` while SMTH came back as the record's 127.
+- Sounds saved before this build read 127, 100 ms (owner: fine).
+
+**How it works:**
+- **Detection:** `wr_dclk_pre` sits in the loop's reader call, per voice and oscillator. It compares
+  the block's table, pos and gain with the last block's. A jump is another table, POS by more than
+  2 frames, or the gain by more than 0.1. Smaller moves pass through untouched.
+- **The fade:** on a jump, the last settings become the fade's old ones. While a fade lasts, the
+  oscillator is rendered twice into scratch buffers, new and old from the same phase and increment.
+  It is mixed as `y = n + (o - n) x (left - i) / length`, linear, with the inverse from a table:
+  the DSP has no divide. The mix replaces osc 1's output and is added for osc 2.
+- **No fade under way:** the call goes straight to the reader as before, so a sound with nothing
+  jumping is bit for bit unchanged.
+- **Notes:** a note cancels a fade and starts none (PRST may have restarted the phase).
+- **A new jump mid-fade** restarts the fade from the last settings.
+- **The cost:** one more reader pass per oscillator, only during a fade.
+
+**The page's value text** for RATE (synced), SMTH and DCLK comes from C formatters. `wr_fmt` calls
+the pair's function when its count is negative. That replaced three name tables, 357 pointers,
+which no longer fit below `0x46710000`.
 
 ## The gates
 
@@ -471,13 +497,14 @@ when DCLK is On.
   - SMTH glides, and a note snaps it;
   - an unchanged block is untouched by DCLK;
   - a POS jump ramps in from where the old frame would have gone on.
-- `scripts/sharc_waverider_m5.py`, four runs with a POS jump at block 4 and no note, each
+- `scripts/sharc_waverider_m5.py`, five runs with a POS jump at block 3 and no note (and one without it), each
   bit-exact against `live.render_two`:
   - SMTH 127 jumps;
   - SMTH 60 glides and stays below the target;
-  - DCLK On adds a decaying offset at the jump, leaves the blocks before it identical, and shrinks
-    the step;
+  - DCLK 3 ms: identical to Off before the jump, its first sample still the old frame's, and
+    bit-identical to Off from 144 samples on;
   - DCLK Off is the control.
 
-  Every other run now goes through DCLK too, since it is On by default, and all stay bit-exact.
-- The emulator (`waverider-sync2`): page 3's layout, "Osc1 Smooth=2.2 ms" at 124, "Declick=Off".
+  The other runs carry the frame's DCLK 127 (100 ms), so any jump in them crossfades, and all stay bit-exact.
+- The emulator: page 3's layout and "Osc1 Smooth=2.2 ms" at 124 (`waverider-sync2`); "Declick=17 ms"
+  at 79, and CLEAR TRK PRESET giving DCLK 3 ms (`waverider-sync3`).

@@ -4,8 +4,8 @@
 // (MOVE) and comes back at wr_t5v_modded.
 //
 // M10b-2: the reader block's pos is stored by smooth.asm (SMTH, the glide), which comes
-// back at wr_t5v_smoothed; the reader is called through dclk.asm's wr_dclk_pre, and a
-// voice's last oscillator goes on to the next voice through wr_dclk_post (DCLK).
+// back at wr_t5v_smoothed; the reader is called through dclk.asm's wr_dclk_pre (DCLK,
+// the crossfade at a jump).
 //
 // M9b: each type-5 track runs the per-oscillator body twice. Osc 2's parameters are
 // osc 1's, 12 bytes later in the frame copy (TUN2/WAV2/TBL2 = params 31/32/33,
@@ -221,7 +221,7 @@ wr_t5v_halves.:
       IF NE JUMP 0x16edf0;              // -> wr_t5v_lev_on.
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
-      IF NE JUMP 0x17043a;              // -> wr_dclk_post. (osc 2 not run: DCLK, then the next voice)
+      IF NE JUMP 0x16eea7;              // -> wr_t5v_next.
 .GLOBAL wr_t5v_lev_on.;
 wr_t5v_lev_on.:
       // M10a: MOVE, the modulator (modulator.asm, sw 0x16f700), which offsets R4 (POS)
@@ -337,7 +337,7 @@ wr_t5v_tuned.:
 wr_t5v_osc_next.:
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
-      IF NE JUMP 0x17043a;              // -> wr_dclk_post. (osc 2 done: DCLK, then the next voice)
+      IF NE JUMP 0x16eea7;              // -> wr_t5v_next. (osc 2 done)
       R0 = 1;
       DM(0x2de6c4) = R0;                // osc 2: add
       R0 = 0x900;

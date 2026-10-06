@@ -1,39 +1,39 @@
-// dclk.asm -- Waverider M10b-2: DCLK, the declick.
+// dclk.asm -- Waverider M10b-2: DCLK, the crossfade at a jump.
 //
 // Our own code, assembled with selache's `selas` (GPL-3.0, used as a tool and never
 // linked in), run offline in digikit's SHARC executor and checked bit for bit against
-// dnfw.waverider.live.declick (scripts/sharc_waverider_m5.py).
+// dnfw.waverider.live.render_two's crossfade (scripts/sharc_waverider_m5.py).
 //
 // POS and LEV change once a block, so a jump between two blocks (a looping MOVE's reset,
-// a Square, a fast knob) steps the output between two samples: a click. DCLK takes that
-// step out. After a voice's oscillators have played a block, it asks the reader for
-// what the last block's settings would have played at this block's first sample (each
-// oscillator at the phase it starts this block on), adds what is left of the last
-// offset, and subtracts what this block plays there. That offset O is added to the
-// block decaying over 1 ms, O x D[i] with D[i] = e^(-i/48) (the table at DM 0x2e0e00),
-// and what is left after the block, O x D[N], carries into the next. With nothing
-// changed O is exactly 0 and the block is untouched; an oscillator starting or stopping
-// fades over the same 1 ms. A block with a note on this voice is left alone (PRST may
-// have restarted the oscillator: the old settings have no phase to continue from).
-// DCLK is HOLD (slot 41, frame offset 250 + 146t, shared), default 127: On.
+// a Square, a fast knob, another table) switches the wave between two samples: a click.
+// DCLK crossfades it: from the jump on, the last block's settings keep playing at the
+// same phase and fade out while the new ones fade in, linearly over the DCLK time.
+// A jump is POS by more than 2 frames, another table, or the gain by more than 0.1;
+// smaller moves pass straight through, untouched. (Until 2026-10-06 this was a 1 ms
+// offset declick; the owner chose the crossfade after the measurement in
+// docs/waverider-m10-move.md.)
 //
-// Two entries, both from machine9_live.asm:
-// - wr_dclk_pre (first, at sw 0x170400): the loop's `CJUMP` to the reader comes here.
-//   It notes this oscillator's table, pos, gain and starting phase, and that it ran,
-//   then goes on to wr_render5 with the call's frame untouched (R4 = the reader block).
-// - wr_dclk_post: the loop's two ways to the next voice after a voice's oscillators
-//   (osc 2 done, or osc 2 at LEV 0 not run). It applies DCLK, makes this block's
-//   settings the last block's, and goes on to wr_t5v_next.
+// DCLK is HOLD (slot 41, frame offset 250 + 146t, shared): 0 Off, 1..127 a crossfade of
+// 1..100 ms, the length in samples from the table at DM 0x2e0e00 and its inverse (the
+// DSP has no divide) at 0x2e1000 (dnfw.waverider.live.dclk_lengths, dclk_inverses).
+// A block with a note on this voice cancels a fade and starts none (PRST may have
+// restarted the oscillator).
 //
-// State (zeros at boot): per voice, 128 bytes at DM 0x2e1200 + 128t: per oscillator
-// (osc x 48) the last block's table, pos, gain and whether it ran (+0..+12), then this
-// block's table, pos, gain, starting phase and whether it ran (+16..+32); the carry at
-// +96. Scratch at 0x2e1180: the voice's state, the oscillator, the expected sample, the
-// reader's one-sample output; a reader block at 0x2e11a0.
+// wr_dclk_pre (at sw 0x170400): machine9_live.asm's `CJUMP` to the reader comes here,
+// once per voice and oscillator, R4 = the reader block. It notes the block's table, pos
+// and gain against the last block's (state per voice and oscillator, 64 bytes at DM
+// 0x2e1400 + 128t + 64 osc: last table, pos, gain, valid; the fade's old table, pos,
+// gain and samples left), then:
+// - no fade: `JUMP` on to wr_render5 with the call's frame untouched, as before DCLK;
+// - a fade: it renders the new settings into the buffer at 0x2e1c00 and the old ones,
+//   from the same phase, into 0x2e1e00 (two calls of the reader), mixes them into the
+//   block's out (replacing for osc 1, adding for osc 2), y = n + (o - n) x a with
+//   a = (left - i) / length while it is above 0, and returns to the loop itself, as the
+//   reader would. Scratch at 0x2e1280..0x2e12c0, a reader block at 0x2e12a0.
 //
-// Clobbers what the reader does (R0-R15, I0, I2, I4) and I1, as the loop allows at both
-// sites. Keeps I3, I5, I6, I7. Only forms the firmware itself uses, and every add has
-// R8-R15 first (see reader_m5.asm).
+// Clobbers what the reader does (R0-R15, I0, I2, I4) and I1. Keeps I3, I5, I6, I7.
+// Only forms the firmware itself uses, and every add has R8-R15 first (see
+// reader_m5.asm).
 //
 // PLACEMENT IS FIXED at PM sw 0x170400 (DM 0x2e0800).
 
@@ -41,45 +41,23 @@
 
 .GLOBAL wr_dclk_pre.;
 wr_dclk_pre.:
-      // this oscillator's "this block" fields: 0x2e1200 + 128t + 48 osc + 16
-      R0 = DM(0x2dde80);
-      R1 = 16;
-      R0 = R1 - R0;                     // t
-      R0 = LSHIFT R0 BY 7;
-      R1 = DM(0x2de6c4);
-      R2 = LSHIFT R1 BY 5;
-      R3 = LSHIFT R1 BY 4;
-      R12 = PASS R2;
-      R2 = R12 + R3;                    // 48 x osc
-      R12 = 0x2e1210;
-      R0 = R12 + R0;
-      R12 = PASS R2;
-      R0 = R12 + R0;
-      I1 = R0;
-      I4 = R4;                          // the reader block (the reader sets I4 = R4 itself)
-      R2 = DM(0, I4);
-      DM(0, I1) = R2;                   // table
-      R2 = DM(3, I4);
-      DM(1, I1) = R2;                   // pos
-      R2 = DM(0x2de6c0);
-      DM(2, I1) = R2;                   // gain
-      R2 = DM(1, I4);
-      DM(3, I1) = R2;                   // the phase it starts on
-      R2 = 1;
-      DM(4, I1) = R2;                   // it ran
-      JUMP 0x16eb00;                    // -> wr_render5. (reader_m9.asm, which returns to the loop)
-
-.GLOBAL wr_dclk_post.;
-wr_dclk_post.:
+      I4 = R4;
+      DM(0x2e1284) = R4;                // the reader block
+      // this oscillator's state: 0x2e1400 + 128t + 64 osc
       R0 = DM(0x2dde80);
       R1 = 16;
       R9 = R1 - R0;                     // t
       R0 = LSHIFT R9 BY 7;
-      R12 = 0x2e1200;
+      R1 = DM(0x2de6c4);
+      R2 = LSHIFT R1 BY 6;
+      R12 = PASS R2;
       R0 = R12 + R0;
-      DM(0x2e1180) = R0;                // this voice's state
+      R12 = 0x2e1400;
+      R0 = R12 + R0;
+      DM(0x2e1280) = R0;
+      I1 = R0;
 
-      // DCLK (HOLD): the frame's offset 250 + 146t
+      // DCLK (HOLD): the frame's offset 250 + 146t; v = min(word >> 8, 127)
       R10 = LSHIFT R9 BY 7;
       R11 = LSHIFT R9 BY 4;
       R10 = R10 + R11;
@@ -93,14 +71,28 @@ wr_dclk_post.:
       R2 = DM(0, I0);
       R3 = 2;
       R3 = R1 AND R3;
-      IF EQ JUMP 0x17046e;              // -> wr_dclk_low. (2 mod 4: the high half)
+      IF EQ JUMP 0x170444;              // -> wr_dclk_low. (2 mod 4: the high half)
       R2 = LSHIFT R2 BY -16;
 .GLOBAL wr_dclk_low.;
 wr_dclk_low.:
       R3 = 0xffff;
       R2 = R2 AND R3;
-      IF EQ JUMP 0x17055a;              // -> wr_dclk_off. (DCLK Off)
-      // a note on this voice: the block is left alone
+      R2 = LSHIFT R2 BY -8;
+      R3 = 127;
+      R2 = MIN(R2, R3);
+      R2 = LSHIFT R2 BY 2;
+      DM(0x2e1298) = R2;                // 4 v, for the inverse later
+      R12 = 0x2e0e00;
+      R2 = R12 + R2;
+      I0 = R2;
+      R8 = DM(0, I0);                   // the length in samples, 0 for Off
+      R8 = PASS R8;
+      IF EQ JUMP 0x1704c4;              // -> wr_dclk_nofade. (DCLK Off)
+      R3 = DM(0x2dde24);                // the block size
+      R2 = 128;
+      COMP(R3, R2);
+      IF GT JUMP 0x1704c4;              // -> wr_dclk_nofade. (longer than the scratch buffers)
+      // a note on this voice: no fade
       R0 = DM(0x25c4ac);                // the frame's offset 32..35: the note mask high
       R0 = LSHIFT R0 BY -16;
       R1 = R1 - R1;
@@ -108,152 +100,174 @@ wr_dclk_low.:
       R0 = LSHIFT R0 BY R1;             // >> t
       R1 = 1;
       R0 = R0 AND R1;
-      IF NE JUMP 0x17055a;              // -> wr_dclk_off.
+      IF NE JUMP 0x1704c4;              // -> wr_dclk_nofade.
+      R2 = DM(3, I1);                   // a last block to compare with?
+      R2 = PASS R2;
+      IF EQ JUMP 0x1704c7;              // -> wr_dclk_record.
 
-      // the sample the last block's settings would play now, oscillator by oscillator
-      R0 = R0 - R0;
-      DM(0x2e1188) = R0;                // expected = +0.0
-      DM(0x2e1184) = R0;                // osc = 0
-.GLOBAL wr_dclk_osc.;
-wr_dclk_osc.:
-      R0 = DM(0x2e1180);
-      R1 = DM(0x2e1184);
-      R2 = LSHIFT R1 BY 5;
-      R3 = LSHIFT R1 BY 4;
-      R12 = PASS R2;
-      R2 = R12 + R3;                    // 48 x osc
-      R12 = PASS R2;
-      R0 = R12 + R0;
-      I1 = R0;                          // this oscillator's fields
-      R2 = DM(3, I1);                   // ran last block?
-      R2 = PASS R2;
-      IF EQ JUMP 0x1704fe;              // -> wr_dclk_osc_next.
+      // a jump: another table, POS by more than 2 frames, or the gain by more than 0.1
+      R0 = DM(0, I4);
       R2 = DM(0, I1);
-      DM(0x2e11a0) = R2;                // table: the last block's
-      // the phase: where this oscillator starts this block, or where it stands if it
-      // did not run (its reader block: 0x2ddf00 + 32t + 0x900 osc)
-      R3 = DM(7, I1);
-      R2 = DM(8, I1);                   // ran this block?
-      R2 = PASS R2;
-      IF NE JUMP 0x1704ca;              // -> wr_dclk_phase.
-      R2 = LSHIFT R9 BY 5;
-      R12 = 0x2ddf04;
-      R2 = R12 + R2;
-      R3 = DM(0x2e1184);
-      R3 = PASS R3;
-      IF EQ JUMP 0x1704c6;              // -> wr_dclk_osc1.
-      R12 = 0x900;
-      R2 = R12 + R2;
-.GLOBAL wr_dclk_osc1.;
-wr_dclk_osc1.:
-      I0 = R2;
-      R3 = DM(0, I0);
-.GLOBAL wr_dclk_phase.;
-wr_dclk_phase.:
-      DM(0x2e11a4) = R3;                // phase
-      R2 = R2 - R2;
-      DM(0x2e11a8) = R2;                // inc: one sample needs none
+      COMP(R0, R2);
+      IF NE JUMP 0x1704b3;              // -> wr_dclk_start.
+      R0 = DM(3, I4);
       R2 = DM(1, I1);
-      DM(0x2e11ac) = R2;                // pos: the last block's
-      R2 = 1;
-      DM(0x2e11b0) = R2;                // count
-      R2 = 0x2e118c;
-      DM(0x2e11b4) = R2;                // out: the scratch word
+      R0 = R0 - R2;
+      R2 = 0x20000;
+      COMP(R0, R2);
+      IF GT JUMP 0x1704b3;              // -> wr_dclk_start.
+      R2 = -131072;
+      COMP(R0, R2);
+      IF LT JUMP 0x1704b3;              // -> wr_dclk_start.
+      R0 = DM(0x2de6c0);
       R2 = DM(2, I1);
-      DM(0x2de6c0) = R2;                // gain: the last block's
+      F0 = F0 - F2;
+      R2 = 0x3dcccccd;                  // f32(0.1)
+      COMP(F0, F2);
+      IF GT JUMP 0x1704b3;              // -> wr_dclk_start.
+      R2 = -0x42333333;                 // f32(-0.1), 0xbdcccccd
+      COMP(F0, F2);
+      IF LT JUMP 0x1704b3;              // -> wr_dclk_start.
+      JUMP 0x1704c7;                    // -> wr_dclk_record.
+
+.GLOBAL wr_dclk_start.;
+wr_dclk_start.:
+      // the last block's settings become the fade's old ones, for the whole length
+      R2 = DM(0, I1);
+      DM(4, I1) = R2;
+      R2 = DM(1, I1);
+      DM(5, I1) = R2;
+      R2 = DM(2, I1);
+      DM(6, I1) = R2;
+      DM(7, I1) = R8;
+      JUMP 0x1704c7;                    // -> wr_dclk_record.
+.GLOBAL wr_dclk_nofade.;
+wr_dclk_nofade.:
       R2 = R2 - R2;
-      DM(0x2de6c4) = R2;                // replace, not add
-      R4 = 0x2e11a0;
+      DM(7, I1) = R2;                   // no fade
+.GLOBAL wr_dclk_record.;
+wr_dclk_record.:
+      R2 = DM(0, I4);
+      DM(0, I1) = R2;                   // this block's table, pos and gain are the last now
+      R2 = DM(3, I4);
+      DM(1, I1) = R2;
+      R2 = DM(0x2de6c0);
+      DM(2, I1) = R2;
+      R2 = 1;
+      DM(3, I1) = R2;
+      R2 = DM(7, I1);
+      R2 = PASS R2;
+      IF GT JUMP 0x1704e4;              // -> wr_dclk_fade.
+      R4 = DM(0x2e1284);
+      JUMP 0x16eb00;                    // -> wr_render5. (no fade: as before, back to the loop)
+
+.GLOBAL wr_dclk_fade.;
+wr_dclk_fade.:
+      // 1. the new settings into the first buffer
+      R0 = DM(5, I4);
+      DM(0x2e1288) = R0;                // the block's own out
+      R0 = DM(0x2de6c4);
+      DM(0x2e128c) = R0;                // osc 2: add
+      R0 = DM(1, I4);
+      DM(0x2e1290) = R0;                // the phase this block starts on
+      R0 = DM(4, I4);
+      DM(0x2e1294) = R0;                // N
+      R0 = 0x2e1c00;
+      DM(5, I4) = R0;
+      R0 = R0 - R0;
+      DM(0x2de6c4) = R0;                // replace
+      R4 = DM(0x2e1284);
+      CJUMP 0x16eb00 (DB);              // wr_render5(R4 = the reader block)
+      DM(I7, M7) = R2;
+      DM(I7, M7) = 0x17050b;            // return address - 1: wr_dclk_new. - 1
+.GLOBAL wr_dclk_new.;
+wr_dclk_new.:
+      R4 = DM(0x2e1284);
+      I4 = R4;
+      R0 = DM(0x2e1288);
+      DM(5, I4) = R0;
+      // 2. the old settings, from the same phase, into the second buffer
+      R0 = DM(0x2e1280);
+      I1 = R0;
+      R2 = DM(4, I1);
+      DM(0x2e12a0) = R2;                // table
+      R2 = DM(0x2e1290);
+      DM(0x2e12a4) = R2;                // phase
+      R2 = DM(2, I4);
+      DM(0x2e12a8) = R2;                // inc
+      R2 = DM(5, I1);
+      DM(0x2e12ac) = R2;                // pos
+      R2 = DM(0x2e1294);
+      DM(0x2e12b0) = R2;                // count
+      R2 = 0x2e1e00;
+      DM(0x2e12b4) = R2;                // out
+      R2 = DM(6, I1);
+      DM(0x2de6c0) = R2;                // gain
+      R4 = 0x2e12a0;
       CJUMP 0x16eb00 (DB);              // wr_render5(R4 = the scratch block)
       DM(I7, M7) = R2;
-      DM(I7, M7) = 0x1704f3;            // return address - 1: wr_dclk_have. - 1
-.GLOBAL wr_dclk_have.;
-wr_dclk_have.:
-      R0 = DM(0x2e1188);
-      R1 = DM(0x2e118c);
-      F0 = F0 + F1;
-      DM(0x2e1188) = R0;                // expected += what the old settings play
-.GLOBAL wr_dclk_osc_next.;
-wr_dclk_osc_next.:
-      R1 = DM(0x2e1184);
-      R12 = 1;
-      R1 = R12 + R1;
-      DM(0x2e1184) = R1;
-      R2 = 2;
-      COMP(R1, R2);
-      IF LT JUMP 0x17048c;              // -> wr_dclk_osc.
-
-      // O = carry + (expected - what this block plays first)
-      R0 = DM(0x2e1180);
+      DM(I7, M7) = 0x17054a;            // return address - 1: wr_dclk_old. - 1
+.GLOBAL wr_dclk_old.;
+wr_dclk_old.:
+      // 3. y = n + (o - n) x (left - i) / length, while left - i > 0; into the block's out
+      R0 = DM(0x2e1280);
       I1 = R0;
-      R3 = DM(0x2dde88);                // the voice's buffer
-      I0 = R3;
-      R1 = DM(0, I0);
-      R0 = DM(0x2e1188);
-      F0 = F0 - F1;
-      R2 = DM(24, I1);                  // the carry
-      F0 = F2 + F0;
-      F0 = PASS F0;
-      IF EQ JUMP 0x17055a;              // -> wr_dclk_off. (nothing changed: the block is untouched)
-      R13 = DM(0x2dde24);               // N, the block size
-      R2 = 128;
-      COMP(R13, R2);
-      IF GT JUMP 0x17055a;              // -> wr_dclk_off. (past the table: left alone)
-      R10 = 0x2e0e00;                   // D[0]
-      R11 = PASS R3;                    // the buffer
-.GLOBAL wr_dclk_ramp.;
-wr_dclk_ramp.:
-      I0 = R11;
-      R1 = DM(0, I0);
+      R8 = DM(7, I1);                   // samples left
+      R2 = DM(0x2e1298);
+      R12 = 0x2e1000;
+      R2 = R12 + R2;
+      I0 = R2;
+      R6 = DM(0, I0);                   // 1 / length
+      R10 = 0x2e1c00;                   // n
+      R11 = 0x2e1e00;                   // o
+      R13 = DM(0x2e1288);               // the block's out
+      R14 = DM(0x2e1294);               // N
+      R15 = DM(0x2e128c);               // add?
+      R5 = R5 - R5;
+.GLOBAL wr_dclk_mix.;
+wr_dclk_mix.:
       I0 = R10;
-      R2 = DM(0, I0);
-      F2 = F0 * F2;
-      F1 = F1 + F2;                     // y + O x D[i]
+      R1 = DM(0, I0);                   // n
+      R8 = PASS R8;
+      IF LE JUMP 0x170580;              // -> wr_dclk_mixed. (the fade is over: n)
       I0 = R11;
+      R2 = DM(0, I0);                   // o
+      F2 = F2 - F1;
+      F3 = FLOAT R8 BY R5;
+      F3 = F3 * F6;                     // a
+      F2 = F2 * F3;
+      F1 = F1 + F2;
+.GLOBAL wr_dclk_mixed.;
+wr_dclk_mixed.:
+      R15 = PASS R15;
+      IF EQ JUMP 0x170589;              // -> wr_dclk_put.
+      I0 = R13;
+      R2 = DM(0, I0);
+      F1 = F1 + F2;                     // osc 2 adds to what osc 1 wrote
+.GLOBAL wr_dclk_put.;
+wr_dclk_put.:
+      I0 = R13;
       DM(0, I0) = R1;
       R12 = 4;
       R10 = R12 + R10;
       R11 = R12 + R11;
+      R13 = R12 + R13;
       R12 = 1;
-      R13 = R13 - R12;
-      IF NE JUMP 0x170534;              // -> wr_dclk_ramp.
-      I0 = R10;
-      R2 = DM(0, I0);                   // D[N]
-      F2 = F0 * F2;
-      DM(24, I1) = R2;                  // the carry: O x D[N]
-      JUMP 0x170562;                    // -> wr_dclk_shift.
-
-.GLOBAL wr_dclk_off.;
-wr_dclk_off.:
-      R0 = DM(0x2e1180);
-      I1 = R0;
-      R2 = R2 - R2;
-      DM(24, I1) = R2;                  // no carry
-.GLOBAL wr_dclk_shift.;
-wr_dclk_shift.:
-      // this block's settings become the last block's, for both oscillators
-      R0 = DM(0x2e1180);
-      I1 = R0;
-      R2 = DM(4, I1);
-      DM(0, I1) = R2;
-      R2 = DM(5, I1);
-      DM(1, I1) = R2;
-      R2 = DM(6, I1);
-      DM(2, I1) = R2;
-      R2 = DM(8, I1);
-      DM(3, I1) = R2;
-      R2 = R2 - R2;
-      DM(8, I1) = R2;
-      R2 = DM(16, I1);
-      DM(12, I1) = R2;
-      R2 = DM(17, I1);
-      DM(13, I1) = R2;
-      R2 = DM(18, I1);
-      DM(14, I1) = R2;
-      R2 = DM(20, I1);
-      DM(15, I1) = R2;
-      R2 = R2 - R2;
-      DM(20, I1) = R2;
-      JUMP 0x16eea7;                    // -> wr_t5v_next.
+      R8 = R8 - R12;
+      R14 = R14 - R12;
+      IF NE JUMP 0x17056e;              // -> wr_dclk_mix.
+      R8 = PASS R8;
+      IF GE JUMP 0x1705a1;              // -> wr_dclk_left.
+      R8 = R8 - R8;
+.GLOBAL wr_dclk_left.;
+wr_dclk_left.:
+      DM(7, I1) = R8;                   // what is left of the fade
+      R0 = DM(0x2e128c);
+      DM(0x2de6c4) = R0;                // the oscillator flag, as the loop left it
+      // back to the loop, the reader's return shape
+      I12 = DM(M7, I6);
+      JUMP (M14, I12) (DB);
+      NOP;
+      RFRAME;
 .wr_dclk..end:
       .type wr_dclk_pre.,STT_FUNC;

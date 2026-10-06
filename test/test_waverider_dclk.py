@@ -49,31 +49,34 @@ def test_smth_off_renders_as_before_smth():
 
 def test_dclk_leaves_an_unchanged_block_untouched():
     t = dsp.tables()
-    on = live.render_two(t, blocks([0x3000] * 6, dclk=OFF, note_at=1), 32)
-    off = live.render_two(t, blocks([0x3000] * 6, dclk=0, note_at=1), 32)
-    # block 0 fades in (no last block); the note block is left alone; after it, nothing
-    # changes, so the offset is exactly 0 and every sample is the same
-    assert on[32:] == off[32:]
+    wavs = [0x3000] * 6
+    assert (live.render_two(t, blocks(wavs, dclk=live.DCLK_DEFAULT, note_at=1), 32)
+            == live.render_two(t, blocks(wavs, dclk=0, note_at=1), 32))
 
 
-def test_dclk_ramps_a_pos_jump_in_over_a_millisecond():
+def test_dclk_crossfades_a_pos_jump_over_its_time():
     t = dsp.tables()
-    wavs = [0] * 4 + [0x7800] * 4
-    on = live.render_two(t, blocks(wavs, dclk=OFF, note_at=1), 32)
+    wavs = [0] * 4 + [0x7800] * 8
+    on = live.render_two(t, blocks(wavs, dclk=live.DCLK_DEFAULT, note_at=1), 32)      # 3 ms
     off = live.render_two(t, blocks(wavs, dclk=0, note_at=1), 32)
-    j = 4 * 32
-    d = [a - b for a, b in zip(on[j:j + 64], off[j:j + 64])]
-    assert abs(d[0]) > 1e-3
-    assert abs(d[31]) < 0.6 * abs(d[0]) and abs(d[63]) < 0.3 * abs(d[0])   # it carries on decaying
-    # the jump block starts where the old frame would have gone on
-    tab = t[0]
-    ph = 0
-    for b in range(4):                                     # the oscillator's phase at block 4
-        _, ph = render.render(tab, ph, live.increment(48.0), live.position(0), 32)
-    y, _ = render.render(tab, ph, 0, live.position(0), 1)
-    assert abs(on[j] - live._f32(live.gain(0x6400) * y[0])) < 1e-6
+    stay = live.render_two(t, blocks([0] * 12, dclk=0, note_at=1), 32)
+    j, n = 4 * 32, live.dclk_lengths()[live.DCLK_DEFAULT >> 8]
+    assert n == 144
+    assert on[:j] == off[:j]
+    assert on[j] == stay[j]                      # the jump's first sample is still the old frame
+    assert on[j + n:] == off[j + n:]             # after 3 ms, the new frame alone, bit for bit
+    mid = j + n // 2
+    assert abs(on[mid] - (stay[mid] + off[mid]) / 2) < 0.02
 
 
-def test_the_decay_table_is_one_millisecond():
-    d = live.dclk_table()
-    assert d[0] == 1.0 and abs(d[48] - 0.36787944) < 1e-6 and len(d) == live.DCLK_TAPS
+def test_dclk_small_moves_pass_straight_through():
+    t = dsp.tables()
+    wavs = [0x1000 + 0x100 * b for b in range(10)]      # 1/8 frame a block
+    assert (live.render_two(t, blocks(wavs, dclk=live.DCLK_DEFAULT, note_at=1), 32)
+            == live.render_two(t, blocks(wavs, dclk=0, note_at=1), 32))
+
+
+def test_dclk_range_and_names():
+    n = live.dclk_names()
+    assert n[0] == "Off" and n[1] == "1.0 ms" and n[31] == "3.0 ms" and n[127] == "100 ms"
+    assert live.dclk_lengths()[1] == 48 and live.dclk_lengths()[127] == 4800

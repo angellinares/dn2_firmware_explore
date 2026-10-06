@@ -105,7 +105,7 @@ PRST = live.MOVE_SLOTS[0][5]                          # RSET, shared: the oscill
 SYNC1, SYNC2 = live.SYNC_SLOTS                        # M10b-2: MOD, CHAR (Off / On)
 SMTH1, SMTH2 = live.SMTH_SLOTS                        # DEC, WDTH: 127 no glide
 DCLK = live.DCLK_SLOT                                 # HOLD, shared: 0 Off, else On
-JUMP_AT = 4                                           # the SMTH / DCLK runs' POS jump
+JUMP_AT = 3                                           # the SMTH / DCLK runs' POS jump
 SYNC_TEMPO = 14400                                    # BPM x 120: 120 BPM
 SYNC_P0 = 0xFFFD0000                                  # a position that wraps in block 4
 TUN1_ZERO = 0x4000              # the frame word for 0 semitones: the sound's own (probe, 2026-09-30)
@@ -713,12 +713,14 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             "sync_off": run_blocks(init, frames(song=song, overrides={**solo, WAV1: 0, MPOS1: 0x6400, TRIG: 0x100,
                                                                       MOVE1: 0x0000, RATE1: 0x6400}), blocks),
             # M10b-2: SMTH and DCLK, osc 1 alone, POS jumping from 0 to 120 at JUMP_AT with no
-            # note: SMTH 127 (the default) does not glide, SMTH 60 does; DCLK On (the
-            # default, 127) ramps the jump in, Off does not
+            # note: SMTH 127 (the default) does not glide, SMTH 60 does; DCLK 3 ms crossfades
+            # the jump, Off does not, and the same without the jump is the old frame alone
             "smth_off": run_blocks(init, frames(jump=0x7800, overrides={**solo, WAV1: 0, DCLK: 0}), blocks),
             "smth_glide": run_blocks(init, frames(jump=0x7800, overrides={**solo, WAV1: 0, DCLK: 0,
                                                                           SMTH1: 0x3c00}), blocks),
-            "dclk_on": run_blocks(init, frames(jump=0x7800, overrides={**solo, WAV1: 0}), blocks),
+            "dclk_on": run_blocks(init, frames(jump=0x7800, overrides={**solo, WAV1: 0, DCLK: live.DCLK_DEFAULT}),
+                                  blocks),
+            "dclk_stay": run_blocks(init, frames(overrides={**solo, WAV1: 0, DCLK: 0}), blocks),
             "dclk_off": run_blocks(init, frames(jump=0x7800, overrides={**solo, WAV1: 0, DCLK: 0}), blocks),
             # PRST (m10a3): the oscillators at the note (block 1) -- Off keeps running, Random
             # starts from the cycle counter (no reference: its tap is not compared)
@@ -801,8 +803,10 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
         return m[b][0] if len(m) > b and m[b] else None
     p_soff, p_sglide = pos_seq("smth_off", rb_all), pos_seq("smth_glide", rb_all)
     step_on, step_off = boundary_step("dclk_on", JUMP_AT), boundary_step("dclk_off", JUMP_AT)
-    on_j, off_j = block_of("dclk_on", JUMP_AT), block_of("dclk_off", JUMP_AT)
-    dclk_diff = [x - y for x, y in zip(on_j, off_j)] if on_j and off_j else []
+    def series(k):
+        return track_series(runs[k], 0) if runs[k]["ok"] else []
+    xf_n, xf_j = live.dclk_lengths()[live.DCLK_DEFAULT >> 8], JUMP_AT * BLOCK
+    xf_on, xf_off, xf_stay = series("dclk_on"), series("dclk_off"), series("dclk_stay")
 
     def rnd_last(k):
         r = runs[k]["move_random"] if runs[k]["ok"] else []
@@ -964,12 +968,13 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             len(p_sglide) == blocks and p_sglide[:JUMP_AT] == [0] * JUMP_AT
             and 0 < p_sglide[JUMP_AT] < p_sglide[-1] < live.position(0x7800)
             and p_sglide[JUMP_AT:] == sorted(p_sglide[JUMP_AT:]),
-        "DCLK: at the jump, On adds an offset to Off's block that decays over the block "
-        "(e^(-31/48) = 0.52: the last sample's under 0.6 of the first's), the blocks between the "
-        "note and the jump are identical (nothing changed there), and the step between the two "
-        "blocks is smaller (M10b-2)":
-            bool(dclk_diff) and abs(dclk_diff[0]) > 1e-3 and abs(dclk_diff[-1]) < 0.6 * abs(dclk_diff[0])
-            and all(block_of("dclk_on", b) == block_of("dclk_off", b) for b in range(2, JUMP_AT))
+        "DCLK 3 ms crossfades the jump: identical to Off before it, its first sample still the "
+        "old frame's (the run without the jump), the new frame alone, bit for bit, from 144 "
+        "samples on, and a smaller step between the two blocks (M10b-2)":
+            len(xf_on) == len(xf_off) == len(xf_stay) == blocks * BLOCK and xf_n == 144
+            and xf_j + xf_n <= len(xf_on)
+            and xf_on[:xf_j] == xf_off[:xf_j] and xf_on[xf_j] == xf_stay[xf_j]
+            and xf_on[xf_j + xf_n:] == xf_off[xf_j + xf_n:] and xf_on[xf_j + 1] != xf_off[xf_j + 1]
             and step_on is not None and step_off is not None and step_on < step_off,
         "control: no trigger is silent at the amp's output (peak < 0.01)":
             n["silent_amp_out_peak"] is not None and n["silent_amp_out_peak"] < 0.01,

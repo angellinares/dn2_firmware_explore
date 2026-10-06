@@ -183,10 +183,10 @@ def sync_table() -> tuple[int, ...]:
     return tuple(out)
 
 
-# -- M10b-2: SMTH, a glide on POS (smooth.asm), and DCLK, the declick (dclk.asm) --
-# SMTH per oscillator on WaveTone's DEC (slot 42) and WDTH (45); DCLK, shared, on HOLD
-# (41). All three default to 0x7f00, and every sound saved before them holds that, so
-# 127 must leave the sound as it was: SMTH 127 is no glide, DCLK 127 (any non-zero) On.
+# -- M10b-2: SMTH, a glide on POS (smooth.asm), and DCLK, the crossfade (dclk.asm) --
+# SMTH per oscillator on WaveTone's DEC (slot 42) and WDTH (45): 127, the record's default,
+# is no glide. DCLK, shared, on HOLD (41): 0 Off, 1..127 a crossfade of 1..100 ms; a new
+# Waverider sound starts at 3 ms (owner, 2026-10-06; sounds saved before read 127, 100 ms).
 SMTH_SLOTS = (42, 45)
 DCLK_SLOT = 41
 SMTH_OFF = 127
@@ -223,12 +223,57 @@ def smooth(s: float, target: int, smth: int, note: bool) -> float:
     return _f32(s + _f32(d * k))
 
 
-DCLK_TAU = 48.0                    # samples: 1 ms at 48 kHz
-DCLK_TAPS = 129                    # D[0..128]: a block of up to 128 samples, and D[N] for the carry
+# DCLK's crossfade: on a jump between two blocks -- POS by more than 2 frames, another
+# table, or the gain by more than 0.1 (LEV 10) -- the last block's settings keep playing
+# at the same phase and fade out over the DCLK time while the new ones fade in. Smaller
+# moves pass straight through. The owner chose it over the 1 ms offset declick after the
+# measurement in docs/waverider-m10-move.md (2026-10-06).
+DCLK_JUMP_POS = 2 << 16            # Q16 frames
+DCLK_JUMP_GAIN = 0.1
+DCLK_DEFAULT = 0x1F00              # 31: 3.0 ms, the default a new sound gets
 
 
-def dclk_table() -> tuple[float, ...]:
-    return tuple(_f32(math.exp(-i / DCLK_TAU)) for i in range(DCLK_TAPS))
+def dclk_ms(v: int) -> float:
+    """DCLK v (1..127) -> the crossfade in ms: 1 at 1, x10 every 63 steps, 100 at 127."""
+    return 100.0 ** ((v - 1) / 126)
+
+
+def dclk_lengths() -> tuple[int, ...]:
+    """The crossfade in samples per DCLK 0..127; 0 is Off."""
+    return (0,) + tuple(round(48 * dclk_ms(v)) for v in range(1, 128))
+
+
+def dclk_inverses() -> tuple[float, ...]:
+    """1 / length, float32, per DCLK 0..127 (0 for Off): the DSP has no divide."""
+    return (0.0,) + tuple(_f32(1.0 / n) for n in dclk_lengths()[1:])
+
+
+def dclk_names() -> tuple[str, ...]:
+    out = ["Off"]
+    for v in range(1, 128):
+        ms = dclk_ms(v)
+        out.append(f"{ms:.0f} ms" if ms >= 10 else f"{ms:.1f} ms")
+    return tuple(out)
+
+
+def dclk_jump(last, cur) -> bool:
+    """last, cur: (table, pos, gain): a jump DCLK fades, as dclk.asm tests it"""
+    if last[0] is not cur[0] or abs(cur[1] - last[1]) > DCLK_JUMP_POS:
+        return True
+    d = _f32(cur[2] - last[2])
+    return d > _f32(DCLK_JUMP_GAIN) or d < -_f32(DCLK_JUMP_GAIN)
+
+
+def crossfade(new: list[float], old: list[float], rem: int, inv: float) -> list[float]:
+    """y = n + (o - n) x a, a = (rem - i) / length while rem - i > 0, float32; n after it"""
+    out = []
+    for i, (n, o) in enumerate(zip(new, old)):
+        k = rem - i
+        if k > 0:
+            a = _f32(_f32(float(k)) * inv)
+            n = _f32(n + _f32(_f32(o - n) * a))
+        out.append(n)
+    return out
 
 
 def move_offsets() -> tuple[tuple[int, ...], ...]:
@@ -399,7 +444,7 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
     (note, osc1, osc2[, (TRIG, triggered[, PRST[, position, tempo[, DCLK]]])]) with each
     osc (WAV, TBL, TUN, LEV[, RATE, MPOS, MLEV, MOVE[, SYNC[, SMTH]]]), the frame's 16-bit
     words (the position is the frame's u32 at SYNC_POSITION). SMTH glides POS (`smooth`);
-    DCLK declicks the block (`declick`); either left out is off. With the M10a fields the modulator
+    DCLK crossfades a jump (`crossfade`); either left out is off. With the M10a fields the modulator
     (move_step / move_shape / move_apply) moves POS and LEV first, per oscillator.
     Osc 1 writes y1 x gain1; osc 2, unless its LEV is 0 (the loop then skips it), adds
     y2 x gain2 to that, both rounded to float32 as reader_m9.asm does. Osc 2's TUN is
@@ -409,8 +454,8 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
     phase = [0, 0]
     mphase = [0, 0]
     smoothed = [0.0, 0.0]                       # SMTH's state: zeros at boot, as the DSP's
-    prev: list = [None, None]                   # DCLK: last block's (table, pos, gain, phase)
-    carry = 0.0
+    last: list = [None, None]                   # DCLK: each oscillator's last (table, pos, gain)
+    fade: list = [None, None]                   # and its fade: [old (table, pos, gain), samples left]
     rnd = MoveRandom()
     table_t = increment_table()
     for blk in blocks:
@@ -420,7 +465,6 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
         song, tempo = (rest[1], rest[2]) if len(rest) > 2 else (0, 0)
         dclk = rest[3] & 0xFFFF if len(rest) > 3 else 0
         mixed: list[float] = []
-        cur: list = [None, None]
         for k, osc in enumerate(oscs):
             wav, tbl, tun, lev = osc[:4]
             if k and not lev & 0xFFFF:
@@ -444,43 +488,29 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
                 smoothed[k] = smooth(smoothed[k], pos, osc[9], triggered)
                 pos = trunc(smoothed[k])
             tab = tables[slot(tbl, len(tables))]
-            cur[k] = (tab, pos, g, phase[k])
-            samples, phase[k] = render.render(tab, phase[k],
-                                              increment(tuned(note, tun) if k == 0 else
-                                                        tuned2(note, tun, oscs[0][2]), table_t),
-                                              pos, block, precision)
+            cur = (tab, pos, g)
+            n_fade = dclk_lengths()[min(dclk >> 8, 127)] if precision == "float32" else 0
+            if triggered or not n_fade:
+                fade[k] = None
+            elif last[k] is not None and dclk_jump(last[k], cur):
+                fade[k] = [last[k], n_fade]
+            last[k] = cur
+            inc = increment(tuned(note, tun) if k == 0 else tuned2(note, tun, oscs[0][2]), table_t)
+            phase0 = phase[k]
+            samples, phase[k] = render.render(tab, phase0, inc, pos, block, precision)
             y = [_f32(g * v) for v in samples] if precision == "float32" else [g * v for v in samples]
+            if fade[k] is not None:             # M10b-2: DCLK, the old settings fading out
+                (otab, opos, og), rem = fade[k]
+                old, _ = render.render(otab, phase0, inc, opos, block, precision)
+                y = crossfade(y, [_f32(og * v) for v in old], rem, dclk_inverses()[min(dclk >> 8, 127)])
+                fade[k][1] = rem - block
+                if fade[k][1] <= 0:
+                    fade[k] = None
             if k == 0:
                 mixed = y
             else:
                 mixed = ([_f32(a + b) for a, b in zip(mixed, y)] if precision == "float32"
                          else [a + b for a, b in zip(mixed, y)])
-        if dclk and not triggered and precision == "float32":
-            mixed, carry = declick(mixed, prev, cur, phase, carry, precision)
-        else:
-            carry = 0.0
-        prev = cur
         out += mixed
     return out
 
-
-def declick(mixed, prev, cur, phase, carry, precision="float32"):
-    """DCLK (M10b-2, dclk.asm), on a block with no note: what the last block's settings
-    would play at this block's first sample, each oscillator at its phase there, less
-    what this block plays, plus what is left of the last offset, decays over 1 ms into
-    the block. With nothing changed the offset is exactly 0 and the block is untouched;
-    a jump of POS or LEV, or an oscillator starting or stopping, becomes a 1 ms ramp."""
-    e = 0.0
-    for k in (0, 1):
-        if prev[k] is None:
-            continue
-        tab, pos, g, _ = prev[k]
-        ph = cur[k][3] if cur[k] is not None else phase[k]
-        y, _ = render.render(tab, ph, 0, pos, 1, precision)
-        e = _f32(e + _f32(g * y[0]))
-    o = _f32(carry + _f32(e - mixed[0]))
-    if o == 0.0:
-        return mixed, 0.0
-    d = dclk_table()
-    n = len(mixed)
-    return [_f32(m + _f32(o * d[i])) for i, m in enumerate(mixed)], _f32(o * d[n])

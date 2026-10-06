@@ -13,7 +13,7 @@
 //
 // with k[127] = 1.0 exactly, so SMTH 127 -- every sound saved before SMTH -- plays POS
 // itself, bit for bit. A note on this voice (the frame's note mask, offset 34, bit t)
-// snaps s to POS. The state, a float per voice and oscillator, is at DM 0x2e1100 +
+// snaps s to POS. The state, a float per voice and oscillator, is at DM 0x2e1200 +
 // 4 (2t + osc), zeros at boot.
 //
 // In: R4 = POS (Q16 frames), R9 = t, I4 = the reader block. Out: DM(3, I4) = trunc(s).
@@ -62,12 +62,12 @@ wr_smooth_low.:
       I0 = R2;
       R2 = DM(0, I0);                   // k
 
-      // the state: 0x2e1100 + 4 (2t + osc)
+      // the state: 0x2e1200 + 4 (2t + osc)
       R3 = LSHIFT R9 BY 1;
       R12 = PASS R0;
       R3 = R12 + R3;
       R3 = LSHIFT R3 BY 2;
-      R12 = 0x2e1100;
+      R12 = 0x2e1200;
       R3 = R12 + R3;
       I0 = R3;
       R12 = R12 - R12;

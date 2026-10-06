@@ -14,8 +14,11 @@ heard; it is not part of the instrument's sound. Writes, 48 kHz mono 16-bit:
   1 bar: POS sweeps once a bar and starts again on step 1.
 - `m10b2_sync_retrig.wav`: SYN1 On, TRIG Retrig, the same ramp at 1/4, with a note on
   steps 1 and 7: the ramp starts at each note and lasts a quarter at the tempo.
-- `m10b2_dclk_off.wav` / `m10b2_dclk_on.wav` (no click track): a fast Up Loop on POS (RATE 70,
-  4 a second, free), DCLK Off then On: the click at each reset, then not.
+- `m10b2_dclk_off.wav` / `m10b2_dclk_3ms.wav` (no click track): a fast Up Loop on POS (RATE 70,
+  4 a second, free), DCLK Off, then the 3 ms crossfade a new sound starts with: the click at
+  each reset, then not.
+- `m10b2_dclk_100ms.wav`: DCLK used expressively, a Square on POS (RATE 50, a second a cycle)
+  at 100 ms: each edge becomes a 100 ms morph between the two frames.
 """
 
 from __future__ import annotations
@@ -101,8 +104,9 @@ def main(argv=None) -> int:
         y = [0.0] * start + y[start:]             # silent while stopped, as the amp would be
         write(a.out / f"m10b2_sync_{name}.wav", clicks(y))
     fast = {**ramp, "rate": 70 << 8}
-    for name, dclk in (("off", 0), ("on", 0x7F00)):
-        y = live.render_two(tables, blocks(fast, 0x100, (0,), sync=0, dclk=dclk), 32)
+    square = {**ramp, "rate": 50 << 8, "move": 0x0800}
+    for name, osc, dclk in (("off", fast, 0), ("3ms", fast, live.DCLK_DEFAULT), ("100ms", square, 0x7F00)):
+        y = live.render_two(tables, blocks(osc, 0x100, (0,), sync=0, dclk=dclk), 32)
         start = int(STOPPED * 48000)
         write(a.out / f"m10b2_dclk_{name}.wav", [0.0] * start + y[start:])
     return 0

@@ -125,13 +125,15 @@ SYNC_SW = SYNC_DM // 2                       # 0x170000
 SYNC_TABLE_DM = 0x2E0400                     # its table: a word per RATE 0..100 (live.sync_table)
 SMOOTH_DM = 0x2E0600                         # smooth.asm (M10b-2): SMTH, the glide on POS
 SMOOTH_SW = SMOOTH_DM // 2                   # 0x170300
-DCLK_DM = 0x2E0800                           # dclk.asm (M10b-2): DCLK, the declick
+DCLK_DM = 0x2E0800                           # dclk.asm (M10b-2): DCLK, the crossfade at a jump
 DCLK_SW = DCLK_DM // 2                       # 0x170400
 SMTH_TABLE_DM = 0x2E0C00                     # SMTH's coefficient per value, 128 float32 (live.smth_table)
-DCLK_TABLE_DM = 0x2E0E00                     # DCLK's decay D[0..128], float32 (live.dclk_table)
-SMOOTH_STATE_DM = 0x2E1100                   # SMTH's glide per voice and oscillator; DCLK's scratch at + 0x80
-DCLK_STATE_DM = 0x2E1200                     # DCLK's state, 128 bytes a voice
-DCLK_STATE_END = 0x2E1A00
+DCLK_LENGTH_DM = 0x2E0E00                    # DCLK's length in samples per value, 128 u32 (live.dclk_lengths)
+DCLK_INVERSE_DM = 0x2E1000                   # and 1 / length, 128 float32 (live.dclk_inverses)
+SMOOTH_STATE_DM = 0x2E1200                   # SMTH's glide per voice and oscillator; DCLK's scratch at + 0x80
+DCLK_STATE_DM = 0x2E1400                     # DCLK's state, 64 bytes a voice and oscillator
+DCLK_BUFFERS_DM = 0x2E1C00                   # its two scratch buffers of 128 samples
+DCLK_STATE_END = 0x2E2000
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 
 # stock sites
@@ -244,9 +246,10 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("sync.asm (wr_sync)", SYNC_DM, obj["sync"]),
         ("SYNC's note table, a word per RATE", SYNC_TABLE_DM, struct.pack("<101I", *live.sync_table())),
         ("smooth.asm (wr_smooth)", SMOOTH_DM, obj["smooth"]),
-        ("dclk.asm (wr_dclk_pre, wr_dclk_post)", DCLK_DM, obj["dclk"]),
+        ("dclk.asm (wr_dclk_pre)", DCLK_DM, obj["dclk"]),
         ("SMTH's coefficients, 128 float32", SMTH_TABLE_DM, struct.pack("<128f", *live.smth_table())),
-        ("DCLK's decay, 129 float32", DCLK_TABLE_DM, struct.pack(f"<{live.DCLK_TAPS}f", *live.dclk_table())),
+        ("DCLK's lengths, 128 u32", DCLK_LENGTH_DM, struct.pack("<128I", *live.dclk_lengths())),
+        ("DCLK's inverses, 128 float32", DCLK_INVERSE_DM, struct.pack("<128f", *live.dclk_inverses())),
         ("SMTH's and DCLK's state (zeros)", SMOOTH_STATE_DM, bytes(DCLK_STATE_END - SMOOTH_STATE_DM)),
     ]
     out = []

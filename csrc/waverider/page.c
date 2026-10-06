@@ -84,9 +84,47 @@ static void drive_poll(void)
 #define KIT        (*(u8 *const *)0x800052A0u)
 #define SOUND(t)   (KIT + 52u + 1163u * (t))
 #define SYNC_SLOT(o) ((o) ? 47u : 37u)                    /* SYN1 MOD, SYN2 CHAR */
-/* Row 2 is SMTH's, fixed: its time constant, Off at 127 (dnfw.waverider.live.smth_names). */
-const void *wr_rate_fmt[3][2] __attribute__((section(".data"))) =
-    { { 0, 0 }, { 0, 0 }, { wr_smth_names, (const void *)WR_SMTH_VALUES } };
+/* A pair whose count is -1 is a formatter, f(buffer, value), called by wr_fmt. */
+#define SPRINTF ((int (*)(char *, const char *, ...))0x40000E82u)
+#define FORMATTER ((const void *)-1)
+
+static int step_of(int value, int last)
+{
+    int v = value >> 8;
+    return v < 0 ? 0 : v > last ? last : v;
+}
+
+/* 0 "Off", 0x8000 | n "n ms", else tenths "n.t ms" (dnfw.waverider.pages.ms_code) */
+static void ms_text(char *buf, u32 code)
+{
+    if (!code)
+        SPRINTF(buf, "Off");
+    else if (code & 0x8000)
+        SPRINTF(buf, "%d ms", (int)(code & 0x7FFF));
+    else
+        SPRINTF(buf, "%d.%d ms", (int)(code / 10), (int)(code % 10));
+}
+
+static void sync_text(char *buf, int value)
+{
+    SPRINTF(buf, "%s", wr_sync_names[wr_sync_of_rate[step_of(value, WR_SYNC_RATES - 1)]]);
+}
+
+static void smth_text(char *buf, int value)
+{
+    ms_text(buf, wr_smth_text[step_of(value, 127)]);
+}
+
+static void dclk_text(char *buf, int value)
+{
+    ms_text(buf, wr_dclk_text[step_of(value, 127)]);
+}
+
+/* Rows 2 and 3 are fixed: SMTH's time constant, Off at 127, and DCLK's crossfade, Off at
+ * 0 (dnfw.waverider.live.smth_names, dclk_names). */
+const void *wr_rate_fmt[4][2] __attribute__((section(".data"))) =
+    { { 0, 0 }, { 0, 0 }, { (const void *)smth_text, FORMATTER },
+      { (const void *)dclk_text, FORMATTER } };
 
 static u32 sound_value(const u8 *sound, u32 slot)
 {
@@ -100,8 +138,8 @@ static void rate_names_poll(void)
     const u8 *sound = SOUND(t);
     for (int o = 0; o < 2; o++) {
         int on = t < 16 && sound[0xDE] == 5 && sound_value(sound, SYNC_SLOT(o)) != 0;
-        wr_rate_fmt[o][0] = on ? (const void *)wr_sync_by_rate : 0;
-        wr_rate_fmt[o][1] = (const void *)(on ? WR_SYNC_RATES : 0);
+        wr_rate_fmt[o][0] = on ? (const void *)sync_text : 0;
+        wr_rate_fmt[o][1] = on ? FORMATTER : 0;
     }
 }
 

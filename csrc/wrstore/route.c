@@ -263,7 +263,6 @@ u32 wr_header_fill(u32 *out, void *any, const u8 *header)
  * apart by the caller: a delete (0x5c, the stock delete 0x400ea3fc zeroes the stage
  * and calls this from 0x40127f8e) and a failed upload (from 0x401287a4). 1.11
  * addresses: for 1.12, find the delete's kind-1 arm again. */
-static void commit_index(u32 n, const u8 *entry);
 
 /* A rename: slot n's stored entry with only the name (E_NAME, 64 bytes) taken from
  * BODY. Every other byte of BODY is ignored, so the geometry, the hashes and the
@@ -292,7 +291,7 @@ static void rename_slot(u32 n, const u8 *body)
     }
     for (u32 i = 0; i < 64; i++)
         entry[E_NAME + i] = i < end ? body[E_NAME + i] : 0;
-    commit_index(n, entry);
+    wr_store_commit_entry(n, entry);
 }
 
 void wr_commit_fill(void *any, const u8 *header, u32 ret)
@@ -307,7 +306,7 @@ void wr_commit_fill(void *any, const u8 *header, u32 ret)
         if (ret == DELETE_RETURN) {
             for (u32 i = 0; i < ENTRY_BYTES; i++)
                 stage[i] = 0;
-            commit_index(n, stage);           /* a free entry: the slot is gone */
+            wr_store_commit_entry(n, stage);           /* a free entry: the slot is gone */
             return;
         }
         wr_write.last = W_ABORTED;
@@ -342,12 +341,13 @@ void wr_commit_fill(void *any, const u8 *header, u32 ret)
         wr_write.last = W_DRIVE;
         return;
     }
-    commit_index(n, entry);
+    wr_store_commit_entry(n, entry);
 }
 
-/* Steps 2 and 3: slot n's index entry becomes ENTRY (all zero frees it), in the group
+/* Steps 2 and 3, and the wavetable page's DELETE (store.h): slot n's index entry
+ * becomes ENTRY (all zero frees it), in the group
  * that is not current, then its superblock with generation + 1. */
-static void commit_index(u32 n, const u8 *entry)
+u32 wr_store_commit_entry(u32 n, const u8 *entry)
 {
     u8 *index, *sb;
     u32 generation = 0, target = 0, used = 0;
@@ -368,7 +368,7 @@ static void commit_index(u32 n, const u8 *entry)
     if (DRIVE_WRITE(REGION + target * GROUP_B + 1, INDEX_BYTES, index) < 0) {
         DELETE(index);
         wr_write.last = W_DRIVE;
-        return;
+        return 0;
     }
     /* 3. its superblock, generation + 1: the moment the change takes effect */
     sb = NEW(512);
@@ -388,12 +388,13 @@ static void commit_index(u32 n, const u8 *entry)
     if (DRIVE_WRITE(REGION + target * GROUP_B, 512, sb) < 0) {
         DELETE(sb);
         wr_write.last = W_DRIVE;
-        return;
+        return 0;
     }
     DELETE(sb);
     wr_write.generation = generation + 1;
     wr_store.changes++;                           /* what was loaded from the store is stale */
     wr_write.last = W_OK;
+    return 1;
 }
 
 

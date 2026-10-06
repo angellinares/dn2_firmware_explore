@@ -96,3 +96,29 @@ u32 wt_tbl_load(u32 j, u32 osc)
     at[1] = 0;
     return WT_DONE;
 }
+
+u32 wt_store_delete(u32 s)
+{
+    u8 entry[ENTRY_BYTES];
+    if (s >= SLOTS)
+        return WT_FAILED;
+    for (u32 i = 0; i < ENTRY_BYTES; i++)
+        entry[i] = 0;
+    if (!wr_store_commit_entry(s, entry))    /* it also marks the store changed */
+        return WT_FAILED;
+    /* the working project's own list lets go of it too, so its slots read and fill as
+     * free; other projects' lists keep theirs (spec: warn, don't repair) */
+    {
+        u8 *rec = start();
+        u32 named = 0;
+        for (u32 j = 0; j < POOL_ENTRIES; j++)
+            if (be16(rec + R_ENTRIES + 2 * j) == s) {
+                wr_put16(rec + R_ENTRIES + 2 * j, RECORD_NONE);
+                named = 1;
+            }
+        if (named)
+            return finish(rec) ? WT_DONE : WT_FAILED;
+        DELETE(rec);
+    }
+    return WT_DONE;
+}

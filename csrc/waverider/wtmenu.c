@@ -61,8 +61,8 @@ static void freshen(void)
         wr_wtmenu.page = 0;
 }
 
-/* what the right column shows, read once when page 2 opens: the playable tables on the
- * +Drive, and the working project's pool list's entries in use (record 0) */
+/* what the right column shows, read when page 2 opens and when a list closes: the
+ * playable tables on the +Drive, and the pool list's entries whose table is stored */
 static void count_tables(void)
 {
     u8 *index = wr_store_index(), *rec = NEW(RECORD_BYTES);
@@ -71,7 +71,12 @@ static void count_tables(void)
         n += wr_store_playable(index + s * ENTRY_BYTES, s) ? 1 : 0;
     wr_record_resolve(0, rec, index);
     wr_wtmenu.drive_tables = n;
-    wr_wtmenu.in_pool = be16(rec + R_COUNT);
+    n = 0;                                   /* entries naming a table that is still stored */
+    for (u32 j = 0; index && j < POOL_ENTRIES; j++) {
+        u32 s = be16(rec + R_ENTRIES + 2 * j);
+        n += s < SLOTS && (index[s * ENTRY_BYTES + 1] & 1) ? 1 : 0;
+    }
+    wr_wtmenu.in_pool = n;
     DELETE(rec);
     if (index)
         DELETE(index);
@@ -93,8 +98,10 @@ u32 wr_wt_key(void *view, void *event)
         return STOCK_KEY(view, event);
     }
     if (wr_wtmenu.page == 2 && code != KEY_PRESET) {
-        if (!wt_list_key(code, KEY_PRESS(event) & 0xff, KEY_RELEASE(event) & 0xff))
+        if (!wt_list_key(code, KEY_PRESS(event) & 0xff, KEY_RELEASE(event) & 0xff)) {
             wr_wtmenu.page = 1;
+            count_tables();                  /* the list may have changed them */
+        }
         SET_DIRTY(view);
         return 1;
     }

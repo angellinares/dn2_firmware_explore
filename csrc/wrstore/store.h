@@ -53,6 +53,11 @@ static inline u32 be32(const u8 *p) { return (u32)p[0] << 24 | (u32)p[1] << 16 |
 u8 *wr_store_index(void);
 
 #define DRIVE_WRITE  ((int (*)(u32, u32, const void *))0x4012c780u)
+
+/* Slot n's index entry becomes ENTRY (all zero frees it): the other group's index, then
+ * its superblock, generation + 1 (route.c). -> 1 written, 0 the +Drive write failed. */
+u32 wr_store_commit_entry(u32 n, const u8 *entry);
+
 #define WR_TABLE_BYTES 0x4000u              /* 16 x 512 int16: the table the DSP reads */
 
 /* Can the DSP play slot n's table? Used, a wavetable of 16 x 512 int16 big-endian, in

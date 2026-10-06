@@ -15,4 +15,9 @@ unsigned int wt_pool_clear(unsigned int j);
  * to it would leave the sound -> WT_* */
 unsigned int wt_tbl_load(unsigned int j, unsigned int osc);
 
+/* Store slot S deleted from the +Drive (its index entry freed; the table's sectors stay
+ * until overwritten), and cleared from the working project's pool list. Other projects'
+ * lists keep it, and play Prim. there. -> WT_* */
+unsigned int wt_store_delete(unsigned int s);
+
 #endif

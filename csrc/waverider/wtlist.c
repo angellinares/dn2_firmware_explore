@@ -12,7 +12,8 @@
  * of the SYN page last shown (wtedit.c).
  *
  * FUNC opens a popup with the highlighted row's actions, as the stock managers do:
- * MANAGE has ADD TO POOL, POOL has CLEAR SLOT (wtedit.c). UP/DOWN choose, YES runs, NO
+ * MANAGE has ADD TO POOL and DELETE (asked first: DELETE? in the title, YES deletes, NO
+ * keeps), POOL has CLEAR SLOT (wtedit.c). UP/DOWN choose, YES runs, NO
  * closes it. A result worth saying (already in the pool, the pool full) replaces the
  * title until the next key. One subject: the lists' rows, keys and drawing. */
 
@@ -46,14 +47,15 @@ static u32 top __attribute__((section(".data"))) = 0;
 static u32 popup __attribute__((section(".data"))) = 0;      /* 1 while it is open */
 static u32 choice __attribute__((section(".data"))) = 0;
 static const char *note __attribute__((section(".data"))) = 0;
+static u32 confirming __attribute__((section(".data"))) = 0;   /* DELETE asked, YES not yet */
 
 /* each list's actions, in the popup's order */
-static const char *const manage_actions[] = { "ADD TO POOL" };
+static const char *const manage_actions[] = { "ADD TO POOL", "DELETE" };
 static const char *const pool_actions[] = { "CLEAR SLOT" };
 
 static u32 actions(const char *const **names)
 {
-    if (kind == WL_MANAGE) { *names = manage_actions; return 1; }
+    if (kind == WL_MANAGE) { *names = manage_actions; return 2; }
     if (kind == WL_POOL) { *names = pool_actions; return 1; }
     *names = 0;
     return 0;
@@ -74,6 +76,7 @@ void wt_list_open(u32 k)
     cursor = top = 0;
     popup = 0;
     note = 0;
+    confirming = 0;
 }
 
 static void build(u32 k)
@@ -122,7 +125,11 @@ static void run(u32 action)
 {
     const struct row *r = &rows[cursor];
     u32 result = WT_FAILED;
-    (void)action;                                  /* one action per list so far */
+    if (kind == WL_MANAGE && action == 1) {
+        confirming = 1;                            /* irreversible: ask first */
+        note = "DELETE? YES / NO";
+        return;
+    }
     if (kind == WL_MANAGE)
         result = wt_pool_add(r->slot);
     else if (kind == WL_POOL)
@@ -137,6 +144,17 @@ u32 wt_list_key(u32 code, u32 pressed, u32 released)
 {
     const char *const *names;
     u32 n = actions(&names);
+    if (confirming) {
+        if (code == KEY_YES && released) {
+            confirming = 0;
+            note = wt_store_delete(rows[cursor].slot) == WT_DONE ? "DELETED" : "+DRIVE WRITE FAILED";
+            build(kind);
+        } else if (code == KEY_NO && released) {
+            confirming = 0;
+            note = 0;
+        }
+        return 1;
+    }
     if (pressed)
         note = 0;
     if (popup) {

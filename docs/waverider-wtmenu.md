@@ -15,17 +15,23 @@ edits are in `docs/for-dnx-waverider-pool.md`. **Status: built and checked in th
 | UP / DOWN | the highlighted item |
 | YES | opens its list |
 | in a list: NO | back to page 2 |
-| in a list: FUNC | the highlighted row's actions; UP/DOWN choose, YES runs, NO closes |
+| in MANAGE or POOL: YES | ticks or unticks the highlighted row (a check mark at its left) and moves down one, as stock's preset manager does |
+| in a list: RIGHT | the list's operations in a side panel on the right, as stock's PRESET OPERATIONS; UP/DOWN choose, YES runs, NO or LEFT closes. They act on the ticked rows, or on the highlighted row when none is ticked |
+| in a list: LEFT | nothing yet (stock's SORTING menu) |
+
+**Since 2026-10-07 (owner: "behave like stock"):** ticks and the RIGHT panel, in place of the FUNC popup. Measured on stock 1.11 in the emulator, PRESET > MANAGE: YES ticks and moves down; RIGHT opens COPY TO BANK, EDIT TAGS, DELETE, SELECT ALL, DESELECT ALL, TOGGLE, SEND SYSEX on the right half, and the highlighted row is outlined. The tick is stock's: 4 × 3 pixels, before the row's text.
 
 The lists:
-- **LOAD**: this project's pool, slots 001..127. YES puts the slot on the active track's
+- **LOAD**: this project's pool, slots 001..128. YES puts the slot on the active track's
   TBL, for the oscillator of the SYN page last shown (TBL1 from pages 1 and 3, TBL2 from
   page 2). On a track that isn't Waverider, or an empty slot, it says so and changes
-  nothing.
-- **MANAGE**: every table on the +Drive, a `+` on those in this project's pool. FUNC: ADD TO
-  POOL (the first free slot; ALREADY IN THE POOL, THE POOL IS FULL), DELETE (asked first:
-  DELETE? YES / NO).
-- **POOL**: this project's pool, as LOAD. FUNC: CLEAR SLOT.
+  nothing. RIGHT: LOAD TO TBL1, LOAD TO TBL2.
+- **MANAGE**: every table on the +Drive, a `+` on those in this project's pool. RIGHT: ADD TO
+  POOL (every ticked table, each into the next free slot, in one write: "3 ADDED TO THE POOL";
+  ALREADY IN THE POOL; POOL FULL: n ADDED), DELETE (asked first: DELETE n? YES / NO), SELECT
+  ALL, DESELECT ALL.
+- **POOL**: this project's pool, as LOAD. RIGHT: CLEAR SLOT (every ticked slot, in one
+  write), SELECT ALL, DESELECT ALL.
 
 A slot whose table was deleted reads **MISSING**: it plays Prim., isn't free, LOAD refuses
 it, and only CLEAR SLOT frees it. DELETE changes no pool list, so a later ADD TO POOL can't
@@ -63,7 +69,12 @@ The firmware's own routines and constants used, all read from the stock page's r
 | the stock rows | text at y 44 / 31 / 18 / 6, x 22; icons at x 9; highlight x 7..58, y 41..51 / 28..38 / 15..25 / 3..13; the right column x 70..121 |
 
 Coordinates count up from the bottom edge. The panel codes: PRESET/KIT 7, YES 10, UP 11,
-NO 12, DOWN 14, FUNC 17.
+NO 12, LEFT 13, DOWN 14, RIGHT 15, FUNC 17 (LEFT and RIGHT: opened stock's SORTING and
+OPERATIONS panels in the emulator).
+
+**Drawing one pixel:** FILL (`0x40114954`) grows a one-pixel rectangle in both its set and
+its invert modes, so a tick drawn with it came out 3 × 3 a pixel. Single pixels go through
+`0x40113b90` (canvas, x, y, on), as page.c draws its modulation dots.
 
 The code, one subject each, in the +Drive chunk (`dnfw.waverider.drive`):
 - `csrc/waverider/wtmenu.c`: page 2's menu and where its keys go;

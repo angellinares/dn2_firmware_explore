@@ -76,6 +76,48 @@ u32 wt_pool_clear(u32 j)
     return finish(rec) ? WT_DONE : WT_FAILED;
 }
 
+/* several at once (the lists' ticks, owner 2026-10-07): one record write for the set */
+u32 wt_pool_add_many(const u8 *slots, u32 n, u32 *added, u32 *skipped)
+{
+    u8 *rec = start();
+    u32 result = WT_DONE;
+    *added = *skipped = 0;
+    for (u32 k = 0; k < n; k++) {
+        u32 free = POOL_ENTRIES, there = 0;
+        for (u32 j = 0; j < POOL_ENTRIES; j++) {
+            u32 s = be16(rec + R_ENTRIES + 2 * j);
+            if (s == slots[k])
+                there = 1;
+            if (s == RECORD_NONE && free == POOL_ENTRIES)
+                free = j;
+        }
+        if (there) {
+            (*skipped)++;
+            continue;
+        }
+        if (free == POOL_ENTRIES) {
+            result = WT_FULL;
+            break;
+        }
+        wr_put16(rec + R_ENTRIES + 2 * free, slots[k]);
+        (*added)++;
+    }
+    if (!*added) {
+        DELETE(rec);
+        return result;
+    }
+    return finish(rec) ? result : WT_FAILED;
+}
+
+u32 wt_pool_clear_many(const u8 *js, u32 n)
+{
+    u8 *rec = start();
+    for (u32 k = 0; k < n; k++)
+        if (js[k] < POOL_ENTRIES)
+            wr_put16(rec + R_ENTRIES + 2 * js[k], RECORD_NONE);
+    return finish(rec) ? WT_DONE : WT_FAILED;
+}
+
 #define ACTIVE_TRACK (*(volatile u8 *)0x42431a6cu)
 #define KIT          (*(u8 *const *)0x800052a0u)
 #define SOUND(t)     (KIT + 52u + 1163u * (t))           /* may sit at an odd address */

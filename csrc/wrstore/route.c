@@ -202,7 +202,7 @@ static u8 *stage __attribute__((section(".data"))) = 0;   /* FILE_MAX + 512, all
 /* The probe reads this: the last write's outcome. 0 none yet, 1 written, else why not. */
 struct wr_write { u32 magic, commits, last, slot, generation; };
 volatile struct wr_write wr_write __attribute__((section(".data"))) = { 0x57525754u, 0, 0, 0, 0 };
-enum { W_OK = 1, W_ABORTED, W_ENTRY, W_HASH, W_DRIVE, W_RANGE };
+enum { W_OK = 1, W_ABORTED, W_ENTRY, W_HASH, W_DRIVE, W_RANGE, W_FREE, W_NAME };
 
 static void put32(u8 *p, u32 v) { p[0] = (u8)(v >> 24); p[1] = (u8)(v >> 16); p[2] = (u8)(v >> 8); p[3] = (u8)v; }
 
@@ -301,7 +301,18 @@ u32 wr_check_fill(u32 *out, void *any, u8 *info, u32 ret)
     return (u32)out;
 }
 
-/* +108, a write's first chunk: the container header. -> {u8 ok; string; u8 value}. */
+/* Is slot n in use in the current group? (reads the index) */
+static u32 slot_in_use(u32 n)
+{
+    u8 *index = wr_store_index();
+    u32 used = index && (index[n * ENTRY_BYTES + 1] & 1);
+    if (index)
+        DELETE(index);
+    return used;
+}
+
+/* +108, a write's first chunk: the container header. -> {u8 ok; string; u8 value}.
+ * A body of exactly ENTRY_BYTES is a rename (docs/for-dnx-waverider-pool.md). */
 u32 wr_header_fill(u32 *out, void *any, const u8 *header)
 {
     u32 n = closure_slot(any), length = be32(header + 25);
@@ -318,8 +329,12 @@ u32 wr_header_fill(u32 *out, void *any, const u8 *header)
         fail_slot_in(out, 3, n, "the body must be raw, not LZ4");
         return (u32)out;
     }
-    if (length <= ENTRY_BYTES || length > FILE_MAX) {
-        fail_slot_in(out, 3, n, "the file must be a 128-byte entry and a table of at most 512 KiB");
+    if (length < ENTRY_BYTES || length > FILE_MAX) {
+        fail_slot_in(out, 3, n, "the file must be a 128-byte entry and a table of at most 512 KiB, or the entry alone (a rename)");
+        return (u32)out;
+    }
+    if (length == ENTRY_BYTES && !slot_in_use(n)) {
+        fail_slot_in(out, 3, n, "a rename needs a slot in use");
         return (u32)out;
     }
     ((u8 *)out)[0] = 1;
@@ -334,6 +349,36 @@ u32 wr_header_fill(u32 *out, void *any, const u8 *header)
  * addresses: for 1.12, find the delete's kind-1 arm again. */
 #define DELETE_RETURN 0x40127f8eu
 static void commit_index(u32 n, const u8 *entry);
+
+/* A rename: slot n's stored entry with only the name (E_NAME, 64 bytes) taken from
+ * BODY. Every other byte of BODY is ignored, so the geometry, the hashes and the
+ * extent can't change. The name must end with a NUL inside its 64 bytes; it is
+ * stored NUL-padded. Only the index is written, never the slot's data. */
+static void rename_slot(u32 n, const u8 *body)
+{
+    u8 *index = wr_store_index();
+    u8 entry[ENTRY_BYTES];
+    u32 end = 64;
+    if (!index || !(index[n * ENTRY_BYTES + 1] & 1)) {
+        if (index)
+            DELETE(index);
+        wr_write.last = W_FREE;
+        return;
+    }
+    for (u32 i = 0; i < ENTRY_BYTES; i++)
+        entry[i] = index[n * ENTRY_BYTES + i];
+    DELETE(index);
+    for (u32 i = 0; i < 64 && end == 64; i++)
+        if (!body[E_NAME + i])
+            end = i;
+    if (end == 64) {
+        wr_write.last = W_NAME;
+        return;
+    }
+    for (u32 i = 0; i < 64; i++)
+        entry[E_NAME + i] = i < end ? body[E_NAME + i] : 0;
+    commit_index(n, entry);
+}
 
 void wr_commit_fill(void *any, const u8 *header, u32 ret)
 {
@@ -354,6 +399,10 @@ void wr_commit_fill(void *any, const u8 *header, u32 ret)
         return;
     }
     length = be32(header + 25);
+    if (length == ENTRY_BYTES) {
+        rename_slot(n, stage);
+        return;
+    }
     table_len = length - ENTRY_BYTES;
     flags = (u32)entry[0] << 8 | entry[1];
     start = be32(entry + 12);

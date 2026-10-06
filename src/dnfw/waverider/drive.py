@@ -37,10 +37,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 SOURCES = (ROOT / "csrc/waverider/pool.c", ROOT / "csrc/waverider/loader.c",
            ROOT / "csrc/waverider/events.c",
            ROOT / "csrc/waverider/sync.c",
-           ROOT / "csrc/wrstore/store.c", ROOT / "csrc/wrstore/route.c")
+           ROOT / "csrc/wrstore/store.c", ROOT / "csrc/wrstore/routekit.c",
+           ROOT / "csrc/wrstore/route.c", ROOT / "csrc/wrstore/records.c",
+           ROOT / "csrc/wrstore/poolroute.c")
 ENTRIES = ["wr_drive_head", "wr_drive_poll", "wr_add", "wr_root_entry", "wr_list_invoker",
            "wr_register", "wr_nop", "wr_frame_hook", "wr_frame_src", "wr_clear_type"]
-STATUS = ("wr_pool", "wr_load", "wr_store", "wr_route", "wr_write", "wr_events", "wr_sync")   # what the probe PEEKs
+STATUS = ("wr_pool", "wr_load", "wr_store", "wr_route", "wr_write", "wp_write", "wr_events", "wr_sync")   # what the probe PEEKs
 CLEAR_SITE = 0x40071EB6           # CLEAR TRK PRESET's jsr to the machine-type getter (events.c)
 
 ROUTE_SITE = 0x4002BB70

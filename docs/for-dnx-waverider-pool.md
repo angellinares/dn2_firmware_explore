@@ -9,7 +9,10 @@ by the owner on 2026-10-06:
 
 The store itself, the index entry and the `/waverider` route are in `docs/waverider-store.md`; this
 builds on them and changes none of it. **Status: revision 3, with DNX's answers of 2026-10-06
-folded in (listed at the end). Nothing here is built yet.**
+folded in (listed at the end). Built and passing in the emulator (2026-10-06): the rename
+(§1), the records and the `/wavepool` route (§2), and Waverider playing from record 0.
+Not built yet: SAVE PROJECT / LOAD PROJECT copying the records, and the instrument's pool
+page.**
 
 ## The numbers (read this first)
 
@@ -143,7 +146,8 @@ The `/` reply then declares and carries 5 entries.
   keep or change the entries, and write an explicit record.
 - **Write:** `/wavepool/<project slot>`, the whole record.
   - **Checked:** the container (kind `0x50`, version 1, raw, length 512), the magic, the
-    version, the project slot against the path, the flags (only bit 0), and the hash.
+    version, the project slot against the path, the flags (only bit 0), bytes 270..507
+    zero, and the hash.
   - **Without the automatic flag, also checked:** every entry `0xFFFF` or 0..255, and the count
     against the entries.
   - **With the automatic flag, also checked:** every entry `0xFFFF` and the count 0. **An
@@ -221,3 +225,23 @@ is DNX's to add; the pool makes it matter more than the store alone did. So does
 2. **The write proof is one rule**: the generation advanced, and the fields the writer set came
    back.
 3. **Occupancy means a record exists**, not a user's choice (a restore can flip it).
+
+## Built (2026-10-06, emulator)
+
+- **Rename** (`csrc/wrstore/route.c`): `scripts/emu_waverider_rename.py`, 7/7. The body's
+  other 64 bytes are sent as `0xA5` and ignored; the listing shows the new name; a full
+  read-back has the stored entry but for the name, and the table unchanged; a free slot is
+  refused at the first chunk; a name with no NUL writes nothing.
+- **`/wavepool`** (`csrc/wrstore/poolroute.c` over `records.c`):
+  `scripts/emu_waverider_wavepool.py`, 12/12. `/` carries 5 entries, `wavepool` last;
+  the listing is 0..128 with 0 `working`; a no-record read is generation 0, automatic,
+  entries filled; an automatic write carrying entries is refused; explicit writes read
+  back with generation 1 then 2 (a sent generation is ignored); a stored automatic record
+  reads back filled; a bad hash, project slot, reserved byte or count writes nothing; a
+  kind `0x57` container, 511 bytes and project slot 129 are refused with a message.
+- **Waverider plays record 0** (`csrc/waverider/pool.c`): `scripts/emu_waverider_pool.py`,
+  10/10 with no record (the automatic pool, as before) and 10/10 with `--record` (a list
+  `[3, 5, 0]`: entry 0 is slot 3, entry 1 empty since slot 5 is not playable, entry 2
+  slot 0, count 3).
+- Not measured: which of a record's two sectors a write lands in. The read-back proves
+  the generation, not the sector; the alternation is by the code (records.c).

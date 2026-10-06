@@ -1,13 +1,19 @@
 """Waverider's pool on the ColdFire, in digikit's Rust emulator: the store on the
 +Drive in, the loader's frames out.
 
-    python scripts/emu_waverider_pool.py SYX [--panel-drive EXE] [--out DIR]
+    python scripts/emu_waverider_pool.py SYX [--record] [--panel-drive EXE] [--out DIR]
 
 The build's own layout (`src/dnfw/mods/waverider_code.json`) says where to look. The
 +Drive is zeros but for a store, written here with `dnfw.waverider.store`: slot 0 the
 pool test table (`testtable.pool_table`), slot 3 the baked test table, and slot 5 a
 table the pool cannot play (32 waves). The image boots from reset with `panel_drive
 --card-extent`.
+
+With no pool list on the card the working project follows the automatic pool: pool
+entries 0 and 1 are slots 0 and 3. `--record` also places a pool list for the working
+project (record 0, `dnfw.waverider.poolrecord`) naming slots [3, 5, 0]: entry 0 is
+slot 3, entry 1 is empty (slot 5 is stored but not playable), entry 2 is slot 0, and
+the count is 3 (docs/for-dnx-waverider-pool.md).
 
 **The emulator runs no audio ISR** (the stock send 0x400cf7be and our hook at
 0x40025e82 never execute, measured), so this plays its part and the DSP's. From the UI
@@ -43,6 +49,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from dnfw.waverider import loadframes as LF        # noqa: E402
+from dnfw.waverider import poolrecord as PR        # noqa: E402
 from dnfw.waverider import store as ST             # noqa: E402
 from dnfw.waverider import testtable, wave         # noqa: E402
 
@@ -57,9 +64,13 @@ REPLY_ACK = 0x800053A4 + 0x18     # reply word 6, load.asm's answer
 SPANS = 0x46A00000
 SPAN_BYTES = 16 * 2 * 96
 QUIET = "00" * 44                 # a frame's first 44 bytes, its masks (32..43) zero
+AUTO_PLAN = [0, 3]                # pool entry j -> store slot, None empty
+RECORD_LIST = [3, 5, 0]
+RECORD_PLAN = [3, None, 0]
+CLEARED = (b"\x7f" * 96 + b"\x81" * 96) * 16   # an empty entry's spans
 
 
-def store_extents(work: pathlib.Path) -> tuple[list[str], dict]:
+def store_extents(work: pathlib.Path, record: bool = False) -> tuple[list[str], dict]:
     """-> panel_drive's --card-extent arguments, and what was stored."""
     tables = {0: ("Pulse narrowing", testtable.pool_table()), 3: ("Saw to sine", testtable.table())}
     entries, payloads = {}, {}
@@ -73,6 +84,8 @@ def store_extents(work: pathlib.Path) -> tuple[list[str], dict]:
     index = ST.index_bytes(entries)
     files = {ST.REGION: ST.superblock(1, len(entries), index, ST.DATA_END), ST.REGION + 1: index}
     files.update({ST.REGION + ST.slot_start(n): p for n, p in payloads.items()})
+    if record:
+        files[PR.sector_a(0)] = PR.Record(0, RECORD_LIST, generation=1).to_bytes()
     args = []
     for sector, data in files.items():
         f = work / f"s{sector:x}.bin"
@@ -81,13 +94,15 @@ def store_extents(work: pathlib.Path) -> tuple[list[str], dict]:
     return args, {"tables": tables, "payloads": payloads}
 
 
-def expected_frames(stored, seq: int = 1) -> list[bytes]:
+def expected_frames(stored, plan, seq: int = 1) -> list[bytes]:
     out = []
-    for j, n in enumerate(sorted(stored["tables"])):
+    for j, n in enumerate(plan):
+        if n is None:
+            continue
         f = LF.table_frames(LF.pool_address(j) - LF.pool_address(0), stored["payloads"][n], seq)
         out += f
         seq += len(f)
-    return out + LF.directory_frames({0: LF.pool_address(0), 1: LF.pool_address(1)}, seq)
+    return out + LF.directory_frames({j: LF.pool_address(j) for j, n in enumerate(plan) if n is not None}, seq)
 
 
 def fields(hexdata: str, names: list[str]) -> dict:
@@ -113,6 +128,7 @@ def main(argv=None) -> int:
     ap.add_argument("--panel-drive", type=pathlib.Path, default=PANEL)
     ap.add_argument("--out", type=pathlib.Path, default=ROOT / "out/waverider")
     ap.add_argument("--wait", default="1200M", help="instructions past the UI (the pool starts at 5 s)")
+    ap.add_argument("--record", action="store_true", help="a pool list for the working project")
     a = ap.parse_args(argv)
     layout = json.loads((ROOT / "src/dnfw/mods/waverider_code.json").read_text())["layout"]
     pool_at, load_at, store_at = layout["wr_pool"], layout["wr_load"], layout["wr_store"]
@@ -122,8 +138,9 @@ def main(argv=None) -> int:
               f"peek:{store_at:#x}:{4 * len(STORE_FIELDS)}"]
 
     with tempfile.TemporaryDirectory() as tmp:
-        extents, stored = store_extents(pathlib.Path(tmp))
-        want = expected_frames(stored)
+        extents, stored = store_extents(pathlib.Path(tmp), a.record)
+        plan = RECORD_PLAN if a.record else AUTO_PLAN
+        want = expected_frames(stored, plan)
         # the queue's address, from a first look
         first = drive(a, extents, layout, [f"wait:{a.wait}", *status], tmp)
         load0 = fields([r for r in first["results"] if "hex" in r][1]["hex"], LOAD_FIELDS)
@@ -132,7 +149,7 @@ def main(argv=None) -> int:
         # the one before it quiet), the chunk read back, its sequence acknowledged.
         # then a write's mark (wr_store.changes, which route.c's commit raises) and the
         # same exchange again: the refill, its sequences going on from the first fill's
-        again = expected_frames(stored, len(want) + 1)
+        again = expected_frames(stored, plan, len(want) + 1)
         steps = [f"wait:{a.wait}"]
         for k, f in enumerate(want + again):
             if k == len(want):
@@ -146,7 +163,7 @@ def main(argv=None) -> int:
                       f"peek:{queue + FRAME * (k % slots):#x}:{FRAME}",
                       f"poke:{REPLY_ACK:#x}:{seq:08x}"]
         steps += ["wait:20M", f"send:{QUIET}", "wait:40M", *status,
-                  f"peek:{SPANS:#x}:{2 * SPAN_BYTES}"]
+                  f"peek:{SPANS:#x}:{len(plan) * SPAN_BYTES}"]
         run = drive(a, extents, layout, steps, tmp)
         res = [r for r in run["results"] if "hex" in r]
         got = [bytes.fromhex(r["hex"]) for r in res if r.get("peek") and int(r["peek"], 16) >= queue
@@ -158,9 +175,9 @@ def main(argv=None) -> int:
         pool, load, st = (fields(tail[0]["hex"], POOL_FIELDS), fields(tail[1]["hex"], LOAD_FIELDS),
                           fields(tail[2]["hex"], STORE_FIELDS))
         praw = bytes.fromhex(tail[0]["hex"])
-        slot_of = list(praw[4 * len(POOL_FIELDS):4 * len(POOL_FIELDS) + 2])
+        slot_of = list(praw[4 * len(POOL_FIELDS):4 * len(POOL_FIELDS) + len(plan)])
         nb = praw[4 * len(POOL_FIELDS) + 127:]
-        names = [nb[8 * j:8 * j + 8].split(b"\0")[0].decode("cp1252") for j in range(2)]
+        names = [nb[8 * j:8 * j + 8].split(b"\0")[0].decode("cp1252") for j in range(len(plan))]
         spans = bytes.fromhex(tail[3]["hex"])
         # no answer: never acknowledged
         silent = drive(a, extents, layout, [f"wait:{a.wait}"] + [f"send:{QUIET}"] * 260
@@ -169,24 +186,25 @@ def main(argv=None) -> int:
         sp, sl = fields(sres[0]["hex"], POOL_FIELDS), fields(sres[1]["hex"], LOAD_FIELDS)
 
     (a.out / "emu_pool_frames.bin").write_bytes(b"".join(got))
-    model_spans = b"".join(wave.pool_spans(stored["tables"][n][1]) for n in sorted(stored["tables"]))
+    model_spans = b"".join(CLEARED if n is None else wave.pool_spans(stored["tables"][n][1]) for n in plan)
+    short = {0: "Pulse", 3: "Saw t"}
     frames_ok = [g == w for g, w in zip(got, want)]
     checks = {
         "every run ran to its end": all(r.get("outcome") == "done" for r in (first, run, silent)),
         "the store: generation 1, no read errors": st["generation"] == 1 and st["read_errors"] == 0,
-        "the pool took slots 0 and 3, not 5 (32 waves)": slot_of == [0, 3],
-        "their names' first five characters": names == ["Pulse", "Saw t"],
+        f"the pool took slots {plan}, not 5 (32 waves)": slot_of == [0xFF if n is None else n for n in plan],
+        "their names' first five characters": names == [short.get(n, "") for n in plan],
         f"all {len(want)} frames are dnfw.waverider.loadframes', byte for byte":
             len(got) == len(want) and all(frames_ok),
-        "the pool reads ready with 2 tables after the first fill": pool_first["state"] == 3
-            and pool_first["count"] == 2 and pool_first["fills"] == 1,
+        f"the pool reads ready with count {len(plan)} after the first fill": pool_first["state"] == 3
+            and pool_first["count"] == len(plan) and pool_first["fills"] == 1,
         "after a write's mark it fills again: the same frames, sequences going on":
             len(got_again) == len(again) and all(g == w for g, w in zip(got_again, again))
-            and pool["state"] == 3 and pool["count"] == 2 and pool["fills"] == 2 and pool["changes_seen"] == 1,
+            and pool["state"] == 3 and pool["count"] == len(plan) and pool["fills"] == 2 and pool["changes_seen"] == 1,
         "every chunk of both fills acked once, none resent":
             load["acked"] == 2 * len(want) and load["sent"] == 2 * len(want) and load["resent"] == 0
             and not load["failed"],
-        "both pool tables' spans are wave.pool_spans'": spans == model_spans,
+        "the pool tables' spans are wave.pool_spans' (an empty entry's cleared)": spans == model_spans,
         "never acknowledged: the loader gives up after 8 timeouts, the pool offers nothing":
             sl["failed"] == 1 and sl["timeouts"] == 8 and sl["acked"] == 0 and sp["state"] == 5
             and sp["count"] == 0,

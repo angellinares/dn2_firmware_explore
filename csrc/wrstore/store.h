@@ -52,4 +52,16 @@ static inline u32 be32(const u8 *p) { return (u32)p[0] << 24 | (u32)p[1] << 16 |
  * empty store. Sets wr_store.group and .generation. */
 u8 *wr_store_index(void);
 
+#define DRIVE_WRITE  ((int (*)(u32, u32, const void *))0x4012c780u)
+#define WR_TABLE_BYTES 0x4000u              /* 16 x 512 int16: the table the DSP reads */
+
+/* Can the DSP play slot n's table? Used, a wavetable of 16 x 512 int16 big-endian, in
+ * its own extent. The automatic pool is the slots for which this holds, in order. */
+static inline int wr_store_playable(const u8 *e, u32 n)
+{
+    return (be16(e + E_FLAGS) & 1) && be16(e + E_KIND) == 1 && be16(e + E_WAVES) == 16
+        && be16(e + E_POINTS) == 512 && be16(e + E_FORMAT) == 1
+        && be32(e + E_START) == DATA_START + n * SLOT_SECTORS && be32(e + E_LENGTH) == WR_TABLE_BYTES;
+}
+
 #endif

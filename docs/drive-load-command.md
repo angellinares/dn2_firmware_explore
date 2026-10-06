@@ -166,12 +166,17 @@ TBL slot 2 + j is pool entry j.
 **The ColdFire** (`csrc/waverider/pool.c` over `loader.c`, in the +Drive chunk at
 `0x467f0000`, `dnfw.waverider.drive`). From the UI pass, 5 s after boot:
 1. it reads the store's current index (`csrc/wrstore/store.c`, shared with the route);
-2. it gives pool entry j to the j-th used slot, in slot order, whose table has that
-   geometry. A table of another geometry stays stored and listed, but is not played;
+2. it reads the working project's pool list (record 0, `csrc/wrstore/records.c`,
+   `docs/for-dnx-waverider-pool.md`). Pool entry j is the list's entry j, when that
+   store slot holds a table of that geometry; otherwise entry j is empty and plays
+   slot 0. With no list, or an automatic one, the list is every slot of that
+   geometry in slot order (the automatic pool, as before the lists). A table of
+   another geometry stays stored and listed, but is not played;
 3. it sends each table from the store's sectors, five sectors a chunk;
 4. it sends the directory **last**.
 
-Once the directory is acknowledged, the page offers TBL up to 1 + count:
+Once the directory is acknowledged, the page offers TBL up to 1 + count, count being
+the last entry in use + 1 (a gap is an unnamed slot):
 - the limits getter (`wr_range`) and the value text (`wr_fmt`) read the page's own
   `wr_tbl_range` and `wr_tbl_names`;
 - a pool slot is named by the first five characters of its name in the store;
@@ -264,7 +269,8 @@ to word 6.
 - a table's own hash is not checked when it is loaded (the route checks it when the
   table is written);
 - a refill rewrites tables in place while the old directory still names them;
-- pool slots are given out in slot order, not per project as on Tonverk;
+- the pool list is per project, but SAVE PROJECT and LOAD PROJECT do not copy it yet
+  (record 0 is the working project's; `docs/for-dnx-waverider-pool.md`);
 - one geometry only.
 
 ## Open, before the ColdFire half

@@ -14,6 +14,7 @@
 
 #include "routekit.h"
 #include "records.h"
+#include "../waverider/pool.h"
 
 #define INFO_KIND    0x4Du                  /* 'M' (a table is 0x57, a pool list 0x50) */
 #define INFO_BYTES   256u
@@ -23,19 +24,21 @@
 #define CAP_STORE    0x01u                  /* /waverider: list, read and write tables */
 #define CAP_POOL     0x02u                  /* /wavepool: per-project pool lists */
 #define CAP_RENAME   0x04u                  /* /waverider/<n>: a 128-byte body renames in place */
-#define CAP_DELETE   0x08u                  /* /waverider/<n>: delete frees the slot */
+/* 0x08 is unused: it was `delete`, which every build with the store has (DNX, rev 1 review) */
 #define CAP_CAS      0x10u                  /* /wavepool: a sent generation is a compare-and-swap */
 #define CAP_PAGE     0x20u                  /* the instrument's wavetable page (PRESET/KIT page 2) */
-#define CAPS (CAP_STORE | CAP_POOL | CAP_RENAME | CAP_DELETE | CAP_CAS | CAP_PAGE)
+#define CAPS (CAP_STORE | CAP_POOL | CAP_RENAME | CAP_CAS | CAP_PAGE)
 
 #define B16(v) (u8)((v) >> 8), (u8)(v)
 #define B32(v) (u8)((v) >> 24), (u8)((v) >> 16), (u8)((v) >> 8), (u8)(v)
 
 /* 0 magic, 4 version, 6 bytes, 8 caps, 12 pool slots, 14 pool record version,
- * 16 store slots, 18 zero; from 20 the build's part, its marker at 24 until written */
+ * 16 store slots, 18 the characters of a name the pool keeps, 19 those TBL's header
+ * shows; from 20 the build's part, its marker at 24 until written. The hash is at
+ * bytes - 4 (252), over everything before it. */
 u8 wr_modinfo[INFO_BYTES] __attribute__((section(".data"), aligned(4))) = {   /* .data: GCC puts no const there */
     'D', 'N', 'M', 'I', B16(1), B16(INFO_BYTES), B32(CAPS),
-    B16(POOL_ENTRIES), B16(RECORD_VERSION), B16(SLOTS), B16(0),
+    B16(POOL_ENTRIES), B16(RECORD_VERSION), B16(SLOTS), POOL_NAME - 1, TBL_NAME_SHOWN,
     B32(0),
     'M', 'O', 'D', 'I', 'N', 'F', 'O', '-', 'U', 'N', 'F', 'I', 'L', 'L', 'E', 'D',
 };

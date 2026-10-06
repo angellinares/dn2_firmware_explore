@@ -135,7 +135,6 @@ static void dclk_text(char *buf, int value)
  * the counter numbers it (T:001 = pool entry 0), and the table's name; Prim. and Harm.
  * by name. The header shows only this for TBL (wr_head drops "Osc1 Table="). The value
  * comes sign-extended (0x8000 up: the pool's last tables), so it is read as a word. */
-#define TBL_NAME_SHOWN 14     /* after "T:126 ", what the header holds (owner: cut with "..") */
 static void tbl_text(char *buf, int value)
 {
     u32 slot = ((u32)value & 0xFFFFu) >> 8;

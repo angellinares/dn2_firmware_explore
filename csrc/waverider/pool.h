@@ -6,6 +6,7 @@
 #define POOL_SLOTS     128                 /* 16 KiB tables after the load area's directory */
 #define WR_POOL_WIDTH  96                  /* the page's wave strip, as wr_spans */
 #define POOL_NAME      16                  /* a pool name: up to 15 characters of the stored one, NUL */
+#define TBL_NAME_SHOWN 14                  /* TBL's header after "T:126 "; longer: 12, then ".." (owner) */
 
 /* the display spans of pool table j: [frame][min, max][column], signed bytes; in RAM
  * above BSS that nothing else claims (dnfw.mods: waverider's RAM) */

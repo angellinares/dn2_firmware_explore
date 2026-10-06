@@ -17,15 +17,19 @@ Layout, big-endian:
 | 12 | 2 | pool slots |
 | 14 | 2 | pool record version |
 | 16 | 2 | store slots |
-| 18 | 2 | zero |
+| 18 | 1 | a name's characters the pool keeps (15) |
+| 19 | 1 | a name's characters TBL's header shows (14; longer: 12, then "..") |
 | 20 | 4 | image id: xxHash32 of the MAIN OS payload with this field and the hash zeroed |
 | 24 | 8 | OS the image was built from, e.g. `1.11` (information only: never gate on it) |
 | 32 | 24 | build tag, e.g. `wr-tblname` |
 | 56 | 12 | commit, e.g. `a97b3ca1d2` (`+` at the end: uncommitted changes) |
 | 68 | 1 | mod count, then 3 zero bytes |
 | 72 | 16 each | a mod: id (12, NUL-padded), xxHash32 of its code (4; 0 for none) |
-| 248 | 4 | zero |
-| 252 | 4 | xxHash32 of bytes 0..251 |
+| 248 | 4 | reserved, zero |
+| bytes - 4 | 4 | xxHash32 of everything before it (252 in version 1) |
+
+A reader takes the hash from `bytes - 4`, accepts a `bytes` larger than it knows, and
+reads only the fields it knows: the record grows by appending.
 """
 
 from __future__ import annotations
@@ -40,7 +44,7 @@ BYTES = 256
 MARKER = b"MODINFO-UNFILLED"      # at 24 until the build writes the record
 MARKER_AT = 24
 MOD_AT, MOD_BYTES, MAX_MODS = 72, 16, 11
-CAPS = {0x01: "store", 0x02: "pool", 0x04: "rename", 0x08: "delete", 0x10: "pool_cas", 0x20: "page"}
+CAPS = {0x01: "store", 0x02: "pool", 0x04: "rename", 0x10: "pool_cas", 0x20: "page"}   # 0x08 unused
 
 
 class ModInfoError(Exception):
@@ -83,7 +87,7 @@ def fill(payload: bytes, mods: list[tuple[str, int]], tag: str, commit: str, os:
     for k, (mid, code) in enumerate(mods):
         at = MOD_AT + MOD_BYTES * k
         rec[at:at + MOD_BYTES] = _text(mid, 12) + struct.pack(">I", code)
-    rec[248:256] = bytes(8)
+    rec[248:256] = bytes(8)                           # reserved, and the hash
     out = bytearray(payload[:start] + bytes(rec) + payload[start + BYTES:])
     image_id = xxh32(bytes(out))                      # the id and the hash still zero
     struct.pack_into(">I", out, start + 20, image_id)
@@ -95,7 +99,12 @@ def parse(rec: bytes) -> dict:
     """A /modinfo record -> its fields, and whether it checks out (magic, version, hash)."""
     if len(rec) < BYTES:
         raise ModInfoError(f"{len(rec)} bytes; a record is {BYTES}")
-    magic, version, size, caps, pool_slots, pool_version, store_slots = struct.unpack_from(">4sHHIHHH", rec)
+    magic, version, size, caps, pool_slots, pool_version, store_slots, kept, shown =         struct.unpack_from(">4sHHIHHHBB", rec)
+    if size < BYTES or size > len(rec):
+        size_ok = False
+        size = min(max(size, 4), len(rec))
+    else:
+        size_ok = True
     count = rec[68]
     mods = []
     for k in range(min(count, MAX_MODS)):
@@ -104,8 +113,9 @@ def parse(rec: bytes) -> dict:
 
     def text(a, b):
         return rec[a:b].split(b"\0")[0].decode("ascii", "replace")
-    return {"ok": magic == MAGIC and version == VERSION and size == BYTES
-                  and struct.unpack_from(">I", rec, 252)[0] == xxh32(rec[:252]),
+    return {"ok": magic == MAGIC and version >= VERSION and size_ok
+                  and struct.unpack_from(">I", rec, size - 4)[0] == xxh32(rec[:size - 4]),
+            "bytes": size, "name_kept": kept, "name_shown": shown,
             "version": version, "caps": caps,
             "capabilities": [name for bit, name in CAPS.items() if caps & bit],
             "pool_slots": pool_slots, "pool_version": pool_version, "store_slots": store_slots,

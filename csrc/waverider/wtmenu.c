@@ -12,15 +12,17 @@
  * - the LED callback (LedHandler slot at 0x401e6e54, stock thunk 0x4008abec), which
  *   runs every frame while the menu is open. A gap in it means the menu was closed and
  *   opened again, so the next open starts on page 1.
- * The right column shows the pool at a glance: tables in the working project's pool,
- * the free slots, and the tables on the +Drive the DSP can play.
+ * The right column shows the pool at a glance: the working project's pool list's
+ * entries in use, the free slots, and the tables on the +Drive the DSP can play.
  *
- * One subject: page 2's menu. The lists it opens are not built yet. */
+ * YES opens the highlighted item's list (wtlist.c); NO there comes back to the menu.
+ * page: 0 stock, 1 the menu, 2 a list.
+ *
+ * One subject: page 2's menu and where its keys go. */
 
 #include "../wrstore/records.h"
 #include "pool.h"
-
-extern volatile struct wr_pool wr_pool;                  /* pool.c */
+#include "wtlist.h"
 
 #define TICKS       (*(volatile u32 *)0x466758B0u)
 #define STOCK_KEY   ((u32 (*)(void *, void *))0x4008c78eu)
@@ -46,9 +48,9 @@ extern volatile struct wr_pool wr_pool;                  /* pool.c */
 #define GAP         12                                   /* ticks without an LED call: closed */
 #define ITEMS       3
 
-struct wr_wtmenu { u32 magic, page, cursor, opened, seen, drive_tables; };
+struct wr_wtmenu { u32 magic, page, cursor, opened, seen, drive_tables, in_pool; };
 volatile struct wr_wtmenu wr_wtmenu __attribute__((section(".data"))) =
-    { 0x57524d4eu, 0, 0, 0, 0, 0 };
+    { 0x57524d4eu, 0, 0, 0, 0, 0, 0 };
 
 void wr_wt_led_hook(void);
 
@@ -59,15 +61,20 @@ static void freshen(void)
         wr_wtmenu.page = 0;
 }
 
-static u32 playable_on_drive(void)
+/* what the right column shows, read once when page 2 opens: the playable tables on the
+ * +Drive, and the working project's pool list's entries in use (record 0) */
+static void count_tables(void)
 {
-    u8 *index = wr_store_index();
+    u8 *index = wr_store_index(), *rec = NEW(RECORD_BYTES);
     u32 n = 0;
     for (u32 s = 0; index && s < SLOTS; s++)
         n += wr_store_playable(index + s * ENTRY_BYTES, s) ? 1 : 0;
+    wr_record_resolve(0, rec, index);
+    wr_wtmenu.drive_tables = n;
+    wr_wtmenu.in_pool = be16(rec + R_COUNT);
+    DELETE(rec);
     if (index)
         DELETE(index);
-    return n;
 }
 
 u32 wr_wt_key(void *view, void *event)
@@ -79,11 +86,17 @@ u32 wr_wt_key(void *view, void *event)
             wr_wtmenu.page = 1;
             wr_wtmenu.cursor = 0;
             wr_wtmenu.opened++;
-            wr_wtmenu.drive_tables = playable_on_drive();
+            count_tables();
             SET_DIRTY(view);
             return 1;
         }
         return STOCK_KEY(view, event);
+    }
+    if (wr_wtmenu.page == 2 && code != KEY_PRESET) {
+        if (!wt_list_key(code, KEY_PRESS(event) & 0xff, KEY_RELEASE(event) & 0xff))
+            wr_wtmenu.page = 1;
+        SET_DIRTY(view);
+        return 1;
     }
     switch (code) {
     case KEY_PRESET:
@@ -100,7 +113,12 @@ u32 wr_wt_key(void *view, void *event)
         }
         return 1;
     case KEY_YES:
-        return 1;                            /* the lists come next */
+        if (KEY_RELEASE(event) & 0xff) {
+            wt_list_open(wr_wtmenu.cursor);
+            wr_wtmenu.page = 2;
+            SET_DIRTY(view);
+        }
+        return 1;
     default:
         return 1;                            /* page 1's own keys mean nothing here */
     }
@@ -123,16 +141,6 @@ static void number_right(void *canvas, int right, int y, u32 n)
     TEXT(canvas, FONT, right - digits * DIGIT_W, y, 0, "%u", n);
 }
 
-static u32 in_pool(void)
-{
-    u32 n = 0;
-    if (wr_pool.state != 3)
-        return 0;
-    for (u32 j = 0; j < wr_pool.count && j < POOL_SLOTS; j++)
-        n += wr_pool.slot_of[j] != 0xff ? 1 : 0;
-    return n;
-}
-
 void wr_wt_draw(void *view, void *canvas)
 {
     u32 used;
@@ -141,7 +149,11 @@ void wr_wt_draw(void *view, void *canvas)
         STOCK_DRAW(view, canvas);
         return;
     }
-    used = in_pool();
+    if (wr_wtmenu.page == 2) {
+        wt_list_draw(canvas);
+        return;
+    }
+    used = wr_wtmenu.in_pool;
     CLEAR(canvas, 0, 0);
     TEXT(canvas, FONT, 32, 58, 2, "WAVETABLE");
     TEXT(canvas, FONT, 96, 58, 2, "POOL");

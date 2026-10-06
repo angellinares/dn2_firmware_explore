@@ -54,7 +54,7 @@ from __future__ import annotations
 from .live import DCLK_DEFAULT, MOVE_SHAPES, SYNC_INDEX, SYNC_NOTES, dclk_names, smth_names
 
 LOAD = 0x4670C000                 # RAM above BSS, clear of every declared range (docs/mods-compatibility.md)
-C_LOAD = LOAD + 0x800             # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2)
+C_LOAD = LOAD + 0x900             # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2, 0x800 until the TBL turn)
 C_END = 0x46710000                # the platform runtime starts here
 ACTIVE_TRACK = 0x42431A6C         # byte: the UI's active track, 0..15
 KIT_POINTER = 0x800052A0          # the live kit; sound t at + 52 + 1163 t
@@ -117,7 +117,7 @@ RECORD_TABLE = 0x401F7F94         # record id N at + 60 N (the naming routine at
 SPRINTF = 0x40000E82              # (buffer, format, ...), as the stock naming routines call it
 
 LABELS_OUT = ("is_wr", "wr_count", "wr_page", "wr_label", "wr_long", "wr_icons", "wr_grid", "wr_grid9",
-              "wr_fmt", "wr_vfmt", "wr_range", "descriptors")
+              "wr_fmt", "wr_vfmt", "wr_range", "wr_turn", "descriptors")
 GRID = 0x40017428                 # the stock grid: (view, canvas)
 GRID9 = 0x400175E4                # WaveTone's page-3 grid (page id 9): (view, canvas)
 ICON_PAGE = 7                     # the SYN page draw's id for WaveTone's OSC page
@@ -404,6 +404,7 @@ wr_fmt_named:
     bmi.s   5f
     movea.l %a0@,%a0
     move.l  %sp@(4),%d0
+    andi.l  #0xFFFF,%d0           | the word, unsigned: the caller sign-extends (TBL at 0x8000 up)
     asr.l   #8,%d0
     bpl.s   3f
     moveq   #0,%d0
@@ -472,6 +473,25 @@ wr_range:
     move.l  %d2,%sp@-
     move.l  %sp@(8),%d1
     jmp     %a1@
+
+| -- the knob turn 0x40036adc(set, id, current, delta), d4 = the id: its loads of current
+| and delta (`move.l %sp@(56),%d2 ; move.l %sp@(60),%d7`, 8 bytes) now jsr here. Its
+| caller passes current sign-extended from the stored word, so TBL's top values (0x8000
+| up, the pool's last two tables) read as negative, and the clamp sent any turn from them
+| to 0, Prim. A Waverider track and TBL1 or TBL2: current as the unsigned word it is.
+| Anything else as stock. d0 is free here (the next use is the getter's answer).
+wr_turn:
+    move.l  %sp@(60),%d2
+    move.l  %sp@(64),%d7
+    cmpi.l  #{TBL_IDS[0]},%d4
+    beq.s   1f
+    cmpi.l  #{TBL_IDS[1]},%d4
+    bne.s   9f
+1:  bsr.w   is_wr
+    tst.l   %d0
+    beq.s   9f
+    andi.l  #0xFFFF,%d2
+9:  rts
 
     .align 2
 fmt_table:

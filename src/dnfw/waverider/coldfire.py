@@ -364,6 +364,11 @@ VFMT_SITE = 0x40036708                  # movea.l %a2@(0x34),%a1 ; movem.l ; lea
 VFMT_STOCK = bytes.fromhex("226a00344cd7041c4fef00104ed1")
 RANGE_SITE = 0x400DBFF0                 # move.l %d2,-(%sp) ; move.l %sp@(8),%d1
 RANGE_STOCK = bytes.fromhex("2f02222f0008")
+# The knob turn reads its current value at 0x40036aec; the caller (0x4003786c, the set's
+# vtable +32) passes it sign-extended, so TBL at 0x8000 and up turned to Prim. wr_turn
+# reads TBL's as unsigned on a Waverider track.
+TURN_SITE = 0x40036AEC                  # move.l %sp@(56),%d2 ; move.l %sp@(60),%d7
+TURN_STOCK = bytes.fromhex("242f00382e2f003c")
 
 
 def _cave_free(content: bytes, cave: tuple[int, int]) -> None:
@@ -532,6 +537,10 @@ def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
     edit(RANGE_SITE, bytes.fromhex("4eb9") + _long(playout["wr_range"]),
          "the limits getter: MOVE 0..4 and TRIG 0..1 on a Waverider track (M10b); every "
          "other parameter its record's", RANGE_STOCK)
+    _need(content, TURN_SITE + 8, bytes.fromhex("0c8400000140"), "the knob turn's id bound")
+    edit(TURN_SITE, bytes.fromhex("4eb9") + _long(playout["wr_turn"]) + bytes.fromhex("4e71"),
+         "the knob turn's current value: TBL1 and TBL2 read unsigned on a Waverider track, "
+         "so a turn from the pool's last tables steps instead of falling to Prim.", TURN_STOCK)
     edit(POLL_SITE, bytes.fromhex("4eb9") + _long(csyms["wr_poll"]),
          "the UI loop's redraw test: wr_poll asks for a redraw while a modulation marker on "
          "Waverider's page would move, then answers as stock", POLL_STOCK)

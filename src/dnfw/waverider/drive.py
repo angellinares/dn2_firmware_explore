@@ -39,11 +39,17 @@ SOURCES = (ROOT / "csrc/waverider/pool.c", ROOT / "csrc/waverider/loader.c",
            ROOT / "csrc/waverider/sync.c",
            ROOT / "csrc/wrstore/store.c", ROOT / "csrc/wrstore/routekit.c",
            ROOT / "csrc/wrstore/route.c", ROOT / "csrc/wrstore/records.c",
-           ROOT / "csrc/wrstore/poolroute.c")
+           ROOT / "csrc/wrstore/poolroute.c", ROOT / "csrc/wrstore/projects.c")
 ENTRIES = ["wr_drive_head", "wr_drive_poll", "wr_add", "wr_root_entry", "wr_list_invoker",
-           "wr_register", "wr_nop", "wr_frame_hook", "wr_frame_src", "wr_clear_type"]
-STATUS = ("wr_pool", "wr_load", "wr_store", "wr_route", "wr_write", "wp_write", "wr_events", "wr_sync")   # what the probe PEEKs
+           "wr_register", "wr_nop", "wr_frame_hook", "wr_frame_src", "wr_clear_type",
+           "wr_save_wrap", "wr_load_wrap"]
+STATUS = ("wr_pool", "wr_load", "wr_store", "wr_route", "wr_write", "wp_write", "wr_projects", "wr_events", "wr_sync")   # what the probe PEEKs
 CLEAR_SITE = 0x40071EB6           # CLEAR TRK PRESET's jsr to the machine-type getter (events.c)
+
+SAVE_SITE = 0x400F6960            # save the working project to slot (0-based; 128 the working copy)
+SAVE_STOCK = bytes.fromhex("4fefffe048d7001c")     # lea -32(%sp),%sp ; movem.l %d2-%d4,(%sp)
+LOAD_SITE = 0x400F6A2C            # LOAD PROJECT's +Drive read of a slot
+LOAD_STOCK = bytes.fromhex("4fefffe048d7040c")     # lea -32(%sp),%sp ; movem.l %d2-%d3/%a2,(%sp)
 
 ROUTE_SITE = 0x4002BB70
 ROUTE_STOCK = bytes.fromhex("700113c04059cd20")     # moveq #1,%d0 ; move.b %d0,0x4059cd20
@@ -60,6 +66,8 @@ GUARDS = (
      "after the frame hook: the skip test and the stock send(0xa80, 0x80005e60, 0xabc, "
      "0x800053a4), as wr_frame_hook repeats it"),
     (0x40025EAA, "538023c0402876f8", "the skip counter's count-down, then 0x40025eb2"),
+    (0x400F6968, "262f0024202f0028", "the save's body after its prologue, where wr_save_stock goes on"),
+    (0x400F6A34, "262f0028242f002c", "the load read's body after its prologue, where wr_load_stock goes on"),
 )
 
 
@@ -90,6 +98,12 @@ def hooks(symbols: dict[str, int]) -> list[tuple[int, bytes, bytes, str]]:
         (ROUTE_SITE, bytes.fromhex("4eb9") + symbols["wr_add"].to_bytes(4, "big") + bytes.fromhex("4e71"),
          ROUTE_STOCK, "the Data API's start-up builder: add the /waverider handler (wr_add), "
                       "then set the builder's flag as stock does"),
+        (SAVE_SITE, bytes.fromhex("4ef9") + symbols["wr_save_wrap"].to_bytes(4, "big") + bytes.fromhex("4e71"),
+         SAVE_STOCK, "SAVE PROJECT AS k: after the stock save succeeds, record 0 to record k "
+                     "(csrc/wrstore/projects.c); the working copy (slot 128) untouched"),
+        (LOAD_SITE, bytes.fromhex("4ef9") + symbols["wr_load_wrap"].to_bytes(4, "big") + bytes.fromhex("4e71"),
+         LOAD_STOCK, "LOAD PROJECT k: after the stock read succeeds, record k to record 0, and "
+                     "the pool refills"),
         (FRAME_SITE, bytes.fromhex("4ef9") + symbols["wr_frame_hook"].to_bytes(4, "big"),
          FRAME_STOCK, "the audio ISR, before the stock send: the frame or a table chunk "
                       "(wr_frame_hook), then on at 0x40025eb2"),

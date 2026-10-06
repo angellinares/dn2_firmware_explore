@@ -10,9 +10,9 @@ by the owner on 2026-10-06:
 The store itself, the index entry and the `/waverider` route are in `docs/waverider-store.md`; this
 builds on them and changes none of it. **Status: revision 3, with DNX's answers of 2026-10-06
 folded in (listed at the end). Built and passing in the emulator (2026-10-06): the rename
-(§1), the records and the `/wavepool` route (§2), and Waverider playing from record 0.
-Not built yet: SAVE PROJECT / LOAD PROJECT copying the records, and the instrument's pool
-page.**
+(§1), the records and the `/wavepool` route (§2), Waverider playing from record 0, and SAVE
+PROJECT AS / LOAD PROJECT copying the records. Not built yet: the instrument's pool page,
+and what CREATE NEW does to record 0 (an open question).**
 
 ## The numbers (read this first)
 
@@ -245,3 +245,19 @@ is DNX's to add; the pool makes it matter more than the store alone did. So does
   slot 0, count 3).
 - Not measured: which of a record's two sectors a write lands in. The read-back proves
   the generation, not the sector; the alternation is by the code (records.c).
+- **SAVE PROJECT AS and LOAD PROJECT** (`csrc/wrstore/projects.c`): hooks at the entries of
+  `0x400f6960(this, slot, progress)`, the save to a slot, and `0x400f6a2c(handle, slot,
+  project, progress)`, LOAD PROJECT's read. Both slots are 0-based; 128 is the working
+  copy, which every save, load, boot and CREATE NEW also writes, and which the hooks
+  leave alone. Measured on stock 1.11 first (panel_drive `--regs-at`): SAVE PROJECT AS 002
+  is save(1) then save(128); LOAD PROJECT 002 is load(1) then save(128); CREATE NEW is
+  save(128) alone. `scripts/emu_waverider_projects.py`, 6/6, the panel doing what the owner
+  would and the Data API reading the records:
+  - SAVE AS 002 with no record 0: record 2 is a stored automatic record;
+  - record 0 written as `[3, NONE, 0]`, SAVE AS 003: record 3 is that list;
+  - record 0 written as `[7]`, LOAD 003: record 0 is `[3, NONE, 0]` again;
+  - LOAD 002: record 0 is automatic;
+  - `wr_projects`: 2 saves, 2 loads, none failed.
+- **Open: CREATE NEW.** It writes only the working copy, so record 0 keeps the previous
+  project's list. Making it automatic would need a hook that tells CREATE NEW apart from
+  the other saves of slot 128.

@@ -269,8 +269,8 @@ to word 6.
 - a table's own hash is not checked when it is loaded (the route checks it when the
   table is written);
 - a refill rewrites tables in place while the old directory still names them;
-- the pool list is per project, but SAVE PROJECT and LOAD PROJECT do not copy it yet
-  (record 0 is the working project's; `docs/for-dnx-waverider-pool.md`);
+- the pool list follows SAVE PROJECT AS and LOAD PROJECT, but not the project manager's
+  copy, move or delete, nor CREATE NEW (`docs/for-dnx-waverider-pool.md`);
 - one geometry only.
 
 ## Open, before the ColdFire half

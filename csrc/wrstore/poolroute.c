@@ -4,7 +4,9 @@
  * A second handler beside /waverider's, built the same way (route.c,
  * docs/data-api-routes.md): `/` lists `wavepool` with 129 children; `/wavepool` lists
  * project slots 0..128, 0 named `working`; `/wavepool/<p>` is a 512-byte file in the
- * transfer container, content kind 0x50, object version 1, index p, raw.
+ * transfer container, content kind 0x50, object version 2 (the record's), index p, raw.
+ * A version 1 write (127 entries) is accepted and stored as version 2 (records.c); the
+ * container's version and the record's must agree.
  * - A read returns what project slot p plays (wr_record_resolve): its stored record,
  *   or with none generation 0, the automatic flag and the automatic pool's entries.
  * - A write is checked whole at the commit (wr_record_check: an automatic record must
@@ -40,6 +42,7 @@ volatile struct wp_write wp_write __attribute__((section(".data"))) = { 0x575057
 enum { P_OK = 1, P_ABORTED, P_DRIVE, P_REFUSED = 16 };
 
 static u8 *pstage __attribute__((section(".data"))) = 0;   /* RECORD_BYTES, allocated once */
+static u32 sent_version __attribute__((section(".data"))) = 0;   /* the write's container version */
 
 u32 wp_root_fill(u32 *out)
 {
@@ -129,7 +132,7 @@ u32 wp_file_fill(u32 *out, void *any, void *args)
     out[5] = (u32)pstage;                             /* +12 the stage */
     out[6] = RECORD_BYTES;                            /* +16 the length, both ways */
     out[7] = p;                                       /* +20 index: the container's slot byte */
-    out[8] = 1;                                       /* +24 object version */
+    out[8] = RECORD_VERSION;                          /* +24 object version: the record's */
     rk_make_fn((struct fn *)&out[2 + 7], p, (void *)wp_check_invoker);    /* +28 read pre-check */
     rk_make_fn((struct fn *)&out[2 + 19], p, (void *)wp_commit_invoker);  /* +76 commit */
     rk_make_fn((struct fn *)&out[2 + 27], p, (void *)wp_header_invoker);  /* +108 header check */
@@ -162,10 +165,11 @@ u32 wp_header_fill(u32 *out, void *any, const u8 *header)
         fail_project_in(out, 3, p, "the file is not a pool list (container kind)");
         return (u32)out;
     }
-    if (be32(header + 17) != 1) {
+    if (be32(header + 17) != 1 && be32(header + 17) != RECORD_VERSION) {
         fail_project_in(out, 3, p, "unknown pool list version");
         return (u32)out;
     }
+    sent_version = be32(header + 17);        /* the record's own must say the same */
     if (header[29] != 0) {
         fail_project_in(out, 3, p, "the body must be raw, not LZ4");
         return (u32)out;
@@ -191,7 +195,7 @@ void wp_commit_fill(void *any, const u8 *header, u32 ret)
         wp_write.last = P_ABORTED;
         return;
     }
-    why = wr_record_check(pstage, p);
+    why = be16(pstage + R_VERSION) != sent_version ? WP_VERSION : wr_record_check(pstage, p);
     if (!why && be32(pstage + R_GEN)) {
         /* a compare-and-swap: a writer that sends the generation it read is refused when
          * another writer (the instrument's pool page, DNX) has written since. 0: no check */

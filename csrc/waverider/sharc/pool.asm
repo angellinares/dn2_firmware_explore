@@ -4,11 +4,12 @@
 // linked in).
 //
 // The ColdFire loads tables from the +Drive into the load area (load.asm, command 4),
-// then writes the pool directory there last, at the area's last 4 KB:
+// then writes the pool directory there last, in the area's first 4 KB (the area starts at
+// 0x807ff000, so the 128 tables keep 0x80800000 + 16 KiB x j):
 //
-//   0x809ff000  magic 'WRP1' (0x57525031)
-//   0x809ff004  count, the entries that follow
-//   0x809ff008  entry[j]: the DDR address of pool table j, or 0 for none
+//   0x807ff000  magic 'WRP1' (0x57525031)
+//   0x807ff004  count, the entries that follow (128)
+//   0x807ff008  entry[j]: the DDR address of pool table j, or 0 for none
 //
 // A pool table has the baked tables' layout (16 frames x 512 int16, frame-major,
 // little-endian as the reader reads them). The boot stream writes the directory's
@@ -32,15 +33,15 @@
 .GLOBAL wr_pool.;
 wr_pool.:
       R12 = R1 - R2;                    // j (three registers: no 16-bit form)
-      R2 = DM(0x809ff000);              // the pool directory's magic
+      R2 = DM(0x807ff000);              // the pool directory's magic
       R1 = 0x57525031;                  // 'WRP1'
       COMP(R2, R1);
       IF NE JUMP 0x16fe27;              // -> wr_pool_none.
-      R2 = DM(0x809ff004);              // its count
+      R2 = DM(0x807ff004);              // its count
       COMPU(R12, R2);
       IF GE JUMP 0x16fe27;              // -> wr_pool_none.
       R12 = LSHIFT R12 BY 2;
-      R1 = 0x809ff008;
+      R1 = 0x807ff008;
       R1 = R12 + R1;
       I1 = R1;
       R2 = DM(0, I1);                   // entry[j]

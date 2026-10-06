@@ -62,14 +62,14 @@ def pool_directory(entries: dict[int, int], count: int = dsp.POOL_SLOTS) -> byte
 
 
 def pool_address(j: int) -> int:
-    """Pool table j's DDR address: the load area from its start, one 16 KB table each."""
+    """Pool table j's DDR address: after the directory's 4 KB, one 16 KB table each."""
     if not 0 <= j < dsp.POOL_SLOTS:
         raise ValueError(f"pool slot {j} is outside 0..{dsp.POOL_SLOTS - 1}")
-    return dsp.LOAD_AREA[0] + j * dsp.TABLE_BYTES
+    return dsp.POOL_TABLES + j * dsp.TABLE_BYTES
 
 
 def directory_frames(entries: dict[int, int], seq: int) -> list[bytes]:
-    """The pool directory, sent last, to the area's last 4 KB."""
+    """The pool directory, sent last, to the area's first 4 KB."""
     return table_frames(dsp.POOL_DIR - dsp.LOAD_AREA[0], pool_directory(entries), seq)
 
 

@@ -7,9 +7,11 @@ Each DIR/*.bin is a whole /wavepool file from DNX's codec (31-byte container hea
 header names, then read back. A firmware read differs from what was written in the
 generation only, which the firmware assigns (spec §2): so the read-back, with its
 generation set to the sent one and the record hash and trailer recomputed, must equal
-the sent file byte for byte. The firmware's own read-backs go to --out, unaltered, for
-DNX to pin. On an empty store an automatic record reads back with no entries, so it
-compares as sent too.
+the sent file byte for byte. A version 1 file (rev 3, 127 entries) is stored as version 2
+(rev 4), so it must equal the sent file converted: the same entries and an empty 128th,
+both version fields 2. The firmware's own read-backs go to --out, unaltered, for DNX to
+pin. On an empty store an automatic record reads back with no entries, so it compares as
+sent too.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from dnfw.waverider import poolrecord as PR                             # noqa: E402
 from dnfw.waverider import store as S                                   # noqa: E402
 from emu_waverider_rename import ARGS, BRIDGE, Frames, crc0, dec        # noqa: E402
 
@@ -68,8 +71,17 @@ def main() -> int:
             fixed[31 + 8:31 + 12] = sent[31 + 8:31 + 12]
             fixed[31 + 508:31 + 512] = struct.pack(">I", S.xxh32(bytes(fixed[31:31 + 508])))
             fixed[543:547] = struct.pack(">I", crc0(bytes(fixed[31:543])))
-        same = bytes(fixed) == sent
-        first_diff = next((i for i in range(min(len(fixed), len(sent))) if fixed[i] != sent[i]), None)
+        want = sent
+        if struct.unpack_from(">H", sent, 31 + 4)[0] == 1:          # version 1: as converted
+            rec, _ = PR.from_bytes(sent[31:31 + 512])
+            body = rec.to_bytes(count=struct.unpack_from(">H", sent, 31 + 12)[0])
+            w = bytearray(sent)
+            w[0x11:0x15] = struct.pack(">I", PR.VERSION)
+            w[31:31 + 512] = body
+            w[543:547] = struct.pack(">I", crc0(bytes(w[31:543])))
+            want = bytes(w)
+        same = bytes(fixed) == want
+        first_diff = next((i for i in range(min(len(fixed), len(want))) if fixed[i] != want[i]), None)
         ok &= same
         print(f"{'PASS' if same else 'FAIL'} {path.name}: project slot {p}, {len(back)} bytes back, "
               f"generation {gen_back}" + ("" if same else f", first difference at {first_diff}"))

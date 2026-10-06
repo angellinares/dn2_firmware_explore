@@ -13,7 +13,9 @@
 #include "store.h"
 
 #define PROJECT_SLOTS   129                 /* 0 working, 1..128 */
-#define POOL_ENTRIES    127
+#define POOL_ENTRIES    128                 /* version 2; version 1 held 127 */
+#define V1_ENTRIES      127
+#define RECORD_VERSION  2
 #define RECORD_BYTES    512
 #define RECORD_A        0x800u              /* sectors, from the region's start */
 #define RECORD_B        0x900u
@@ -28,11 +30,14 @@
 #define R_GEN     8
 #define R_COUNT   12
 #define R_FLAGS   14
-#define R_ENTRIES 16                        /* 127 x u16 */
+#define R_ENTRIES 16                        /* 128 x u16 (version 1: 127) */
 #define R_HASH    508
 
-/* -> 0 if REC is a well-formed record for project slot P, else why not (WP_*) */
-u32 wr_record_check(const u8 *rec, u32 p);
+/* -> 0 if REC is a well-formed record for project slot P, else why not (WP_*). Both
+ * versions are well-formed; a version 1 record is then converted in place to version 2
+ * (127 entries and an empty 128th, rehashed: total and lossless). So every caller sees
+ * version 2, and only version 2 is ever stored. */
+u32 wr_record_check(u8 *rec, u32 p);
 
 /* Project slot P's current record into REC (RECORD_BYTES) and its generation, or 0 if
  * it has none (REC then undefined). */

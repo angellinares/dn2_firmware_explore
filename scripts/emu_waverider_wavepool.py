@@ -36,20 +36,21 @@ NONE = 0xFFFF
 PIECES = 1 + (31 + 512 + 12 + 15) // 16
 
 
-def container(body: bytes, slot: int, kind: int) -> bytes:
+def container(body: bytes, slot: int, kind: int, version: int = 2) -> bytes:
     head = (bytes.fromhex("ac11d303" "02000500" "0f") + b"0059"
-            + struct.pack(">IIII", kind, 1, slot, len(body)) + bytes([0, 12]))
+            + struct.pack(">IIII", kind, version, slot, len(body)) + bytes([0, 12]))
     whole = head + body
     return whole + struct.pack(">II", crc0(whole[0x1F:]), len(body)) + bytes.fromhex("aaa1daaa")
 
 
 def record(p: int, entries: list[int], automatic=False, generation=0, count=None,
-           project=None, reserved=False, bad_hash=False) -> bytes:
-    e = (entries + [NONE] * 127)[:127]
+           project=None, reserved=False, bad_hash=False, version=2) -> bytes:
+    n = 127 if version == 1 else 128
+    e = (entries + [NONE] * n)[:n]
     used = sum(1 for s in e if s != NONE) if count is None else count
-    r = bytearray(struct.pack(">IHHIHH", 0x5752504C, 1, p if project is None else project,
+    r = bytearray(struct.pack(">IHHIHH", 0x5752504C, version, p if project is None else project,
                               generation, used, 1 if automatic else 0))
-    r += struct.pack(">127H", *e)
+    r += struct.pack(f">{n}H", *e)
     r = r.ljust(508, b"\0")
     if reserved:
         r[300] = 1
@@ -59,8 +60,8 @@ def record(p: int, entries: list[int], automatic=False, generation=0, count=None
 
 def parse_record(r: bytes) -> dict:
     magic, version, project, generation, count, flags = struct.unpack(">IHHIHH", r[:16])
-    entries = list(struct.unpack(">127H", r[16:270]))
-    return {"project": project, "generation": generation, "count": count, "flags": flags,
+    entries = list(struct.unpack(">128H", r[16:272]))
+    return {"project": project, "generation": generation, "count": count, "flags": flags, "version": version,
             "entries": [s for s in entries if s != NONE], "positions": entries,
             "hash_ok": struct.unpack(">I", r[508:512])[0] == S.xxh32(r[:508]) and magic == 0x5752504C}
 
@@ -93,7 +94,7 @@ def slot_file(n: int, name: str, seed: int) -> bytes:
     t = table(seed)
     th = S.xxh32(t)
     e = S.Entry(name, 16, 512, S.slot_start(n), len(t), th, th, len(t)).to_bytes()
-    return container(e + t, n, 0x57)
+    return container(e + t, n, 0x57, version=1)          # /waverider: store format version 1
 
 
 def main() -> int:
@@ -127,6 +128,11 @@ def main() -> int:
     f.write("bad_count", "/wavepool/7", container(record(7, [1, 2], count=1), 7, 0x50))
     f.write("bad_kind", "/wavepool/7", container(record(7, [1]), 7, 0x57))
     f.write("bad_length", "/wavepool/7", container(record(7, [1])[:511], 7, 0x50))
+    f.write("v1", "/wavepool/9", container(record(9, [4, NONE, 2], version=1), 9, 0x50, version=1))
+    f.read("r9", "/wavepool/9", PIECES)
+    f.write("mixed", "/wavepool/10", container(record(10, [1], version=1), 10, 0x50, version=2))
+    f.write("full", "/wavepool/11", container(record(11, [s % 256 for s in range(128)]), 11, 0x50))
+    f.read("r11", "/wavepool/11", PIECES)
     f.frame("open129", 0x54, b"/wavepool/129\0")
     f.frame("list2", 0x53, b"/wavepool\0")
 
@@ -168,8 +174,8 @@ def main() -> int:
     check("no record reads as what plays: generation 0, automatic, entries [0, 3], count 2",
           r0 and r0["generation"] == 0 and r0["flags"] == 1 and r0["entries"] == [0, 3]
           and r0["count"] == 2 and r0["hash_ok"] and r0["project"] == 0, r0 and {k: r0[k] for k in ("generation", "flags", "entries", "count", "hash_ok")})
-    check("the container: kind 0x50, version 1, index 0, 512 bytes, raw",
-          head and struct.unpack(">IIII", head[13:29]) == (0x50, 1, 0, 512) and head[29] == 0,
+    check("the container: kind 0x50, version 2, index 0, 512 bytes, raw",
+          head and struct.unpack(">IIII", head[13:29]) == (0x50, 2, 0, 512) and head[29] == 0,
           head.hex() if head else None)
     l1 = listing(replies["list1"][0])
     check("an automatic write carrying entries is refused (still no record)", not l1[0][2], l1[0])
@@ -192,8 +198,15 @@ def main() -> int:
         check(f"{label} is refused at the first chunk", text in answer(f"{label}:chunk0"), answer(f"{label}:chunk0")[:70])
     check("project slot 129 is out of range", b"out of range" in answer("open129"), answer("open129")[:70])
     l2 = listing(replies["list2"][0])
-    check("used: 0 and 5 only (bad hash, project, reserved byte and count wrote nothing)",
-          [i for i, _, u in l2 if u] == [0, 5], [i for i, _, u in l2 if u])
+    _, r9 = read_record("r9")
+    check("a version 1 write is accepted and reads back as version 2, the same entries",
+          r9 and r9["version"] == 2 and r9["positions"][:3] == [4, NONE, 2] and r9["positions"][127] == NONE
+          and r9["hash_ok"], r9 and {k: r9[k] for k in ("version", "entries", "generation")})
+    _, r11 = read_record("r11")
+    check("a full version 2 pool holds 128 entries", r11 and len(r11["entries"]) == 128 and r11["count"] == 128,
+          r11 and (len(r11["entries"]), r11["count"]))
+    check("used: 0, 5, 9 and 11 only (bad hash, project, reserved byte, count, mixed versions wrote nothing)",
+          [i for i, _, u in l2 if u] == [0, 5, 9, 11], [i for i, _, u in l2 if u])
     print("PASS" if ok else "FAIL")
     return 0 if ok else 1
 

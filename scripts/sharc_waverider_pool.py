@@ -153,6 +153,17 @@ def main(argv=None) -> int:
         checks["an empty entry: slot 2 plays slot 0"] = (
             all(s.get("acked") for s in sent3) and pointer(gone) == dsp.TABLES_DM[0])
 
+        # the 128th table, the area's last 16 KB: its load ends exactly at the area's end
+        last = dsp.POOL_SLOTS - 1
+        at_last = LF.pool_address(last)
+        tail = LF.table_frames(at_last - dsp.LOAD_AREA[0], LF.table_be(pool), 200)
+        tail += LF.directory_frames({last: at_last}, 200 + len(tail))
+        full, sent4 = send_loads(loaded, tail)
+        top = g.run_blocks(full, frames((2 + last) * SLOT), a.blocks)
+        checks[f"the 128th table: slot {2 + last} (TBL1 {(2 + last) * SLOT:#06x}) plays pool entry {last}"] = (
+            all(s.get("acked") for s in sent4) and at_last + dsp.TABLE_BYTES == dsp.LOAD_AREA[1]
+            and pointer(top) == at_last)
+
         series = g.track_series(play, 0) if play["ok"] else []
         g.wav("pool_slot2_runner.wav", series, a.seconds, wavs,
               "the runner: TBL1 slot 2 = the pool table loaded through command 4, WAV1 64, note 60")

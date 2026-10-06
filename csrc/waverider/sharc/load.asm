@@ -70,21 +70,24 @@ wr_load.:
       // 1 <= count <= 668
       R0 = 1;
       COMPU(R11, R0);
-      IF LT JUMP 0x16fb74;              // -> wr_load_refuse.
+      IF LT JUMP 0x16fb78;              // -> wr_load_refuse.
       R0 = 668;
       COMPU(R11, R0);
-      IF GT JUMP 0x16fb74;              // -> wr_load_refuse.
-      // the destination 4-aligned and below 2 MB, and its end inside the area
-      R0 = 0xffe00003;
+      IF GT JUMP 0x16fb78;              // -> wr_load_refuse.
+      // the destination 4-aligned and inside the area (2 MiB + 4 KiB), and its end too;
+      // the start is tested on its own, so a destination near 2^32 can't wrap the end
+      R0 = 3;
       R2 = R12 AND R0;
-      IF NE JUMP 0x16fb74;              // -> wr_load_refuse.
+      IF NE JUMP 0x16fb78;              // -> wr_load_refuse.
+      R0 = 0x201000;
+      COMPU(R12, R0);
+      IF GE JUMP 0x16fb78;              // -> wr_load_refuse.
       R2 = LSHIFT R11 BY 2;
       R2 = R12 + R2;                    // the end
-      R0 = 0x200000;
       COMPU(R2, R0);
-      IF GT JUMP 0x16fb74;              // -> wr_load_refuse.
+      IF GT JUMP 0x16fb78;              // -> wr_load_refuse.
 
-      R0 = 0x80800000;                  // the load area
+      R0 = 0x807ff000;                  // the load area: the pool directory, then the tables
       R12 = R12 + R0;
       R10 = R10 - R10;                  // the sum
       R0 = 1;
@@ -98,18 +101,18 @@ wr_load_word.:
       R8 = R8 + R13;
       R12 = R12 + R13;
       R11 = R11 - R0;
-      IF NE JUMP 0x16fb4b;              // -> wr_load_word.
+      IF NE JUMP 0x16fb4f;              // -> wr_load_word.
 
       R2 = DM(0x2dfa24);
       COMP(R10, R2);
-      IF NE JUMP 0x16fb74;              // -> wr_load_refuse.
+      IF NE JUMP 0x16fb78;              // -> wr_load_refuse.
       R2 = DM(0x2dfa20);
       R10 = LSHIFT R2 BY 16;
       R2 = LSHIFT R2 BY -16;
       R10 = R10 OR R2;                  // halves swapped, as reply word 0
       DM(0x2c49e8) = R10;               // reply word 6, both pages: accepted
       DM(0x2c59e8) = R10;
-      JUMP 0x16fb88;                    // -> wr_load_render.
+      JUMP 0x16fb8c;                    // -> wr_load_render.
 
 .GLOBAL wr_load_refuse.;
 wr_load_refuse.:

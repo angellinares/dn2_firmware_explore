@@ -32,7 +32,7 @@ import pathlib
 LOAD = 0x467F0000                 # above reloadconfirm's chunk and the route test's, below lfo4's C
 LIMIT = 0x46800000
 SPANS = 0x46A00000                # pool.h: WR_POOL_SPANS
-SPANS_BYTES = 127 * 16 * 2 * 96
+SPANS_BYTES = 128 * 16 * 2 * 96     # POOL_SLOTS (pool.h) x 16 frames x min/max x 96 columns
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SOURCES = (ROOT / "csrc/waverider/pool.c", ROOT / "csrc/waverider/loader.c",
            ROOT / "csrc/waverider/events.c",

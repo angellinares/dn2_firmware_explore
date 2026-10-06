@@ -173,7 +173,8 @@ def main(argv=None) -> int:
         cases = {
             "load": load_frame(dest, payload),
             "bad sum": load_frame(dest, payload, sum_delta=1),
-            "out of range": load_frame(0x200000 - 8, payload),
+            "out of range": load_frame(dsp.LOAD_AREA[1] - dsp.LOAD_AREA[0] - 8, payload),
+            "wraps": load_frame(0xFFFFFFF0, payload),
             "render frame": live,
             "command 5": load_frame(dest, payload, cmd=5),
         }
@@ -195,7 +196,7 @@ def main(argv=None) -> int:
             elif name == "bad sum":
                 checks = {"chunk written": in_ddr, "word 6 = the refused sequence": w6 == swapped(SEQ) ^ REFUSED,
                           "R12 = the frame copy": to_copy}
-            elif name == "out of range":
+            elif name in ("out of range", "wraps"):
                 checks = {"nothing in DDR": nothing_in_ddr, "word 6 = the refused sequence": w6 == swapped(SEQ) ^ REFUSED,
                           "R12 = the frame copy": to_copy}
             elif name == "render frame":

@@ -3,7 +3,7 @@
 #ifndef WAVERIDER_POOL_H
 #define WAVERIDER_POOL_H
 
-#define POOL_SLOTS     127                 /* 16 KiB tables below the load area's directory */
+#define POOL_SLOTS     128                 /* 16 KiB tables after the load area's directory */
 #define WR_POOL_WIDTH  96                  /* the page's wave strip, as wr_spans */
 
 /* the display spans of pool table j: [frame][min, max][column], signed bytes; in RAM

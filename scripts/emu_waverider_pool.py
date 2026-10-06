@@ -99,7 +99,7 @@ def expected_frames(stored, plan, seq: int = 1) -> list[bytes]:
     for j, n in enumerate(plan):
         if n is None:
             continue
-        f = LF.table_frames(LF.pool_address(j) - LF.pool_address(0), stored["payloads"][n], seq)
+        f = LF.table_frames(LF.pool_address(j) - LF.dsp.LOAD_AREA[0], stored["payloads"][n], seq)
         out += f
         seq += len(f)
     return out + LF.directory_frames({j: LF.pool_address(j) for j, n in enumerate(plan) if n is not None}, seq)
@@ -133,7 +133,7 @@ def main(argv=None) -> int:
     layout = json.loads((ROOT / "src/dnfw/mods/waverider_code.json").read_text())["layout"]
     pool_at, load_at, store_at = layout["wr_pool"], layout["wr_load"], layout["wr_store"]
     a.out.mkdir(parents=True, exist_ok=True)
-    pool_bytes = 4 * len(POOL_FIELDS) + 127 + 127 * 8
+    pool_bytes = 4 * len(POOL_FIELDS) + LF.dsp.POOL_SLOTS * (1 + 8)     # wr_pool: slot_of, then names[8] (pool.h)
     status = [f"peek:{pool_at:#x}:{pool_bytes}", f"peek:{load_at:#x}:{4 * len(LOAD_FIELDS)}",
               f"peek:{store_at:#x}:{4 * len(STORE_FIELDS)}"]
 
@@ -176,7 +176,7 @@ def main(argv=None) -> int:
                           fields(tail[2]["hex"], STORE_FIELDS))
         praw = bytes.fromhex(tail[0]["hex"])
         slot_of = list(praw[4 * len(POOL_FIELDS):4 * len(POOL_FIELDS) + len(plan)])
-        nb = praw[4 * len(POOL_FIELDS) + 127:]
+        nb = praw[4 * len(POOL_FIELDS) + LF.dsp.POOL_SLOTS:]
         names = [nb[8 * j:8 * j + 8].split(b"\0")[0].decode("cp1252") for j in range(len(plan))]
         spans = bytes.fromhex(tail[3]["hex"])
         # no answer: never acknowledged

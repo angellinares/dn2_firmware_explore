@@ -29,9 +29,11 @@
 #define TICKS        (*(volatile u32 *)0x466758B0u)   /* the UI's 120 Hz tick */
 #define TICK_HZ      120
 #define START        (5 * TICK_HZ)
-#define AREA         0x80800000u                       /* the load area's first byte in DDR */
+#define AREA         0x807FF000u                       /* the load area's first byte in DDR */
+#define DIR_OFFSET   0u                                /* the directory, the area's first 4 KB */
+#define TABLE_OFFSET 0x1000u                           /* pool table j at offset TABLE_OFFSET + j x 16 KB */
+#define TABLES       (AREA + TABLE_OFFSET)             /* 0x80800000 */
 #define TABLE_BYTES  0x4000u                           /* 16 x 512 int16 */
-#define DIR_OFFSET   0x1FF000u                         /* the directory, the area's last 4 KB */
 #define POOL_MAGIC   0x57525031u                       /* 'WRP1' */
 
 enum { WAITING, FILLING, DIRECTORY, READY, FAILED = 5 };
@@ -73,7 +75,12 @@ static void put(signed char (*frame)[WR_POOL_WIDTH], u32 c, int b)
 static void seen(u32 dest, const u16 *w, u32 bytes)
 {
     const u16 *at = col_start();
-    u32 j = dest / TABLE_BYTES, first = dest % TABLE_BYTES / 2;
+    u32 j, first;
+    if (dest < TABLE_OFFSET)
+        return;
+    dest -= TABLE_OFFSET;
+    j = dest / TABLE_BYTES;
+    first = dest % TABLE_BYTES / 2;
     if (j >= POOL_SLOTS)
         return;
     for (u32 i = 0; i < bytes / 2; i++) {
@@ -128,7 +135,7 @@ static void send_directory(void)
     u32 words[2] = { POOL_MAGIC, POOL_SLOTS };
     for (u32 k = 0; k < 2 + POOL_SLOTS; k++) {
         u32 v = k < 2 ? words[k]
-              : (k - 2 < filling && slots[k - 2] != EMPTY_SLOT ? AREA + (k - 2) * TABLE_BYTES : 0);
+              : (k - 2 < filling && slots[k - 2] != EMPTY_SLOT ? TABLES + (k - 2) * TABLE_BYTES : 0);
         directory[2 * k] = (u16)v;
         directory[2 * k + 1] = (u16)(v >> 16);
     }
@@ -165,7 +172,7 @@ void wr_drive_poll(void)
             }
             clear_spans(next);
             if (wr_load_extent(REGION + DATA_START + slots[next] * SLOT_SECTORS,
-                               TABLE_BYTES / 512, next * TABLE_BYTES, seen)) {
+                               TABLE_BYTES / 512, TABLE_OFFSET + next * TABLE_BYTES, seen)) {
                 wr_pool.slot_of[next] = slots[next];
                 next++;
             }

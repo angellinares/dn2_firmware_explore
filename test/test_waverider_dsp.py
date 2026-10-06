@@ -172,9 +172,9 @@ def test_the_loader_renders_through_case_3_from_the_frame_copy():
     assert tail == ["R0 = 8;", "R11 = 8;", "R12 = 2;", "R13 = 4;"]
     # the bounds it checks are the build's own
     assert "R0 = 668;" in src and dsp.LOAD_MAX_WORDS == 668 == (2688 - 16) // 4
-    assert "R0 = 0x80800000;" in src and dsp.LOAD_AREA[0] == 0x80800000
-    assert "R0 = 0x200000;" in src and dsp.LOAD_AREA[1] - dsp.LOAD_AREA[0] == 0x200000
-    assert "R0 = 0xffe00003;" in src                                        # below 2 MB, 4-aligned
+    assert "R0 = 0x807ff000;" in src and dsp.LOAD_AREA[0] == 0x807FF000
+    assert "R0 = 0x201000;" in src and dsp.LOAD_AREA[1] - dsp.LOAD_AREA[0] == 0x201000
+    assert "R0 = 3;" in src and "COMPU(R12, R0);" in src                   # 4-aligned; the start tested alone
     # the load area is DDR the stock image does not use, above both baked tables
     assert dsp.DDR_REGION[0] <= dsp.TABLES_DM[-1] + dsp.TABLE_BYTES <= dsp.LOAD_AREA[0]
     assert dsp.LOAD_AREA[1] <= dsp.DDR_REGION[1]
@@ -219,8 +219,9 @@ def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
 def test_the_pool_directory_starts_empty_inside_the_load_area(built):
     # the ColdFire writes the pool's directory last; until then the boot stream's zeros
     # make pool.asm fall back to slot 0, and its tables fit below the directory
-    assert dsp.LOAD_AREA[0] + dsp.POOL_SLOTS * dsp.TABLE_BYTES <= dsp.POOL_DIR < dsp.LOAD_AREA[1]
-    assert dsp.POOL_SLOTS == 127
+    assert dsp.POOL_DIR == dsp.LOAD_AREA[0] and dsp.POOL_TABLES == dsp.POOL_DIR + 0x1000 == 0x80800000
+    assert dsp.POOL_TABLES + dsp.POOL_SLOTS * dsp.TABLE_BYTES == dsp.LOAD_AREA[1]
+    assert dsp.POOL_SLOTS == 128
     assert bootstream.read_span(built, dsp.POOL_DIR, dsp.POOL_ZEROS) == bytes(dsp.POOL_ZEROS)
 
 

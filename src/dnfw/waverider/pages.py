@@ -186,7 +186,7 @@ TBL_IDS = (247, 251)              # TBL1, TBL2: their range and names are the pa
 RATE_IDS = (240, 244)             # RATE1, RATE2: named as note lengths while SYNC is on (the page's)
 SMTH_IDS = (255, 258)             # SMT1, SMT2: named by the C page's table (a time, Off at 127)
 DCLK_ID = 254                     # DCLK: likewise (Off at 0, then 1..100 ms)
-TBL_NAMES = 2 + 127               # the baked tables, then the +Drive pool's (csrc/waverider/pool.h)
+TBL_NAMES = 2 + 128               # the baked tables, then the +Drive pool's 128 (csrc/waverider/pool.h)
 
 
 def source(page_draw: int, tbl_range: int, tbl_names: int, rate_fmt: int) -> str:

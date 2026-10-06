@@ -369,6 +369,10 @@ RANGE_STOCK = bytes.fromhex("2f02222f0008")
 # reads TBL's as unsigned on a Waverider track.
 TURN_SITE = 0x40036AEC                  # move.l %sp@(56),%d2 ; move.l %sp@(60),%d7
 TURN_STOCK = bytes.fromhex("242f00382e2f003c")
+# The header line ("Osc1 Table=Prim.") is printed once, at 0x4006782a, as "%s=%s" with the
+# control's long name and its value text; d2 = the id. wr_head drops the name for TBL.
+HEAD_SITE = 0x4006781C                  # move.l %fp@(-36),%sp@- ; pea 0x40216cee
+HEAD_STOCK = bytes.fromhex("2f2effdc487940216cee")
 
 
 def _cave_free(content: bytes, cave: tuple[int, int]) -> None:
@@ -396,7 +400,7 @@ def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
     if pages.C_LOAD + len(cimage) > pages.C_END:
         raise ComposeError(f"the page renderer ends past {pages.C_END:#010x}")
     ptable = "\n    .align 2\n" + "\n".join(f"    .long {n}" for n in pages.LABELS_OUT) + "\n"
-    pblob = assemble(pages.source(csyms["wr_page_draw"], csyms["wr_tbl_range"], csyms["wr_tbl_names"],
+    pblob = assemble(pages.source(csyms["wr_page_draw"], csyms["wr_tbl_range"], csyms["wr_tbl_fmt"],
                                   csyms["wr_rate_fmt"])
                      + ptable, base=pages.LOAD)
     asm = pblob[:-4 * len(pages.LABELS_OUT)]
@@ -541,6 +545,10 @@ def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
     edit(TURN_SITE, bytes.fromhex("4eb9") + _long(playout["wr_turn"]) + bytes.fromhex("4e71"),
          "the knob turn's current value: TBL1 and TBL2 read unsigned on a Waverider track, "
          "so a turn from the pool's last tables steps instead of falling to Prim.", TURN_STOCK)
+    _need(content, HEAD_SITE + 10, bytes.fromhex("2f2a006c4eb9400562e6"), "the header's printf")
+    edit(HEAD_SITE, bytes.fromhex("4eb9") + _long(playout["wr_head"]) + bytes.fromhex("4e714e71"),
+         "the header: TBL1 and TBL2 on a Waverider track show their value only (the pool "
+         "position and name), without the control's name", HEAD_STOCK)
     edit(POLL_SITE, bytes.fromhex("4eb9") + _long(csyms["wr_poll"]),
          "the UI loop's redraw test: wr_poll asks for a redraw while a modulation marker on "
          "Waverider's page would move, then answers as stock", POLL_STOCK)

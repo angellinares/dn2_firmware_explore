@@ -131,6 +131,22 @@ static void dclk_text(char *buf, int value)
     ms_text(buf, wr_dclk_text[step_of(value, 127)]);
 }
 
+/* TBL's value text (owner, tbl128b on the instrument): the pool position, numbered as
+ * the counter numbers it (T:001 = pool entry 0), and the table's name; Prim. and Harm.
+ * by name. The header shows only this for TBL (wr_head drops "Osc1 Table="). The value
+ * comes sign-extended (0x8000 up: the pool's last tables), so it is read as a word. */
+static void tbl_text(char *buf, int value)
+{
+    u32 slot = ((u32)value & 0xFFFFu) >> 8;
+    if (slot < WR_TABLES)
+        SPRINTF(buf, "%s", wr_tbl_names[slot]);
+    else
+        SPRINTF(buf, "T:%03d %s", (int)(slot - WR_TABLES + 1),
+                slot < WR_TABLES + POOL_SLOTS ? wr_tbl_names[slot] : dash);
+}
+
+const void *wr_tbl_fmt[2] __attribute__((section(".data"))) = { (const void *)tbl_text, FORMATTER };
+
 /* Rows 2 and 3 are fixed: SMTH's time constant, Off at 127, and DCLK's crossfade, Off at
  * 0 (dnfw.waverider.live.smth_names, dclk_names). */
 const void *wr_rate_fmt[4][2] __attribute__((section(".data"))) =
@@ -247,6 +263,14 @@ static int osc_of(int page)
  * about 7 times a second, the wave stepping visibly (instrument, m10b3f,
  * 2026-10-03: oscillator 2's Tri, pattern stopped). FRAME still caps the rate. */
 #define POS_QUANT 0x80
+/* TBL's own step: half a table (a table is 0x100). QUANT is three tables there: an LFO
+ * sweeping TBL +-1.56 tables (0x31e wide; instrument, tbl128b, 2026-10-07, read live
+ * over the probe, LFO1 depth 3.9, default speed) sat on QUANT's edge, so the band
+ * vanished each time its edges relaxed between peaks and came back at the next one:
+ * the owner saw it flash. */
+#define TBL_QUANT 0x80
+
+static int quant_of(u32 id);
 #define HOLD    (2 * TICK_HZ)   /* a range edge holds 2 s before it relaxes */
 #define SHOWN   (TICK_HZ * 6 / 5)   /* 1.2 s: the stock UI redraws a shown page once a second */
 #define FRAME   5               /* ticks: at most 24 redraws a second, about a turn's own rate */
@@ -423,6 +447,12 @@ static u32 asked_at __attribute__((section(".data"))) = 0;
 static int drawn_sig __attribute__((section(".data"))) = 0;
 static int settling __attribute__((section(".data"))) = 0;
 
+/* the offset that counts as modulation at all: TBL's half a table, else QUANT */
+static int quant_of(u32 id)
+{
+    return id == WR_TBL_ID || id == WR_TBL2_ID ? TBL_QUANT : QUANT;
+}
+
 static int which(u32 id)
 {
     for (int k = 0; k < MARKED; k++)
@@ -496,7 +526,7 @@ static int signature(void)
     int sig = 0;
     for (int k = 2 * osc_of(shown_page); k < 2 * osc_of(shown_page) + 2; k++)
         sig = sig * 131 + (tier(marked[k]) < 2
-                           ? mod_offset(marked[k]) / (k & 1 ? QUANT : POS_QUANT) : 0);
+                           ? mod_offset(marked[k]) / (k & 1 ? TBL_QUANT : POS_QUANT) : 0);
     return sig;
 }
 
@@ -664,7 +694,8 @@ static void modulation(void *c, int cx, int y, int label_y, u32 id, int set, u32
     int off = mod_offset(id);
     sweep(k, off, now);
     struct sweep *w = &sweeps[k];
-    if (w->hi - w->lo <= QUANT && off < QUANT && off > -QUANT)
+    int q = quant_of(id);
+    if (w->hi - w->lo <= q && off < q && off > -q)
         return;
     int a = track_x(id, cx, set + w->lo), b = track_x(id, cx, set + w->hi);
     int speed = tier(id);

@@ -113,11 +113,12 @@ VALUE_NAMES = {253: MOVE_SHAPES, 257: MOVE_SHAPES, 259: ("Retrig", "Free"),
 RANGES = {rid: (0, (len(names) - 1) << 8, 0) for rid, names in VALUE_NAMES.items()}
 RANGES[254] = (0, 0x7F00, DCLK_DEFAULT)   # DCLK: 3 ms for a new sound (owner, 2026-10-06)
 FORMAT_S = 0x40219C2D             # "%s", the stock naming routines' format
+HEAD_FORMAT = 0x40216CEE          # "%s=%s", the header's name and value (used once, at 0x40067820)
 RECORD_TABLE = 0x401F7F94         # record id N at + 60 N (the naming routine at + 0x34)
 SPRINTF = 0x40000E82              # (buffer, format, ...), as the stock naming routines call it
 
 LABELS_OUT = ("is_wr", "wr_count", "wr_page", "wr_label", "wr_long", "wr_icons", "wr_grid", "wr_grid9",
-              "wr_fmt", "wr_vfmt", "wr_range", "wr_turn", "descriptors")
+              "wr_fmt", "wr_vfmt", "wr_range", "wr_turn", "wr_head", "descriptors")
 GRID = 0x40017428                 # the stock grid: (view, canvas)
 GRID9 = 0x400175E4                # WaveTone's page-3 grid (page id 9): (view, canvas)
 ICON_PAGE = 7                     # the SYN page draw's id for WaveTone's OSC page
@@ -189,11 +190,12 @@ DCLK_ID = 254                     # DCLK: likewise (Off at 0, then 1..100 ms)
 TBL_NAMES = 2 + 128               # the baked tables, then the +Drive pool's 128 (csrc/waverider/pool.h)
 
 
-def source(page_draw: int, tbl_range: int, tbl_names: int, rate_fmt: int) -> str:
+def source(page_draw: int, tbl_range: int, tbl_fmt: int, rate_fmt: int) -> str:
     """The chunk's assembly (GNU as, ColdFire), linked at LOAD. PAGE_DRAW is the C
-    renderer's entry, `wr_page_draw(view, canvas)`; TBL_RANGE and TBL_NAMES its
-    `wr_tbl_range` ({min, max, default}) and `wr_tbl_names` (a name per slot), which
-    it keeps as the +Drive pool fills, so TBL steps through the pool and names it;
+    renderer's entry, `wr_page_draw(view, canvas)`; TBL_RANGE its `wr_tbl_range`
+    ({min, max, default}), which it keeps as the +Drive pool fills, so TBL steps
+    through the pool; TBL_FMT its `wr_tbl_fmt`, the formatter that names a TBL value
+    (the pool position and the name, from its `wr_tbl_names`);
     RATE_FMT its `wr_rate_fmt`, a {names, count} pair per oscillator that it sets from
     the active track's SYNC (count 0: RATE's own number), and a third that names SMTH."""
     table = "\n".join(f"    .long {rid}, lab_{rid}" for rid in LABELS)
@@ -208,12 +210,11 @@ def source(page_draw: int, tbl_range: int, tbl_names: int, rate_fmt: int) -> str
     page_data = "\n".join(pages)
     # a row is an id and where its {names, count} pair is: TBL's and RATE's pairs change
     fmt_table = "\n".join([f"    .long {60 * rid}, pair_{rid}" for rid in VALUE_NAMES]
-                          + [f"    .long {60 * rid}, pair_tbl" for rid in TBL_IDS]
+                          + [f"    .long {60 * rid}, {tbl_fmt:#010x}" for rid in TBL_IDS]
                           + [f"    .long {60 * rid}, {rate_fmt + 8 * k:#010x}" for k, rid in enumerate(RATE_IDS)]
                           + [f"    .long {60 * rid}, {rate_fmt + 16:#010x}" for rid in SMTH_IDS]
                           + [f"    .long {60 * DCLK_ID}, {rate_fmt + 24:#010x}"])
-    fmt_pairs = "\n".join([f"pair_{rid}: .long names_{rid}, {len(names)}" for rid, names in VALUE_NAMES.items()]
-                          + [f"pair_tbl: .long {tbl_names:#010x}, {TBL_NAMES}"])
+    fmt_pairs = "\n".join([f"pair_{rid}: .long names_{rid}, {len(names)}" for rid, names in VALUE_NAMES.items()])
     name_lists = "\n".join(f"names_{rid}:\n" + "\n".join(f"    .long name_{rid}_{k}" for k in range(len(names)))
                            for rid, names in VALUE_NAMES.items())
     name_strings = "\n".join(f'name_{rid}_{k}: .asciz "{n}"' for rid, names in VALUE_NAMES.items()
@@ -492,6 +493,30 @@ wr_turn:
     beq.s   9f
     andi.l  #0xFFFF,%d2
 9:  rts
+
+| -- the header's "name=value" (0x40067820: `move.l %fp@(-36),%sp@- ; pea "%s=%s"`, 10
+| bytes, then the header's own printf 0x400562e6), d2 = the id: now jsr here, which
+| pushes the same two. TBL1 or TBL2 on a Waverider track (owner, tbl128b): the name ""
+| and the format "%s%s", so the header shows only the value, "T:126 HS Sa".
+wr_head:
+    movea.l %sp@+,%a0
+    move.l  %fp@(-36),%sp@-
+    pea     {HEAD_FORMAT:#010x}
+    cmpi.l  #{TBL_IDS[0]},%d2
+    beq.s   1f
+    cmpi.l  #{TBL_IDS[1]},%d2
+    bne.s   9f
+1:  bsr.w   is_wr
+    tst.l   %d0
+    beq.s   9f
+    lea     head_none,%a1             | ColdFire: no #imm to d16(An) for .l; a1 is free here
+    move.l  %a1,%sp@(4)
+    lea     head_value,%a1
+    move.l  %a1,%sp@
+9:  jmp     %a0@
+head_none:  .asciz ""
+head_value: .asciz "%s%s"
+    .align 2
 
     .align 2
 fmt_table:

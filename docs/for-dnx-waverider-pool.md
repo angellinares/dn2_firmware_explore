@@ -169,15 +169,20 @@ The `/` reply then declares and carries 5 entries.
     non-zero generation that isn't the current one is refused: another writer has written
     since, and its edit is kept. Either way the firmware writes the non-current sector with
     the current generation + 1. As with every commit refusal, the reply can't say so (the
-    session has answered first); the read after the write shows it, the generation not
-    being the one sent + 1 (`wp_write.last` = 16 + 10 for the probe).
+    session has answered first). The read after the write shows it, by the **entries**,
+    not the generation: if the other writer landed between your read and your write, the
+    generation reads sent + 1 from *their* write while yours was refused. `wp_write.last`
+    = 26 (16 + 10) says why, but only to a probe PEEK, which a user doesn't have.
   - **No partial writes:** the record is small, so it's always whole.
   - **How to prove it, one rule for both kinds:** read before, write, read after. **The
     generation advanced, and the fields the writer set came back.** For an explicit record those
     are the flags and the entries; for an automatic one, only the flag, since it reads back with
     the entries filled, so the generation is the evidence that anything happened. With a
-    compare-and-swap write, a generation after the write that isn't the one sent + 1 is a
-    conflict: reload, or write again with the current generation to overwrite.
+    compare-and-swap write, **the entries are the proof** and the generation only
+    corroborates: a read-back without the list you sent means not written (a conflict, or
+    a malformed record, refused the same silent way); reload, or write again with the
+    current generation to overwrite. (A read-back that carries your list though another
+    writer wrote it is the same pool either way.)
 - **Delete:** not offered. An automatic record (entries cleared) makes a project follow the store again, and an
   empty, non-automatic record (count 0) is a pool with nothing in it.
 
@@ -292,4 +297,6 @@ is DNX's to add; the pool makes it matter more than the store alone did. So does
 
 1. **The generation sent on a write is a compare-and-swap**: 0 for no check, or the current
    generation; any other is refused. It closes the lost update between two writers of record
-   0 (DNX and the instrument's pool page), with no field added.
+   0 (DNX and the instrument's pool page), with no field added. The proof of such a write
+   is the entries read back, not the generation (DNX: a refused write next to the other
+   writer's still reads sent + 1).

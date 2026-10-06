@@ -3,8 +3,14 @@
  * Each edit starts from what plays (wr_record_resolve): the stored list, or, for a
  * project still on the automatic pool, the automatic pool written out as a list, so the
  * edit keeps what was playing (docs/for-dnx-waverider-pool.md §2). It changes the list,
- * writes it in one sector (generation + 1), and makes Waverider refill its pool. One
- * subject: changing record 0. */
+ * writes it in one sector (generation + 1), and makes Waverider refill its pool.
+ *
+ * LOAD sets the active track's TBL1 or TBL2 in the kit's sound (the value array at
+ * sound + 20, slots 27 and 33; coarse c in the word's high byte, pool index c - 2), the
+ * array the SYN page, the frame to the DSP and SAVE all read. It writes no change event:
+ * not measured whether anything else waits for one.
+ *
+ * One subject: what the wavetable page changes. */
 
 #include "../wrstore/records.h"
 #include "wtedit.h"
@@ -68,4 +74,25 @@ u32 wt_pool_clear(u32 j)
     rec = start();
     wr_put16(rec + R_ENTRIES + 2 * j, RECORD_NONE);
     return finish(rec) ? WT_DONE : WT_FAILED;
+}
+
+#define ACTIVE_TRACK (*(volatile u8 *)0x42431a6cu)
+#define KIT          (*(u8 *const *)0x800052a0u)
+#define SOUND(t)     (KIT + 52u + 1163u * (t))           /* may sit at an odd address */
+#define TYPE_AT      0xde                                /* slot 101: the machine type */
+#define WAVERIDER    5
+
+u32 wt_tbl_load(u32 j, u32 osc)
+{
+    u32 t = ACTIVE_TRACK;
+    u8 *sound, *at;
+    if (t >= 16)
+        return WT_NOT_WAVERIDER;
+    sound = SOUND(t);
+    if (sound[TYPE_AT] != WAVERIDER)
+        return WT_NOT_WAVERIDER;
+    at = sound + 20u + 2u * (osc ? 33u : 27u);
+    at[0] = (u8)(j + 2);                     /* byte by byte: the sound may be at an odd address */
+    at[1] = 0;
+    return WT_DONE;
 }

@@ -8,6 +8,9 @@
  * The rows are built when a list opens, from one read of the store index and of record
  * 0 (csrc/wrstore), and rebuilt after an edit.
  *
+ * In LOAD, YES puts the highlighted slot on the active track's TBL, for the oscillator
+ * of the SYN page last shown (wtedit.c).
+ *
  * FUNC opens a popup with the highlighted row's actions, as the stock managers do:
  * MANAGE has ADD TO POOL, POOL has CLEAR SLOT (wtedit.c). UP/DOWN choose, YES runs, NO
  * closes it. A result worth saying (already in the pool, the pool full) replaces the
@@ -16,6 +19,8 @@
 #include "../wrstore/records.h"
 #include "wtlist.h"
 #include "wtedit.h"
+#include "pool.h"
+#include "events.h"
 
 #define TEXT        ((void (*)(void *, u32, int, int, int, const char *, ...))0x4011545cu)
 #define FILL        ((void (*)(void *, int, int, int, int, int))0x40114954u)
@@ -150,6 +155,14 @@ u32 wt_list_key(u32 code, u32 pressed, u32 released)
     if (code == KEY_FUNC && released && n && count) {
         popup = 1;
         choice = 0;
+        return 1;
+    }
+    if (code == KEY_YES && released && kind == WL_LOAD && count) {
+        u32 osc = wr_events.shown_osc ? 1 : 0, result;
+        result = rows[cursor].slot == 0xff ? WT_EMPTY : wt_tbl_load(cursor, osc);
+        note = result == WT_NOT_WAVERIDER ? "NOT A WAVERIDER TRACK"
+             : result == WT_EMPTY ? "THIS SLOT IS EMPTY"
+             : osc ? "LOADED TO TBL2" : "LOADED TO TBL1";
         return 1;
     }
     if (code == KEY_NO)

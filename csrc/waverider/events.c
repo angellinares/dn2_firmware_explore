@@ -23,7 +23,7 @@
 #define RAW_TRACK ((u32 (*)(void *))(WR_RAW_TRACK))
 
 volatile struct wr_events wr_events __attribute__((section(".data"))) =
-    { 0x57524556u, 0, { 0 } };
+    { 0x57524556u, 0, { 0 }, 0 };
 
 /* the frame ISR, every frame: count each voice whose note-on bit is set */
 void wr_note_seen(const u8 *frame)

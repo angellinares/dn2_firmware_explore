@@ -814,6 +814,8 @@ void wr_page_draw(void *view, void *canvas)
     int page = ((int (*)(void *))method(view, 132))(view);
     if (page < 0 || page >= WR_PAGES)
         page = 0;
+    if (WR_DRIVE_HEAD->magic == WR_DRIVE_MAGIC)
+        WR_DRIVE_HEAD->events->shown_osc = (u8)osc_of(page);   /* for the wavetable page's LOAD */
 #if WR_MARKERS
     u32 now = TICKS;
     settling = 0;

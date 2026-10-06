@@ -592,3 +592,15 @@ def test_only_load_asm_writes_the_answer_word():
                 writers.setdefault(int(m.group(1), 16) & 0xFFF, set()).add(src.stem)
     assert writers.get(0x9E8) == {"load"}, writers.get(0x9E8)
     assert all("load" not in names for off, names in writers.items() if off != 0x9E8 and off < 0x9EC)
+
+
+def test_the_coldfire_loader_and_pool_share_the_load_area():
+    """loader.c refuses an extent past AREA_BYTES and pool.c places the area at AREA: both
+    must be dsp.LOAD_AREA's, or the 128th table (the area's last 16 KB) is never loaded
+    and a full pool never reads ready (found 2026-10-06: AREA_BYTES was the old 2 MB)."""
+    import re
+    root = pathlib.Path(__file__).resolve().parent.parent / "csrc/waverider"
+    size = int(re.search(r"#define AREA_BYTES\s+(0x[0-9a-fA-F]+)u", (root / "loader.c").read_text()).group(1), 16)
+    start = int(re.search(r"#define AREA\s+(0x[0-9a-fA-F]+)u", (root / "pool.c").read_text()).group(1), 16)
+    assert (start, start + size) == dsp.LOAD_AREA
+    assert dsp.POOL_TABLES + dsp.POOL_SLOTS * dsp.TABLE_BYTES == dsp.LOAD_AREA[1]

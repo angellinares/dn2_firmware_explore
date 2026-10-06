@@ -1,7 +1,7 @@
 """Waverider's pool on the ColdFire, in digikit's Rust emulator: the store on the
 +Drive in, the loader's frames out.
 
-    python scripts/emu_waverider_pool.py SYX [--record] [--panel-drive EXE] [--out DIR]
+    python scripts/emu_waverider_pool.py SYX [--record [--full]] [--panel-drive EXE] [--out DIR]
 
 The build's own layout (`src/dnfw/mods/waverider_code.json`) says where to look. The
 +Drive is zeros but for a store, written here with `dnfw.waverider.store`: slot 0 the
@@ -13,7 +13,9 @@ With no pool list on the card the working project follows the automatic pool: po
 entries 0 and 1 are slots 0 and 3. `--record` also places a pool list for the working
 project (record 0, `dnfw.waverider.poolrecord`) naming slots [3, 5, 0]: entry 0 is
 slot 3, entry 1 is empty (slot 5 is stored but not playable), entry 2 is slot 0, and
-the count is 3 (docs/for-dnx-waverider-pool.md).
+the count is 3 (docs/for-dnx-waverider-pool.md). `--full` makes that list all 128
+entries, slots 0 and 3 in turn: a full pool, a slot named more than once, and the 128th
+table, which ends at the load area's last byte.
 
 **The emulator runs no audio ISR** (the stock send 0x400cf7be and our hook at
 0x40025e82 never execute, measured), so this plays its part and the DSP's. From the UI
@@ -67,10 +69,11 @@ QUIET = "00" * 44                 # a frame's first 44 bytes, its masks (32..43)
 AUTO_PLAN = [0, 3]                # pool entry j -> store slot, None empty
 RECORD_LIST = [3, 5, 0]
 RECORD_PLAN = [3, None, 0]
+FULL_LIST = [0, 3] * (LF.dsp.POOL_SLOTS // 2)   # --full: every entry, each slot named 64 times
 CLEARED = (b"\x7f" * 96 + b"\x81" * 96) * 16   # an empty entry's spans
 
 
-def store_extents(work: pathlib.Path, record: bool = False) -> tuple[list[str], dict]:
+def store_extents(work: pathlib.Path, record: bool = False, full: bool = False) -> tuple[list[str], dict]:
     """-> panel_drive's --card-extent arguments, and what was stored."""
     tables = {0: ("Pulse narrowing", testtable.pool_table()), 3: ("Saw to sine", testtable.table())}
     entries, payloads = {}, {}
@@ -85,7 +88,7 @@ def store_extents(work: pathlib.Path, record: bool = False) -> tuple[list[str], 
     files = {ST.REGION: ST.superblock(1, len(entries), index, ST.DATA_END), ST.REGION + 1: index}
     files.update({ST.REGION + ST.slot_start(n): p for n, p in payloads.items()})
     if record:
-        files[PR.sector_a(0)] = PR.Record(0, RECORD_LIST, generation=1).to_bytes()
+        files[PR.sector_a(0)] = PR.Record(0, FULL_LIST if full else RECORD_LIST, generation=1).to_bytes()
     args = []
     for sector, data in files.items():
         f = work / f"s{sector:x}.bin"
@@ -111,9 +114,11 @@ def fields(hexdata: str, names: list[str]) -> dict:
 
 
 def drive(a, extents, layout, steps: list[str], tmp) -> dict:
+    step_file = pathlib.Path(tmp) / "steps.txt"       # a file: a full pool's steps pass Windows' command-line limit
+    step_file.write_text("\n".join(steps) + "\n")
     cmd = [str(a.panel_drive), str(a.syx), *extents, "--out", tmp,
            "--call-at", f"{UI_LOOP:#x}", "--call-fn", f"{layout['wr_frame_src']:#x}",
-           "--steps", ",".join(steps)]
+           "--steps", "@" + str(step_file)]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
     lines = r.stdout.strip().splitlines()
     if not lines:
@@ -129,6 +134,7 @@ def main(argv=None) -> int:
     ap.add_argument("--out", type=pathlib.Path, default=ROOT / "out/waverider")
     ap.add_argument("--wait", default="1200M", help="instructions past the UI (the pool starts at 5 s)")
     ap.add_argument("--record", action="store_true", help="a pool list for the working project")
+    ap.add_argument("--full", action="store_true", help="with --record: all 128 entries, slots 0 and 3 in turn")
     a = ap.parse_args(argv)
     layout = json.loads((ROOT / "src/dnfw/mods/waverider_code.json").read_text())["layout"]
     pool_at, load_at, store_at = layout["wr_pool"], layout["wr_load"], layout["wr_store"]
@@ -138,8 +144,8 @@ def main(argv=None) -> int:
               f"peek:{store_at:#x}:{4 * len(STORE_FIELDS)}"]
 
     with tempfile.TemporaryDirectory() as tmp:
-        extents, stored = store_extents(pathlib.Path(tmp), a.record)
-        plan = RECORD_PLAN if a.record else AUTO_PLAN
+        extents, stored = store_extents(pathlib.Path(tmp), a.record, a.full)
+        plan = (FULL_LIST if a.full else RECORD_PLAN) if a.record else AUTO_PLAN
         want = expected_frames(stored, plan)
         # the queue's address, from a first look
         first = drive(a, extents, layout, [f"wait:{a.wait}", *status], tmp)

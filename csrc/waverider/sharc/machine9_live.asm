@@ -3,6 +3,10 @@
 // M10a: after POS and LEV are read, each oscillator's pass jumps to modulator.asm
 // (MOVE) and comes back at wr_t5v_modded.
 //
+// M10b-2: the reader block's pos is stored by smooth.asm (SMTH, the glide), which comes
+// back at wr_t5v_smoothed; the reader is called through dclk.asm's wr_dclk_pre (DCLK,
+// the crossfade at a jump).
+//
 // M9b: each type-5 track runs the per-oscillator body twice. Osc 2's parameters are
 // osc 1's, 12 bytes later in the frame copy (TUN2/WAV2/TBL2 = params 31/32/33,
 // LEV2 = 36: 6 slots after TUN1/WAV1/TBL1/LEV1), and 12 is 0 mod 4, so every half-word
@@ -133,11 +137,11 @@ wr_t5v_loop.:
       R3 = DM(I5, M6);                  // this track's buffer; I5 -> next
       R4 = 5;
       COMP(R2, R4);
-      IF NE JUMP 0x16eea6;              // -> wr_t5v_next.
+      IF NE JUMP 0x16eea7;              // -> wr_t5v_next.
       R4 = DM(0x2de600);                // the baked directory's magic
       R2 = 0x57525431;
       COMP(R4, R2);
-      IF NE JUMP 0x16eea6;              // -> wr_t5v_next. (no directory: render nothing)
+      IF NE JUMP 0x16eea7;              // -> wr_t5v_next. (no directory: render nothing)
       DM(0x2dde88) = R3;                // M9b: the buffer, for both oscillators
       R0 = R0 - R0;
       DM(0x2de6c4) = R0;                // osc 1: replace
@@ -217,7 +221,7 @@ wr_t5v_halves.:
       IF NE JUMP 0x16edf0;              // -> wr_t5v_lev_on.
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
-      IF NE JUMP 0x16eea6;              // -> wr_t5v_next.
+      IF NE JUMP 0x16eea7;              // -> wr_t5v_next.
 .GLOBAL wr_t5v_lev_on.;
 wr_t5v_lev_on.:
       // M10a: MOVE, the modulator (modulator.asm, sw 0x16f700), which offsets R4 (POS)
@@ -254,7 +258,10 @@ wr_t5v_pooled.:
       R2 = 0x7800;
       R4 = MIN(R4, R2);
       R4 = LSHIFT R4 BY 5;
-      DM(3, I4) = R4;                   // pos
+      // M10b-2: SMTH (smooth.asm) glides it, then stores the reader block's pos
+      JUMP 0x170300;                    // -> wr_smooth. (smooth.asm)
+.GLOBAL wr_t5v_smoothed.;
+wr_t5v_smoothed.:
 
       // pitch: this track's note cell, 0x254b14 + 4t
       R2 = LSHIFT R9 BY 2;
@@ -268,10 +275,10 @@ wr_t5v_pooled.:
       R12 = 0xff;
       R2 = R2 AND R12;                  // the exponent field
       COMP(R2, R12);
-      IF EQ JUMP 0x16ee3f;                   // -> wr_t5v_note0.
+      IF EQ JUMP 0x16ee40;                   // -> wr_t5v_note0.
       R8 = PASS R8;
-      IF LT JUMP 0x16ee3f;                   // -> wr_t5v_note0.
-      JUMP 0x16ee40;                         // -> wr_t5v_note_ok.
+      IF LT JUMP 0x16ee40;                   // -> wr_t5v_note0.
+      JUMP 0x16ee41;                         // -> wr_t5v_note_ok.
 .GLOBAL wr_t5v_note0.;
 wr_t5v_note0.:
       R8 = R8 - R8;                     // +0.0
@@ -292,8 +299,8 @@ wr_t5v_note_ok.:
       DM(0x2dde98) = R13;
       F8 = F8 + F13;                    // note + TUN1 (osc 2: + TUN2 + TUN1)
       R8 = PASS R8;
-      IF LT JUMP 0x16ee57;                   // -> wr_t5v_tune_low.
-      JUMP 0x16ee58;                         // -> wr_t5v_tuned.
+      IF LT JUMP 0x16ee58;                   // -> wr_t5v_tune_low.
+      JUMP 0x16ee59;                         // -> wr_t5v_tuned.
 .GLOBAL wr_t5v_tune_low.;
 wr_t5v_tune_low.:
       R8 = R8 - R8;                     // below note 0 -> +0.0
@@ -322,15 +329,15 @@ wr_t5v_tuned.:
       R3 = DM(0x2dde88);
       DM(5, I4) = R3;                   // out: the track buffer
       R4 = DM(0x2dde84);                // wr_render5's argument: the reader block
-      CJUMP 0x16eb00 (DB);              // wr_render5(R4 = reader block)
+      CJUMP 0x170400 (DB);              // wr_render5(R4 = reader block), through wr_dclk_pre (M10b-2)
       DM(I7, M7) = R2;
-      DM(I7, M7) = 0x16ee8c;            // return address - 1: wr_t5v_osc_next. - 1
+      DM(I7, M7) = 0x16ee8d;            // return address - 1: wr_t5v_osc_next. - 1
 
 .GLOBAL wr_t5v_osc_next.;
 wr_t5v_osc_next.:
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
-      IF NE JUMP 0x16eea6;              // -> wr_t5v_next. (osc 2 done)
+      IF NE JUMP 0x16eea7;              // -> wr_t5v_next. (osc 2 done)
       R0 = 1;
       DM(0x2de6c4) = R0;                // osc 2: add
       R0 = 0x900;

@@ -133,9 +133,153 @@ EXP_SCALE = 2.0 ** -32             # Exp: x^3 / 2^32, in float32
 GLIDE_IN, GLIDE_TWO, GLIDE_THREE = 2.0 ** -16, 2.0, 3.0
 
 
+# -- M10b-2: SYNC, MOVE locked to the tempo (sync.asm; the ColdFire's csrc/waverider/sync.c) --
+# Per oscillator, Off (0) or On: WaveTone's MOD (slot 37) for osc 1 and CHAR (47) for
+# osc 2, the two spare records whose default is 0, so every sound saved before SYNC
+# reads Off. The modulator reads it as the seventh word of its offset row.
+SYNC_SLOTS = (37, 47)
+# The note lengths SYNC steps through, slowest first, in sixteenths: each is
+# SYNC_LOOP / (a << k) for a whole a in (1, 3, 9), so a phase is the position times
+# (a << k), exactly, in 32 bits. (name, a, k)
+SYNC_LOOP = 384                    # sixteenths in 2^32 of the frame's position: 24 bars
+SYNC_NOTES = (("4 bars D", 1, 2), ("4 bars", 3, 1), ("2 bars D", 1, 3), ("4 bars T", 9, 0),
+              ("2 bars", 3, 2), ("1 bar D", 1, 4), ("2 bars T", 9, 1), ("1 bar", 3, 3),
+              ("1/2 D", 1, 5), ("1 bar T", 9, 2), ("1/2", 3, 4), ("1/4 D", 1, 6),
+              ("1/2 T", 9, 3), ("1/4", 3, 5), ("1/8 D", 1, 7), ("1/4 T", 9, 4),
+              ("1/8", 3, 6), ("1/16 D", 1, 8), ("1/8 T", 9, 5), ("1/16", 3, 7),
+              ("1/32 D", 1, 9), ("1/16 T", 9, 6), ("1/32", 3, 8), ("1/32 T", 9, 7))
+SYNC_POSITION = 2644               # frame bytes 2644..2647: the song position (sync.c)
+SYNC_TEMPO = 0xD8                  # frame bytes: BPM x 120
+# a block's phase step per unit of tempo x multiplier: 2^32 / (SYNC_LOOP x 2,700,000),
+# where a sixteenth is 2,700,000 / tempo blocks (1500 a second)
+SYNC_K = 2.0 ** 32 / (SYNC_LOOP * 2_700_000)
+
+
+def sync_multiplier(note: int) -> int:
+    _, a, k = SYNC_NOTES[note]
+    return a << k
+
+
+def sync_note_for(rate: int) -> int:
+    """RATE (0..100) -> the note length SYNC plays: the one nearest, on a log scale, to
+    the cycle RATE gives free-running at 120 BPM (2^(8 - r/10) sixteenths), so a sound
+    keeps about its speed when SYNC turns on (RATE 50: 1 s free, a half note synced)."""
+    cycle = 2.0 ** (8 - rate / 10)
+    return min(range(len(SYNC_NOTES)),
+               key=lambda i: abs(math.log2(SYNC_LOOP / sync_multiplier(i) / cycle)))
+
+
+SYNC_INDEX = tuple(sync_note_for(r) for r in range(101))
+
+
+def sync_table() -> tuple[int, ...]:
+    """The DSP's table (sync.asm), one word per RATE 0..100: k | s << 8, where the
+    multiplier is 1 << k for s = 0 and (1 + (1 << s)) << k otherwise (a = 3: s 1; 9: 3)."""
+    s_of = {1: 0, 3: 1, 9: 3}
+    out = []
+    for r in range(101):
+        _, a, k = SYNC_NOTES[SYNC_INDEX[r]]
+        out.append(k | s_of[a] << 8)
+    return tuple(out)
+
+
+# -- M10b-2: SMTH, a glide on POS (smooth.asm), and DCLK, the crossfade (dclk.asm) --
+# SMTH per oscillator on WaveTone's DEC (slot 42) and WDTH (45): 127, the record's default,
+# is no glide. DCLK, shared, on HOLD (41): 0 Off, 1..127 a crossfade of 1..100 ms; a new
+# Waverider sound starts at 3 ms (owner, 2026-10-06; sounds saved before read 127, 100 ms).
+SMTH_SLOTS = (42, 45)
+DCLK_SLOT = 41
+SMTH_OFF = 127
+SMTH_RATE = 1500.0                 # the glide steps once a block
+
+
+def smth_tau(v: int) -> float:
+    """SMTH v (0..126) -> the glide's time constant in seconds: 1 s at 0, halving every
+    14 steps, 2 ms at 126."""
+    return 2.0 ** (-v / 14)
+
+
+def smth_table() -> tuple[float, ...]:
+    """The glide's coefficient per SMTH 0..127, float32: 1 - e^(-1 / (1500 tau)), and
+    exactly 1.0 at 127, where POS + (target - POS) x 1 is the target exactly."""
+    return tuple(_f32(1.0 - math.exp(-1.0 / (SMTH_RATE * smth_tau(v)))) for v in range(SMTH_OFF)) + (1.0,)
+
+
+def smth_names() -> tuple[str, ...]:
+    """What the header shows for SMTH 0..127: the time constant, Off at 127."""
+    out = []
+    for v in range(SMTH_OFF):
+        ms = smth_tau(v) * 1000
+        out.append(f"{ms:.0f} ms" if ms >= 10 else f"{ms:.1f} ms")
+    return tuple(out) + ("Off",)
+
+
+def smooth(s: float, target: int, smth: int, note: bool) -> float:
+    """One block of the glide, in smooth.asm's float32 order: a note snaps to the target."""
+    if note:
+        return _f32(float(target))
+    k = smth_table()[min((smth & 0xFFFF) >> 8, SMTH_OFF)]
+    d = _f32(_f32(float(target)) - s)
+    return _f32(s + _f32(d * k))
+
+
+# DCLK's crossfade: on a jump between two blocks -- POS by more than 2 frames, another
+# table, or the gain by more than 0.1 (LEV 10) -- the last block's settings keep playing
+# at the same phase and fade out over the DCLK time while the new ones fade in. Smaller
+# moves pass straight through. The owner chose it over the 1 ms offset declick after the
+# measurement in docs/waverider-m10-move.md (2026-10-06).
+DCLK_JUMP_POS = 2 << 16            # Q16 frames
+DCLK_JUMP_GAIN = 0.1
+DCLK_DEFAULT = 0x1F00              # 31: 3.0 ms, the default a new sound gets
+
+
+def dclk_ms(v: int) -> float:
+    """DCLK v (1..127) -> the crossfade in ms: 1 at 1, x10 every 63 steps, 100 at 127."""
+    return 100.0 ** ((v - 1) / 126)
+
+
+def dclk_lengths() -> tuple[int, ...]:
+    """The crossfade in samples per DCLK 0..127; 0 is Off."""
+    return (0,) + tuple(round(48 * dclk_ms(v)) for v in range(1, 128))
+
+
+def dclk_inverses() -> tuple[float, ...]:
+    """1 / length, float32, per DCLK 0..127 (0 for Off): the DSP has no divide."""
+    return (0.0,) + tuple(_f32(1.0 / n) for n in dclk_lengths()[1:])
+
+
+def dclk_names() -> tuple[str, ...]:
+    out = ["Off"]
+    for v in range(1, 128):
+        ms = dclk_ms(v)
+        out.append(f"{ms:.0f} ms" if ms >= 10 else f"{ms:.1f} ms")
+    return tuple(out)
+
+
+def dclk_jump(last, cur) -> bool:
+    """last, cur: (table, pos, gain): a jump DCLK fades, as dclk.asm tests it"""
+    if last[0] is not cur[0] or abs(cur[1] - last[1]) > DCLK_JUMP_POS:
+        return True
+    d = _f32(cur[2] - last[2])
+    return d > _f32(DCLK_JUMP_GAIN) or d < -_f32(DCLK_JUMP_GAIN)
+
+
+def crossfade(new: list[float], old: list[float], rem: int, inv: float) -> list[float]:
+    """y = n + (o - n) x a, a = (rem - i) / length while rem - i > 0, float32; n after it"""
+    out = []
+    for i, (n, o) in enumerate(zip(new, old)):
+        k = rem - i
+        if k > 0:
+            a = _f32(_f32(float(k)) * inv)
+            n = _f32(n + _f32(_f32(o - n) * a))
+        out.append(n)
+    return out
+
+
 def move_offsets() -> tuple[tuple[int, ...], ...]:
-    """Per oscillator, the frame byte offsets (168 + 2 s) the modulator reads."""
-    return tuple(tuple(168 + 2 * s for s in slots) for slots in MOVE_SLOTS)
+    """Per oscillator, the frame byte offsets (168 + 2 s) the modulator reads: RATE,
+    MPOS, MLEV, MOVE, TRIG, PRST, then SYNC (M10b-2)."""
+    return tuple(tuple(168 + 2 * s for s in (*slots, sync)) for slots, sync in zip(MOVE_SLOTS, SYNC_SLOTS))
 
 
 def move_band(move: int) -> int:
@@ -148,12 +292,23 @@ def move_restarts(trig_mode: int, triggered: bool) -> bool:
     return not (trig_mode & 0xFFFF) >> 8 and triggered
 
 
-def move_step(phase: int, rate: int, move: int, trig_mode: int, triggered: bool) -> int:
-    """The phase after one block, as the modulator steps it."""
+def move_step(phase: int, rate: int, move: int, trig_mode: int, triggered: bool,
+              sync: int = 0, position: int = 0, tempo: int = 0) -> int:
+    """The phase after one block, as the modulator steps it. With SYNC on (M10b-2),
+    RATE is a note length (`SYNC_INDEX`): on Free the phase IS the frame's song
+    position times the length's multiplier, so the cycle starts on step 1; on Retrig
+    the step comes from the tempo (BPM x 120), so the length holds from each note."""
     if move_restarts(trig_mode, triggered):
         phase = 0
     r = min((rate & 0xFFFF) >> 8, 100)
-    inc = (MOVE_RATE[r % 10] << (r // 10)) & 0xFFFFFFFF
+    if sync & 0xFFFF:
+        m = sync_multiplier(SYNC_INDEX[r])
+        if (trig_mode & 0xFFFF) >> 8:
+            inc = (position * m - phase) & 0xFFFFFFFF
+        else:
+            inc = trunc(_f32(_f32(_f32(float(tempo & 0xFFFF)) * _f32(float(m))) * _f32(SYNC_K)))
+    else:
+        inc = (MOVE_RATE[r % 10] << (r // 10)) & 0xFFFFFFFF
     new = (phase + inc) & 0xFFFFFFFF
     if move_band(move) < ONE_SHOTS and new < phase:
         new = 0xFFFFFFFF
@@ -286,8 +441,10 @@ def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
 
 def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> list[float]:
     """The loop's output with both oscillators (Milestone 9b), each block
-    (note, osc1, osc2[, (TRIG, triggered)]) with each osc (WAV, TBL, TUN, LEV[, RATE,
-    MPOS, MLEV, MOVE]), the frame's 16-bit words. With the M10a fields the modulator
+    (note, osc1, osc2[, (TRIG, triggered[, PRST[, position, tempo[, DCLK]]])]) with each
+    osc (WAV, TBL, TUN, LEV[, RATE, MPOS, MLEV, MOVE[, SYNC[, SMTH]]]), the frame's 16-bit
+    words (the position is the frame's u32 at SYNC_POSITION). SMTH glides POS (`smooth`);
+    DCLK crossfades a jump (`crossfade`); either left out is off. With the M10a fields the modulator
     (move_step / move_shape / move_apply) moves POS and LEV first, per oscillator.
     Osc 1 writes y1 x gain1; osc 2, unless its LEV is 0 (the loop then skips it), adds
     y2 x gain2 to that, both rounded to float32 as reader_m9.asm does. Osc 2's TUN is
@@ -296,12 +453,17 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
     out: list[float] = []
     phase = [0, 0]
     mphase = [0, 0]
+    smoothed = [0.0, 0.0]                       # SMTH's state: zeros at boot, as the DSP's
+    last: list = [None, None]                   # DCLK: each oscillator's last (table, pos, gain)
+    fade: list = [None, None]                   # and its fade: [old (table, pos, gain), samples left]
     rnd = MoveRandom()
     table_t = increment_table()
     for blk in blocks:
         note, oscs = blk[0], blk[1:3]
         trig_mode, triggered, *rest = blk[3] if len(blk) > 3 else (TRIG_RESTART, False)
         prst = rest[0] if rest else PRST_OFF
+        song, tempo = (rest[1], rest[2]) if len(rest) > 2 else (0, 0)
+        dclk = rest[3] & 0xFFFF if len(rest) > 3 else 0
         mixed: list[float] = []
         for k, osc in enumerate(oscs):
             wav, tbl, tun, lev = osc[:4]
@@ -309,9 +471,10 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
                 continue
             if len(osc) > 4:                    # M10a: RATE, MPOS, MLEV, MOVE
                 rate, mpos, mlev, move = osc[4:8]
+                sync = osc[8] if len(osc) > 8 else 0
                 restarted = move_restarts(trig_mode, triggered)
                 start = 0 if restarted else mphase[k]
-                mphase[k] = move_step(mphase[k], rate, move, trig_mode, triggered)
+                mphase[k] = move_step(mphase[k], rate, move, trig_mode, triggered, sync, song, tempo)
                 rnd.step(k, start, mphase[k], move, restarted)
                 wav, lev = move_apply(wav, lev, mpos, mlev,
                                       move_shape(mphase[k], move, tuple(rnd.values(k))))
@@ -320,11 +483,29 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
                     raise ValueError("PRST Random starts from the DSP's cycle counter: no reference")
                 phase[k] = 0                    # PRST On: the oscillator restarts
             g = gain(lev)
-            samples, phase[k] = render.render(tables[slot(tbl, len(tables))], phase[k],
-                                              increment(tuned(note, tun) if k == 0 else
-                                                        tuned2(note, tun, oscs[0][2]), table_t),
-                                              position(wav), block, precision)
+            pos = position(wav)
+            if len(osc) > 9:                    # M10b-2: SMTH, the glide on POS
+                smoothed[k] = smooth(smoothed[k], pos, osc[9], triggered)
+                pos = trunc(smoothed[k])
+            tab = tables[slot(tbl, len(tables))]
+            cur = (tab, pos, g)
+            n_fade = dclk_lengths()[min(dclk >> 8, 127)] if precision == "float32" else 0
+            if triggered or not n_fade:
+                fade[k] = None
+            elif last[k] is not None and dclk_jump(last[k], cur):
+                fade[k] = [last[k], n_fade]
+            last[k] = cur
+            inc = increment(tuned(note, tun) if k == 0 else tuned2(note, tun, oscs[0][2]), table_t)
+            phase0 = phase[k]
+            samples, phase[k] = render.render(tab, phase0, inc, pos, block, precision)
             y = [_f32(g * v) for v in samples] if precision == "float32" else [g * v for v in samples]
+            if fade[k] is not None:             # M10b-2: DCLK, the old settings fading out
+                (otab, opos, og), rem = fade[k]
+                old, _ = render.render(otab, phase0, inc, opos, block, precision)
+                y = crossfade(y, [_f32(og * v) for v in old], rem, dclk_inverses()[min(dclk >> 8, 127)])
+                fade[k][1] = rem - block
+                if fade[k][1] <= 0:
+                    fade[k] = None
             if k == 0:
                 mixed = y
             else:
@@ -332,3 +513,4 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
                          else [a + b for a, b in zip(mixed, y)])
         out += mixed
     return out
+

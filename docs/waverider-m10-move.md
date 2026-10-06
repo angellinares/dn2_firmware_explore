@@ -348,3 +348,198 @@ short fade applies to LEV for a Square on LEV.
 The fast-knob crackle the owner heard on sharp tables (POS stepping once per block) is
 a separate fix: POS smoothing, or POS interpolated sample by sample. It stays with
 M10b-2's glide and is not decided yet.
+
+# M10b-2: SYNC, MOVE locked to the tempo
+
+Each oscillator's MOVE can follow the project tempo and start its cycle on step 1. Page 3's
+E and F are SYN1 and SYN2, Off or On.
+
+## The controls
+
+| control | record | slot | why this record |
+|---|---|---|---|
+| SYN1 | 248, Osc Mod | 37 | its default is 0, so every sound saved before SYNC reads Off |
+| SYN2 | 260, Noise Character | 47 | the same |
+
+The other three spare records (254 HOLD, 255 DEC, 258 WDTH) default to `0x7f00`, and every
+Waverider sound saved so far holds that value. A control on them must read 127 as "off".
+That rules them out for SYNC, and it decides how SMTH and DCLK work.
+
+**RATE with SYNC on** keeps its 0..100 range, and plays one of 24 note lengths: 1/32 to 4 bars,
+each also as a triplet and dotted (owner, 2026-10-06). The mapping picks the length closest to
+RATE's own free cycle at 120 BPM (`live.SYNC_INDEX`), so a sound keeps about its speed when SYNC
+turns on: RATE 50 is a second free and a half note synced. Straight lengths get 5 values of
+RATE, dotted ones 3 and triplets 2. The header names the length ("Osc1 M.Rate=1 bar T"). With
+SYNC off it shows the stock number.
+
+## How it works
+
+**The ColdFire** (`csrc/waverider/sync.c`, in the +Drive chunk; model `dnfw.waverider.songpos`)
+writes the song position into every frame, at frame bytes 2644..2647 (unused in the tail):
+- **The steps:** track 1's current and next step (`docs/sequencer-playhead.md`). Both 0 for 8
+  frames in a row is STOP, which resets the position to step 1 and holds it there. A torn read
+  shows them equal for one frame at most.
+- **Between steps:** the frame's tempo (+0xd8, BPM x 120) summed each frame, against 2,700,000
+  a sixteenth. It holds just short of the next step during a pause.
+- **The scale:** 2^32 is 384 sixteenths, 24 bars. That is the least common multiple of every
+  length, the triplets and the dotted ones included, so each length's phase is the position
+  times a whole number `a << k` (a = 1, 3 or 9), exact in 32 bits, and continuous where the
+  position wraps.
+
+**The DSP** (`csrc/waverider/sharc/sync.asm`, sw `0x170000`; its table, a word per RATE, at DM
+`0x2e0400`) is entered from `modulator.asm` in place of RATE's arithmetic. It reads SYNC
+through the offset row's seventh word.
+- **SYNC off:** back to the free RATE, untouched.
+- **TRIG Free:** the phase becomes position x (a << k): the cycle starts on step 1 after every
+  PLAY, and stays on the grid.
+- **TRIG Retrig:** the step per block is tempo x (a << k) x 2^32 / (384 x 2,700,000), in
+  float32: the length holds from each note, and the note itself is on a step.
+
+**Limits:**
+- Track 1's steps are the clock. With one length and one scale for the pattern, every track
+  reads the same (measured). Per-track lengths and scales are not handled.
+- A one-step pattern reads as stopped.
+- A frame the loader replaces with a table chunk carries no new position, so a synced MOVE
+  stands still for that block (0.7 ms, only while tables load).
+
+## The gates
+
+- `test/test_waverider_songpos.py`: the position's arithmetic, STOP, PLAY, a pause, a torn
+  read, and sync.c's constants against the model.
+- `scripts/sharc_waverider_m5.py`, four new runs, each bit-exact against `live.render_two`:
+  Free (the phase equals position x 1152 for 1/32 T after every block, across the position's
+  wrap), Retrig (a half note at 120 BPM steps 2^32 / 1500 a block), osc 2's own SYNC, and SYNC
+  off with a position present (identical to the run without one). A check also confirms the
+  DSP's frame copy holds the position and tempo the frames carried.
+- The emulator (`waverider-sync1`): page 3 shows SYN1 and SYN2 as two segments; turning SYN1
+  reads "Osc1 M.Sync=On"; RATE 47 then reads "Osc1 M.Rate=1 bar T", and "48%" with SYN1 off.
+- The reference: `scripts/waverider_sync_preview.py` writes three WAVs with a click track. In
+  the gate WAV, the level opens at PLAY and then every 250 ms (1/8 at 120 BPM).
+
+# M10b-2: SMTH and DCLK
+
+Page 3 is now complete, as the owner laid it out (2026-10-06):
+- top row (the shared controls): PRST, TRIG, **DCLK**, -;
+- bottom row (per oscillator): SYN1, SYN2, **SMT1**, **SMT2**.
+
+**The records, and why 127 means "leave it alone".** These go on the three spare records whose
+default is `0x7f00`: DCLK on 254 HOLD (slot 41), SMT1 on 255 DEC (42), SMT2 on 258 WDTH (45). Every
+Waverider sound saved so far holds 127 there. So 127 must sound exactly as before SMTH and DCLK
+existed:
+- DCLK reads any value but 0 as On (its range is Off/On, default On);
+- SMTH 127 is no glide, and lower values glide more slowly, like a cutoff for POS.
+
+The header shows SMTH as the glide's time constant: 1000 ms at 0, halving every 14 steps, 2.0 ms at
+126, and "Off" at 127. A SMTH whose 0 meant "sharp", as first planned, would have made every saved
+sound glide at its slowest.
+
+## SMTH, the glide (`smooth.asm`, sw `0x170300`)
+
+The loop's store of the reader block's pos now goes through `wr_smooth`, after MOVE and the clamp.
+Each block, per voice and oscillator:
+- `s = s + (POS - s) x k[SMTH]`, in float32;
+- k is from a 128-entry table at DM `0x2e0c00`;
+- `k[127] = 1.0` exactly, so POS passes bit for bit;
+- a note on the voice snaps s to POS.
+
+The state is at DM `0x2e1100`. The page's wave still draws the unsmoothed position.
+
+## DCLK, the crossfade (`dclk.asm`, sw `0x170400`)
+
+**First built as a 1 ms offset declick.** At each block boundary, it added the difference between
+what the old settings would have played and what the new ones did, decaying over 1 ms. The owner
+heard that it helped but didn't fully solve the click. Measured (a scratch prototype, the Up Loop
+test, energy above 6 kHz, where the table holds nothing at note 48):
+
+| technique | click vs no declick | reset vs the rest of the cycle |
+|---|---|---|
+| none | 0 dB | +32 dB |
+| offset, 1 ms (as first built) | -23.6 dB | +9.5 dB |
+| offset, 5 / 20 / 100 ms | -22.8 / -22.6 / -22.6 dB | +10.5 dB at 100 ms |
+| crossfade, 3 / 10 / 30 ms | -31.7 / -39.5 / -48.8 dB | +0.7 / -7 / -16 dB |
+| switch at the oscillator's cycle start | -28.8 dB | +3.6 dB |
+| POS per sample | -25.2 dB | +7.9 dB |
+| POS glide, 2 / 5 ms | -7 / -11 dB | a "zip" instead |
+
+The offset only joins up the *value*: the wave still changes shape between two samples, and a
+longer decay does nothing for that. A true crossfade does. **Decided (owner, 2026-10-06):** the
+crossfade, with its time as the control, from 1 to 100 ms (long ones are for expressive use).
+
+**The control:**
+- DCLK (HOLD, slot 41): 0 Off, 1..127 = 1..100 ms, x10 every 63 steps.
+- A new or cleared sound starts at 31 = 3.0 ms, `live.DCLK_DEFAULT`. It reaches a cleared sound
+  through `wr_range`'s default. In the emulator, CLEAR TRK PRESET on a Waverider track set slot 41
+  to `0x1f00` while SMTH came back as the record's 127.
+- Sounds saved before this build read 127, 100 ms (owner: fine).
+
+**How it works:**
+- **Detection:** `wr_dclk_pre` sits in the loop's reader call, per voice and oscillator. It compares
+  the block's table, pos and gain with the last block's. A jump is another table, POS by more than
+  2 frames, or the gain by more than 0.1. Smaller moves pass through untouched.
+- **The fade:** on a jump, the last settings become the fade's old ones. While a fade lasts, the
+  oscillator is rendered twice into scratch buffers, new and old from the same phase and increment.
+  It is mixed as `y = n + (o - n) x (left - i) / length`, linear, with the inverse from a table:
+  the DSP has no divide. The mix replaces osc 1's output and is added for osc 2.
+- **No fade under way:** the call goes straight to the reader as before, so a sound with nothing
+  jumping is bit for bit unchanged.
+- **Notes:** a note cancels a fade and starts none (PRST may have restarted the phase).
+- **A new jump mid-fade** restarts the fade from the last settings.
+- **The cost:** one more reader pass per oscillator, only during a fade.
+
+**The page's value text** for RATE (synced), SMTH and DCLK comes from C formatters. `wr_fmt` calls
+the pair's function when its count is negative. That replaced three name tables, 357 pointers,
+which no longer fit below `0x46710000`.
+
+## The gates
+
+- `test/test_waverider_dclk.py`:
+  - SMTH 127 is exact;
+  - SMTH glides, and a note snaps it;
+  - an unchanged block is untouched by DCLK;
+  - a POS jump ramps in from where the old frame would have gone on.
+- `scripts/sharc_waverider_m5.py`, five runs with a POS jump at block 3 and no note (and one without it), each
+  bit-exact against `live.render_two`:
+  - SMTH 127 jumps;
+  - SMTH 60 glides and stays below the target;
+  - DCLK 3 ms: identical to Off before the jump, its first sample still the old frame's, and
+    bit-identical to Off from 144 samples on;
+  - DCLK Off is the control.
+
+  The other runs carry the frame's DCLK 127 (100 ms), so any jump in them crossfades, and all stay bit-exact.
+- The emulator: page 3's layout and "Osc1 Smooth=2.2 ms" at 124 (`waverider-sync2`); "Declick=17 ms"
+  at 79, and CLEAR TRK PRESET giving DCLK 3 ms (`waverider-sync3`).
+
+## On the instrument (`waverider-sync3-usbprobe`, 2026-10-06)
+
+**The owner's five steps all passed:**
+1. page 3, and DCLK 3.0 ms after CLEAR TRK PRESET;
+2. SYNC: note names, gates on the eighths that follow the tempo, the first gate on step 1 after
+   STOP + PLAY;
+3. the reset click of an Up Loop, gone at 3 ms;
+4. a 100 ms morph on a Square, hardening back to a hard switch at Off;
+5. SMTH's glide, and Off as before.
+
+The probe read `wr_sync` alive: 4,282 steps and 2 STOPs counted.
+
+**The SHARC's load** (`tools/dn2sharc_load.py --idle`, 10 intervals each). Track 1 held one chord
+with the same voices throughout; each pair differs only in the thing measured:
+
+| state | load |
+|---|---|
+| Waverider, MOVE Up Loop on POS at RATE 70 (4 resets a second), DCLK Off | 53.6 % (53.5..53.7) |
+| the same, DCLK 100 ms (each voice mid-fade about 40 % of the time) | 58.5 % (58.4..58.7) |
+| factory WaveTone, the same chord | 57.1 % (57.1..57.2) |
+
+- Waverider costs 3.5 points less than factory WaveTone.
+- Even this harsh DCLK case costs 1.4 points more.
+- At the 3 ms default a fade lasts 1/33 as long.
+
+**Soak:** the 100 ms case, 10 minutes, 600 one-second intervals:
+- the load stayed at 58.0..58.8 %, with no drift;
+- 1,505..1,526 frames per interval, at 0.99..1.01 blocks a frame, symmetric (the interval edges;
+  a lost frame would only pull it down);
+- the instrument kept answering over USB throughout;
+- the owner heard nothing wrong.
+
+**The runner** (`scripts/sharc_waverider_stress.py`, 16 voices, instructions a block; the DCLK pair
+differs only in DCLK): DCLK Off 231,338, 100 ms 308,010, factory WaveTone 293,546, FM Tone 331,212.

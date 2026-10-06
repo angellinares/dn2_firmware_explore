@@ -100,7 +100,7 @@ MOD_DM = 0x2DEE00                            # modulator.asm (M10a): MOVE, the p
 MOD_SW = MOD_DM // 2                         # 0x16f700
 # the directory block's tail (M9b/M10a): what the loop and the modulator keep there
 MOVE_PHASES_DM = 0x2DE700                    # 16 voices x 2 oscillators, a u32 phase each
-MOVE_OFFSETS_DM = 0x2DE780                   # per oscillator, 32 bytes: frame offsets of RATE MPOS MLEV MOVE TRIG
+MOVE_OFFSETS_DM = 0x2DE780                   # per oscillator, 32 bytes: frame offsets of RATE MPOS MLEV MOVE TRIG PRST SYNC
 MOVE_RATE_DM = 0x2DE7D8                      # F[0..9], the rate table
 SHAPES_DM = 0x2DF000                         # shapes.asm (M10b-4): MOVE's eleven shapes, in L1 the tables left
 SHAPES_SW = SHAPES_DM // 2                   # 0x16f800
@@ -120,6 +120,20 @@ POOL_DIR = LOAD_AREA[1] - 0x1000             # 0x809ff000: the pool directory, t
 POOL_MAGIC = 0x57525031                      # 'WRP1'
 POOL_SLOTS = (POOL_DIR - LOAD_AREA[0]) // TABLE_BYTES   # 127 tables of 16 KB below the directory
 POOL_ZEROS = 0x200                           # the directory's first bytes, zeros at boot: no pool yet
+SYNC_DM = 0x2E0000                           # sync.asm (M10b-2): MOVE locked to the tempo and the song position
+SYNC_SW = SYNC_DM // 2                       # 0x170000
+SYNC_TABLE_DM = 0x2E0400                     # its table: a word per RATE 0..100 (live.sync_table)
+SMOOTH_DM = 0x2E0600                         # smooth.asm (M10b-2): SMTH, the glide on POS
+SMOOTH_SW = SMOOTH_DM // 2                   # 0x170300
+DCLK_DM = 0x2E0800                           # dclk.asm (M10b-2): DCLK, the crossfade at a jump
+DCLK_SW = DCLK_DM // 2                       # 0x170400
+SMTH_TABLE_DM = 0x2E0C00                     # SMTH's coefficient per value, 128 float32 (live.smth_table)
+DCLK_LENGTH_DM = 0x2E0E00                    # DCLK's length in samples per value, 128 u32 (live.dclk_lengths)
+DCLK_INVERSE_DM = 0x2E1000                   # and 1 / length, 128 float32 (live.dclk_inverses)
+SMOOTH_STATE_DM = 0x2E1200                   # SMTH's glide per voice and oscillator; DCLK's scratch at + 0x80
+DCLK_STATE_DM = 0x2E1400                     # DCLK's state, 64 bytes a voice and oscillator
+DCLK_BUFFERS_DM = 0x2E1C00                   # its two scratch buffers of 128 samples
+DCLK_STATE_END = 0x2E2000
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 
 # stock sites
@@ -179,7 +193,8 @@ def objects() -> dict[str, bytes]:
     spec = _code()
     return {name: sharc_object.load_bytes(bytes.fromhex(spec[name]["object_parcels_be"]))
             for name in ("reader", "machine5_live", "entry_jump", "idle_load", "idle_jump", "block_count",
-                         "entry_mark", "emark_jump", "modulator", "shapes", "load", "pool")}
+                         "entry_mark", "emark_jump", "modulator", "shapes", "load", "pool", "sync",
+                         "smooth", "dclk")}
 
 
 def directory() -> bytes:
@@ -228,6 +243,14 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("command table, 8 entries", CMD_TABLE_DM, command_table()),
         ("load state (zeros)", LOAD_STATE_DM, bytes(LOAD_STATE_BYTES)),
         ("pool.asm (wr_pool)", POOL_DM, obj["pool"]),
+        ("sync.asm (wr_sync)", SYNC_DM, obj["sync"]),
+        ("SYNC's note table, a word per RATE", SYNC_TABLE_DM, struct.pack("<101I", *live.sync_table())),
+        ("smooth.asm (wr_smooth)", SMOOTH_DM, obj["smooth"]),
+        ("dclk.asm (wr_dclk_pre)", DCLK_DM, obj["dclk"]),
+        ("SMTH's coefficients, 128 float32", SMTH_TABLE_DM, struct.pack("<128f", *live.smth_table())),
+        ("DCLK's lengths, 128 u32", DCLK_LENGTH_DM, struct.pack("<128I", *live.dclk_lengths())),
+        ("DCLK's inverses, 128 float32", DCLK_INVERSE_DM, struct.pack("<128f", *live.dclk_inverses())),
+        ("SMTH's and DCLK's state (zeros)", SMOOTH_STATE_DM, bytes(DCLK_STATE_END - SMOOTH_STATE_DM)),
     ]
     out = []
     for k, (what, at, payload) in enumerate(raw):

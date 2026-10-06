@@ -75,6 +75,74 @@ static void drive_poll(void)
         wr_tbl_names[WR_TABLES + j] = j < n ? (const char *)h->pool->names[j] : dash;
 }
 
+/* M10b-2: with SYNC on, RATE (0..100, unchanged) plays a note length (dnfw.waverider.
+ * live.SYNC_INDEX), and its value text names it. The firmware's value text (wr_fmt)
+ * reads a {names, count} pair per oscillator here: count 0 is RATE's own number. Kept
+ * each UI pass from the active track's sound: its value array is at sound + 20, a u16
+ * per slot (slot 101 is +0xDE, the machine type), and a sound can sit at an odd address
+ * (stride 1163), so it is read a byte at a time. */
+#define KIT        (*(u8 *const *)0x800052A0u)
+#define SOUND(t)   (KIT + 52u + 1163u * (t))
+#define SYNC_SLOT(o) ((o) ? 47u : 37u)                    /* SYN1 MOD, SYN2 CHAR */
+/* A pair whose count is -1 is a formatter, f(buffer, value), called by wr_fmt. */
+#define SPRINTF ((int (*)(char *, const char *, ...))0x40000E82u)
+#define FORMATTER ((const void *)-1)
+
+static int step_of(int value, int last)
+{
+    int v = value >> 8;
+    return v < 0 ? 0 : v > last ? last : v;
+}
+
+/* 0 "Off", 0x8000 | n "n ms", else tenths "n.t ms" (dnfw.waverider.pages.ms_code) */
+static void ms_text(char *buf, u32 code)
+{
+    if (!code)
+        SPRINTF(buf, "Off");
+    else if (code & 0x8000)
+        SPRINTF(buf, "%d ms", (int)(code & 0x7FFF));
+    else
+        SPRINTF(buf, "%d.%d ms", (int)(code / 10), (int)(code % 10));
+}
+
+static void sync_text(char *buf, int value)
+{
+    SPRINTF(buf, "%s", wr_sync_names[wr_sync_of_rate[step_of(value, WR_SYNC_RATES - 1)]]);
+}
+
+static void smth_text(char *buf, int value)
+{
+    ms_text(buf, wr_smth_text[step_of(value, 127)]);
+}
+
+static void dclk_text(char *buf, int value)
+{
+    ms_text(buf, wr_dclk_text[step_of(value, 127)]);
+}
+
+/* Rows 2 and 3 are fixed: SMTH's time constant, Off at 127, and DCLK's crossfade, Off at
+ * 0 (dnfw.waverider.live.smth_names, dclk_names). */
+const void *wr_rate_fmt[4][2] __attribute__((section(".data"))) =
+    { { 0, 0 }, { 0, 0 }, { (const void *)smth_text, FORMATTER },
+      { (const void *)dclk_text, FORMATTER } };
+
+static u32 sound_value(const u8 *sound, u32 slot)
+{
+    const u8 *at = sound + 20u + 2u * slot;
+    return (u32)at[0] << 8 | at[1];
+}
+
+static void rate_names_poll(void)
+{
+    u32 t = *(volatile u8 *)0x42431A6Cu;                  /* the active track */
+    const u8 *sound = SOUND(t);
+    for (int o = 0; o < 2; o++) {
+        int on = t < 16 && sound[0xDE] == 5 && sound_value(sound, SYNC_SLOT(o)) != 0;
+        wr_rate_fmt[o][0] = on ? (const void *)sync_text : 0;
+        wr_rate_fmt[o][1] = on ? FORMATTER : 0;
+    }
+}
+
 static const int *limits(u32 id)
 {
     if (id == WR_TBL_ID || id == WR_TBL2_ID)
@@ -470,6 +538,7 @@ int wr_poll(void *screen)
 {
     u32 now = TICKS;
     drive_poll();
+    rate_names_poll();
 #ifdef WR_DRIVEREAD
     drive_read_once(now);
 #endif
@@ -488,6 +557,7 @@ int wr_poll(void *screen)
 int wr_poll(void *screen)
 {
     drive_poll();
+    rate_names_poll();
     return IS_DIRTY(screen);
 }
 #endif

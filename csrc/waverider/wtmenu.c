@@ -48,9 +48,9 @@
 #define GAP         12                                   /* ticks without an LED call: closed */
 #define ITEMS       3
 
-struct wr_wtmenu { u32 magic, page, cursor, opened, seen, drive_tables, in_pool; };
+struct wr_wtmenu { u32 magic, page, cursor, opened, seen, drive_tables, in_pool, free; };
 volatile struct wr_wtmenu wr_wtmenu __attribute__((section(".data"))) =
-    { 0x57524d4eu, 0, 0, 0, 0, 0, 0 };
+    { 0x57524d4eu, 0, 0, 0, 0, 0, 0, 0 };
 
 void wr_wt_led_hook(void);
 
@@ -72,9 +72,11 @@ static void count_tables(void)
     wr_record_resolve(0, rec, index);
     wr_wtmenu.drive_tables = n;
     n = 0;                                   /* entries naming a table that is still stored */
-    for (u32 j = 0; index && j < POOL_ENTRIES; j++) {
+    wr_wtmenu.free = 0;                      /* and empty entries: a MISSING one isn't free */
+    for (u32 j = 0; j < POOL_ENTRIES; j++) {
         u32 s = be16(rec + R_ENTRIES + 2 * j);
-        n += s < SLOTS && (index[s * ENTRY_BYTES + 1] & 1) ? 1 : 0;
+        n += index && s < SLOTS && (index[s * ENTRY_BYTES + 1] & 1) ? 1 : 0;
+        wr_wtmenu.free += s == RECORD_NONE ? 1 : 0;
     }
     wr_wtmenu.in_pool = n;
     DELETE(rec);
@@ -175,7 +177,7 @@ void wr_wt_draw(void *view, void *canvas)
     TEXT(canvas, FONT, 70, 44, 0, "IN POOL");
     number_right(canvas, 122, 44, used);
     TEXT(canvas, FONT, 70, 31, 0, "FREE");
-    number_right(canvas, 122, 31, POOL_SLOTS - used);
+    number_right(canvas, 122, 31, wr_wtmenu.free);
     TEXT(canvas, FONT, 70, 18, 0, "+DRIVE");
     number_right(canvas, 122, 18, wr_wtmenu.drive_tables);
 }

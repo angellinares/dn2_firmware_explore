@@ -104,21 +104,9 @@ u32 wt_store_delete(u32 s)
         return WT_FAILED;
     for (u32 i = 0; i < ENTRY_BYTES; i++)
         entry[i] = 0;
-    if (!wr_store_commit_entry(s, entry))    /* it also marks the store changed */
-        return WT_FAILED;
-    /* the working project's own list lets go of it too, so its slots read and fill as
-     * free; other projects' lists keep theirs (spec: warn, don't repair) */
-    {
-        u8 *rec = start();
-        u32 named = 0;
-        for (u32 j = 0; j < POOL_ENTRIES; j++)
-            if (be16(rec + R_ENTRIES + 2 * j) == s) {
-                wr_put16(rec + R_ENTRIES + 2 * j, RECORD_NONE);
-                named = 1;
-            }
-        if (named)
-            return finish(rec) ? WT_DONE : WT_FAILED;
-        DELETE(rec);
-    }
-    return WT_DONE;
+    /* Pool lists naming it keep the slot (spec: warn, don't repair), record 0 too: ADD TO
+     * POOL fills the first empty slot, so a cleared slot would hand every sound still on
+     * it an unrelated new table; a missing one plays Prim., and the lists say MISSING
+     * (DNX, 2026-10-06). CLEAR SLOT frees it on purpose. */
+    return wr_store_commit_entry(s, entry) ? WT_DONE : WT_FAILED;   /* it also marks the store changed */
 }

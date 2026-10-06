@@ -27,6 +27,10 @@ The lists:
   DELETE? YES / NO).
 - **POOL**: this project's pool, as LOAD. FUNC: CLEAR SLOT.
 
+A slot whose table was deleted reads **MISSING**: it plays Prim., isn't free, LOAD refuses
+it, and only CLEAR SLOT frees it. DELETE changes no pool list, so a later ADD TO POOL can't
+fill the slot under sounds still pointing at it.
+
 A result worth saying replaces the list's title until the next key.
 
 ## How it is built
@@ -66,7 +70,7 @@ The code, one subject each, in the +Drive chunk (`dnfw.waverider.drive`):
 - `csrc/waverider/wtlist.c`: the lists' rows, keys and drawing;
 - `csrc/waverider/wtedit.c`: what the page changes. Pool edits start from what plays, so a
   project on the automatic pool keeps its tables when it first gets a list, and write
-  record 0 in one sector (generation + 1). DELETE also clears the slot from record 0. LOAD
+  record 0 in one sector (generation + 1). DELETE changes no pool list. LOAD
   writes the kit sound's TBL value word (slot 27 or 33, coarse = pool index + 2).
   `page.c` leaves the SYN page's oscillator in `wr_events.shown_osc` for it.
 
@@ -77,8 +81,8 @@ Each step with panel_drive frames on a card from `scripts/emu_waverider_pool.py`
 - page 2 opens, the cursor moves, PRESET/KIT closes, the next open is page 1;
 - the lists open, scroll and close; the counts follow the edits;
 - ADD TO POOL, CLEAR SLOT, ALREADY IN THE POOL;
-- DELETE: NO keeps; YES deletes; record 0 `[3, 5, 0]` gen 1 -> `[NONE, 5, 0]` gen 2, read
-  over the Data API;
+- DELETE: NO keeps; YES deletes; record 0 still `[3, 5, 0]` gen 1 (read over the Data
+  API); the slot reads MISSING, FREE 124, LOAD refuses it, CLEAR SLOT frees it (FREE 125);
 - LOAD: TBL1 `0x0300` -> `0x0400` for slot 003; on an FM track nothing changes.
 
 `boot_gate` booted at each step; the `/wavepool` and rename tests still pass.

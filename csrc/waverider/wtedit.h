@@ -16,8 +16,8 @@ unsigned int wt_pool_clear(unsigned int j);
 unsigned int wt_tbl_load(unsigned int j, unsigned int osc);
 
 /* Store slot S deleted from the +Drive (its index entry freed; the table's sectors stay
- * until overwritten), and cleared from the working project's pool list. Other projects'
- * lists keep it, and play Prim. there. -> WT_* */
+ * until overwritten). Every pool list naming it keeps the slot, which plays Prim. and
+ * reads MISSING, until CLEAR SLOT frees it. -> WT_* */
 unsigned int wt_store_delete(unsigned int s);
 
 #endif

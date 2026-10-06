@@ -2,7 +2,8 @@
  * rows, the selected row inverted, a scrollbar on the right (docs/waverider-wtmenu.md).
  *
  * - LOAD and POOL: the working project's pool, shown slots 001..127. A slot names its
- *   table, or reads as a row of slashes when it has none, as an empty preset slot does.
+ *   table, reads as a row of slashes when it has none, as an empty preset slot does, or
+ *   MISSING when its table was deleted (it plays Prim. until CLEAR SLOT frees it).
  * - MANAGE: every table in the +Drive store, in store order; a + marks the tables
  *   already in the working project's pool.
  * The rows are built when a list opens, from one read of the store index and of record
@@ -37,7 +38,7 @@
 #define ROW_H       8
 #define NAME_LEN    16
 
-struct row { u8 slot; u8 in_pool; char name[NAME_LEN]; };    /* slot 0xff: none */
+struct row { u8 slot; u8 in_pool; char name[NAME_LEN]; };    /* slot 0xff: none; in_pool 2: its table is gone */
 
 static struct row rows[SLOTS] __attribute__((section(".data")));
 static u32 count __attribute__((section(".data"))) = 0;
@@ -107,7 +108,7 @@ static void build(u32 k)
             u32 s = be16(rec + R_ENTRIES + 2 * j);
             int used = index && s < SLOTS && (index[s * ENTRY_BYTES + 1] & 1);
             r->slot = used ? (u8)s : 0xff;
-            r->in_pool = 1;
+            r->in_pool = s < SLOTS && !used ? 2 : 1;    /* 2: names a table no longer stored */
             if (used)
                 copy_name(r->name, index + s * ENTRY_BYTES);
             else
@@ -133,7 +134,7 @@ static void run(u32 action)
     if (kind == WL_MANAGE)
         result = wt_pool_add(r->slot);
     else if (kind == WL_POOL)
-        result = r->slot == 0xff ? WT_DONE : wt_pool_clear(cursor);
+        result = r->slot == 0xff && r->in_pool != 2 ? WT_DONE : wt_pool_clear(cursor);
     note = result == WT_ALREADY ? "ALREADY IN THE POOL"
          : result == WT_FULL ? "THE POOL IS FULL"
          : result == WT_FAILED ? "+DRIVE WRITE FAILED" : 0;
@@ -179,6 +180,7 @@ u32 wt_list_key(u32 code, u32 pressed, u32 released)
         u32 osc = wr_events.shown_osc ? 1 : 0, result;
         result = rows[cursor].slot == 0xff ? WT_EMPTY : wt_tbl_load(cursor, osc);
         note = result == WT_NOT_WAVERIDER ? "NOT A WAVERIDER TRACK"
+             : result == WT_EMPTY && rows[cursor].in_pool == 2 ? "ITS TABLE WAS DELETED"
              : result == WT_EMPTY ? "THIS SLOT IS EMPTY"
              : osc ? "LOADED TO TBL2" : "LOADED TO TBL1";
         return 1;
@@ -214,6 +216,8 @@ void wt_list_draw(void *canvas)
         int y = 48 - (int)i * ROW_H;
         if (kind == WL_MANAGE)
             TEXT(canvas, ROW_FONT, 3, y, 0, "%c %s", r->in_pool ? '+' : ' ', r->name);
+        else if (r->in_pool == 2)
+            TEXT(canvas, ROW_FONT, 3, y, 0, "%03u MISSING", top + i + 1);
         else if (r->slot == 0xff)
             TEXT(canvas, ROW_FONT, 3, y, 0, "%03u //////////", top + i + 1);
         else

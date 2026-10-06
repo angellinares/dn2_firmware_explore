@@ -309,8 +309,11 @@ is DNX's to add; the pool makes it matter more than the store alone did. So does
   - a project on the automatic pool (or with no record) gets what plays written out as a
     list, then the edit;
   - DELETE (asked first): frees the store slot's index entry, a new index generation as a
-    `0x5c` delete makes, and **also clears that slot from record 0**, so the working pool's
-    slot reads and fills as free. Other projects' records keep it (warn, don't repair);
+    `0x5c` delete makes. **No record is changed, record 0 included** (warn, don't repair,
+    one rule): ADD TO POOL fills the first `0xFFFF` entry, so clearing the slot would hand
+    every sound still on it an unrelated new table, where a dangling entry plays Prim.
+    (DNX, 2026-10-06). The lists show such an entry as MISSING, it doesn't count as free,
+    LOAD refuses it, and CLEAR SLOT frees it on purpose;
   - LOAD: the active track's TBL1 / TBL2 in the kit sound; no record change.
-  Emulator: each step's frames, and record 0 `[3, 5, 0]` gen 1 -> `[NONE, 5, 0]` gen 2
-  after a DELETE, read over the Data API.
+  Emulator: each step's frames, and record 0 still `[3, 5, 0]` gen 1 after a DELETE, read
+  over the Data API.

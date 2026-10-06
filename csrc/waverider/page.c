@@ -838,24 +838,29 @@ void wr_page_draw(void *view, void *canvas)
         int cx = COL0 + COLW * (i & 3) + COLW / 2;
         u32 id = wr_ids[page][i];
         if (id == WR_TBL_ID || id == WR_TBL2_ID) {
-            /* TBL is a counter: the table loaded, by its number, in place of the label and
-             * the bar (the owner, 2026-10-06). The built-ins by name, a pool table by its
-             * shown slot 001.. (coarse c >= 2 is shown slot c - 1) */
+            /* TBL is a counter: the table loaded, by its number, on the label row, and its
+             * modulation on the bar row (the owner's option A, 2026-10-06). The built-ins by
+             * name, a pool table by its shown slot 001.. (coarse c >= 2 is shown slot c - 1) */
             u8 flag;
-            int c = GET_VALUE(view, id, &flag) >> 8;
-            int y = top ? TOP_BAR_Y + 1 : BOT_LABEL_Y + 2;      /* across the label and the bar rows */
+            int set = GET_VALUE(view, id, &flag), c = set >> 8;
+            int y = top ? TOP_LABEL_Y : BOT_LABEL_Y;       /* level with the other labels */
             if (c < WR_TABLES)
                 TEXT(canvas, FONT, cx, y, CENTRED, c ? "HARM" : "PRIM");
             else
                 TEXT(canvas, FONT, cx, y, CENTRED, "T:%03d", c - 1);
+#if WR_MARKERS
+            /* the modulation on the bar row, in line with the other controls' bars */
+            modulation(canvas, cx, top ? TOP_BAR_Y : BOT_BAR_Y + 1, y, id, set, now);
+#endif
             continue;
         }
         if (id == TUNE_ID || id == DETN_ID) {
-            /* TUNE and DETN as semitones, one decimal, in place of the label and the bar
-             * (the owner, 2026-10-06): the value is (semitones + 64) x 256 */
+            /* TUNE and DETN as semitones, one decimal, on the label row (option A): the value
+             * is (semitones + 64) x 256. Their modulation band comes with the preview for
+             * every control (queued) */
             u8 flag;
             int tenths = ((GET_VALUE(view, id, &flag) - 0x4000) * 10 + (1 << 7)) >> 8;
-            int y = top ? TOP_BAR_Y + 1 : BOT_LABEL_Y + 2;
+            int y = top ? TOP_LABEL_Y : BOT_LABEL_Y;       /* level with the other labels */
             int m = tenths < 0 ? -tenths : tenths;
             TEXT(canvas, FONT, cx, y, CENTRED, "%s%d.%d", tenths < 0 ? "-" : tenths ? "+" : "",
                  m / 10, m % 10);

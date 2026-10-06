@@ -11,8 +11,9 @@ The store itself, the index entry and the `/waverider` route are in `docs/waveri
 builds on them and changes none of it. **Status: revision 3, with DNX's answers of 2026-10-06
 folded in (listed at the end). Built and passing in the emulator (2026-10-06): the rename
 (§1), the records and the `/wavepool` route (§2), Waverider playing from record 0, and SAVE
-PROJECT AS / LOAD PROJECT copying the records, and CREATE NEW starting an empty list. Not
-built yet: the instrument's pool page.**
+PROJECT AS / LOAD PROJECT copying the records, CREATE NEW starting an empty list, and the
+instrument's wavetable page (a second writer of record 0, below). Not built yet: RENAME
+on the instrument.**
 
 ## The numbers (read this first)
 
@@ -300,3 +301,16 @@ is DNX's to add; the pool makes it matter more than the store alone did. So does
    0 (DNX and the instrument's pool page), with no field added. The proof of such a write
    is the entries read back, not the generation (DNX: a refused write next to the other
    writer's still reads sent + 1).
+- **The instrument's wavetable page** (PRESET/KIT page 2, `csrc/waverider/wtmenu.c`,
+  `wtlist.c`, `wtedit.c`) writes too. Every edit is one in-place write of record 0 with
+  generation + 1, so a DNX write sending the generation it read before is refused:
+  - ADD TO POOL: a store slot into record 0's first `0xFFFF` entry;
+  - CLEAR SLOT: an entry back to `0xFFFF`;
+  - a project on the automatic pool (or with no record) gets what plays written out as a
+    list, then the edit;
+  - DELETE (asked first): frees the store slot's index entry, a new index generation as a
+    `0x5c` delete makes, and **also clears that slot from record 0**, so the working pool's
+    slot reads and fills as free. Other projects' records keep it (warn, don't repair);
+  - LOAD: the active track's TBL1 / TBL2 in the kit sound; no record change.
+  Emulator: each step's frames, and record 0 `[3, 5, 0]` gen 1 -> `[NONE, 5, 0]` gen 2
+  after a DELETE, read over the Data API.

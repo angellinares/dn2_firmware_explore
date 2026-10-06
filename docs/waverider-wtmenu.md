@@ -27,7 +27,8 @@ The lists:
   page 2). On a track that isn't Waverider, or an empty slot, it says so and changes
   nothing. RIGHT: LOAD TO TBL1, LOAD TO TBL2.
 - **MANAGE**: every table on the +Drive, a `+` on those in this project's pool. RIGHT: ADD TO
-  POOL (every ticked table, each into the next free slot, in one write: "3 ADDED TO THE POOL";
+  POOL (every ticked table, in row order, each into the first empty slot left, a cleared one
+  first, in one write: "3 ADDED TO THE POOL";
   ALREADY IN THE POOL; POOL FULL: n ADDED), DELETE (asked first: DELETE n? YES / NO), SELECT
   ALL, DESELECT ALL.
 - **POOL**: this project's pool, as LOAD. RIGHT: CLEAR SLOT (every ticked slot, in one

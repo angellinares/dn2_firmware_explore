@@ -212,6 +212,15 @@ Every project's list is readable, not only the working project's. That is what l
 - **While record 0 is automatic** (or absent), a store write refills the pool as today.
 - **Editing the pool on the instrument** while record 0 is automatic first writes it out as an
   explicit record (what plays now), then applies the edit.
+- **The instrument's edits can change several entries in one write** (since 2026-10-07, the
+  stock-style lists; `wt_pool_add_many`, `wt_pool_clear_many`), so one generation step may cover
+  a batch:
+  - **ADD TO POOL** places each ticked table, in row order (store order), in the **first empty
+    entry left at that moment**. A cleared entry is reused first: clear shown slot 3, add six,
+    and the first of the six lands at 3.
+  - A table already in the pool is skipped and takes no entry. When the pool fills, the rest
+    aren't added; the title says how many were.
+  - **CLEAR SLOT** empties every ticked entry; the others don't move.
 
 **Not covered yet (it needs the stock project operations hooked):** copying, moving, clearing or
 deleting a project from the instrument's own project manager doesn't carry its pool list along. The

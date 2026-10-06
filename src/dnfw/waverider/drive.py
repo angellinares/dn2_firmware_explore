@@ -42,7 +42,7 @@ SOURCES = (ROOT / "csrc/waverider/pool.c", ROOT / "csrc/waverider/loader.c",
            ROOT / "csrc/wrstore/poolroute.c", ROOT / "csrc/wrstore/projects.c")
 ENTRIES = ["wr_drive_head", "wr_drive_poll", "wr_add", "wr_root_entry", "wr_list_invoker",
            "wr_register", "wr_nop", "wr_frame_hook", "wr_frame_src", "wr_clear_type",
-           "wr_save_wrap", "wr_load_wrap"]
+           "wr_save_wrap", "wr_load_wrap", "wr_new_wrap"]
 STATUS = ("wr_pool", "wr_load", "wr_store", "wr_route", "wr_write", "wp_write", "wr_projects", "wr_events", "wr_sync")   # what the probe PEEKs
 CLEAR_SITE = 0x40071EB6           # CLEAR TRK PRESET's jsr to the machine-type getter (events.c)
 
@@ -50,6 +50,9 @@ SAVE_SITE = 0x400F6960            # save the working project to slot (0-based; 1
 SAVE_STOCK = bytes.fromhex("4fefffe048d7001c")     # lea -32(%sp),%sp ; movem.l %d2-%d4,(%sp)
 LOAD_SITE = 0x400F6A2C            # LOAD PROJECT's +Drive read of a slot
 LOAD_STOCK = bytes.fromhex("4fefffe048d7040c")     # lea -32(%sp),%sp ; movem.l %d2-%d3/%a2,(%sp)
+
+NEW_SITE = 0x40042B5C             # CREATE NEW (0x400428c0): its save of the new working project
+NEW_STOCK = bytes.fromhex("42aefff04ebad726")      # clr.l -16(%fp) ; jsr 0x40040288 (pc-relative)
 
 ROUTE_SITE = 0x4002BB70
 ROUTE_STOCK = bytes.fromhex("700113c04059cd20")     # moveq #1,%d0 ; move.b %d0,0x4059cd20
@@ -67,6 +70,8 @@ GUARDS = (
      "0x800053a4), as wr_frame_hook repeats it"),
     (0x40025EAA, "538023c0402876f8", "the skip counter's count-down, then 0x40025eb2"),
     (0x400F6968, "262f0024202f0028", "the save's body after its prologue, where wr_save_stock goes on"),
+    (0x40040288, "202f00080c80000000806204", "save-if-in-range(app, slot, progress), which wr_new_wrap calls"),
+    (0x40042B64, "2f034e94", "after CREATE NEW's save, where wr_new_wrap returns"),
     (0x400F6A34, "262f0028242f002c", "the load read's body after its prologue, where wr_load_stock goes on"),
 )
 
@@ -104,6 +109,9 @@ def hooks(symbols: dict[str, int]) -> list[tuple[int, bytes, bytes, str]]:
         (LOAD_SITE, bytes.fromhex("4ef9") + symbols["wr_load_wrap"].to_bytes(4, "big") + bytes.fromhex("4e71"),
          LOAD_STOCK, "LOAD PROJECT k: after the stock read succeeds, record k to record 0, and "
                      "the pool refills"),
+        (NEW_SITE, bytes.fromhex("4eb9") + symbols["wr_new_wrap"].to_bytes(4, "big") + bytes.fromhex("4e71"),
+         NEW_STOCK, "CREATE NEW: after its save of the new project, record 0 an empty list "
+                    "(a new project has no pool tables, as it has no sounds in its pool)"),
         (FRAME_SITE, bytes.fromhex("4ef9") + symbols["wr_frame_hook"].to_bytes(4, "big"),
          FRAME_STOCK, "the audio ISR, before the stock send: the frame or a table chunk "
                       "(wr_frame_hook), then on at 0x40025eb2"),

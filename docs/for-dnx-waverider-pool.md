@@ -11,8 +11,8 @@ The store itself, the index entry and the `/waverider` route are in `docs/waveri
 builds on them and changes none of it. **Status: revision 3, with DNX's answers of 2026-10-06
 folded in (listed at the end). Built and passing in the emulator (2026-10-06): the rename
 (§1), the records and the `/wavepool` route (§2), Waverider playing from record 0, and SAVE
-PROJECT AS / LOAD PROJECT copying the records. Not built yet: the instrument's pool page,
-and what CREATE NEW does to record 0 (an open question).**
+PROJECT AS / LOAD PROJECT copying the records, and CREATE NEW starting an empty list. Not
+built yet: the instrument's pool page.**
 
 ## The numbers (read this first)
 
@@ -258,6 +258,13 @@ is DNX's to add; the pool makes it matter more than the store alone did. So does
   - record 0 written as `[7]`, LOAD 003: record 0 is `[3, NONE, 0]` again;
   - LOAD 002: record 0 is automatic;
   - `wr_projects`: 2 saves, 2 loads, none failed.
-- **Open: CREATE NEW.** It writes only the working copy, so record 0 keeps the previous
-  project's list. Making it automatic would need a hook that tells CREATE NEW apart from
-  the other saves of slot 128.
+- **CREATE NEW starts an empty list** (the owner, 2026-10-06: "like the sound pool"). After
+  CREATE NEW's save of the new working project (`0x400428c0`, its call of `0x40040288` at
+  `0x40042b60`, reached from the LOAD list through `0x4009ab30`, measured), record 0 is
+  written as an empty list: stored, count 0, not automatic. So a new project's TBL reaches
+  only Prim. and Harm. until tables are added to its pool. Projects saved before the lists
+  keep the automatic pool, so none goes silent. `0x400428c0`'s two other callers
+  (`0x4009c3a2`, `0x400f66fc`) were not reached in the test; by their place in the code they
+  also make a new working project, and would get the same empty list. Unverified.
+  `scripts/emu_waverider_projects.py`, now 7/7: CREATE NEW after LOAD 002 leaves record 0
+  empty, stored, not automatic, generation advanced; `wr_projects.created` 1.

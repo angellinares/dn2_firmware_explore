@@ -270,7 +270,7 @@ to word 6.
   table is written);
 - a refill rewrites tables in place while the old directory still names them;
 - the pool list follows SAVE PROJECT AS and LOAD PROJECT, but not the project manager's
-  copy, move or delete, nor CREATE NEW (`docs/for-dnx-waverider-pool.md`);
+  copy, move or delete (`docs/for-dnx-waverider-pool.md`); CREATE NEW starts an empty list;
 - one geometry only.
 
 ## Open, before the ColdFire half

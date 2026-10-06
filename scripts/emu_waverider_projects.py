@@ -8,7 +8,8 @@ SysEx router as DNX sends it, writes and reads the records:
 1. SAVE PROJECT AS 002 with no record 0: record 2 becomes an automatic record;
 2. DNX writes record 0 = [3, NONE, 0]; SAVE PROJECT AS 003: record 3 is that list;
 3. DNX writes record 0 = [7]; LOAD PROJECT 003: record 0 is [3, NONE, 0] again;
-4. LOAD PROJECT 002: record 0 is automatic.
+4. LOAD PROJECT 002: record 0 is automatic;
+5. CREATE NEW (in the LOAD list): record 0 is an empty list, stored and not automatic.
 After each step the records are read back over /wavepool, and wr_projects is peeked.
 """
 
@@ -91,7 +92,7 @@ def main() -> int:
         reads[label] = start
 
     def peek(label):
-        steps.append(f"peek:{projects_at:#x}:24")
+        steps.append(f"peek:{projects_at:#x}:28")
 
     steps += save_as(2, "s2")
     api_read("after_s2_rec2", 2)
@@ -108,6 +109,10 @@ def main() -> int:
     steps += ["frame:l2_done"]
     api_read("after_l2_rec0", 0)
     peek("p3")
+    steps += (project_menu() + taps(YES, wait="60M") + to_slot(2) + ["frame:n_list"]
+              + taps(YES, wait="80M") + ["frame:n_ask1"] + taps(YES, wait="900M") + ["frame:n_done"])
+    api_read("after_new_rec0", 0)
+    peek("p4")
 
     steps_file = out / "steps.txt"
     steps_file.write_text("\n".join(steps) + "\n")
@@ -139,7 +144,7 @@ def main() -> int:
         return rec
 
     peeks = [bytes.fromhex(x["hex"]) for x in report["results"] if "hex" in x]
-    counters = [struct.unpack(">6I", p) for p in peeks]
+    counters = [struct.unpack(">7I", p) for p in peeks]
     calls = [(x["pc"], int(x["stack"][2], 16)) for x in report["regs"]]
     ok = True
 
@@ -148,7 +153,8 @@ def main() -> int:
         ok &= bool(cond)
         print(("PASS " if cond else "FAIL ") + what + (f"  ({detail})" if detail else ""))
 
-    r2, r3, l3, l2 = (record(x) for x in ("after_s2_rec2", "after_s3_rec3", "after_l3_rec0", "after_l2_rec0"))
+    r2, r3, l3, l2, nw = (record(x) for x in ("after_s2_rec2", "after_s3_rec3", "after_l3_rec0",
+                                              "after_l2_rec0", "after_new_rec0"))
     check("the stock calls: save 1, 128; save 2, 128; load 2; ...; load 1",
           [c for c in calls if c[0] == "0x400f6a2c"] == [("0x400f6a2c", 2), ("0x400f6a2c", 1)]
           and ("0x400f6960", 1) in calls and ("0x400f6960", 2) in calls, calls)
@@ -159,9 +165,11 @@ def main() -> int:
     check("LOAD 003: record 0 is [3, NONE, 0] again", l3 and not l3.automatic and l3.entries == [3, NONE, 0]
           and l3.project == 0, l3)
     check("LOAD 002: record 0 automatic", l2 and l2.automatic and l2.project == 0, l2)
-    check("wr_projects: 2 saves, then 2 loads, none failed",
-          len(counters) == 3 and counters[0][1] == 1 and counters[2][1] == 2 and counters[2][2] == 2
-          and counters[2][5] == 0, counters)
+    check("CREATE NEW: record 0 an empty list, stored, not automatic",
+          nw and not nw.automatic and nw.entries == [] and nw.project == 0 and nw.generation > l2.generation, nw)
+    check("wr_projects: 2 saves, 2 loads, 1 created, none failed",
+          len(counters) == 4 and counters[0][1] == 1 and counters[2][1] == 2 and counters[2][2] == 2
+          and counters[3][6] == 1 and counters[3][5] == 0, counters)
     print("PASS" if ok else "FAIL")
     return 0 if ok else 1
 

@@ -842,7 +842,7 @@ void wr_page_draw(void *view, void *canvas)
              * modulation on the bar row (the owner's option A, 2026-10-06). The built-ins by
              * name, a pool table by its shown slot 001.. (coarse c >= 2 is shown slot c - 1) */
             u8 flag;
-            int set = GET_VALUE(view, id, &flag), c = set >> 8;
+            int set = GET_VALUE(view, id, &flag) & 0xFFFF, c = set >> 8;   /* the getter sign-extends: 0x8000 and up read negative */
             int y = top ? TOP_LABEL_Y : BOT_LABEL_Y;       /* level with the other labels */
             if (c < WR_TABLES)
                 TEXT(canvas, FONT, cx, y, CENTRED, c ? "HARM" : "PRIM");

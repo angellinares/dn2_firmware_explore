@@ -8,7 +8,7 @@ by the owner on 2026-10-06:
 - a sound remembers a **pool slot**.
 
 The store itself, the index entry and the `/waverider` route are in `docs/waverider-store.md`; this
-builds on them and changes none of it. **Status: revision 2, with DNX's answers of 2026-10-06
+builds on them and changes none of it. **Status: revision 3, with DNX's answers of 2026-10-06
 folded in (listed at the end). Nothing here is built yet.**
 
 ## The numbers (read this first)
@@ -117,6 +117,10 @@ long-form layout as `/waverider`'s:
   not), `00 00` when it has none and follows the automatic pool;
 - the size is 512; permissions `0x007e`.
 
+**Occupancy says "a record exists", never "the user chose this pool".** A backup and restore of a
+slot that had no record leaves a stored automatic record there: it plays the same, but occupancy
+flips from `00 00` to `01 01`. Nothing downstream should read intent into it.
+
 The `/` reply then declares and carries 5 entries.
 
 **The file**, both ways, is the same container as a `/waverider` file (31-byte header, payload,
@@ -132,19 +136,28 @@ The `/` reply then declares and carries 5 entries.
   record. A project slot with no valid record returns what that project plays: the right magic,
   version and project slot, **generation 0**, the automatic flag set, the entries filled with the
   automatic pool as it stands now, the count to match, and a correct hash. So a read always says
-  what plays, and generation 0 is how to tell "no record" from a stored automatic one.
+  what plays, and generation 0 is how to tell "no record" from a stored automatic one. A stored
+  automatic record reads the same way, with its own generation.
+  **A record read from an automatic slot describes what plays; it is not a template for a
+  write.** Written back unchanged it is refused (below). To edit such a pool, clear the flag,
+  keep or change the entries, and write an explicit record.
 - **Write:** `/wavepool/<project slot>`, the whole record.
   - **Checked:** the container (kind `0x50`, version 1, raw, length 512), the magic, the
     version, the project slot against the path, the flags (only bit 0), and the hash.
   - **Without the automatic flag, also checked:** every entry `0xFFFF` or 0..255, and the count
     against the entries.
-  - **Ignored:** the generation you send (the firmware writes the non-current sector with the
-    current generation + 1), and with the automatic flag, the entries and the count.
+  - **With the automatic flag, also checked:** every entry `0xFFFF` and the count 0. **An
+    automatic write that carries entries is refused, not ignored**: otherwise read whole, edit
+    entry j, write whole on a project with no record would report success, verify clean and
+    discard the edit.
+  - **Ignored:** only the generation you send. The firmware writes the non-current sector with
+    the current generation + 1.
   - **No partial writes:** the record is small, so it's always whole.
-  - **How to prove it:** read it back. The payload equals what was sent except the generation
-    (and, for an automatic write, the entries and the count, which come back filled); the hash
-    is recomputed to match.
-- **Delete:** not offered. An automatic record makes a project follow the store again, and an
+  - **How to prove it, one rule for both kinds:** read before, write, read after. **The
+    generation advanced, and the fields the writer set came back.** For an explicit record those
+    are the flags and the entries; for an automatic one, only the flag, since it reads back with
+    the entries filled, so the generation is the evidence that anything happened.
+- **Delete:** not offered. An automatic record (entries cleared) makes a project follow the store again, and an
   empty, non-automatic record (count 0) is a pool with nothing in it.
 
 Every project's list is readable, not only the working project's. That is what lets DNX say
@@ -200,3 +213,11 @@ is DNX's to add; the pool makes it matter more than the store alone did. So does
    state writable in one sector, and replaces the first-boot migration.
 6. **The file form** is stated: the transfer container, kind `0x50`, raw, a 512-byte payload.
 7. **Two blind spots documented**: a reused store slot, and the automatic pool's order.
+
+## Changes from revision 2 (DNX, 2026-10-06)
+
+1. **An automatic write with entries is refused** (every entry `0xFFFF`, count 0), not ignored.
+   A read of an automatic slot describes what plays and is not a template for a write.
+2. **The write proof is one rule**: the generation advanced, and the fields the writer set came
+   back.
+3. **Occupancy means a record exists**, not a user's choice (a restore can flip it).

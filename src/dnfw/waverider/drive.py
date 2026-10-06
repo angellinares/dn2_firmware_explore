@@ -39,11 +39,13 @@ SOURCES = (ROOT / "csrc/waverider/pool.c", ROOT / "csrc/waverider/loader.c",
            ROOT / "csrc/waverider/sync.c",
            ROOT / "csrc/wrstore/store.c", ROOT / "csrc/wrstore/routekit.c",
            ROOT / "csrc/wrstore/route.c", ROOT / "csrc/wrstore/records.c",
-           ROOT / "csrc/wrstore/poolroute.c", ROOT / "csrc/wrstore/projects.c")
+           ROOT / "csrc/wrstore/poolroute.c", ROOT / "csrc/wrstore/projects.c",
+           ROOT / "csrc/waverider/wtmenu.c")
 ENTRIES = ["wr_drive_head", "wr_drive_poll", "wr_add", "wr_root_entry", "wr_list_invoker",
            "wr_register", "wr_nop", "wr_frame_hook", "wr_frame_src", "wr_clear_type",
-           "wr_save_wrap", "wr_load_wrap", "wr_new_wrap"]
-STATUS = ("wr_pool", "wr_load", "wr_store", "wr_route", "wr_write", "wp_write", "wr_projects", "wr_events", "wr_sync")   # what the probe PEEKs
+           "wr_save_wrap", "wr_load_wrap", "wr_new_wrap",
+           "wr_wt_key", "wr_wt_draw", "wr_wt_led_hook"]
+STATUS = ("wr_pool", "wr_load", "wr_store", "wr_route", "wr_write", "wp_write", "wr_projects", "wr_wtmenu", "wr_events", "wr_sync")   # what the probe PEEKs
 CLEAR_SITE = 0x40071EB6           # CLEAR TRK PRESET's jsr to the machine-type getter (events.c)
 
 SAVE_SITE = 0x400F6960            # save the working project to slot (0-based; 128 the working copy)
@@ -53,6 +55,11 @@ LOAD_STOCK = bytes.fromhex("4fefffe048d7040c")     # lea -32(%sp),%sp ; movem.l 
 
 NEW_SITE = 0x40042B5C             # CREATE NEW (0x400428c0): its save of the new working project
 NEW_STOCK = bytes.fromhex("42aefff04ebad726")      # clr.l -16(%fp) ; jsr 0x40040288 (pc-relative)
+
+# PresetKitMenuView's vtable slots: the wavetable page (csrc/waverider/wtmenu.c)
+PK_KEY_SLOT, PK_KEY_STOCK = 0x401E6DB0, 0x4008C78E
+PK_DRAW_SLOT, PK_DRAW_STOCK = 0x401E6DB8, 0x4008A5EC
+PK_LED_SLOT, PK_LED_STOCK = 0x401E6E54, 0x4008ABEC
 
 ROUTE_SITE = 0x4002BB70
 ROUTE_STOCK = bytes.fromhex("700113c04059cd20")     # moveq #1,%d0 ; move.b %d0,0x4059cd20
@@ -112,6 +119,12 @@ def hooks(symbols: dict[str, int]) -> list[tuple[int, bytes, bytes, str]]:
         (NEW_SITE, bytes.fromhex("4eb9") + symbols["wr_new_wrap"].to_bytes(4, "big") + bytes.fromhex("4e71"),
          NEW_STOCK, "CREATE NEW: after its save of the new project, record 0 an empty list "
                     "(a new project has no pool tables, as it has no sounds in its pool)"),
+        (PK_KEY_SLOT, symbols["wr_wt_key"].to_bytes(4, "big"), PK_KEY_STOCK.to_bytes(4, "big"),
+         "PRESET/KIT's key handler: PRESET/KIT again opens the wavetable page"),
+        (PK_DRAW_SLOT, symbols["wr_wt_draw"].to_bytes(4, "big"), PK_DRAW_STOCK.to_bytes(4, "big"),
+         "PRESET/KIT's redraw: the wavetable page when it is open"),
+        (PK_LED_SLOT, symbols["wr_wt_led_hook"].to_bytes(4, "big"), PK_LED_STOCK.to_bytes(4, "big"),
+         "PRESET/KIT's LED callback: a frame mark, so the menu opens on page 1"),
         (FRAME_SITE, bytes.fromhex("4ef9") + symbols["wr_frame_hook"].to_bytes(4, "big"),
          FRAME_STOCK, "the audio ISR, before the stock send: the frame or a table chunk "
                       "(wr_frame_hook), then on at 0x40025eb2"),

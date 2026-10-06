@@ -8,6 +8,7 @@ struct wr_events {
     unsigned int magic;                    /* 'WREV' */
     unsigned int clears;                   /* CLEAR TRK PRESET, any track */
     unsigned char notes[16];               /* note-ons per voice */
+    unsigned char shown_osc;               /* the oscillator of the SYN page last drawn (page.c) */
 };
 
 #ifndef WAVERIDER_PAGE

@@ -16,7 +16,7 @@ struct wr_pool {
     unsigned int magic;                    /* 'WRPL' */
     unsigned int state;                    /* 0 waiting, 1 filling, 2 directory, 3 ready, 5 failed */
     unsigned int count, fills, generation, changes_seen, spare;
-    unsigned char slot_of[POOL_SLOTS];     /* the store slot of pool entry j */
+    unsigned char slot_of[POOL_SLOTS];     /* the store slot of pool entry j, 0xFF empty */
     char names[POOL_SLOTS][8];             /* its name's first five characters, for TBL's text */
 };
 

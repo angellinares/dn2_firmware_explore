@@ -4,21 +4,25 @@
  * From the UI task, once a pass (wr_drive_poll). Five seconds after boot, and again
  * whenever the store has changed (wr_store.changes: the /waverider route commits a
  * write or a delete), it fills the pool:
- * 1. reads the store's current index;
- * 2. gives pool entry j to the j-th used slot in slot order whose table has the
- *    reader's geometry (16 waves of 512 int16, 16 KiB), up to POOL_SLOTS;
+ * 1. reads the store's current index, and the working project's pool list (record 0,
+ *    csrc/wrstore/records.c): its stored record, or with none (or the automatic
+ *    flag) the automatic pool, every playable slot in slot order, up to POOL_SLOTS;
+ * 2. pool entry j is the list's entry j, when that store slot holds a table with the
+ *    reader's geometry (16 waves of 512 int16, 16 KiB); otherwise entry j is empty
+ *    and plays Prim. (pool.asm), as a slot past the count does;
  * 3. sends each table, slot n's sectors, to pool address j (loader.c), and from the
  *    same chunks makes the page's display spans (as dnfw.waverider.wave.pool_spans);
  * 4. sends the pool directory last, so the DSP plays none of it before all of it is
- *    there (pool.asm reads it: magic, count, the entries' DDR addresses).
- * The page then offers TBL slots 2 .. 1 + count (wr_pool.count, once ready).
+ *    there (pool.asm reads it: magic, count, the entries' DDR addresses, 0 empty).
+ * The page then offers TBL slots 2 .. 1 + count (wr_pool.count, once ready): count is
+ * the last entry in use + 1, so a gap shows as an unnamed slot.
  *
  * Not yet: a table's own hash is not checked here (the route checked it when it was
  * written), and a refill rewrites tables in place while the old directory still
  * names them, so a voice on a moved table glitches until the new directory lands. */
 
 #include "loader.h"
-#include "../wrstore/store.h"
+#include "../wrstore/records.h"
 #include "pool.h"
 #include "events.h"
 
@@ -39,7 +43,8 @@ volatile struct wr_pool wr_pool __attribute__((section(".data"))) =
 static u16 directory[2 * (2 + POOL_SLOTS)] __attribute__((section(".data"))) = { 0 };
 static u32 next __attribute__((section(".data"))) = 0;     /* the next pool entry to send */
 static u32 filling __attribute__((section(".data"))) = 0;  /* entries found this fill */
-static u8 slots[POOL_SLOTS] __attribute__((section(".data"))) = { 0 };
+#define EMPTY_SLOT 0xFFu
+static u8 slots[POOL_SLOTS] __attribute__((section(".data"))) = { 0 };   /* EMPTY_SLOT: none */
 static char names[POOL_SLOTS][8] __attribute__((section(".data"))) = { { 0 } };
 
 static const u16 *col_start(void)
@@ -94,30 +99,26 @@ static void clear_spans(u32 j)
         }
 }
 
-static int fits(const u8 *e, u32 n)
-{
-    return (be16(e + E_FLAGS) & 1) && be16(e + E_KIND) == 1 && be16(e + E_WAVES) == 16
-        && be16(e + E_POINTS) == 512 && be16(e + E_FORMAT) == 1
-        && be32(e + E_START) == DATA_START + n * SLOT_SECTORS && be32(e + E_LENGTH) == TABLE_BYTES;
-}
-
 static void begin(void)
 {
-    u8 *index;
+    u8 *index, *rec = NEW(RECORD_BYTES);
     wr_pool.changes_seen = wr_store.changes;
     wr_pool.fills++;
     index = wr_store_index();
     filling = next = 0;
-    if (index) {
-        for (u32 n = 0; n < SLOTS && filling < POOL_SLOTS; n++)
-            if (fits(index + n * ENTRY_BYTES, n)) {
-                const u8 *name = index + n * ENTRY_BYTES + E_NAME;
-                for (u32 i = 0; i < 8; i++)
-                    names[filling][i] = i < 5 ? (char)name[i] : 0;
-                slots[filling++] = (u8)n;
-            }
-        DELETE(index);
+    wr_record_resolve(0, rec, index);
+    for (u32 j = 0; j < POOL_SLOTS; j++) {
+        u32 n = be16(rec + R_ENTRIES + 2 * j);
+        int ok = index && n < SLOTS && wr_store_playable(index + n * ENTRY_BYTES, n);
+        slots[j] = ok ? (u8)n : EMPTY_SLOT;
+        for (u32 i = 0; i < 8; i++)
+            names[j][i] = ok && i < 5 ? (char)index[n * ENTRY_BYTES + E_NAME + i] : 0;
+        if (ok)
+            filling = j + 1;
     }
+    DELETE(rec);
+    if (index)
+        DELETE(index);
     wr_pool.generation = index ? wr_store.generation : 0;
     wr_pool.state = FILLING;             /* no store: an empty directory, count 0 */
 }
@@ -126,7 +127,8 @@ static void send_directory(void)
 {
     u32 words[2] = { POOL_MAGIC, POOL_SLOTS };
     for (u32 k = 0; k < 2 + POOL_SLOTS; k++) {
-        u32 v = k < 2 ? words[k] : (k - 2 < filling ? AREA + (k - 2) * TABLE_BYTES : 0);
+        u32 v = k < 2 ? words[k]
+              : (k - 2 < filling && slots[k - 2] != EMPTY_SLOT ? AREA + (k - 2) * TABLE_BYTES : 0);
         directory[2 * k] = (u16)v;
         directory[2 * k + 1] = (u16)(v >> 16);
     }
@@ -155,6 +157,12 @@ void wr_drive_poll(void)
         if (!wr_load_idle())
             break;
         if (next < filling) {
+            if (slots[next] == EMPTY_SLOT) {
+                clear_spans(next);
+                wr_pool.slot_of[next] = EMPTY_SLOT;
+                next++;
+                break;
+            }
             clear_spans(next);
             if (wr_load_extent(REGION + DATA_START + slots[next] * SLOT_SECTORS,
                                TABLE_BYTES / 512, next * TABLE_BYTES, seen)) {

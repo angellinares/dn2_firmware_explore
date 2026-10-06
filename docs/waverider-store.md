@@ -224,7 +224,10 @@ with build `wrroute9`:
 | a second slot | the index and superblock go to the other group (generation 2), and the first slot carries over |
 | the same slot again | generation 3, back into group A: the slot reads back the new table, and the other slots are kept |
 | a table whose hash doesn't match the entry's | **the commit still answers ok** (the stock session decides the reply before our callback runs), and **nothing is written**: the slot doesn't appear |
-| container kind not `0x57`, version not 1, `0x1D` not 0, or a length outside 129 .. 128 + 512 KiB | refused at the first chunk: `slot N: the file is not a Waverider table (container kind)`, `... unknown store format version`, `... the body must be raw, not LZ4`, `... the file must be a 128-byte entry and a table of at most 512 KiB`. The commit then answers `Header was not processed` |
+| container kind not `0x57`, version not 1, `0x1D` not 0, or a length outside 128 .. 128 + 512 KiB | refused at the first chunk: `slot N: the file is not a Waverider table (container kind)`, `... unknown store format version`, `... the body must be raw, not LZ4`, `... the file must be a 128-byte entry and a table of at most 512 KiB, or the entry alone (a rename)`. The commit then answers `Header was not processed` |
+| **a rename**: a 128-byte body, the entry alone (build `wrrename1`, `scripts/emu_waverider_rename.py`) | only the name (32..95) is taken, every other byte ignored (the test fills them with `0xA5`); slot n's stored entry with the new name goes to the other group with generation + 1. The listing shows the new name, and a read returns the stored entry but for the name, and the table unchanged |
+| a rename of a free slot | refused at the first chunk: `slot N: a rename needs a slot in use` |
+| a rename whose name has no NUL in its 64 bytes | the commit answers ok and nothing is written (`wr_write.last` 8) |
 | `0x1D` = 1 on a raw body | the stock decompressor refuses first: `Failed to write data: Error decompressing stream; invalid buffer length` |
 | **delete**, `0x5c` with the slashed path `/waverider/n/` | answers `01`. Slot n's index entry is freed in the other group, with generation + 1, and the other slots are kept. The listing drops it, and an open says `slot n: empty`. The table's sectors are left as they are: the index is what counts |
 
@@ -233,7 +236,7 @@ format 1; its start is slot n's own; its length is the table's, and is waves ×
 points × 2; and the table's xxHash32 equals the entry's table hash. **So a write is
 confirmed only by reading back:** list the slot, read it, and compare. The device's
 last outcome is also in `wr_write` (probe PEEK): commits, last (1 written,
-2 aborted, 3 entry, 4 hash, 5 drive, 6 range), slot, generation.
+2 aborted, 3 entry, 4 hash, 5 drive, 6 range, 7 a rename of a free slot, 8 a rename's name has no NUL), slot, generation.
 
 **How (docs/data-api-routes.md):** kind 1, a memory stream over one RAM stage of
 128 + 512 KiB + 512. The info's callbacks are a pre-check (+28), the commit (+76) and

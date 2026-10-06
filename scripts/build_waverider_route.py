@@ -32,7 +32,8 @@ from dnfw.mods import platform                            # noqa: E402
 from dnfw.patch import cbuild                             # noqa: E402
 
 STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-SOURCES = [ROOT / "csrc/wrstore/store.c", ROOT / "csrc/wrstore/route.c"]   # the route alone; the
+SOURCES = [ROOT / "csrc/wrstore/store.c", ROOT / "csrc/wrstore/routekit.c", ROOT / "csrc/wrstore/route.c",
+           ROOT / "csrc/wrstore/records.c", ROOT / "csrc/wrstore/poolroute.c"]   # the route alone; the
 # Waverider mod links them into its +Drive chunk (dnfw.waverider.drive)
 BASE = 0x40000400
 MAIN_OS = 3

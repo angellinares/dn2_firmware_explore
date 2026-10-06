@@ -17,47 +17,18 @@
  * groups' superblocks, then the current group's index. A slot is used when its
  * entry's flags say so. Nothing here writes to the +Drive. */
 
-#include "store.h"
+#include "routekit.h"
 
-/* Our fill functions return u32 too: the firmware's code calls them (store.h). */
-#define STR_CSTR     ((void (*)(void *, const char *, void *))0x401ce69eu)
-#define STR_DTOR     ((void (*)(void *))0x401ccbeeu)
-#define SPLIT        ((void (*)(void *, void *))0x400ec394u)
-#define ROUTE_COPY   ((void (*)(void *, const void *))0x401b276au)
-#define ROUTE_GROW   ((void (*)(void *, const void *))0x401b2b00u)
-#define FN_DTOR      ((void (*)(void *))0x40188086u)
-#define STRVEC_DTOR  ((void (*)(void *))0x4018dc80u)
-#define REG_ADD      ((void (*)(void *, void *))0x400ead92u)
-#define FILE_COPY    ((void (*)(void *, const void *))0x401b27b8u)    /* file routes: copy at end */
-#define FILE_GROW    ((void (*)(void *, const void *))0x401b28d8u)    /* file routes: grow */
-#define PATH_ARGS    ((void (*)(void *, void *))0x401b250eu)          /* (vector<string> *out, args) */
-#define PARSE_U32    ((u32 (*)(u32, u32 *))0x401510ecu)              /* (string, &n) -> bool */
-#define REGISTRY     ((u8 *)0x4059cd24u)
-#define BUILT_FLAG   (*(volatile u8 *)0x4059cd20u)
-#define MANAGER      ((void *)0x400eb0b6u)  /* ProjectHandler's: a 4-byte closure */
-#define EMPTY_STR    0x44647a74u            /* the empty std::string's pointer */
-#define TYPEINFO     0x401feb54u            /* RouteTypeHandler's typeinfo */
 #define SLOT_SIZE     524288u               /* the fixed 512 KiB extent every slot reports */
-/* A user slot: DNX writes when & 0x6c == 0x6c. (0x12, write-protected, while there
- * was no writer: an info with empty callbacks ends in abort() on a write.) */
-#define PERMISSIONS   0x7e
 
-struct fn { void *data[2]; void *manager; void *invoker; };       /* std::function, 16 B */
-struct route { void *comps[3]; struct fn fn; };                    /* 28 B */
-struct entry {                                                     /* 20 B, as /projects' */
-    u32 index;
-    u32 name;                 /* std::string */
-    u32 size;
-    u16 permissions;
-    u8 used, used2;
-    u8 zero, pad[3];
-};
+
 
 void wr_root_entry(void);
 void wr_list_invoker(void);
 void wr_nop(void);
 void wr_register(void *self, u8 *registry);
 void wr_file_invoker(void);
+void wp_add(void);
 
 /* offset-to-top, typeinfo, then the four slots */
 static const u32 vtable[6] __attribute__((aligned(4))) = {
@@ -122,50 +93,8 @@ u32 wr_list_fill(u32 *out)
  * 0x400f0270(byte offset, size, 64 KiB) with no filter, since every std::function in
  * the info is empty. So reading /waverider/<n> gives the slot's payload: its
  * byteLength bytes, as stored. */
-#define RESULT_WORDS 33                       /* 4 + 4 + 124 bytes */
-
-/* A refusal: ok 0 and the message, in a result of WORDS longs (the caller's size: 33
- * for a file's info, 2 for a pre-check, 3 for the header check). Writing more than
- * the caller has overruns its stack. */
-static void fail_in(u32 *out, u32 words, const char *why)
-{
-    u8 alloc;
-    for (u32 i = 0; i < words; i++)
-        out[i] = 0;
-    STR_CSTR(&out[1], why, &alloc);
-}
-
-static void fail(u32 *out, const char *why) { fail_in(out, RESULT_WORDS, why); }
-
-static char *put_u32(char *at, u32 n)
-{
-    char digits[10];
-    u32 k = 0;
-    do {
-        digits[k++] = (char)('0' + n % 10);
-        n /= 10;
-    } while (n);
-    while (k)
-        *at++ = digits[--k];
-    return at;
-}
-
-/* "slot N: RULE", the shape DNX's messages use too */
-static void fail_slot_in(u32 *out, u32 words, u32 n, const char *rule)
-{
-    char text[80];
-    char *at = text;
-    for (const char *w = "slot "; *w; w++)
-        *at++ = *w;
-    at = put_u32(at, n);
-    *at++ = ':';
-    *at++ = ' ';
-    while (*rule && at < text + 79)
-        *at++ = *rule++;
-    *at = 0;
-    fail_in(out, words, text);
-}
-
+static void fail(u32 *out, const char *why) { rk_fail_in(out, RESULT_WORDS, why); }
+static void fail_slot_in(u32 *out, u32 words, u32 n, const char *rule) { rk_fail_num_in(out, words, "slot ", n, rule); }
 static void fail_slot(u32 *out, u32 n, const char *rule) { fail_slot_in(out, RESULT_WORDS, n, rule); }
 
 /* --- A slot's file: [128-byte index entry][table], through one RAM buffer ---------
@@ -187,7 +116,6 @@ static void fail_slot(u32 *out, u32 n, const char *rule) { fail_slot_in(out, RES
  * the slot's own extent, then the other group's index, then its superblock
  * (docs/waverider-store.md). Nothing touches the +Drive before that. One buffer
  * serves one transfer at a time, as DNX makes them. */
-#define DRIVE_WRITE  ((int (*)(u32, u32, const void *))0x4012c780u)
 #define TABLE_MAX    (SLOT_SECTORS * 512)              /* 512 KiB */
 #define FILE_MAX     (ENTRY_BYTES + TABLE_MAX)
 #define DATA_END     (DATA_START + SLOTS * SLOT_SECTORS)  /* 0x41000 */
@@ -202,21 +130,10 @@ static u8 *stage __attribute__((section(".data"))) = 0;   /* FILE_MAX + 512, all
 /* The probe reads this: the last write's outcome. 0 none yet, 1 written, else why not. */
 struct wr_write { u32 magic, commits, last, slot, generation; };
 volatile struct wr_write wr_write __attribute__((section(".data"))) = { 0x57525754u, 0, 0, 0, 0 };
-enum { W_OK = 1, W_ABORTED, W_ENTRY, W_HASH, W_DRIVE, W_RANGE };
+enum { W_OK = 1, W_ABORTED, W_ENTRY, W_HASH, W_DRIVE, W_RANGE, W_FREE, W_NAME };
 
 static void put32(u8 *p, u32 v) { p[0] = (u8)(v >> 24); p[1] = (u8)(v >> 16); p[2] = (u8)(v >> 8); p[3] = (u8)v; }
 
-static void make_fn(struct fn *f, u32 n, void *invoker)
-{
-    u32 *closure = NEW(4);
-    *closure = n;
-    f->data[0] = closure;
-    f->data[1] = 0;
-    f->manager = MANAGER;
-    f->invoker = invoker;
-}
-
-static u32 closure_slot(void *any) { return **(u32 **)any; }
 
 /* The file invoker, read and write alike: kind 1 over the stage, at its full size
  * (a write's capacity). A read's pre-check then trims it to the slot's file. */
@@ -248,9 +165,9 @@ u32 wr_file_fill(u32 *out, void *any, void *args)
     out[6] = FILE_MAX;                                /* +16 a write's capacity */
     out[7] = n;                                       /* +20 index: the container's slot byte */
     out[8] = 1;                                       /* +24 object version: store format 1 */
-    make_fn((struct fn *)&out[2 + 7], n, (void *)wr_check_invoker);    /* +28 read pre-check */
-    make_fn((struct fn *)&out[2 + 19], n, (void *)wr_commit_invoker);  /* +76 commit */
-    make_fn((struct fn *)&out[2 + 27], n, (void *)wr_header_invoker);  /* +108 header check */
+    rk_make_fn((struct fn *)&out[2 + 7], n, (void *)wr_check_invoker);    /* +28 read pre-check */
+    rk_make_fn((struct fn *)&out[2 + 19], n, (void *)wr_commit_invoker);  /* +76 commit */
+    rk_make_fn((struct fn *)&out[2 + 27], n, (void *)wr_header_invoker);  /* +108 header check */
     return (u32)out;
 }
 
@@ -260,11 +177,10 @@ u32 wr_file_fill(u32 *out, void *any, void *args)
  * slot's entry and table and sets the info's length; a write keeps the full
  * capacity and passes. RET is where it was called from. 1.11 address: for 1.12,
  * find again the read open's `jsr (a1)` after `tstl %a4@(36)`. */
-#define READ_OPEN_RETURN 0x400e9fc2u
 
 u32 wr_check_fill(u32 *out, void *any, u8 *info, u32 ret)
 {
-    u32 n = closure_slot(any);
+    u32 n = rk_closure_slot(any);
     u8 *index;
     const u8 *raw;
     u32 start, length;
@@ -301,10 +217,21 @@ u32 wr_check_fill(u32 *out, void *any, u8 *info, u32 ret)
     return (u32)out;
 }
 
-/* +108, a write's first chunk: the container header. -> {u8 ok; string; u8 value}. */
+/* Is slot n in use in the current group? (reads the index) */
+static u32 slot_in_use(u32 n)
+{
+    u8 *index = wr_store_index();
+    u32 used = index && (index[n * ENTRY_BYTES + 1] & 1);
+    if (index)
+        DELETE(index);
+    return used;
+}
+
+/* +108, a write's first chunk: the container header. -> {u8 ok; string; u8 value}.
+ * A body of exactly ENTRY_BYTES is a rename (docs/for-dnx-waverider-pool.md). */
 u32 wr_header_fill(u32 *out, void *any, const u8 *header)
 {
-    u32 n = closure_slot(any), length = be32(header + 25);
+    u32 n = rk_closure_slot(any), length = be32(header + 25);
     out[0] = out[1] = out[2] = 0;
     if (be32(header + 13) != CONTENT_KIND) {
         fail_slot_in(out, 3, n, "the file is not a Waverider table (container kind)");
@@ -318,8 +245,12 @@ u32 wr_header_fill(u32 *out, void *any, const u8 *header)
         fail_slot_in(out, 3, n, "the body must be raw, not LZ4");
         return (u32)out;
     }
-    if (length <= ENTRY_BYTES || length > FILE_MAX) {
-        fail_slot_in(out, 3, n, "the file must be a 128-byte entry and a table of at most 512 KiB");
+    if (length < ENTRY_BYTES || length > FILE_MAX) {
+        fail_slot_in(out, 3, n, "the file must be a 128-byte entry and a table of at most 512 KiB, or the entry alone (a rename)");
+        return (u32)out;
+    }
+    if (length == ENTRY_BYTES && !slot_in_use(n)) {
+        fail_slot_in(out, 3, n, "a rename needs a slot in use");
         return (u32)out;
     }
     ((u8 *)out)[0] = 1;
@@ -332,12 +263,40 @@ u32 wr_header_fill(u32 *out, void *any, const u8 *header)
  * apart by the caller: a delete (0x5c, the stock delete 0x400ea3fc zeroes the stage
  * and calls this from 0x40127f8e) and a failed upload (from 0x401287a4). 1.11
  * addresses: for 1.12, find the delete's kind-1 arm again. */
-#define DELETE_RETURN 0x40127f8eu
-static void commit_index(u32 n, const u8 *entry);
+
+/* A rename: slot n's stored entry with only the name (E_NAME, 64 bytes) taken from
+ * BODY. Every other byte of BODY is ignored, so the geometry, the hashes and the
+ * extent can't change. The name must end with a NUL inside its 64 bytes; it is
+ * stored NUL-padded. Only the index is written, never the slot's data. */
+static void rename_slot(u32 n, const u8 *body)
+{
+    u8 *index = wr_store_index();
+    u8 entry[ENTRY_BYTES];
+    u32 end = 64;
+    if (!index || !(index[n * ENTRY_BYTES + 1] & 1)) {
+        if (index)
+            DELETE(index);
+        wr_write.last = W_FREE;
+        return;
+    }
+    for (u32 i = 0; i < ENTRY_BYTES; i++)
+        entry[i] = index[n * ENTRY_BYTES + i];
+    DELETE(index);
+    for (u32 i = 0; i < 64 && end == 64; i++)
+        if (!body[E_NAME + i])
+            end = i;
+    if (end == 64) {
+        wr_write.last = W_NAME;
+        return;
+    }
+    for (u32 i = 0; i < 64; i++)
+        entry[E_NAME + i] = i < end ? body[E_NAME + i] : 0;
+    wr_store_commit_entry(n, entry);
+}
 
 void wr_commit_fill(void *any, const u8 *header, u32 ret)
 {
-    u32 n = closure_slot(any);
+    u32 n = rk_closure_slot(any);
     u32 length, start, table_len, flags;
     u8 *entry = stage;
 
@@ -347,13 +306,17 @@ void wr_commit_fill(void *any, const u8 *header, u32 ret)
         if (ret == DELETE_RETURN) {
             for (u32 i = 0; i < ENTRY_BYTES; i++)
                 stage[i] = 0;
-            commit_index(n, stage);           /* a free entry: the slot is gone */
+            wr_store_commit_entry(n, stage);           /* a free entry: the slot is gone */
             return;
         }
         wr_write.last = W_ABORTED;
         return;
     }
     length = be32(header + 25);
+    if (length == ENTRY_BYTES) {
+        rename_slot(n, stage);
+        return;
+    }
     table_len = length - ENTRY_BYTES;
     flags = (u32)entry[0] << 8 | entry[1];
     start = be32(entry + 12);
@@ -378,12 +341,13 @@ void wr_commit_fill(void *any, const u8 *header, u32 ret)
         wr_write.last = W_DRIVE;
         return;
     }
-    commit_index(n, entry);
+    wr_store_commit_entry(n, entry);
 }
 
-/* Steps 2 and 3: slot n's index entry becomes ENTRY (all zero frees it), in the group
+/* Steps 2 and 3, and the wavetable page's DELETE (store.h): slot n's index entry
+ * becomes ENTRY (all zero frees it), in the group
  * that is not current, then its superblock with generation + 1. */
-static void commit_index(u32 n, const u8 *entry)
+u32 wr_store_commit_entry(u32 n, const u8 *entry)
 {
     u8 *index, *sb;
     u32 generation = 0, target = 0, used = 0;
@@ -404,7 +368,7 @@ static void commit_index(u32 n, const u8 *entry)
     if (DRIVE_WRITE(REGION + target * GROUP_B + 1, INDEX_BYTES, index) < 0) {
         DELETE(index);
         wr_write.last = W_DRIVE;
-        return;
+        return 0;
     }
     /* 3. its superblock, generation + 1: the moment the change takes effect */
     sb = NEW(512);
@@ -424,54 +388,25 @@ static void commit_index(u32 n, const u8 *entry)
     if (DRIVE_WRITE(REGION + target * GROUP_B, 512, sb) < 0) {
         DELETE(sb);
         wr_write.last = W_DRIVE;
-        return;
+        return 0;
     }
     DELETE(sb);
     wr_write.generation = generation + 1;
     wr_store.changes++;                           /* what was loaded from the store is stale */
     wr_write.last = W_OK;
+    return 1;
 }
 
-/* One route: PATTERN with INVOKER into the route vector at registry + AT, as
- * ProjectHandler adds each of its patterns. */
-static void add_route(void *self, u8 *registry, const char *text, void *invoker, u32 at,
-                      void (*copy)(void *, const void *), void (*grow)(void *, const void *))
-{
-    u8 alloc;
-    u32 pattern;
-    struct route r;
-    u32 *closure = NEW(4);
-    u32 *end = (u32 *)(registry + at + 4), *cap = (u32 *)(registry + at + 8);
-
-    r.comps[0] = r.comps[1] = r.comps[2] = 0;
-    r.fn.data[1] = 0;
-    *closure = (u32)self;
-    STR_CSTR(&pattern, text, &alloc);
-    SPLIT(&pattern, r.comps);
-    r.fn.data[0] = closure;
-    r.fn.manager = MANAGER;
-    r.fn.invoker = invoker;
-    if (*end != *cap) {
-        if (*end)
-            copy((void *)*end, &r);
-        *end += sizeof(struct route);
-    } else {
-        grow(registry + at, &r);
-    }
-    FN_DTOR(&r.fn);
-    STRVEC_DTOR(r.comps);
-    STR_DTOR(&pattern);
-}
 
 /* register_route(this, registry): /waverider into the directory routes (+12), as
  * /projects; /waverider/<n> into the file routes (+24), as /projects/<n>. */
 void wr_register(void *self, u8 *registry)
 {
-    add_route(self, registry, "/waverider", (void *)wr_list_invoker, 12, ROUTE_COPY, ROUTE_GROW);
-    add_route(self, registry, "/waverider/*", (void *)wr_file_invoker, 24, FILE_COPY, FILE_GROW);
+    rk_add_route(self, registry, "/waverider", (void *)wr_list_invoker, 12, ROUTE_COPY, ROUTE_GROW);
+    rk_add_route(self, registry, "/waverider/*", (void *)wr_file_invoker, 24, FILE_COPY, FILE_GROW);
 }
 
-/* The hook at 0x4002bb70: add our handler, then set the builder's flag as stock does. */
+/* The hook at 0x4002bb70: add our handlers, then set the builder's flag as stock does. */
 void wr_add(void)
 {
     u32 *h = NEW(8);
@@ -480,6 +415,7 @@ void wr_add(void)
     h[1] = 0;
     owner = (u32)h;
     REG_ADD(REGISTRY, &owner);
+    wp_add();                                     /* /wavepool after it (poolroute.c) */
     BUILT_FLAG = 1;
 }
 

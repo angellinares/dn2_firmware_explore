@@ -508,3 +508,38 @@ which no longer fit below `0x46710000`.
   The other runs carry the frame's DCLK 127 (100 ms), so any jump in them crossfades, and all stay bit-exact.
 - The emulator: page 3's layout and "Osc1 Smooth=2.2 ms" at 124 (`waverider-sync2`); "Declick=17 ms"
   at 79, and CLEAR TRK PRESET giving DCLK 3 ms (`waverider-sync3`).
+
+## On the instrument (`waverider-sync3-usbprobe`, 2026-10-06)
+
+**The owner's five steps all passed:**
+1. page 3, and DCLK 3.0 ms after CLEAR TRK PRESET;
+2. SYNC: note names, gates on the eighths that follow the tempo, the first gate on step 1 after
+   STOP + PLAY;
+3. the reset click of an Up Loop, gone at 3 ms;
+4. a 100 ms morph on a Square, hardening back to a hard switch at Off;
+5. SMTH's glide, and Off as before.
+
+The probe read `wr_sync` alive: 4,282 steps and 2 STOPs counted.
+
+**The SHARC's load** (`tools/dn2sharc_load.py --idle`, 10 intervals each). Track 1 held one chord
+with the same voices throughout; each pair differs only in the thing measured:
+
+| state | load |
+|---|---|
+| Waverider, MOVE Up Loop on POS at RATE 70 (4 resets a second), DCLK Off | 53.6 % (53.5..53.7) |
+| the same, DCLK 100 ms (each voice mid-fade about 40 % of the time) | 58.5 % (58.4..58.7) |
+| factory WaveTone, the same chord | 57.1 % (57.1..57.2) |
+
+- Waverider costs 3.5 points less than factory WaveTone.
+- Even this harsh DCLK case costs 1.4 points more.
+- At the 3 ms default a fade lasts 1/33 as long.
+
+**Soak:** the 100 ms case, 10 minutes, 600 one-second intervals:
+- the load stayed at 58.0..58.8 %, with no drift;
+- 1,505..1,526 frames per interval, at 0.99..1.01 blocks a frame, symmetric (the interval edges;
+  a lost frame would only pull it down);
+- the instrument kept answering over USB throughout;
+- the owner heard nothing wrong.
+
+**The runner** (`scripts/sharc_waverider_stress.py`, 16 voices, instructions a block; the DCLK pair
+differs only in DCLK): DCLK Off 231,338, 100 ms 308,010, factory WaveTone 293,546, FM Tone 331,212.

@@ -5,6 +5,7 @@
 
 #define POOL_SLOTS     128                 /* 16 KiB tables after the load area's directory */
 #define WR_POOL_WIDTH  96                  /* the page's wave strip, as wr_spans */
+#define POOL_NAME      16                  /* a pool name: up to 15 characters of the stored one, NUL */
 
 /* the display spans of pool table j: [frame][min, max][column], signed bytes; in RAM
  * above BSS that nothing else claims (dnfw.mods: waverider's RAM) */
@@ -17,7 +18,7 @@ struct wr_pool {
     unsigned int state;                    /* 0 waiting, 1 filling, 2 directory, 3 ready, 5 failed */
     unsigned int count, fills, generation, changes_seen, spare;
     unsigned char slot_of[POOL_SLOTS];     /* the store slot of pool entry j, 0xFF empty */
-    char names[POOL_SLOTS][8];             /* its name's first five characters, for TBL's text */
+    char names[POOL_SLOTS][POOL_NAME];     /* its name's first 15 characters, for TBL's text */
 };
 
 /* The drive chunk's first bytes, so the page (another chunk, linked first) finds the

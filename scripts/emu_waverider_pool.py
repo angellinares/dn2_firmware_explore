@@ -27,7 +27,7 @@ the chunk's sequence in reply word 6 (0x800053a4 + 0x18), which nothing else wri
 | check | must hold |
 |---|---|
 | the store | wr_store: generation 1, no read errors |
-| the pool | slots 0 and 3 (slot 5, 32 waves, left out); names their first five characters |
+| the pool | slots 0 and 3 (slot 5, 32 waves, left out); names their first 15 characters |
 | the frames | every frame the loader sent is `dnfw.waverider.loadframes`'s, byte for byte: table 0 to pool 0, table 3 to pool 1, then the directory naming both |
 | acknowledged | the pool reads ready, count 2, every chunk acked once and none resent |
 | the display spans | both pool tables' spans at 0x46a00000 equal `dnfw.waverider.wave.pool_spans` |
@@ -57,6 +57,7 @@ from dnfw.waverider import testtable, wave         # noqa: E402
 
 PANEL = ROOT.parent / "digikit-rust/out/native/target-host/release/examples/panel_drive.exe"
 POOL_FIELDS = "magic state count fills generation changes_seen spare".split()
+POOL_NAME = 16                    # csrc/waverider/pool.h: a pool name's bytes
 LOAD_FIELDS = ("magic queued sent resent acked refused timeouts held read_errors last_rc "
                "want_sector want_bytes want_dest done_bytes failed queue queue_chunks").split()
 STORE_FIELDS = "magic group generation read_errors reads changes".split()
@@ -139,7 +140,7 @@ def main(argv=None) -> int:
     layout = json.loads((ROOT / "src/dnfw/mods/waverider_code.json").read_text())["layout"]
     pool_at, load_at, store_at = layout["wr_pool"], layout["wr_load"], layout["wr_store"]
     a.out.mkdir(parents=True, exist_ok=True)
-    pool_bytes = 4 * len(POOL_FIELDS) + LF.dsp.POOL_SLOTS * (1 + 8)     # wr_pool: slot_of, then names[8] (pool.h)
+    pool_bytes = 4 * len(POOL_FIELDS) + LF.dsp.POOL_SLOTS * (1 + POOL_NAME)     # wr_pool: slot_of, then names[POOL_NAME] (pool.h)
     status = [f"peek:{pool_at:#x}:{pool_bytes}", f"peek:{load_at:#x}:{4 * len(LOAD_FIELDS)}",
               f"peek:{store_at:#x}:{4 * len(STORE_FIELDS)}"]
 
@@ -183,7 +184,7 @@ def main(argv=None) -> int:
         praw = bytes.fromhex(tail[0]["hex"])
         slot_of = list(praw[4 * len(POOL_FIELDS):4 * len(POOL_FIELDS) + len(plan)])
         nb = praw[4 * len(POOL_FIELDS) + LF.dsp.POOL_SLOTS:]
-        names = [nb[8 * j:8 * j + 8].split(b"\0")[0].decode("cp1252") for j in range(len(plan))]
+        names = [nb[POOL_NAME * j:POOL_NAME * (j + 1)].split(b"\0")[0].decode("cp1252") for j in range(len(plan))]
         spans = bytes.fromhex(tail[3]["hex"])
         # no answer: never acknowledged
         silent = drive(a, extents, layout, [f"wait:{a.wait}"] + [f"send:{QUIET}"] * 260
@@ -193,13 +194,13 @@ def main(argv=None) -> int:
 
     (a.out / "emu_pool_frames.bin").write_bytes(b"".join(got))
     model_spans = b"".join(CLEARED if n is None else wave.pool_spans(stored["tables"][n][1]) for n in plan)
-    short = {0: "Pulse", 3: "Saw t"}
+    short = {0: "Pulse narrowing", 3: "Saw to sine"}
     frames_ok = [g == w for g, w in zip(got, want)]
     checks = {
         "every run ran to its end": all(r.get("outcome") == "done" for r in (first, run, silent)),
         "the store: generation 1, no read errors": st["generation"] == 1 and st["read_errors"] == 0,
         f"the pool took slots {plan}, not 5 (32 waves)": slot_of == [0xFF if n is None else n for n in plan],
-        "their names' first five characters": names == [short.get(n, "") for n in plan],
+        "their names' first 15 characters": names == [short.get(n, "") for n in plan],
         f"all {len(want)} frames are dnfw.waverider.loadframes', byte for byte":
             len(got) == len(want) and all(frames_ok),
         f"the pool reads ready with count {len(plan)} after the first fill": pool_first["state"] == 3

@@ -47,7 +47,7 @@ static u32 next __attribute__((section(".data"))) = 0;     /* the next pool entr
 static u32 filling __attribute__((section(".data"))) = 0;  /* entries found this fill */
 #define EMPTY_SLOT 0xFFu
 static u8 slots[POOL_SLOTS] __attribute__((section(".data"))) = { 0 };   /* EMPTY_SLOT: none */
-static char names[POOL_SLOTS][8] __attribute__((section(".data"))) = { { 0 } };
+static char names[POOL_SLOTS][POOL_NAME] __attribute__((section(".data"))) = { { 0 } };
 
 static const u16 *col_start(void)
 {
@@ -118,8 +118,8 @@ static void begin(void)
         u32 n = be16(rec + R_ENTRIES + 2 * j);
         int ok = index && n < SLOTS && wr_store_playable(index + n * ENTRY_BYTES, n);
         slots[j] = ok ? (u8)n : EMPTY_SLOT;
-        for (u32 i = 0; i < 8; i++)
-            names[j][i] = ok && i < 5 ? (char)index[n * ENTRY_BYTES + E_NAME + i] : 0;
+        for (u32 i = 0; i < POOL_NAME; i++)
+            names[j][i] = ok && i < POOL_NAME - 1 ? (char)index[n * ENTRY_BYTES + E_NAME + i] : 0;
         if (ok)
             filling = j + 1;
     }
@@ -183,7 +183,7 @@ void wr_drive_poll(void)
     case DIRECTORY:
         if (wr_load_idle()) {
             for (u32 j = 0; j < filling; j++)
-                for (u32 i = 0; i < 8; i++)
+                for (u32 i = 0; i < POOL_NAME; i++)
                     wr_pool.names[j][i] = names[j][i];
             wr_pool.count = filling;
             wr_pool.state = READY;

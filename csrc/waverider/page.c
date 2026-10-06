@@ -135,14 +135,30 @@ static void dclk_text(char *buf, int value)
  * the counter numbers it (T:001 = pool entry 0), and the table's name; Prim. and Harm.
  * by name. The header shows only this for TBL (wr_head drops "Osc1 Table="). The value
  * comes sign-extended (0x8000 up: the pool's last tables), so it is read as a word. */
+#define TBL_NAME_SHOWN 14     /* after "T:126 ", what the header holds (owner: cut with "..") */
 static void tbl_text(char *buf, int value)
 {
     u32 slot = ((u32)value & 0xFFFFu) >> 8;
-    if (slot < WR_TABLES)
+    if (slot < WR_TABLES) {
         SPRINTF(buf, "%s", wr_tbl_names[slot]);
-    else
-        SPRINTF(buf, "T:%03d %s", (int)(slot - WR_TABLES + 1),
-                slot < WR_TABLES + POOL_SLOTS ? wr_tbl_names[slot] : dash);
+        return;
+    }
+    const char *name = slot < WR_TABLES + POOL_SLOTS ? wr_tbl_names[slot] : dash;
+    u32 n = 0, at = 6;                                    /* "T:001 ": six characters */
+    SPRINTF(buf, "T:%03d ", (int)(slot - WR_TABLES + 1));
+    while (name[n])
+        n++;
+    /* the cut by hand: the firmware's printf is not known to take "%.*s" */
+    u32 keep = n > TBL_NAME_SHOWN ? TBL_NAME_SHOWN - 2 : n;
+    while (keep < n && keep > 0 && name[keep - 1] == ' ')
+        keep--;                                           /* "Doom Cymbal..", not "Doom Cymbal .." */
+    for (u32 i = 0; i < keep; i++)
+        buf[at++] = name[i];
+    if (keep < n) {
+        buf[at++] = '.';
+        buf[at++] = '.';
+    }
+    buf[at] = 0;
 }
 
 const void *wr_tbl_fmt[2] __attribute__((section(".data"))) = { (const void *)tbl_text, FORMATTER };

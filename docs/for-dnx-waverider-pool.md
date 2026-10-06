@@ -94,6 +94,15 @@ first 127 of them": today's pool. With the flag set, the entries are not used. A
 record and no record at all play the same; the flag exists so the instrument can make a project
 automatic in a single sector write (LOAD below).
 
+**Three states, as both sides name them** (DNX's `poolState`). Two read almost alike and
+differ by one byte, the flags word's low half:
+
+| state | generation | automatic | what a sound reaches |
+|---|---|---|---|
+| untouched | 0 (no stored record) | yes | every playable table, in store-slot order |
+| automatic | 1 or more | yes | the same, on purpose |
+| list | 1 or more | no | exactly the entries, which may be none (a new project's) |
+
 An entry may name a store slot that is free, or whose table the DSP can't play (not 16 × 512).
 That pool slot then plays the built-in Prim., as an unknown slot does today. The record is valid
 anyway: deleting a table must not break every project that uses it. DNX should warn about it,
@@ -263,8 +272,9 @@ is DNX's to add; the pool makes it matter more than the store alone did. So does
   `0x40042b60`, reached from the LOAD list through `0x4009ab30`, measured), record 0 is
   written as an empty list: stored, count 0, not automatic. So a new project's TBL reaches
   only Prim. and Harm. until tables are added to its pool. Projects saved before the lists
-  keep the automatic pool, so none goes silent. `0x400428c0`'s two other callers
-  (`0x4009c3a2`, `0x400f66fc`) were not reached in the test; by their place in the code they
-  also make a new working project, and would get the same empty list. Unverified.
+  keep the automatic pool, so none goes silent. **Not measured:** `0x400428c0`'s two other
+  callers (`0x4009c3a2`, `0x400f66fc`) were never reached in a test. That they also make a
+  new working project, and so get the same empty list, is read from where they sit in the
+  code, not observed.
   `scripts/emu_waverider_projects.py`, now 7/7: CREATE NEW after LOAD 002 leaves record 0
   empty, stored, not automatic, generation advanced; `wr_projects.created` 1.

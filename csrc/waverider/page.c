@@ -156,6 +156,8 @@ static const int *limits(u32 id)
 /* the strips: four columns of 25 across x 22..121 */
 #define COL0  22
 #define COLW  25
+#define TUNE_ID 238                  /* TUNE (osc 1) and DETN (osc 2), dnfw.waverider.pages */
+#define DETN_ID 242
 #define TOP_LABEL_Y 46
 #define TOP_BAR_Y   43
 #define BOT_BAR_Y   9
@@ -835,6 +837,30 @@ void wr_page_draw(void *view, void *canvas)
         int top = i < 4;
         int cx = COL0 + COLW * (i & 3) + COLW / 2;
         u32 id = wr_ids[page][i];
+        if (id == WR_TBL_ID || id == WR_TBL2_ID) {
+            /* TBL is a counter: the table loaded, by its number, in place of the label and
+             * the bar (the owner, 2026-10-06). The built-ins by name, a pool table by its
+             * shown slot 001.. (coarse c >= 2 is shown slot c - 1) */
+            u8 flag;
+            int c = GET_VALUE(view, id, &flag) >> 8;
+            int y = top ? TOP_BAR_Y + 1 : BOT_LABEL_Y + 2;      /* across the label and the bar rows */
+            if (c < WR_TABLES)
+                TEXT(canvas, FONT, cx, y, CENTRED, c ? "HARM" : "PRIM");
+            else
+                TEXT(canvas, FONT, cx, y, CENTRED, "T:%03d", c - 1);
+            continue;
+        }
+        if (id == TUNE_ID || id == DETN_ID) {
+            /* TUNE and DETN as semitones, one decimal, in place of the label and the bar
+             * (the owner, 2026-10-06): the value is (semitones + 64) x 256 */
+            u8 flag;
+            int tenths = ((GET_VALUE(view, id, &flag) - 0x4000) * 10 + (1 << 7)) >> 8;
+            int y = top ? TOP_BAR_Y + 1 : BOT_LABEL_Y + 2;
+            int m = tenths < 0 ? -tenths : tenths;
+            TEXT(canvas, FONT, cx, y, CENTRED, "%s%d.%d", tenths < 0 ? "-" : tenths ? "+" : "",
+                 m / 10, m % 10);
+            continue;
+        }
         TEXT(canvas, FONT, cx, top ? TOP_LABEL_Y : BOT_LABEL_Y, CENTRED, "%.5s", wr_labels[page][i]);
         if (!id)
             continue;

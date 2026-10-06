@@ -9,7 +9,8 @@
  *   or with none generation 0, the automatic flag and the automatic pool's entries.
  * - A write is checked whole at the commit (wr_record_check: an automatic record must
  *   carry no entries), then written to the sector that is not current with
- *   generation + 1. A write to record 0 makes Waverider refill its pool
+ *   generation + 1. A non-zero generation sent must be the current one (0 for a slot
+ *   with no record), or the write is refused: two writers can't lose each other's edit. A write to record 0 makes Waverider refill its pool
  *   (wr_store.changes). As with /waverider, a refusal at the commit is silent: the
  *   session has already answered. wp_write says what happened.
  * - A delete answers as the stock session does and changes nothing. */
@@ -191,6 +192,14 @@ void wp_commit_fill(void *any, const u8 *header, u32 ret)
         return;
     }
     why = wr_record_check(pstage, p);
+    if (!why && be32(pstage + R_GEN)) {
+        /* a compare-and-swap: a writer that sends the generation it read is refused when
+         * another writer (the instrument's pool page, DNX) has written since. 0: no check */
+        u8 *now = NEW(RECORD_BYTES);
+        if (wr_record_read(p, now) != be32(pstage + R_GEN))
+            why = WP_STALE;
+        DELETE(now);
+    }
     if (why) {
         wp_write.last = P_REFUSED + why;
         return;

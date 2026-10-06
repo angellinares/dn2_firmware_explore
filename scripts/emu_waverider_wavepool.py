@@ -7,8 +7,9 @@ Through digikit's sysex_bridge, DNX's own frames (docs/for-dnx-waverider-pool.md
 2. with tables in store slots 0 and 3, a read of project slot 0 (no record) says what
    plays: generation 0, automatic, entries [0, 3], count 2, a correct hash;
 3. that read written back unchanged is refused (an automatic write carrying entries);
-4. an explicit record for slot 0 is written (generation 1), then again (generation 2,
-   the other sector); each reads back as sent, with the generation advanced;
+4. an explicit record for slot 0 is written (generation 1), then again sending the
+   generation it replaces (generation 2, the other sector); each reads back as sent, with
+   the generation advanced; a write sending a stale generation (1, then 77) is refused;
 5. an automatic record (entries cleared) for slot 5 is stored, and reads back with
    the entries filled;
 6. refusals: a bad hash, a wrong project slot inside the record, a reserved byte set,
@@ -113,8 +114,11 @@ def main() -> int:
     f.frame("list1", 0x53, b"/wavepool\0")
     f.write("explicit1", "/wavepool/0", container(record(0, [3, NONE, 0]), 0, 0x50))
     f.read("r1", "/wavepool/0", PIECES)
-    f.write("explicit2", "/wavepool/0", container(record(0, [0], generation=77), 0, 0x50))
+    f.write("explicit2", "/wavepool/0", container(record(0, [0], generation=1), 0, 0x50))
     f.read("r2", "/wavepool/0", PIECES)
+    f.write("stale", "/wavepool/0", container(record(0, [9], generation=1), 0, 0x50))
+    f.write("stale77", "/wavepool/0", container(record(0, [9], generation=77), 0, 0x50))
+    f.read("r2b", "/wavepool/0", PIECES)
     f.write("auto5", "/wavepool/5", container(record(5, [], automatic=True), 5, 0x50))
     f.read("r5", "/wavepool/5", PIECES)
     f.write("bad_hash", "/wavepool/7", container(record(7, [1], bad_hash=True), 7, 0x50))
@@ -175,8 +179,11 @@ def main() -> int:
           r1 and r1["generation"] == 1 and r1["flags"] == 0 and r1["positions"][:3] == [3, NONE, 0]
           and r1["count"] == 2 and r1["hash_ok"], r1 and {k: r1[k] for k in ("generation", "flags", "entries", "count")})
     _, r2 = read_record("r2")
-    check("written again: generation 2 (the sent 77 ignored), entries [0]",
+    check("written again with the current generation (1): generation 2, entries [0]",
           r2 and r2["generation"] == 2 and r2["entries"] == [0] and r2["hash_ok"], r2 and r2["generation"])
+    _, r2b = read_record("r2b")
+    check("a stale generation (1, then 77) is refused: still generation 2, entries [0]",
+          r2b and r2b["generation"] == 2 and r2b["entries"] == [0], r2b and {k: r2b[k] for k in ("generation", "entries")})
     _, r5 = read_record("r5")
     check("a stored automatic record reads back with its own generation and the entries filled",
           r5 and r5["generation"] == 1 and r5["flags"] == 1 and r5["entries"] == [0, 3] and r5["project"] == 5,

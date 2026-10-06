@@ -53,7 +53,7 @@ u32 wr_record_write(u32 p, u8 *rec);
 void wr_record_automatic(u32 p, u8 *rec);
 
 enum { WP_OK = 0, WP_MAGIC = 1, WP_VERSION, WP_PROJECT, WP_FLAGS, WP_ENTRY, WP_COUNT,
-       WP_RESERVED, WP_HASH, WP_AUTO_ENTRIES };
+       WP_RESERVED, WP_HASH, WP_AUTO_ENTRIES, WP_STALE };
 
 static inline void wr_put16(u8 *p, u32 v) { p[0] = (u8)(v >> 8); p[1] = (u8)v; }
 static inline void wr_put32(u8 *p, u32 v)

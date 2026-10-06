@@ -163,13 +163,21 @@ The `/` reply then declares and carries 5 entries.
     automatic write that carries entries is refused, not ignored**: otherwise read whole, edit
     entry j, write whole on a project with no record would report success, verify clean and
     discard the edit.
-  - **Ignored:** only the generation you send. The firmware writes the non-current sector with
-    the current generation + 1.
+  - **The generation you send is a compare-and-swap** (DNX, 2026-10-06, before the instrument's
+    pool page becomes a second writer of record 0). Send **0** for "no check", or the
+    generation you read and expect to replace (0 also matches a slot with no record). A
+    non-zero generation that isn't the current one is refused: another writer has written
+    since, and its edit is kept. Either way the firmware writes the non-current sector with
+    the current generation + 1. As with every commit refusal, the reply can't say so (the
+    session has answered first); the read after the write shows it, the generation not
+    being the one sent + 1 (`wp_write.last` = 16 + 10 for the probe).
   - **No partial writes:** the record is small, so it's always whole.
   - **How to prove it, one rule for both kinds:** read before, write, read after. **The
     generation advanced, and the fields the writer set came back.** For an explicit record those
     are the flags and the entries; for an automatic one, only the flag, since it reads back with
-    the entries filled, so the generation is the evidence that anything happened.
+    the entries filled, so the generation is the evidence that anything happened. With a
+    compare-and-swap write, a generation after the write that isn't the one sent + 1 is a
+    conflict: reload, or write again with the current generation to overwrite.
 - **Delete:** not offered. An automatic record (entries cleared) makes a project follow the store again, and an
   empty, non-automatic record (count 0) is a pool with nothing in it.
 
@@ -245,7 +253,8 @@ is DNX's to add; the pool makes it matter more than the store alone did. So does
   `scripts/emu_waverider_wavepool.py`, 12/12. `/` carries 5 entries, `wavepool` last;
   the listing is 0..128 with 0 `working`; a no-record read is generation 0, automatic,
   entries filled; an automatic write carrying entries is refused; explicit writes read
-  back with generation 1 then 2 (a sent generation is ignored); a stored automatic record
+  back with generation 1 then 2 (the second sending the generation it replaces); a stale
+  generation (1, then 77) is refused and the record stays at 2; a stored automatic record
   reads back filled; a bad hash, project slot, reserved byte or count writes nothing; a
   kind `0x57` container, 511 bytes and project slot 129 are refused with a message.
 - **Waverider plays record 0** (`csrc/waverider/pool.c`): `scripts/emu_waverider_pool.py`,
@@ -278,3 +287,9 @@ is DNX's to add; the pool makes it matter more than the store alone did. So does
   code, not observed.
   `scripts/emu_waverider_projects.py`, now 7/7: CREATE NEW after LOAD 002 leaves record 0
   empty, stored, not automatic, generation advanced; `wr_projects.created` 1.
+
+## Changes from revision 3 (DNX, 2026-10-06)
+
+1. **The generation sent on a write is a compare-and-swap**: 0 for no check, or the current
+   generation; any other is refused. It closes the lost update between two writers of record
+   0 (DNX and the instrument's pool page), with no field added.

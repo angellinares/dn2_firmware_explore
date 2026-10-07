@@ -391,6 +391,12 @@ def as_2c(insn):
                                fields={"compute[11:0]": first & 0xFFF}, note="G5: read as 2c")
 
 
+# An observer of every step run() makes (scripts/sharc_cycles_recorder.py): before(runner,
+# insn) and after(runner, insn, emulated) around each instruction, skipped(pc) for a
+# skip. None (the default) costs one test per step.
+OBSERVER = None
+
+
 def run(runner, max_steps: int, fix: Fixups, stop_at=()):
     """Step RUNNER with FIX. -> ("stop", pc, n) | ("halt", Halt, n) | ("max", pc, n)."""
     stop_at = set(stop_at)
@@ -403,11 +409,15 @@ def run(runner, max_steps: int, fix: Fixups, stop_at=()):
         if pc in fix.skips:
             runner.state.pc_sw = fix.skips[pc]
             fix.note("skip", pc)
+            if OBSERVER is not None:
+                OBSERVER.skipped(pc)
             continue
         if pc in fix.hooks:
             fix.hooks[pc](runner)
             if runner.state.pc_sw != pc:
                 n += 1
+                if OBSERVER is not None:
+                    OBSERVER.skipped(pc)
                 continue
         insn = runner._decode(pc)
         if insn.type_name == "2b" and pc in AS_2C:
@@ -416,6 +426,8 @@ def run(runner, max_steps: int, fix: Fixups, stop_at=()):
             fix.note("2b->2c decode (G5)", pc)
         act = fix.pre(runner, insn)
         g11 = fext_se_fix(runner, insn, fix) if insn.type_name in FEXT_SE_FORMS else None
+        if OBSERVER is not None:
+            OBSERVER.before(runner, insn)
         if isinstance(act, tuple):
             try:
                 act[1](runner)
@@ -423,6 +435,8 @@ def run(runner, max_steps: int, fix: Fixups, stop_at=()):
                 return ("halt", h, n)
             if g11:
                 g11(runner)
+            if OBSERVER is not None:
+                OBSERVER.after(runner, insn, True)
             n += 1
             continue
         try:
@@ -433,6 +447,8 @@ def run(runner, max_steps: int, fix: Fixups, stop_at=()):
             act(runner)
         if g11:
             g11(runner)
+        if OBSERVER is not None:
+            OBSERVER.after(runner, insn, bool(act or g11))
         n += 1
     return ("max", runner.state.pc_sw, n)
 

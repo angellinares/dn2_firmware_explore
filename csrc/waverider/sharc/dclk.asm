@@ -9,7 +9,8 @@
 // DCLK crossfades it: from the jump on, the last block's settings keep playing at the
 // same phase and fade out while the new ones fade in, linearly over the DCLK time.
 // A jump is POS by more than 2 frames, another table, or the gain by more than 0.1;
-// smaller moves pass straight through, untouched. (Until 2026-10-06 this was a 1 ms
+// smaller moves pass straight through, untouched. A jump while a fade runs waits for
+// it to end: the new side holds the fade's target meanwhile. (Until 2026-10-06 this was a 1 ms
 // offset declick; the owner chose the crossfade after the measurement in
 // docs/waverider-m10-move.md.)
 //
@@ -87,11 +88,11 @@ wr_dclk_low.:
       I0 = R2;
       R8 = DM(0, I0);                   // the length in samples, 0 for Off
       R8 = PASS R8;
-      IF EQ JUMP 0x1704c4;              // -> wr_dclk_nofade. (DCLK Off)
+      IF EQ JUMP 0x1704da;              // -> wr_dclk_nofade. (DCLK Off)
       R3 = DM(0x2dde24);                // the block size
       R2 = 128;
       COMP(R3, R2);
-      IF GT JUMP 0x1704c4;              // -> wr_dclk_nofade. (longer than the scratch buffers)
+      IF GT JUMP 0x1704da;              // -> wr_dclk_nofade. (longer than the scratch buffers)
       // a note on this voice: no fade
       R0 = DM(0x25c4ac);                // the frame's offset 32..35: the note mask high
       R0 = LSHIFT R0 BY -16;
@@ -100,35 +101,50 @@ wr_dclk_low.:
       R0 = LSHIFT R0 BY R1;             // >> t
       R1 = 1;
       R0 = R0 AND R1;
-      IF NE JUMP 0x1704c4;              // -> wr_dclk_nofade.
+      IF NE JUMP 0x1704da;              // -> wr_dclk_nofade.
       R2 = DM(3, I1);                   // a last block to compare with?
       R2 = PASS R2;
-      IF EQ JUMP 0x1704c7;              // -> wr_dclk_record.
+      IF EQ JUMP 0x1704dd;              // -> wr_dclk_record.
+      // a fade still running: a jump waits for its end (2026-10-07: a TBL LFO faster
+      // than the fade restarted it, cutting the old wave off mid-fade: the owner's clicks).
+      // The new side holds the fade's target, the last block's settings.
+      R2 = DM(7, I1);
+      R2 = PASS R2;
+      IF LE JUMP 0x170497;              // -> wr_dclk_compare.
+      R2 = DM(0, I1);
+      DM(0, I4) = R2;                   // table
+      R2 = DM(1, I1);
+      DM(3, I4) = R2;                   // pos
+      R2 = DM(2, I1);
+      DM(0x2de6c0) = R2;                // gain
+      JUMP 0x1704dd;                    // -> wr_dclk_record.
+.GLOBAL wr_dclk_compare.;
+wr_dclk_compare.:
 
       // a jump: another table, POS by more than 2 frames, or the gain by more than 0.1
       R0 = DM(0, I4);
       R2 = DM(0, I1);
       COMP(R0, R2);
-      IF NE JUMP 0x1704b3;              // -> wr_dclk_start.
+      IF NE JUMP 0x1704c9;              // -> wr_dclk_start.
       R0 = DM(3, I4);
       R2 = DM(1, I1);
       R0 = R0 - R2;
       R2 = 0x20000;
       COMP(R0, R2);
-      IF GT JUMP 0x1704b3;              // -> wr_dclk_start.
+      IF GT JUMP 0x1704c9;              // -> wr_dclk_start.
       R2 = -131072;
       COMP(R0, R2);
-      IF LT JUMP 0x1704b3;              // -> wr_dclk_start.
+      IF LT JUMP 0x1704c9;              // -> wr_dclk_start.
       R0 = DM(0x2de6c0);
       R2 = DM(2, I1);
       F0 = F0 - F2;
       R2 = 0x3dcccccd;                  // f32(0.1)
       COMP(F0, F2);
-      IF GT JUMP 0x1704b3;              // -> wr_dclk_start.
+      IF GT JUMP 0x1704c9;              // -> wr_dclk_start.
       R2 = -0x42333333;                 // f32(-0.1), 0xbdcccccd
       COMP(F0, F2);
-      IF LT JUMP 0x1704b3;              // -> wr_dclk_start.
-      JUMP 0x1704c7;                    // -> wr_dclk_record.
+      IF LT JUMP 0x1704c9;              // -> wr_dclk_start.
+      JUMP 0x1704dd;                    // -> wr_dclk_record.
 
 .GLOBAL wr_dclk_start.;
 wr_dclk_start.:
@@ -140,7 +156,7 @@ wr_dclk_start.:
       R2 = DM(2, I1);
       DM(6, I1) = R2;
       DM(7, I1) = R8;
-      JUMP 0x1704c7;                    // -> wr_dclk_record.
+      JUMP 0x1704dd;                    // -> wr_dclk_record.
 .GLOBAL wr_dclk_nofade.;
 wr_dclk_nofade.:
       R2 = R2 - R2;
@@ -157,7 +173,7 @@ wr_dclk_record.:
       DM(3, I1) = R2;
       R2 = DM(7, I1);
       R2 = PASS R2;
-      IF GT JUMP 0x1704e4;              // -> wr_dclk_fade.
+      IF GT JUMP 0x1704fa;              // -> wr_dclk_fade.
       R4 = DM(0x2e1284);
       JUMP 0x16eb00;                    // -> wr_render5. (no fade: as before, back to the loop)
 
@@ -179,7 +195,7 @@ wr_dclk_fade.:
       R4 = DM(0x2e1284);
       CJUMP 0x16eb00 (DB);              // wr_render5(R4 = the reader block)
       DM(I7, M7) = R2;
-      DM(I7, M7) = 0x17050b;            // return address - 1: wr_dclk_new. - 1
+      DM(I7, M7) = 0x170521;            // return address - 1: wr_dclk_new. - 1
 .GLOBAL wr_dclk_new.;
 wr_dclk_new.:
       R4 = DM(0x2e1284);
@@ -206,7 +222,7 @@ wr_dclk_new.:
       R4 = 0x2e12a0;
       CJUMP 0x16eb00 (DB);              // wr_render5(R4 = the scratch block)
       DM(I7, M7) = R2;
-      DM(I7, M7) = 0x17054a;            // return address - 1: wr_dclk_old. - 1
+      DM(I7, M7) = 0x170560;            // return address - 1: wr_dclk_old. - 1
 .GLOBAL wr_dclk_old.;
 wr_dclk_old.:
       // 3. y = n + (o - n) x (left - i) / length, while left - i > 0; into the block's out
@@ -229,7 +245,7 @@ wr_dclk_mix.:
       I0 = R10;
       R1 = DM(0, I0);                   // n
       R8 = PASS R8;
-      IF LE JUMP 0x170580;              // -> wr_dclk_mixed. (the fade is over: n)
+      IF LE JUMP 0x170596;              // -> wr_dclk_mixed. (the fade is over: n)
       I0 = R11;
       R2 = DM(0, I0);                   // o
       F2 = F2 - F1;
@@ -240,7 +256,7 @@ wr_dclk_mix.:
 .GLOBAL wr_dclk_mixed.;
 wr_dclk_mixed.:
       R15 = PASS R15;
-      IF EQ JUMP 0x170589;              // -> wr_dclk_put.
+      IF EQ JUMP 0x17059f;              // -> wr_dclk_put.
       I0 = R13;
       R2 = DM(0, I0);
       F1 = F1 + F2;                     // osc 2 adds to what osc 1 wrote
@@ -255,9 +271,9 @@ wr_dclk_put.:
       R12 = 1;
       R8 = R8 - R12;
       R14 = R14 - R12;
-      IF NE JUMP 0x17056e;              // -> wr_dclk_mix.
+      IF NE JUMP 0x170584;              // -> wr_dclk_mix.
       R8 = PASS R8;
-      IF GE JUMP 0x1705a1;              // -> wr_dclk_left.
+      IF GE JUMP 0x1705b7;              // -> wr_dclk_left.
       R8 = R8 - R8;
 .GLOBAL wr_dclk_left.;
 wr_dclk_left.:

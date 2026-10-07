@@ -622,6 +622,8 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
             n_fade = dclk_lengths()[min(dclk >> 8, 127)] if precision == "float32" else 0
             if triggered or not n_fade:
                 fade[k] = None
+            elif fade[k] is not None:           # a jump waits for the running fade: hold its target
+                tab, pos, g = cur = last[k]
             elif last[k] is not None and dclk_jump(last[k], cur):
                 fade[k] = [last[k], n_fade]
             last[k] = cur

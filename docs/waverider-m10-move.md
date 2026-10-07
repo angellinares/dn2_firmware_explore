@@ -477,6 +477,11 @@ crossfade, with its time as the control, from 1 to 100 ms (long ones are for exp
   the block's table, pos and gain with the last block's. A jump is another table, POS by more than
   2 frames, or the gain by more than 0.1. Smaller moves pass through untouched.
 - **The fade:** on a jump, the last settings become the fade's old ones. While a fade lasts, the
+- **A jump during a fade waits** (2026-10-07). The owner heard clicks with an LFO on TBL.
+  - **Why:** a table change faster than the fade restarted it, so the old wave was cut off mid-fade. In the reference, TBL switching every block under DCLK 3 ms gave sample steps of 0.74, against the wave's own 0.11. Under 18 ms, every switching period shorter than the fade clicked.
+  - **The fix:** while a fade runs, the new side holds the fade's target (the last block's table, pos and gain), and the next jump starts once the fade ends. A long DCLK therefore makes a fast TBL LFO step at the fade's pace.
+  - **Measured in the reference:** no step larger than the wave's own, at any period, at 3 and 18 ms.
+  - **Gates:** `scripts/sharc_waverider_dclk_hold.py` checks it bit for bit in the runner, and `test_dclk_holds_a_jump_until_the_fade_ends` checks the reference.
   oscillator is rendered twice into scratch buffers, new and old from the same phase and increment.
   It is mixed as `y = n + (o - n) x (left - i) / length`, linear, with the inverse from a table:
   the DSP has no divide. The mix replaces osc 1's output and is added for osc 2.

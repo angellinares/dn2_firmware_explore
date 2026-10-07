@@ -673,3 +673,24 @@ def test_the_noises_types_and_tilt():
     rms = lambda ys: (sum(y * y for y in ys) / len(ys)) ** 0.5     # noqa: E731
     assert rms(block((0x6400, 0x0200, 0x7F00, 0x7F00))) < rms(block((0x6400, 0x0200, 0x0000, 0x7F00)))
 
+
+def test_dclk_holds_a_jump_until_the_fade_ends():
+    """2026-10-07: TBL switching every block under DCLK 3 ms (a fade of 4.5 blocks)
+    restarted the fade each block and cut the old wave off: steps as large as the switch.
+    A jump now waits for the running fade, so no step is larger than the wave's own."""
+    t = dsp.tables()
+
+    def run(period, dclk, n=40):
+        blocks = []
+        for b in range(n):
+            tbl = 0x0100 if period and (b // period) % 2 else 0x0000
+            osc1 = (0x3000, tbl, 0x4000, 0x6400, 0, 0x3200, 0x3200, 0, 0, 0x7F00)
+            osc2 = (0, 0, 0x4000, 0, 0, 0x3200, 0x3200, 0, 0, 0x7F00)
+            blocks.append((48.0, osc1, osc2, (0, b == 0, 0, 0, 0, dclk)))
+        y = live.render_two(t, blocks, 32)
+        return max(abs(a - b) for a, b in zip(y[32:], y[33:]))
+
+    own = run(0, live.DCLK_DEFAULT)
+    assert run(1, 0) > 4 * own                                  # DCLK Off: the switch clicks
+    for period in (1, 2, 4):
+        assert run(period, live.DCLK_DEFAULT) <= own

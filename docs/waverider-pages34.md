@@ -219,4 +219,6 @@ Measured with the USB probe on `p3subdot2`/`p3subsum2`-era firmware (`tools/dn2r
 - **26–27: idle noise,** never silent, never louder.
 - **Tracks 1–6 are not in this record.** The control (track 9 again, after the track 6 runs) lit as before, so the read worked.
 
+**Repeated on a clean project (CREATE NEW, stock sounds):** tracks 1 and 2 nothing; track 7 on channels 0/1 (548k, L = R), as predicted, so the block starts at track 7. The ColdFire receives both reply pages into the one buffer at `0x800053a4`, alternately, so a page carrying tracks 1–6 would have shown in about half the readings: none of 80 did. Tracks 1–6 travel by another route, still to find.
+
 **For page 4's scope:** tracks 7–16 need no DSP change. The ColdFire frame hook keeps the shown track's pair in a ring and the page draws it from a rising zero crossing. Tracks 1–6 need either the place the stock firmware sends them (to find: the DSP's second reply page, or another buffer), or our DSP code copying the shown track into spare reply words.

@@ -139,6 +139,11 @@ SUB_DM = 0x2E2000                            # sub.asm (page 3): the sub-oscilla
 SUB_SW = SUB_DM // 2                         # 0x171000
 SUB_STATE_DM = 0x2E2400                      # its 16 phases, then three words of scratch (sub.asm)
 SUB_STATE_BYTES = 0x50
+NOISE_DM = 0x2E2600                          # noise.asm (page 3): the noise, after the sub
+NOISE_SW = NOISE_DM // 2                     # 0x171300
+NOISE_DECAY_DM = 0x2E2C00                    # its envelope factor per DEC, 128 float32 (live.noise_decay_table)
+NOISE_STATE_DM = 0x2E2E00                    # 16 voices x 32 bytes (x seeded, live.noise_seeds), then its count
+NOISE_STATE_BYTES = 0x210
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 
 # stock sites
@@ -199,7 +204,13 @@ def objects() -> dict[str, bytes]:
     return {name: sharc_object.load_bytes(bytes.fromhex(spec[name]["object_parcels_be"]))
             for name in ("reader", "machine5_live", "entry_jump", "idle_load", "idle_jump", "block_count",
                          "entry_mark", "emark_jump", "modulator", "shapes", "load", "pool", "sync",
-                         "smooth", "dclk", "sub")}
+                         "smooth", "dclk", "sub", "noise")}
+
+
+def noise_state() -> bytes:
+    """noise.asm's 16 voices at boot: each x seeded (live.noise_seeds), the rest zeros."""
+    out = b"".join(struct.pack("<I", s) + bytes(28) for s in live.noise_seeds())
+    return out + bytes(NOISE_STATE_BYTES - len(out))
 
 
 def directory() -> bytes:
@@ -258,6 +269,9 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("SMTH's and DCLK's state (zeros)", SMOOTH_STATE_DM, bytes(DCLK_STATE_END - SMOOTH_STATE_DM)),
         ("sub.asm (wr_sub_ran)", SUB_DM, obj["sub"]),
         ("the sub-oscillator's phases and scratch (zeros)", SUB_STATE_DM, bytes(SUB_STATE_BYTES)),
+        ("noise.asm (wr_noise)", NOISE_DM, obj["noise"]),
+        ("the noise's decay factors, 128 float32", NOISE_DECAY_DM, struct.pack("<128f", *live.noise_decay_table())),
+        ("the noise's state (seeds, then zeros)", NOISE_STATE_DM, noise_state()),
     ]
     out = []
     for k, (what, at, payload) in enumerate(raw):

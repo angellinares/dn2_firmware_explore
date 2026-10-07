@@ -97,6 +97,7 @@ def main(argv=None) -> int:
             smooth = assemble("smooth", dsp.SMOOTH_SW, work)
             dclk = assemble("dclk", dsp.DCLK_SW, work)
             subosc = assemble("sub", dsp.SUB_SW, work)
+            noise = assemble("noise", dsp.NOISE_SW, work)
             ejump = one_jump(EMARK_LINE, dsp.CALL_SITE_SW, work)
             jump = one_jump(ENTRY_LINE, dsp.ENTRY_SW, work)
             ijump = one_jump(IDLE_LINE, dsp.IDLE_SITE_SW, work)
@@ -114,6 +115,7 @@ def main(argv=None) -> int:
             smooth = committed("smooth")
             dclk = committed("dclk")
             subosc = committed("sub")
+            noise = committed("noise")
             ejump = old["emark_jump"]
             if "entry_jump" not in old or "idle_jump" not in old:
                 raise SystemExit("no entry or idle JUMP committed yet: run with --assemble")
@@ -134,7 +136,8 @@ def main(argv=None) -> int:
             "sync": {k: v for k, v in sync.items() if k != "instruction_offsets"},
             "smooth": {k: v for k, v in smooth.items() if k != "instruction_offsets"},
             "dclk": {k: v for k, v in dclk.items() if k != "instruction_offsets"},
-            "sub": {k: v for k, v in subosc.items() if k != "instruction_offsets"}}
+            "sub": {k: v for k, v in subosc.items() if k != "instruction_offsets"},
+            "noise": {k: v for k, v in noise.items() if k != "instruction_offsets"}}
     dsp.CODE.write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"wrote {dsp.CODE.relative_to(ROOT)}: reader {len(reader['object_parcels_be']) // 2} B, "
           f"loop {len(loop['object_parcels_be']) // 2} B, entry {len(jump['object_parcels_be']) // 2} B")

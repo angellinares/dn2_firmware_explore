@@ -458,6 +458,90 @@ def render_sub(phase: int, inc: int, sub: tuple, block: int) -> tuple[list[float
     return out, phase
 
 
+# Page 3's noise, on slots 54..57 (NOIS, TYPE, COLR, DEC), after the sub (noise.asm).
+# Per voice: a xorshift32 generator, the pink and brown filters' state, the tilt's
+# one-pole low-pass, and the decay envelope; each step is float32 in noise.asm's order.
+NOISE_SLOTS = (54, 55, 56, 57)         # NOIS (level), TYPE, COLR, DEC
+NOISE_TYPES = ("WHT", "PNK", "BRN", "DIG")
+NOISE_INF = 127                        # DEC Inf: no envelope
+NOISE_PINK = ((0.99765, 0.0990460), (0.96300, 0.2965164), (0.57000, 1.0526913))   # P. Kellet's economy pink
+NOISE_PINK_DIRECT, NOISE_PINK_SCALE = 0.1848, 0.25
+NOISE_BROWN = (0.98, 0.15)             # a leaky integrator
+NOISE_DIG = 0.5                        # DIG: the generator's top bit, +-0.5 (about WHT's loudness)
+NOISE_TILT = 0.125                     # the tilt's low-pass coefficient (about 1 kHz)
+NOISE_COLR_STEP = 1.0 / 64             # COLR -64..+63 -> -1 .. +0.98: out = n - c x lp
+
+
+def noise_tau(v: int) -> float:
+    """DEC v (0..126) -> the envelope's time constant in seconds: 5 ms at 0, 10 s at 126."""
+    return 0.005 * 2000.0 ** (v / 126)
+
+
+def noise_decay_table() -> tuple[float, ...]:
+    """The envelope's factor per sample for DEC 0..127, float32: e^(-1 / (48000 tau)),
+    1.0 at Inf (unused there: Inf skips the envelope)."""
+    return tuple(_f32(math.exp(-1.0 / (RATE * noise_tau(v)))) for v in range(NOISE_INF)) + (1.0,)
+
+
+def noise_seeds() -> tuple[int, ...]:
+    """Each voice's generator at boot: odd, distinct, never 0 (xorshift's fixed point)."""
+    return tuple(((0x9E3779B9 * (t + 1)) & 0xFFFFFFFF) | 1 for t in range(16))
+
+
+def xorshift32(x: int) -> int:
+    x ^= (x << 13) & 0xFFFFFFFF
+    x ^= x >> 17
+    x ^= (x << 5) & 0xFFFFFFFF
+    return x
+
+
+class NoiseVoice:
+    """One voice's noise state, as noise.asm keeps it at 0x2e2e00 + 32t: x, the three pink
+    filters, brown, the tilt's low-pass, the envelope (0 at boot: silent until a note,
+    unless DEC is Inf)."""
+
+    def __init__(self, seed: int):
+        self.x, self.pink, self.brown, self.lp, self.env = seed, [0.0, 0.0, 0.0], 0.0, 0.0, 0.0
+
+    def render(self, noise: tuple, triggered: bool, block: int) -> list[float] | None:
+        """One block at (NOIS, TYPE, COLR, DEC), the frame's words: the samples to add,
+        or None at NOIS 0. A note restarts the envelope, whatever NOIS is."""
+        nois, typ, colr, dec = (w & 0xFFFF for w in noise)
+        if triggered:
+            self.env = 1.0
+        if not nois:
+            return None
+        g = gain(nois)
+        typ = min(typ >> 8, 3)
+        c = _f32(_f32(float((colr >> 8) - 64)) * NOISE_COLR_STEP)
+        dec = min(dec >> 8, NOISE_INF)
+        k = noise_decay_table()[dec]
+        out = []
+        for _ in range(block):
+            self.x = xorshift32(self.x)
+            sx = self.x - (1 << 32) if self.x >> 31 else self.x
+            w = _f32(float(sx) * 2.0 ** -31)
+            if typ == 0:
+                n = w
+            elif typ == 1:
+                for i, (a, d) in enumerate(NOISE_PINK):
+                    self.pink[i] = _f32(_f32(self.pink[i] * _f32(a)) + _f32(w * _f32(d)))
+                n = _f32(_f32(_f32(self.pink[0] + self.pink[1]) + self.pink[2]) + _f32(w * _f32(NOISE_PINK_DIRECT)))
+                n = _f32(n * NOISE_PINK_SCALE)
+            elif typ == 2:
+                self.brown = _f32(_f32(self.brown * _f32(NOISE_BROWN[0])) + _f32(w * _f32(NOISE_BROWN[1])))
+                n = self.brown
+            else:
+                n = -NOISE_DIG if self.x >> 31 else NOISE_DIG
+            self.lp = _f32(self.lp + _f32(_f32(n - self.lp) * NOISE_TILT))
+            y = _f32(n - _f32(c * self.lp))
+            if dec < NOISE_INF:
+                y = _f32(y * self.env)
+                self.env = _f32(self.env * k)
+            out.append(_f32(g * y))
+        return out
+
+
 def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
                   precision: str = "float32") -> tuple[list[float], int]:
     """The loop's output for a sequence of blocks, each (note, WAV1, TBL1[, TUN1[, LEV1]])
@@ -477,7 +561,8 @@ def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
     return out, phase
 
 
-def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs=None) -> list[float]:
+def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs=None,
+               noises=None) -> list[float]:
     """The loop's output with both oscillators (Milestone 9b), each block
     (note, osc1, osc2[, (TRIG, triggered[, PRST[, position, tempo[, DCLK]]])]) with each
     osc (WAV, TBL, TUN, LEV[, RATE, MPOS, MLEV, MOVE[, SYNC[, SMTH]]]), the frame's 16-bit
@@ -490,7 +575,8 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
     block. SUBS (page 3), one (SUB, OCT, WAVE, SRC) per block or None: the
     sub-oscillator (`render_sub`) adds into the mix after osc 2 while SUB is above 0. It
     follows osc 2's increment when SRC is 1 and osc 2 ran this block, else osc 1's (a
-    skipped osc 2 has none)."""
+    skipped osc 2 has none). NOISES, one (NOIS, TYPE, COLR, DEC) per block or None: the
+    noise (`NoiseVoice`, voice 0's seed) adds in after the sub."""
     out: list[float] = []
     phase = [0, 0]
     mphase = [0, 0]
@@ -500,6 +586,7 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
     rnd = MoveRandom()
     table_t = increment_table()
     sub_phase = 0
+    noise = NoiseVoice(noise_seeds()[0])
     for b, blk in enumerate(blocks):
         incs = [None, None]
         note, oscs = blk[0], blk[1:3]
@@ -560,6 +647,10 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
             src = 1 if (sub[3] & 0xFFFF) >> 8 and incs[1] is not None else 0
             ys, sub_phase = render_sub(sub_phase, incs[src], sub, block)
             mixed = [_f32(a + v) for a, v in zip(mixed, ys)]
+        if noises:
+            ys = noise.render(noises[b], triggered, block)
+            if ys is not None:
+                mixed = [_f32(a + v) for a, v in zip(mixed, ys)]
         out += mixed
     return out
 

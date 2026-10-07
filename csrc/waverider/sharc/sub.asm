@@ -13,7 +13,8 @@
 // adds SUB/100 x shape(phase) into the track buffer the oscillators wrote, a sample at a
 // time, and steps its own phase by the followed oscillator's increment >> (1 + OCT):
 // osc 2's (its reader block, 0x2de800 + 32t, word 2) when SRC is 1 and osc 2 ran,
-// else osc 1's (0x2ddf00 + 32t). Then it goes on to wr_t5v_next.
+// else osc 1's (0x2ddf00 + 32t). Then it goes on to the noise (noise.asm, wr_noise),
+// which goes on to wr_t5v_next.
 //
 // The shapes (WAVE 0 SIN, 1 TRI, 2 SQR, 3 PLS), as live.sub_value computes them, in
 // float32 and in this order: h = (phase << 1 >> 8) x 2^-25, x mod 0.5, exact;
@@ -90,7 +91,7 @@ wr_sub_halves.:
       R13 = R13 AND R12;                // WAVE
       R14 = R14 AND R12;                // SRC
       R6 = PASS R6;
-      IF EQ JUMP 0x16eea7;              // -> wr_t5v_next. (SUB 0: nothing)
+      IF EQ JUMP 0x171300;              // -> wr_noise. (SUB 0: no sub; noise.asm)
 
       // the gain, SUB / 100, as machine9_live.asm forms LEV's
       R12 = R12 - R12;
@@ -212,6 +213,6 @@ wr_sub_done.:
       R2 = DM(0x2e2444);
       I1 = R2;
       DM(0, I1) = R11;                  // the phase, for the next block
-      JUMP 0x16eea7;                    // -> wr_t5v_next.
+      JUMP 0x171300;                    // -> wr_noise. (noise.asm)
 .wr_sub_ran..end:
       .type wr_sub_ran.,STT_FUNC;

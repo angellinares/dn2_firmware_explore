@@ -76,7 +76,7 @@ LOOP_RESUME = 0x1C944C          # where machine5_live rejoins the per-track chai
 
 
 SHIPPED_KEYS = (("reader", "READER_SW"), ("machine5_live", "LOOP_SW"), ("modulator", "MOD_SW"), ("sync", "SYNC_SW"),
-                ("smooth", "SMOOTH_SW"), ("dclk", "DCLK_SW"), ("sub", "SUB_SW"))
+                ("smooth", "SMOOTH_SW"), ("dclk", "DCLK_SW"), ("sub", "SUB_SW"), ("noise", "NOISE_SW"))
 
 
 def shipped_sources() -> tuple[str, ...]:

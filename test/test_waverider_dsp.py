@@ -212,7 +212,10 @@ def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
     assert at == dsp.dm_to_load(dsp.SYNC_TABLE_DM) and at + len(p) == dsp.dm_to_load(dsp.SMOOTH_DM)
     assert struct.unpack_from("<101I", p) == live.sync_table()
     at, p = sp["SMTH's and DCLK's state (zeros)"]
-    assert at == dsp.dm_to_load(dsp.SMOOTH_STATE_DM) and at + len(p) == dsp.dm_to_load(dsp.REGION[1]) and not any(p)
+    assert at == dsp.dm_to_load(dsp.SMOOTH_STATE_DM) and at + len(p) == dsp.dm_to_load(dsp.SUB_DM) and not any(p)
+    at, p = sp["the noise's state (seeds, then zeros)"]           # page 3: the last span runs to the region's end
+    assert at == dsp.dm_to_load(dsp.NOISE_STATE_DM) and at + len(p) == dsp.dm_to_load(dsp.REGION[1])
+    assert struct.unpack_from("<128f", sp["the noise's decay factors, 128 float32"][1]) == live.noise_decay_table()
     assert struct.unpack_from("<128f", sp["SMTH's coefficients, 128 float32"][1]) == live.smth_table()
 
 
@@ -333,11 +336,11 @@ def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
     assert all(e == a for e, a in zip(ends, at[1:]))           # no unwritten gap
     obj = dsp.objects()
     code_spans = [x for x in sp if "asm" in x[0]]
-    assert len(code_spans) == 12                              # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm, sync/smooth/dclk.asm (M10b-2)
+    assert len(code_spans) == 14                              # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm, sync/smooth/dclk.asm (M10b-2), sub/noise.asm (page 3)
     for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["idle_load"],
                                                      obj["block_count"], obj["entry_mark"], obj["modulator"],
                                                      obj["shapes"], obj["load"], obj["pool"], obj["sync"],
-                                                     obj["smooth"], obj["dclk"])):
+                                                     obj["smooth"], obj["dclk"], obj["sub"], obj["noise"])):
         assert payload[:len(code)] == code
         assert len(payload) - len(code) >= 64 and not any(payload[len(code):]), what
 
@@ -628,3 +631,45 @@ def test_render_two_with_the_sub_at_zero_is_render_two():
     t = dsp.tables()
     blocks = [(60.0, (0x4000, 0, 0x4000, 0x6400), (0, 0, 0x4000, 0))] * 3
     assert live.render_two(t, blocks, 32, subs=[(0, 0, 0, 0)] * 3) == live.render_two(t, blocks, 32)
+
+
+def test_render_two_with_the_noise_at_zero_is_render_two():
+    t = dsp.tables()
+    blocks = [(60.0, (0x4000, 0, 0x4000, 0x6400), (0, 0, 0x4000, 0))] * 3
+    assert live.render_two(t, blocks, 32, noises=[(0, 0, 0x4000, 0x7F00)] * 3) == live.render_two(t, blocks, 32)
+
+
+def test_the_noises_decay_and_seeds():
+    """noise.asm's tables (page 3): a factor per DEC that slows with DEC, 1.0 at Inf; the
+    seeds odd and distinct, so no voice's xorshift starts at its fixed point 0"""
+    k = live.noise_decay_table()
+    assert len(k) == 128 and k[-1] == 1.0
+    assert all(0 < a < b < 1 for a, b in zip(k, k[1:-1]))
+    seeds = live.noise_seeds()
+    assert len(set(seeds)) == 16 and all(s & 1 for s in seeds)
+    state = dsp.noise_state()
+    assert len(state) == dsp.NOISE_STATE_BYTES
+    assert struct.unpack_from("<I", state, 32 * 5)[0] == seeds[5]
+
+
+def test_the_noise_waits_for_a_note_unless_dec_is_inf():
+    v = live.NoiseVoice(live.noise_seeds()[0])
+    assert v.render((0x6400, 0, 0x4000, 0x2800), False, 32) == [0.0] * 32     # env 0 at boot
+    loud = v.render((0x6400, 0, 0x4000, 0x2800), True, 32)
+    later = [v.render((0x6400, 0, 0x4000, 0x2800), False, 32) for _ in range(200)][-1]
+    assert max(map(abs, loud)) > 10 * max(map(abs, later)) > 0
+    w = live.NoiseVoice(live.noise_seeds()[0])
+    assert max(map(abs, w.render((0x6400, 0, 0x4000, 0x7F00), False, 32))) > 0.1   # Inf: no envelope
+
+
+def test_the_noises_types_and_tilt():
+    """WHT is the generator scaled, DIG +-0.5, and COLR +63 (high-pass) has less energy
+    in a brown noise than COLR -64 (low boost)"""
+    def block(words, n=4800):
+        v = live.NoiseVoice(live.noise_seeds()[0])
+        return v.render(words, True, n)
+    dig = block((0x6400, 0x0300, 0x4000, 0x7F00))
+    assert {abs(x) for x in dig} == {0.5}
+    rms = lambda ys: (sum(y * y for y in ys) / len(ys)) ** 0.5     # noqa: E731
+    assert rms(block((0x6400, 0x0200, 0x7F00, 0x7F00))) < rms(block((0x6400, 0x0200, 0x0000, 0x7F00)))
+

@@ -79,6 +79,7 @@ void *wr_frame_src(void *frame)
     u32 clear = quiet((const u8 *)frame);
 
     wr_note_seen((const u8 *)frame);      /* every frame, before it may be replaced */
+    wr_scope_feed();                      /* page 4's scope: the shown track's last block */
     wr_sync_frame((u8 *)frame);           /* MOVE's SYNC: the song position (sync.c) */
 
     if (in_flight) {

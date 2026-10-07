@@ -19,7 +19,7 @@ CSRC = pathlib.Path(__file__).resolve().parents[3] / "csrc"
 SOURCE = CSRC / "waverider" / "page.c"
 # the machine-independent modules the page uses (owner, 2026-10-07: new code in reusable
 # parts): synth/ the generators, ui/ the drawing
-MODULES = (CSRC / "synth" / "noise_q16.c", CSRC / "synth" / "sub_q16.c", CSRC / "ui" / "noise_strip.c")
+MODULES = (CSRC / "synth" / "noise_q16.c", CSRC / "synth" / "sub_q16.c", CSRC / "ui" / "noise_strip.c", CSRC / "ui" / "scope.c")
 ENTRY = "wr_page_draw"
 POLL = "wr_poll"                        # the UI loop's redraw test (coldfire.POLL_SITE)
 

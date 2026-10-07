@@ -239,3 +239,20 @@ Measured with the USB probe on `p3subdot2`/`p3subsum2`-era firmware (`tools/dn2r
 **So every track reaches the ColdFire:** tracks 1–6 in SSI0 slots 2t / 2t + 1, tracks 7–16 in the reply records' channels 2(t − 7) / 2(t − 7) + 1, and the main mix in SSI0 slots 0/1.
 
 **For page 4's scope:** no DSP change for any track. The ColdFire keeps the shown track's samples in a ring from whichever link carries it, and the page draws them from a rising zero crossing.
+
+## Page 4's scope (built 2026-10-08, emulator; not on the instrument)
+
+**What it shows:** the active track's own sound, in the wave's place on page 4 (the owner's option A): triggered on a rising zero crossing, so a steady tone stands still; scaled to its own peak, so it shows the shape, not the level; each column the min..max of its 8 samples, so a high note reads as a band instead of aliasing. The strip spans 98 columns, 16 ms at 48 kHz. Silence draws the centre line.
+
+**The modules (reusable, owner 2026-10-07):**
+- `csrc/dn2/audio_tap`: a track's last 32 samples as int16, mono (L + R) / 2: tracks 1..6 from the SSI0 window (the half the stock ISR's rule picks, `0x400d0f98`: 1 while eDMA 50's source is below `0x4E6E0900`), 7..16 from the reply records. The OS addresses are in `dn2_111.h`.
+- `csrc/ui/trace_ring.h`: a 2,048-sample ring, one writer (the ISR), readers looking back from its write count.
+- `csrc/ui/scope`: the trigger, the scaling and the drawing, in a `ui/box.h` box (shared with the noise strip).
+- Waverider's glue: `csrc/waverider/scope_feed.c` (in the drive chunk, called from `wr_frame_src` every frame) feeds the ring from `wr_events.scope_track`, which page.c sets to the active track on page 4 and to 0xFF on any other page. While page 4 is shown, `wr_poll` asks for a redraw every frame tick (at most 24 a second, the panel's rate).
+
+**Checked:**
+- **Drawing:** samples poked into the ring (the emulator runs no audio ISR, so they stay), frames against `dnfw.waverider.scope_glyph`: 5 of 5 pixel for pixel (two sines, a saw, a high note, a square, silence); against the other cases' predictions, 0 of 20 match. The page names track 1 (index 0) to capture.
+- **Capture:** `dn2_track_block` called directly in the ui1200M snapshot (WSL `~/dn2-emu-venv`) with injected link memory: 32 of 32 blocks as expected (16 tracks, both SSI0 halves); the half the rule doesn't pick never matches; an out-of-range track returns 0.
+- **Not checkable in the emulator:** the audio frame function (`0x40025e0a`) never runs there (0 hits), so the ISR feeding the ring, the half rule's timing, and the SSI0 sample format are for the instrument.
+
+**Cost:** the ISR reads 32 samples and writes 32 a frame, while a track is named (from page 4 until another SYN page is drawn). The drive chunk grew 4.4 KB (the ring), 25 KB of its 64 KB still free.

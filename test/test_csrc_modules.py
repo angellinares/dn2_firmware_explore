@@ -1,14 +1,14 @@
-"""csrc/synth and csrc/ui are machine-independent (owner, 2026-10-07: new code in parts any
+"""csrc/synth, csrc/ui and csrc/dn2 are machine-independent (owner, 2026-10-07: new code in parts any
 machine can reuse): nothing in them includes a machine's headers or names its records."""
 import pathlib
 import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-MACHINES = ("waverider", "lfo4", "wrstore", "usbprobe", "wr_gen")
+MACHINES = ("waverider", "lfo4", "wrstore", "usbprobe", "wr_gen")   # dn2/ may include include/dn2_111.h, the OS
 
 
 def _sources():
-    for d in ("synth", "ui"):
+    for d in ("synth", "ui", "dn2"):
         yield from sorted((ROOT / "csrc" / d).glob("*.[ch]"))
 
 

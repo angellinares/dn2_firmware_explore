@@ -27,6 +27,7 @@
 #include "events.h"
 #include "../ui/canvas.h"
 #include "../ui/noise_strip.h"
+#include "../ui/scope.h"
 
 typedef unsigned int u32;
 typedef unsigned char u8;
@@ -219,6 +220,8 @@ static const int *limits(u32 id)
             return &wr_ranges[k][1];
     return RECORD(id) + 2;
 }
+
+#define SCOPE_PAGE 3                 /* page 4: the scope (see scope_track) */
 
 /* the strips: four columns of 25 across x 22..121 */
 #define COL0  22
@@ -627,7 +630,7 @@ int wr_poll(void *screen)
 #endif
     follow(now, osc_of(shown_page));
     if (now - drawn_at < SHOWN && now - asked_at >= FRAME
-            && (settling || signature() != drawn_sig)) {
+            && (settling || shown_page == SCOPE_PAGE || signature() != drawn_sig)) {
         asked_at = now;
         SET_DIRTY(screen);
     }
@@ -918,10 +921,11 @@ static void stock_cell(void *view, void *canvas, int cell, int x, int y)
 #endif
 
 /* the noise and the sub as their traces (ui/noise_strip: the generator's and the shape's
- * own steps, as the voice plays them), from page 3's eight values. SUB_GLYPH 3 draws the
- * sub solid over the noise dotted; 4 one line, their sum (owner, comparing both) */
+ * own steps, as the voice plays them), from page 3's eight values. SUB_GLYPH 4 (default,
+ * the owner's choice on 2026-10-08) draws one line, their sum, as the track adds them;
+ * 3 the sub solid over the noise dotted */
 #ifndef SUB_GLYPH
-#define SUB_GLYPH 3
+#define SUB_GLYPH 4
 #endif
 #if SUB_LAYOUT == 4
 #define NOISE_UNIT   10                 /* full scale, in pixels: the strip is 25 high */
@@ -988,6 +992,17 @@ static void sub_place(int i, int *cx, int *label_y, int *bar_y)
 }
 #endif
 
+/* Page 4 (owner's option A, 2026-10-06): the scope in the wave's place, the active track's
+ * own sound as the DSP sent it (ui/scope; the capture is scope_feed.c, every frame, from
+ * dn2/audio_tap). The page names the track to capture; any other page names none. */
+static const struct strip_box scope_box = { WAVE_X, 121, SUB_STRIP_Y0, SUB_STRIP_Y1, 0 };
+
+static void scope_track(int page)
+{
+    if (WR_DRIVE_HEAD->magic == WR_DRIVE_MAGIC)
+        WR_DRIVE_HEAD->events->scope_track = page == SCOPE_PAGE ? ACTIVE_TRACK : 0xFF;
+}
+
 void wr_page_draw(void *view, void *canvas)
 {
 #ifdef WR_PROBE
@@ -1008,8 +1023,11 @@ void wr_page_draw(void *view, void *canvas)
 #ifdef WR_PROBE
     u32 w0 = DTCN0;
 #endif
+    scope_track(page);
     if (page == SUB_PAGE)
         sub_noise(view, canvas);
+    else if (page == SCOPE_PAGE && WR_DRIVE_HEAD->magic == WR_DRIVE_MAGIC)
+        scope_draw(canvas, WR_DRIVE_HEAD->events->scope, &scope_box);
     else
         wave(canvas, view, page);
 #ifdef WR_PROBE

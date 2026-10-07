@@ -35,7 +35,8 @@ SPANS = 0x46A00000                # pool.h: WR_POOL_SPANS
 SPANS_BYTES = 128 * 16 * 2 * 96     # POOL_SLOTS (pool.h) x 16 frames x min/max x 96 columns
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SOURCES = (ROOT / "csrc/waverider/pool.c", ROOT / "csrc/waverider/loader.c",
-           ROOT / "csrc/waverider/events.c",
+           ROOT / "csrc/waverider/events.c", ROOT / "csrc/waverider/scope_feed.c",
+           ROOT / "csrc/dn2/audio_tap.c",
            ROOT / "csrc/waverider/sync.c",
            ROOT / "csrc/wrstore/store.c", ROOT / "csrc/wrstore/routekit.c",
            ROOT / "csrc/wrstore/route.c", ROOT / "csrc/wrstore/records.c",

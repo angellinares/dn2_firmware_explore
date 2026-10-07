@@ -10,15 +10,13 @@
 #ifndef UI_NOISE_STRIP_H
 #define UI_NOISE_STRIP_H
 
+#include "box.h"                      /* the box: x1 - x0 + 1 == NOISE_ENV_WIDTH */
+
 struct noise_strip_values {
     int nois, type, colr, dec;          /* 0..127, NOISE_*, 0..127 (64 flat), 0..126 / 127 Inf */
     int sub, octave, shape;             /* 0..127, 0..2 (-1..-3 oct), SUB_* */
 };
 
-struct strip_box {
-    int x0, x1, y0, y1;                 /* inclusive, y up; x1 - x0 + 1 == NOISE_ENV_WIDTH */
-    int unit;                           /* full scale, in pixels */
-};
 
 enum { STRIP_OVER = 3,                  /* the sub solid, the noise dotted under it */
        STRIP_SUM = 4 };                 /* one line, their sum, as the track adds them */

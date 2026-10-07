@@ -923,41 +923,117 @@ static void stock_cell(void *view, void *canvas, int cell, int x, int y)
         (view, canvas, x, y, id, value, a, flag, held, 0, 0);
 }
 
-/* the noise as dots, x0..x1 by y0..y1 (y up): denser for a louder NOIS, thinning to
- * the right as DEC lets it decay (Inf: level), and heavier at the bottom for a darker
- * COLR and the darker types; a fixed seed, so the field stands still */
+/* the noise as a short trace of its own generator, x0..x1 by y0..y1 (y up): the DSP's
+ * steps (noise.asm, dnfw.waverider.live.NoiseVoice) in Q16 integers, one sample a column
+ * after a warm-up, from a fixed seed so it stands still. TYPE and COLR give it the sound's
+ * texture (WHT jagged, PNK wandering, BRN a slow drift, DIG two levels), NOIS its height,
+ * and DEC its outline: column x is x / NOISE_ENV_WIDTH s after the note. The Python mirror
+ * dnfw.waverider.noise_glyph predicts every pixel.
+ * With SUB above 0 the sub joins it at its own scale (owner): WAVE's shape, SUB's height,
+ * OCT as cycles across the strip (-1 oct two, -2 oct one). SUB_GLYPH 3 draws the sub solid
+ * over the noise dotted (every other column); 4 one line, their sum, as the track adds them. */
+#include "noise_env.h"
+#ifndef SUB_GLYPH
+#define SUB_GLYPH 3
+#endif
+#define NOISE_SEED   0x9E3779B9u
+#define NOISE_WARMUP 256
+#define NOISE_UNIT   4                  /* full scale, in pixels */
+
+static int qmul(int v, int c)            /* Q16 x Q16, 0 <= c < 2^16, no 64-bit product */
+{
+    return (v >> 16) * c + (int)(((u32)(v & 0xFFFF) * (u32)c) >> 16);
+}
+
+static int sub_q16(u32 phase, int wave)  /* live.sub_value in Q16 */
+{
+    int h = (int)((phase << 1) >> 17);                  /* x mod 0.5: 0..32767 */
+    if (wave == 0) {
+        int y = (int)(((u32)h * (u32)(32768 - h)) >> 12);
+        return (phase >> 31) ? -y : y;
+    }
+    if (wave == 1)
+        return 4 * ((phase >> 31) ? h : 32768 - h) - 65536;
+    if (wave == 2)
+        return (phase >> 31) ? -65536 : 65536;
+    return phase < 0x40000000u ? 65536 : -21845;
+}
+
+static int scaled(int y, int level)      /* y x level / 100, rounding to zero */
+{
+    return y >= 0 ? y * level / 100 : -(-y * level / 100);
+}
+
+static int to_row(int y, int half)
+{
+    int r = (y * NOISE_UNIT + 0x8000) >> 16;
+    return r > half ? half : r < -half ? -half : r;
+}
+
 static void noise_field(void *c, void *view, int x0, int x1, int y0, int y1)
 {
+    static const int pink_a[3] = { 65382, 63111, 37356 }, pink_d[3] = { 6491, 19432, 68989 - 65536 };
     u8 flag;
     int nois = (GET_VALUE(view, wr_ids[SUB_PAGE][4], &flag) & 0xFFFF) >> 8;     /* 0..127 */
     int type = (GET_VALUE(view, wr_ids[SUB_PAGE][5], &flag) & 0xFFFF) >> 8;     /* WHT PNK BRN DIG */
     int colr = (GET_VALUE(view, wr_ids[SUB_PAGE][6], &flag) & 0xFFFF) >> 8;     /* 0..127, 64 flat */
     int dec = (GET_VALUE(view, wr_ids[SUB_PAGE][7], &flag) & 0xFFFF) >> 8;      /* 0..126, 127 Inf */
+    int sub = (GET_VALUE(view, wr_ids[SUB_PAGE][0], &flag) & 0xFFFF) >> 8;      /* 0..127 */
+    int octv = (GET_VALUE(view, wr_ids[SUB_PAGE][1], &flag) & 0xFFFF) >> 8;     /* 0 -1 oct, 1 -2 */
+    int wave = (GET_VALUE(view, wr_ids[SUB_PAGE][2], &flag) & 0xFFFF) >> 8;     /* SIN TRI SQR PLS */
     if (type > 3) type = 3;
-    int bright = 2 * colr - type * 40 * (type < 3);   /* 0..254: PNK, BRN darker */
-    if (bright < 0) bright = 0;
-    int w = x1 - x0, h = y1 - y0;
-    int tau = w * (dec < 10 ? 10 : dec) / 127;        /* the decay in columns */
-    if (tau < 1) tau = 1;
-    int env = 0x10000;
-    u32 seed = 7;
-    for (int x = x0; x <= x1; x++) {
-        for (int y = y0; y <= y1; y++) {
-            int high = 256 * (y - y0) / (h ? h : 1);                    /* 0 bottom .. 256 top */
-            int tilt = bright + (256 - bright) * (256 - high) / 256;    /* 0..256 */
-            seed = seed * 1103515245u + 12345u;
-            int r = (seed >> 16) & 0x7FFF;                              /* 0..32767 */
-            int p = (nois * 230 / 127) * (env >> 8) / 256 * tilt / 256; /* 0..230 */
-            if (type == 3 && (x & 1))       /* DIG: two-pixel dots, on even columns */
-                continue;
-            if (r < p * 128) {
-                px(c, x, y);
-                if (type == 3 && x < x1)
-                    px(c, x + 1, y);
-            }
+    if (wave > 3) wave = 3;
+    int cy = (y0 + y1) >> 1, half = (y1 - y0) >> 1;
+    int w = x1 - x0 + 1;
+    u32 sub_step = (u32)(0xFFFFFFFFu / (u32)w) * (octv == 0 ? 2u : 1u), sub_phase = 0;
+#if SUB_GLYPH != 4
+    int sub_last = 0;
+#endif
+    u32 x = NOISE_SEED;
+    int pink[3] = { 0, 0, 0 }, brown = 0, lp = 0, env = 0xFFFF, last = 0;
+    for (int i = 0; i < NOISE_WARMUP + w; i++) {
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        int wn = (int)x >> 15, n;
+        if (type == 0) {
+            n = wn;
+        } else if (type == 1) {
+            for (int j = 0; j < 3; j++)
+                pink[j] = qmul(pink[j], pink_a[j]) + qmul(wn, pink_d[j]) + (j == 2 ? wn : 0);
+            n = (pink[0] + pink[1] + pink[2] + qmul(wn, 12111)) >> 2;
+        } else if (type == 2) {
+            brown = qmul(brown, 64225) + qmul(wn, 9830);
+            n = brown;
+        } else {
+            n = (x >> 31) ? -32768 : 32768;
         }
-        if (dec < 127)
-            env -= env / tau;
+        lp += (n - lp) >> 3;
+        int y = n - (((colr - 64) * lp) >> 6);
+        if (i < NOISE_WARMUP)
+            continue;
+        y = scaled(y, nois);
+        if (dec < 127) {
+            y = qmul(y, env);
+            env = qmul(env, noise_env[dec]);
+        }
+        int k = i - NOISE_WARMUP, col = x0 + k;
+        int sy = scaled(sub_q16(sub_phase, wave), sub);
+        sub_phase += sub_step;
+#if SUB_GLYPH == 4
+        int r = to_row(y + sy, half);
+        column(c, col, cy + (k ? last : r), cy + r);
+#else
+        int r = to_row(y, half);
+        if (!sub || !(k & 1))                   /* under a sub, the noise dotted */
+            column(c, col, cy + (k ? last : r), cy + r);
+        if (sub) {
+            int q = to_row(sy, half);
+            column(c, col, cy + (k ? sub_last : q), cy + q);
+            sub_last = q;
+        }
+#endif
+        last = r;
     }
 }
 

@@ -135,6 +135,10 @@ SMOOTH_STATE_DM = 0x2E1200                   # SMTH's glide per voice and oscill
 DCLK_STATE_DM = 0x2E1400                     # DCLK's state, 64 bytes a voice and oscillator
 DCLK_BUFFERS_DM = 0x2E1C00                   # its two scratch buffers of 128 samples
 DCLK_STATE_END = 0x2E2000
+SUB_DM = 0x2E2000                            # sub.asm (page 3): the sub-oscillator
+SUB_SW = SUB_DM // 2                         # 0x171000
+SUB_STATE_DM = 0x2E2400                      # its 16 phases, then three words of scratch (sub.asm)
+SUB_STATE_BYTES = 0x50
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 
 # stock sites
@@ -195,7 +199,7 @@ def objects() -> dict[str, bytes]:
     return {name: sharc_object.load_bytes(bytes.fromhex(spec[name]["object_parcels_be"]))
             for name in ("reader", "machine5_live", "entry_jump", "idle_load", "idle_jump", "block_count",
                          "entry_mark", "emark_jump", "modulator", "shapes", "load", "pool", "sync",
-                         "smooth", "dclk")}
+                         "smooth", "dclk", "sub")}
 
 
 def directory() -> bytes:
@@ -252,6 +256,8 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("DCLK's lengths, 128 u32", DCLK_LENGTH_DM, struct.pack("<128I", *live.dclk_lengths())),
         ("DCLK's inverses, 128 float32", DCLK_INVERSE_DM, struct.pack("<128f", *live.dclk_inverses())),
         ("SMTH's and DCLK's state (zeros)", SMOOTH_STATE_DM, bytes(DCLK_STATE_END - SMOOTH_STATE_DM)),
+        ("sub.asm (wr_sub_ran)", SUB_DM, obj["sub"]),
+        ("the sub-oscillator's phases and scratch (zeros)", SUB_STATE_DM, bytes(SUB_STATE_BYTES)),
     ]
     out = []
     for k, (what, at, payload) in enumerate(raw):

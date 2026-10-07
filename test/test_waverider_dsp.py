@@ -604,3 +604,27 @@ def test_the_coldfire_loader_and_pool_share_the_load_area():
     start = int(re.search(r"#define AREA\s+(0x[0-9a-fA-F]+)u", (root / "pool.c").read_text()).group(1), 16)
     assert (start, start + size) == dsp.LOAD_AREA
     assert dsp.POOL_TABLES + dsp.POOL_SLOTS * dsp.TABLE_BYTES == dsp.LOAD_AREA[1]
+
+
+def test_the_sub_oscillators_shapes():
+    """live.sub_value, the arithmetic sub.asm does (page 3): SIN two parabolas, TRI,
+    SQR, PLS a 25 % pulse at +1 / -1/3, so no DC"""
+    q = 1 << 30
+    assert [live.sub_value(p, 0) for p in (0, q, 2 * q, 3 * q)] == [0.0, 1.0, 0.0, -1.0]
+    assert [live.sub_value(p, 1) for p in (0, q, 2 * q, 3 * q)] == [1.0, 0.0, -1.0, 0.0]
+    assert [live.sub_value(p, 2) for p in (0, 2 * q - 1, 2 * q)] == [1.0, 1.0, -1.0]
+    pls = [live.sub_value(p, 3) for p in range(0, 1 << 32, 1 << 24)]
+    assert abs(sum(pls)) < 1e-4                       # no DC over a cycle
+
+
+def test_the_sub_steps_an_octave_or_two_below():
+    one, p1 = live.render_sub(0, 1 << 24, (0x6400, 0x0000, 0x0000, 0), 32)
+    two, p2 = live.render_sub(0, 1 << 24, (0x6400, 0x0100, 0x0000, 0), 32)
+    assert p1 == 32 << 23 and p2 == 32 << 22
+    assert one[0] == two[0] == 0.0 and one[1] != two[1]
+
+
+def test_render_two_with_the_sub_at_zero_is_render_two():
+    t = dsp.tables()
+    blocks = [(60.0, (0x4000, 0, 0x4000, 0x6400), (0, 0, 0x4000, 0))] * 3
+    assert live.render_two(t, blocks, 32, subs=[(0, 0, 0, 0)] * 3) == live.render_two(t, blocks, 32)

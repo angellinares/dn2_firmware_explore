@@ -69,8 +69,27 @@ Branch `feature/waverider-pages34-ui`, build `out/wt128/waverider-pages34b-usbpr
   - **Emulator:** the LFO destination list on a Waverider track offers Sub Level, Sub Octave, Sub Wave, Sub Source, Noise Level, Noise Type, Noise Colour and Noise Decay, in their own SYN group before the oscillators', ordered by record id.
   - **The control:** on a WaveTone track the list is stock's (Osc1 Tune, Osc1 Waveform, Osc1 Phase Dist...), none of the eight.
 
+## The sub-oscillator on the DSP (2026-10-07, SHARC runner; not flashed)
+
+**`csrc/waverider/sharc/sub.asm`**, at sw `0x171000` (DM `0x2e2000`), with 16 phases and three scratch words at DM `0x2e2400`, in L1 block 1's free tail after DCLK's state.
+- **Where it runs:** machine9_live.asm's two exits for a type-5 track whose oscillators are done now go to it: `wr_sub_ran` (osc 2 ran) and `wr_sub_skip` (osc 2 skipped at LEV2 0). Then it goes on to `wr_t5v_next`.
+- **What it reads:** SUB, OCT, WAVE and SRC (params 50..53) from the frame copy at `0x25c48c + 268 + 146t`, four half-words.
+- **What it does:** with SUB above 0, it adds SUB/100 × shape(phase) into the track buffer the oscillators wrote. Its phase steps at the followed oscillator's increment >> (1 + OCT). That's osc 2's reader block when SRC is 1 and osc 2 ran, else osc 1's.
+- **The shapes:** SIN is two parabolas; TRI; SQR; PLS a 25 % pulse at +1 / −1/3, so no DC. All are float32 arithmetic `live.sub_value` mirrors, and need no table.
+- **Instruction forms:** as reader_m9.asm's. Two constants are written signed (`-0x41555555` for f32(−1/3)), as dclk.asm does, so the decoders' texts agree.
+
+**The gate: `scripts/sharc_waverider_sub.py`, 5/5 bit for bit against `live.render_two` with the sub:**
+- the control, SUB 0: the reference without a sub;
+- SIN, −1 octave, following osc 1;
+- TRI, −2;
+- SQR following osc 2 a fifth up;
+- PLS with SRC OSC2 while osc 2 is off, which follows osc 1.
+
+The sub changes 255..256 of 256 samples in every case it's on. It writes `out/waverider/sub_*.wav`.
+
 **Not yet:**
-- the sound, on the DSP;
+- the sub on the instrument, and its DSP load against the factory machines (the perf gate);
+- the noise generator;
 - p-locks for the eight, tried on the instrument (they go through the same list);
 - the destinations' order: the eight come first, in a group of their own;
 - a new sound's defaults for them;

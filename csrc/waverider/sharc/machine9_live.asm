@@ -1,5 +1,8 @@
 // machine9_live.asm -- Waverider Milestone 9: machine5_live.asm with two oscillators.
 //
+// Page 3: once both oscillators are done (osc 2 run, or skipped at LEV2 0) the loop goes
+// to sub.asm, the sub-oscillator, which goes on to wr_t5v_next.
+//
 // M10a: after POS and LEV are read, each oscillator's pass jumps to modulator.asm
 // (MOVE) and comes back at wr_t5v_modded.
 //
@@ -221,7 +224,7 @@ wr_t5v_halves.:
       IF NE JUMP 0x16edf0;              // -> wr_t5v_lev_on.
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
-      IF NE JUMP 0x16eea7;              // -> wr_t5v_next.
+      IF NE JUMP 0x171008;              // -> wr_sub_skip. (page 3: the sub-oscillator, sub.asm)
 .GLOBAL wr_t5v_lev_on.;
 wr_t5v_lev_on.:
       // M10a: MOVE, the modulator (modulator.asm, sw 0x16f700), which offsets R4 (POS)
@@ -337,7 +340,7 @@ wr_t5v_tuned.:
 wr_t5v_osc_next.:
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
-      IF NE JUMP 0x16eea7;              // -> wr_t5v_next. (osc 2 done)
+      IF NE JUMP 0x171000;              // -> wr_sub_ran. (osc 2 done: the sub-oscillator, sub.asm)
       R0 = 1;
       DM(0x2de6c4) = R0;                // osc 2: add
       R0 = 0x900;

@@ -420,6 +420,44 @@ def gain(lev1: int) -> float:
     return _f32(_f32(float(lev1 & 0xFFFF)) * _f32(GAIN_STEP))
 
 
+# Page 3 (docs/waverider-pages34.md): the sub-oscillator, on FM Tone's records in slots
+# 50..53, which a WaveTone-type sound doesn't have. Its own phase steps at the followed
+# oscillator's increment >> (1 + OCT): OCT 0 is an octave down, 1 two. Its shapes need
+# no table, and each is the float32 arithmetic sub.asm does, in its order.
+SUB_SLOTS = (50, 51, 52, 53)           # SUB (level), OCT, WAVE, SRC
+SUB_WAVES = ("SIN", "TRI", "SQR", "PLS")
+SUB_THIRD = -1.0 / 3.0                 # PLS's low level: a 25 % pulse with no DC
+
+
+def sub_value(phase: int, wave: int) -> float:
+    """The sub-oscillator's sample at u32 PHASE for WAVE (0 SIN, 1 TRI, 2 SQR, 3 PLS)."""
+    top = phase >> 31
+    h = _f32(float(((phase << 1) & 0xFFFFFFFF) >> 8) * 2.0 ** -25)     # x mod 0.5, exact
+    if wave == 0:                     # two parabolas: 16 h (0.5 - h), the second half negated
+        y = _f32(_f32(h * _f32(0.5 - h)) * 16.0)
+        return _f32(0.0 - y) if top else y
+    if wave == 1:                     # 4 |x - 0.5| - 1
+        a = h if top else _f32(0.5 - h)
+        return _f32(_f32(a * 4.0) - 1.0)
+    if wave == 2:
+        return -1.0 if top else 1.0
+    return 1.0 if phase < 0x40000000 else _f32(SUB_THIRD)
+
+
+def render_sub(phase: int, inc: int, sub: tuple, block: int) -> tuple[list[float], int]:
+    """One block of the sub-oscillator at gain SUB from PHASE: (its samples x gain, the
+    next phase). INC is the followed oscillator's own."""
+    lev, octave, wave = sub[0], sub[1], sub[2]
+    g = gain(lev)
+    step = inc >> (1 + min((octave & 0xFFFF) >> 8, 1))
+    w = min((wave & 0xFFFF) >> 8, 3)
+    out = []
+    for _ in range(block):
+        out.append(_f32(g * sub_value(phase, w)))
+        phase = (phase + step) & 0xFFFFFFFF
+    return out, phase
+
+
 def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
                   precision: str = "float32") -> tuple[list[float], int]:
     """The loop's output for a sequence of blocks, each (note, WAV1, TBL1[, TUN1[, LEV1]])
@@ -439,7 +477,7 @@ def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
     return out, phase
 
 
-def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> list[float]:
+def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs=None) -> list[float]:
     """The loop's output with both oscillators (Milestone 9b), each block
     (note, osc1, osc2[, (TRIG, triggered[, PRST[, position, tempo[, DCLK]]])]) with each
     osc (WAV, TBL, TUN, LEV[, RATE, MPOS, MLEV, MOVE[, SYNC[, SMTH]]]), the frame's 16-bit
@@ -449,7 +487,10 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
     Osc 1 writes y1 x gain1; osc 2, unless its LEV is 0 (the loop then skips it), adds
     y2 x gain2 to that, both rounded to float32 as reader_m9.asm does. Osc 2's TUN is
     a detune from osc 1 (`tuned2`). Each oscillator keeps its own phase from block to
-    block."""
+    block. SUBS (page 3), one (SUB, OCT, WAVE, SRC) per block or None: the
+    sub-oscillator (`render_sub`) adds into the mix after osc 2 while SUB is above 0. It
+    follows osc 2's increment when SRC is 1 and osc 2 ran this block, else osc 1's (a
+    skipped osc 2 has none)."""
     out: list[float] = []
     phase = [0, 0]
     mphase = [0, 0]
@@ -458,7 +499,9 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
     fade: list = [None, None]                   # and its fade: [old (table, pos, gain), samples left]
     rnd = MoveRandom()
     table_t = increment_table()
-    for blk in blocks:
+    sub_phase = 0
+    for b, blk in enumerate(blocks):
+        incs = [None, None]
         note, oscs = blk[0], blk[1:3]
         trig_mode, triggered, *rest = blk[3] if len(blk) > 3 else (TRIG_RESTART, False)
         prst = rest[0] if rest else PRST_OFF
@@ -496,6 +539,7 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
                 fade[k] = [last[k], n_fade]
             last[k] = cur
             inc = increment(tuned(note, tun) if k == 0 else tuned2(note, tun, oscs[0][2]), table_t)
+            incs[k] = inc
             phase0 = phase[k]
             samples, phase[k] = render.render(tab, phase0, inc, pos, block, precision)
             y = [_f32(g * v) for v in samples] if precision == "float32" else [g * v for v in samples]
@@ -511,6 +555,11 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
             else:
                 mixed = ([_f32(a + b) for a, b in zip(mixed, y)] if precision == "float32"
                          else [a + b for a, b in zip(mixed, y)])
+        sub = subs[b] if subs else None
+        if sub and sub[0] & 0xFFFF:
+            src = 1 if (sub[3] & 0xFFFF) >> 8 and incs[1] is not None else 0
+            ys, sub_phase = render_sub(sub_phase, incs[src], sub, block)
+            mixed = [_f32(a + v) for a, v in zip(mixed, ys)]
         out += mixed
     return out
 

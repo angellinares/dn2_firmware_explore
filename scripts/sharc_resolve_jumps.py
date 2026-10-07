@@ -54,7 +54,7 @@ def siblings() -> dict[str, int]:
     return {"reader_m9": dsp.READER_SW, "machine9_live": dsp.LOOP_SW, "idle_load": dsp.IDLE_SW,
             "block_count": dsp.COUNT_SW, "entry_mark": dsp.EMARK_SW, "modulator": dsp.MOD_SW,
             "shapes": dsp.SHAPES_SW, "load": dsp.LOAD_SW, "pool": dsp.POOL_SW, "sync": dsp.SYNC_SW,
-            "smooth": dsp.SMOOTH_SW, "dclk": dsp.DCLK_SW}
+            "smooth": dsp.SMOOTH_SW, "dclk": dsp.DCLK_SW, "sub": dsp.SUB_SW}
 
 
 def external(skip: pathlib.Path, work: pathlib.Path) -> dict[str, int]:

@@ -164,9 +164,33 @@ const void *wr_tbl_fmt[2] __attribute__((section(".data"))) = { (const void *)tb
 
 /* Rows 2 and 3 are fixed: SMTH's time constant, Off at 127, and DCLK's crossfade, Off at
  * 0 (dnfw.waverider.live.smth_names, dclk_names). */
-const void *wr_rate_fmt[4][2] __attribute__((section(".data"))) =
+/* page 3's levels (docs/waverider-pages34.md): its records are FM Tone's, whose own text
+ * is bipolar ("Pitch All"), so SUB and NOIS read 0..127, COLR -64..+63 and DEC 0..126 then
+ * Inf, from the coarse byte */
+static void plain_text(char *buf, int value)
+{
+    SPRINTF(buf, "%d", step_of(value, 127));
+}
+
+static void bipolar_text(char *buf, int value)
+{
+    int v = step_of(value, 127) - 64;
+    SPRINTF(buf, v > 0 ? "+%d" : "%d", v);
+}
+
+static void decay_text(char *buf, int value)
+{
+    int v = step_of(value, 127);
+    if (v == 127)
+        SPRINTF(buf, "Inf");
+    else
+        SPRINTF(buf, "%d", v);
+}
+
+const void *wr_rate_fmt[7][2] __attribute__((section(".data"))) =
     { { 0, 0 }, { 0, 0 }, { (const void *)smth_text, FORMATTER },
-      { (const void *)dclk_text, FORMATTER } };
+      { (const void *)dclk_text, FORMATTER }, { (const void *)plain_text, FORMATTER },
+      { (const void *)bipolar_text, FORMATTER }, { (const void *)decay_text, FORMATTER } };
 
 static u32 sound_value(const u8 *sound, u32 slot)
 {

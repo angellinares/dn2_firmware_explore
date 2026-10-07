@@ -280,7 +280,7 @@ def main() -> int:
             if x0 <= x <= x1 and y0 <= y <= y1:
                 sp = uc.reg_read(K.UC_M68K_REG_A7)
                 stack = struct.unpack(">64I", bytes(uc.mem_read(sp, 256)))
-                chain = " ".join(f"{v:08x}" for v in stack if 0x40000400 <= v < 0x40310000 or 0x4670C000 <= v < 0x4670D000)
+                chain = " ".join(f"{v:08x}" for v in stack if 0x40000400 <= v < 0x40310000 or 0x4670A000 <= v < 0x4670E000)
                 key = chain.split(" ")[:6]
                 pixels[" ".join(key)] = pixels.get(" ".join(key), 0) + 1
         uc.hook_add(UC_HOOK_CODE, pixel, begin=SET_PIXEL, end=SET_PIXEL)

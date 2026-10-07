@@ -398,7 +398,7 @@ def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
     if cbss:
         raise ComposeError(f"the page renderer has {cbss} bytes of BSS; nothing zeroes it")
     if pages.C_LOAD + len(cimage) > pages.C_END:
-        raise ComposeError(f"the page renderer ends past {pages.C_END:#010x}")
+        raise ComposeError(f"the page renderer ({len(cimage)} B at {pages.C_LOAD:#x}) ends past {pages.C_END:#010x}")
     ptable = "\n    .align 2\n" + "\n".join(f"    .long {n}" for n in pages.LABELS_OUT) + "\n"
     pblob = assemble(pages.source(csyms["wr_page_draw"], csyms["wr_tbl_range"], csyms["wr_tbl_fmt"],
                                   csyms["wr_rate_fmt"])

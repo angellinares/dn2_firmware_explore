@@ -30,7 +30,7 @@ def in_chunk(va: int) -> bool:
 
 def test_the_chunk_runs_from_its_load_address():
     assert SPEC["chunk"]["load"] == pages.LOAD
-    assert len(CHUNK) < 0x4000     # clear of the platform runtime at 0x46710000
+    assert pages.LOAD + len(CHUNK) <= pages.C_END     # clear of the platform runtime at 0x46710000
 
 
 def test_every_m7_site_calls_into_the_chunk():

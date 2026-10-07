@@ -53,8 +53,8 @@ from __future__ import annotations
 
 from .live import DCLK_DEFAULT, MOVE_SHAPES, SYNC_INDEX, SYNC_NOTES, dclk_names, smth_names
 
-LOAD = 0x4670C000                 # RAM above BSS, clear of every declared range (docs/mods-compatibility.md)
-C_LOAD = LOAD + 0x900             # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2, 0x800 until the TBL turn)
+LOAD = 0x4670A000                 # RAM above BSS (0x466b74d0), clear of every declared range (docs/mods-compatibility.md): 0x4670C000 until pages 3 and 4, when the renderer outgrew the 16 KB to C_END; bootscreen's stamp ends at 0x46708140
+C_LOAD = LOAD + 0xB00             # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2, 0x800 until the TBL turn, 0x900 until pages 3 and 4)
 C_END = 0x46710000                # the platform runtime starts here
 ACTIVE_TRACK = 0x42431A6C         # byte: the UI's active track, 0..15
 KIT_POINTER = 0x800052A0          # the live kit; sound t at + 52 + 1163 t
@@ -68,8 +68,14 @@ TAG = 10                          # the tag every stock SYN descriptor ends with
 # number). Our own strings, so no descriptor points into WaveTone's. The waveform icons
 # a Waverider page first showed at B and F did not come from the titles: they are the
 # SYN page draw's WaveTone OSC-page overlay (page id 7), which `wr_icons` skips.
-TITLES = ("WR 1", "WR 2", "WR 3")
+TITLES = ("WR 1", "WR 2", "WR 3", "WR 4")
 SUBTITLE = "Waverider"             # where WaveTone's say "WaveTone"
+
+SUBNOISE = (227, 228, 229, 230, 231, 232, 233, 234)    # SUB OCT WAVE SRC / NOIS TYPE COLR DEC
+SUBNOISE_LABELS = dict(zip(SUBNOISE, ("SUB", "OCT", "WAVE", "SRC", "NOIS", "TYPE", "COLR", "DEC")))
+SUBNOISE_PLAIN = (227, 231)        # SUB, NOIS: 0..127 (wr_rate_fmt row 4)
+SUBNOISE_COLR = 233                # -64..+63 (row 5)
+SUBNOISE_DEC = 234                 # 0..126, Inf (row 6)
 
 # record id -> Waverider's label (the records stay WaveTone's: their slots are the
 # frame's params 25..27, which the SHARC loop reads)
@@ -84,7 +90,11 @@ LABELS = {238: "TUNE", 241: "LEV", 239: "POS", 247: "TBL",
           248: "SYN1", 260: "SYN2",
           # DCLK (HOLD: the crossfade, 0 Off, 1..127 = 1..100 ms) and SMTH (DEC, WDTH: the
           # glide, 127 Off, the records' default)
-          254: "DCLK", 255: "SMT1", 258: "SMT2"}
+          254: "DCLK", 255: "SMT1", 258: "SMT2",
+          # pages 3 and 4 (owner, 2026-10-07; docs/waverider-pages34.md): page 3 the
+          # sub-oscillator and the noise, on FM Tone's records in slots 50..57, which a
+          # WaveTone-type sound doesn't have (prototype: the screen only, no sound yet)
+          **SUBNOISE_LABELS}
 # record id -> Waverider's long name, in the stock "Osc1 Waveform" style: what the
 # header shows while a knob turns ("Osc1 Position=65"), and the LFO destination
 # browser on a Waverider track
@@ -94,13 +104,16 @@ LONG_NAMES = {238: "Osc1 Tune", 239: "Osc1 Position", 247: "Osc1 Table",
               253: "Osc1 M.Shape", 244: "Osc2 M.Rate", 250: "Osc2 M.Pos",
               256: "Osc2 M.Level", 257: "Osc2 M.Shape", 259: "Move Retrig",
               248: "Osc1 M.Sync", 260: "Osc2 M.Sync",
-              254: "Declick", 255: "Osc1 Smooth", 258: "Osc2 Smooth"}
+              254: "Declick", 255: "Osc1 Smooth", 258: "Osc2 Smooth",
+              227: "Sub Level", 228: "Sub Octave", 229: "Sub Wave", 230: "Sub Source",
+              231: "Noise Level", 232: "Noise Type", 233: "Noise Colour", 234: "Noise Decay"}
 
-# the two pages, encoders A..H; 0 is an empty place
+# the pages, encoders A..H; 0 is an empty place
 PAGES = (
     (238, 241, 239, 247, 240, 246, 252, 253),   # OSC 1: TUNE LEV POS TBL RATE MPOS MLEV MOVE
     (242, 245, 243, 251, 244, 250, 256, 257),   # OSC 2: DETN LEV POS TBL RATE MPOS MLEV MOVE
-    (249, 259, 254, 0, 248, 260, 255, 258),     # PRST (RSET: Off/On/Random), TRIG (TYPE: 0 restart),
+    SUBNOISE,                                   # page 3: SUB OCT WAVE SRC / NOIS TYPE COLR DEC
+    (249, 259, 254, 0, 248, 260, 255, 258),     # page 4 (page 3 until 2026-10-07): PRST (RSET: Off/On/Random), TRIG (TYPE: 0 restart),
 )                                               # DCLK; SYN1, SYN2, SMT1, SMT2 (M10b-2)
 
 # M10b: the controls whose steps and value text are Waverider's own. The records stay
@@ -108,10 +121,14 @@ PAGES = (
 # Type), so wr_range and wr_fmt answer for them on a Waverider track only: MOVE steps
 # shape by shape and the header names the shape; TRIG reads Retrig / Free.
 VALUE_NAMES = {253: MOVE_SHAPES, 257: MOVE_SHAPES, 259: ("Retrig", "Free"),
+               228: ("-1", "-2"), 229: ("SIN", "TRI", "SQR", "PLS"), 230: ("OSC1", "OSC2"),
+               232: ("WHT", "PNK", "BRN", "DIG"),
                248: ("Off", "On"), 260: ("Off", "On")}
 # record id -> (min, max, default), as the firmware's limits getter returns them
 RANGES = {rid: (0, (len(names) - 1) << 8, 0) for rid, names in VALUE_NAMES.items()}
-RANGES[254] = (0, 0x7F00, DCLK_DEFAULT)   # DCLK: 3 ms for a new sound (owner, 2026-10-06)
+RANGES[254] = (0, 0x7F00, DCLK_DEFAULT)
+# page 3's levels (prototype defaults: the sub and the noise off, COLR centred, DEC Inf)
+RANGES.update({227: (0, 0x7F00, 0), 231: (0, 0x7F00, 0), 233: (0, 0x7F00, 0x4000), 234: (0, 0x7F00, 0x7F00)})   # DCLK: 3 ms for a new sound (owner, 2026-10-06)
 FORMAT_S = 0x40219C2D             # "%s", the stock naming routines' format
 HEAD_FORMAT = 0x40216CEE          # "%s=%s", the header's name and value (used once, at 0x40067820)
 RECORD_TABLE = 0x401F7F94         # record id N at + 60 N (the naming routine at + 0x34)
@@ -213,7 +230,10 @@ def source(page_draw: int, tbl_range: int, tbl_fmt: int, rate_fmt: int) -> str:
                           + [f"    .long {60 * rid}, {tbl_fmt:#010x}" for rid in TBL_IDS]
                           + [f"    .long {60 * rid}, {rate_fmt + 8 * k:#010x}" for k, rid in enumerate(RATE_IDS)]
                           + [f"    .long {60 * rid}, {rate_fmt + 16:#010x}" for rid in SMTH_IDS]
-                          + [f"    .long {60 * DCLK_ID}, {rate_fmt + 24:#010x}"])
+                          + [f"    .long {60 * DCLK_ID}, {rate_fmt + 24:#010x}"]
+                          + [f"    .long {60 * rid}, {rate_fmt + 32:#010x}" for rid in SUBNOISE_PLAIN]
+                          + [f"    .long {60 * SUBNOISE_COLR}, {rate_fmt + 40:#010x}"]
+                          + [f"    .long {60 * SUBNOISE_DEC}, {rate_fmt + 48:#010x}"])
     fmt_pairs = "\n".join([f"pair_{rid}: .long names_{rid}, {len(names)}" for rid, names in VALUE_NAMES.items()])
     name_lists = "\n".join(f"names_{rid}:\n" + "\n".join(f"    .long name_{rid}_{k}" for k in range(len(names)))
                            for rid, names in VALUE_NAMES.items())

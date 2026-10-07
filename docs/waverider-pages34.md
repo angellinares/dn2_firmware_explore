@@ -53,3 +53,21 @@ Layouts are in review: https://claude.ai/artifact/42jRjbDAnT2MKYKLRHFWPJ (three 
 ## The scope's data
 
 The samples come from the DSP, in the reply it sends the ColdFire every frame. Its free words are few (`docs/drive-load-command.md`: word 6 is load.asm's answer). A 96-point trace at 8 bits is 96 bytes. How often it can refresh, and what it costs the DSP, is the first thing to measure on page 4.
+
+## Prototype (2026-10-07, emulator; not flashed)
+
+Branch `feature/waverider-pages34-ui`, build `out/wt128/waverider-pages34b-usbprobe`. The screens only:
+
+- **Four SYN pages.** The SYN key steps "Waverider (1/4)" to "(4/4)" and back to 1.
+  - **Page 3:** SUB, OCT, WAVE, SRC / NOIS, TYPE, COLR, DEC on records 227..234.
+  - **Page 4:** the options that were page 3, unchanged.
+- **Page 3's controls turn and store** in their slots 50..57. The knob turn takes the page's records directly, without the per-type list.
+- **The header names them in Waverider's terms:** "Sub Octave=-2", "Noise Type=DIG", "Sub Level=74", "Noise Colour=-10", "Noise Decay=74". SUB and NOIS read 0..127, COLR -64..+63, DEC 0..126 then Inf, and OCT, WAVE, SRC and TYPE by name.
+- **Room:** the pages chunk moved from `0x4670C000` to `0x4670A000` (RAM above BSS, clear of every declared range; bootscreen's stamp ends at `0x46708140`), and the renderer to `LOAD + 0xB00`. The assembly is 2,662 B, the renderer 14,044 B.
+
+**Not yet:**
+- the sound, on the DSP;
+- p-locks and LFO destinations for the eight (the hook at `0x400dc02a`);
+- a new sound's defaults for them;
+- the oscilloscope;
+- the middle strips of the chosen layouts (both pages draw oscillator 1's wave meanwhile).

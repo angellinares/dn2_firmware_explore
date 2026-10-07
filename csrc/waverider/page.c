@@ -889,6 +889,116 @@ static void wave(void *c, void *view, int page)
         column(c, m + k, POS_Y, POS_Y + 1);
 }
 
+/* Page 3 (owner's layout A, 2026-10-07): the sub-oscillator's four controls as the
+ * stock grid's own cells, two by two on the left of the strip, and the noise as a
+ * field of dots on the right; the noise's four stay on the bottom row.
+ *
+ * A cell is the grid's: the grid 0x40017428 calls view->vtable[180](view, canvas,
+ * x, y, id, value, a, locked, held, 0, 0) per cell, x = 24 + 26 col, y = 27 for the
+ * top row and 0 for the bottom, with `a` = 0x40113346(view + 148, cell), `locked` the
+ * value getter's flag, and `held` 1 when locked, else 0x40113558(view + 148, cell). */
+#define SUB_PAGE   2
+#define CELL_DRAW  180
+#define CELL_A     ((int (*)(void *, int))0x40113346u)
+#define CELL_HELD  ((int (*)(void *, int))0x40113558u)
+#ifndef SUB_CELL_X0
+#define SUB_CELL_X0 24
+#endif
+#ifndef SUB_CELL_TOP
+#define SUB_CELL_TOP 27
+#endif
+#ifndef SUB_CELL_LOW
+#define SUB_CELL_LOW 0
+#endif
+
+static void stock_cell(void *view, void *canvas, int cell, int x, int y)
+{
+    u8 flag = 0;
+    u32 id = wr_ids[SUB_PAGE][cell];
+    int value = GET_VALUE(view, id, &flag);
+    void *cells = (char *)view + 148;
+    int held = flag ? 1 : (u8)CELL_HELD(cells, cell);
+    int a = CELL_A(cells, cell);
+    ((void (*)(void *, void *, int, int, u32, int, int, int, int, int, int))method(view, CELL_DRAW))
+        (view, canvas, x, y, id, value, a, flag, held, 0, 0);
+}
+
+/* the noise as dots, x0..x1 by y0..y1 (y up): denser for a louder NOIS, thinning to
+ * the right as DEC lets it decay (Inf: level), and heavier at the bottom for a darker
+ * COLR and the darker types; a fixed seed, so the field stands still */
+static void noise_field(void *c, void *view, int x0, int x1, int y0, int y1)
+{
+    u8 flag;
+    int nois = (GET_VALUE(view, wr_ids[SUB_PAGE][4], &flag) & 0xFFFF) >> 8;     /* 0..127 */
+    int type = (GET_VALUE(view, wr_ids[SUB_PAGE][5], &flag) & 0xFFFF) >> 8;     /* WHT PNK BRN DIG */
+    int colr = (GET_VALUE(view, wr_ids[SUB_PAGE][6], &flag) & 0xFFFF) >> 8;     /* 0..127, 64 flat */
+    int dec = (GET_VALUE(view, wr_ids[SUB_PAGE][7], &flag) & 0xFFFF) >> 8;      /* 0..126, 127 Inf */
+    if (type > 3) type = 3;
+    int bright = 2 * colr - type * 40 * (type < 3);   /* 0..254: PNK, BRN darker */
+    if (bright < 0) bright = 0;
+    int w = x1 - x0, h = y1 - y0;
+    int tau = w * (dec < 10 ? 10 : dec) / 127;        /* the decay in columns */
+    if (tau < 1) tau = 1;
+    int env = 0x10000;
+    u32 seed = 7;
+    for (int x = x0; x <= x1; x++) {
+        for (int y = y0; y <= y1; y++) {
+            int high = 256 * (y - y0) / (h ? h : 1);                    /* 0 bottom .. 256 top */
+            int tilt = bright + (256 - bright) * (256 - high) / 256;    /* 0..256 */
+            seed = seed * 1103515245u + 12345u;
+            int r = (seed >> 16) & 0x7FFF;                              /* 0..32767 */
+            int p = (nois * 230 / 127) * (env >> 8) / 256 * tilt / 256; /* 0..230 */
+            if (type == 3 && (x & 1))       /* DIG: two-pixel dots, on even columns */
+                continue;
+            if (r < p * 128) {
+                px(c, x, y);
+                if (type == 3 && x < x1)
+                    px(c, x + 1, y);
+            }
+        }
+        if (dec < 127)
+            env -= env / tau;
+    }
+}
+
+/* SUB_LAYOUT 1: the cells two by two on the left, the field top right, the noise's four
+ * two by two below it; 3: the cells as a stock grid row on top (A..D over their
+ * encoders), the field a strip under them, the noise's four on the bottom row */
+#ifndef SUB_LAYOUT
+#define SUB_LAYOUT 3
+#endif
+
+static void sub_noise(void *view, void *canvas)
+{
+#if SUB_LAYOUT == 1
+    for (int k = 0; k < 4; k++)
+        stock_cell(view, canvas, k, SUB_CELL_X0 + 26 * (k & 1), k < 2 ? SUB_CELL_TOP : SUB_CELL_LOW);
+    for (int y = 1; y <= TOP_LABEL_Y + 4; y += 2)                  /* the divider */
+        px(canvas, 76, y);
+    TEXT(canvas, FONT, 100, TOP_LABEL_Y, CENTRED, "NOISE");
+    noise_field(canvas, view, 80, 121, 32, TOP_LABEL_Y - 3);
+#else
+    for (int k = 0; k < 4; k++)
+        stock_cell(view, canvas, k, SUB_CELL_X0 + 26 * k, SUB_CELL_TOP);
+    noise_field(canvas, view, WAVE_X, 121, BOT_BAR_Y + 5, SUB_CELL_TOP - 2);
+#endif
+}
+
+/* where page 3 puts control i (4..7, the noise's) */
+static void sub_place(int i, int *cx, int *label_y, int *bar_y)
+{
+#if SUB_LAYOUT == 1
+    int k = i - 4;
+    *cx = COL0 + COLW * (2 + (k & 1)) + COLW / 2;
+    *label_y = k < 2 ? 18 : BOT_LABEL_Y;
+    *bar_y = k < 2 ? 26 : BOT_BAR_Y;
+#else
+    *cx = COL0 + COLW * (i & 3) + COLW / 2;
+    *label_y = BOT_LABEL_Y;
+    *bar_y = BOT_BAR_Y;
+#endif
+}
+
 void wr_page_draw(void *view, void *canvas)
 {
 #ifdef WR_PROBE
@@ -909,14 +1019,20 @@ void wr_page_draw(void *view, void *canvas)
 #ifdef WR_PROBE
     u32 w0 = DTCN0;
 #endif
-    wave(canvas, view, page);
+    if (page == SUB_PAGE)
+        sub_noise(view, canvas);
+    else
+        wave(canvas, view, page);
 #ifdef WR_PROBE
     wr_probe.wave_ticks += DTCN0 - w0;
 #endif
 
-    for (int i = 0; i < 8; i++) {
+    for (int i = page == SUB_PAGE ? 4 : 0; i < 8; i++) {      /* page 3: the cells drew A..D */
         int top = i < 4;
         int cx = COL0 + COLW * (i & 3) + COLW / 2;
+        int label_y = top ? TOP_LABEL_Y : BOT_LABEL_Y, bar_y = top ? TOP_BAR_Y : BOT_BAR_Y;
+        if (page == SUB_PAGE)
+            sub_place(i, &cx, &label_y, &bar_y);
         u32 id = wr_ids[page][i];
         if (id == WR_TBL_ID || id == WR_TBL2_ID) {
             /* TBL is a counter: the table loaded, by its number, on the label row, and its
@@ -947,18 +1063,17 @@ void wr_page_draw(void *view, void *canvas)
                  m / 10, m % 10);
             continue;
         }
-        TEXT(canvas, FONT, cx, top ? TOP_LABEL_Y : BOT_LABEL_Y, CENTRED, "%.5s", wr_labels[page][i]);
+        TEXT(canvas, FONT, cx, label_y, CENTRED, "%.5s", wr_labels[page][i]);
         if (!id)
             continue;
         u8 flag;
         int set = GET_VALUE(view, id, &flag);
-        indicator(canvas, cx, top ? TOP_BAR_Y : BOT_BAR_Y, id, set);
+        indicator(canvas, cx, bar_y, id, set);
 #if WR_MARKERS
 #ifdef WR_PROBE
         u32 m0 = DTCN0;
 #endif
-        modulation(canvas, cx, top ? TOP_BAR_Y - 2 : BOT_BAR_Y + 3, top ? TOP_LABEL_Y : BOT_LABEL_Y,
-                   id, set, now);
+        modulation(canvas, cx, top ? bar_y - 2 : bar_y + 3, label_y, id, set, now);
 #ifdef WR_PROBE
         tm += DTCN0 - m0;
 #endif

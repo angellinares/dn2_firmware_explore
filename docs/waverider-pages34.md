@@ -50,7 +50,7 @@ Layouts are in review: https://claude.ai/artifact/42jRjbDAnT2MKYKLRHFWPJ (three 
 - whether anything else lists parameters per type outside this table (to find with a watch on the table's reads);
 - whether FM Tone's records carry flags that matter here: their scale, and whether a CC is assigned.
 
-## The scope's data
+## The scope's data (first note)
 
 The samples come from the DSP, in the reply it sends the ColdFire every frame. Its free words are few (`docs/drive-load-command.md`: word 6 is load.asm's answer). A 96-point trace at 8 bits is 96 bytes. How often it can refresh, and what it costs the DSP, is the first thing to measure on page 4.
 
@@ -89,9 +89,90 @@ The sub changes 255..256 of 256 samples in every case it's on. It writes `out/wa
 
 **Not yet:**
 - the sub on the instrument, and its DSP load against the factory machines (the perf gate);
-- the noise generator;
 - p-locks for the eight, tried on the instrument (they go through the same list);
 - the destinations' order: the eight come first, in a group of their own;
 - a new sound's defaults for them;
 - the oscilloscope;
 - the middle strips of the chosen layouts (both pages draw oscillator 1's wave meanwhile).
+
+## The noise on the DSP (2026-10-07, SHARC runner; not flashed)
+
+**`csrc/waverider/sharc/noise.asm`**, at sw `0x171300` (DM `0x2e2600`). sub.asm's exits now go to it instead of `wr_t5v_next`, including the SUB 0 one, so the chain is oscillators, then the sub, then the noise, then the next track.
+
+**What it reads:** NOIS, TYPE, COLR and DEC (params 54..57) at `0x25c48c + 276 + 146t`, the same half-word pattern as the sub's. It also reads the frame's note mask (offset 34, bit t).
+
+**What it does, per sample, in float32, as `live.NoiseVoice` does:**
+- **The generator:** xorshift32 (<< 13, >> 17, << 5); w = x as a signed int × 2^-31.
+- **TYPE:**
+  - WHT is w;
+  - PNK is P. Kellet's economy filter (three one-poles plus w × 0.1848, × 0.25);
+  - BRN is a leaky integrator, 0.98 b + 0.15 w;
+  - DIG is ±0.5 by the generator's top bit.
+- **COLR:** a one-pole low-pass lp (coefficient 0.125, about 1 kHz), and out = n − c × lp, with c = (COLR − 64) / 64. So +63 is close to a high-pass and −64 boosts the lows.
+- **DEC:** a note on the voice restarts the envelope at 1.0, whatever NOIS is. Then each sample is y × env, and env × the table's factor (5 ms at 0, 10 s at 126, `live.noise_decay_table`). Inf (127) skips the envelope. At boot env is 0, so with a finite DEC the noise is silent until the first note.
+- **The gain:** NOIS/100, as the sub's; the result adds into the track buffer.
+
+**State:** 16 voices × 32 B at DM `0x2e2e00`: x, three pink filters, brown, lp, env. The image seeds each x (`live.noise_seeds`: odd, distinct, never xorshift's fixed point 0). The decay table is at `0x2e2c00`.
+
+**The gate: `scripts/sharc_waverider_noise.py`, 5/5 bit for bit against `live.render_two(noises=...)`:**
+- the control, NOIS 0, is the reference without noise;
+- WHT at COLR 0, DEC Inf;
+- PNK at COLR −64;
+- BRN at COLR +63, DEC 40: silent until the note at block 1;
+- DIG at DEC 0 with the sub on.
+
+The noise changes 224..256 of 256 samples in every case it's on. Rerun after the change: `sharc_waverider_sub.py` still 5/5. The runner renders 8 blocks, so the gate also writes `out/waverider/noise_reference_tour.wav`: 6 s of the matched reference, each type with two notes, then the tilt both ways.
+
+**Levels:** at NOIS 100, RMS WHT 0.58, PNK 0.43, BRN about 0.46, DIG 0.5. With COLR −64 the peak can exceed 1, as two oscillators at 100 already can.
+
+## Page 3's screen (2026-10-07, emulator)
+
+**The owner's pick:** layout A without the sub's wave, the four sub controls as full-size stock cells, two by two in the left half, the noise picture on the right, and the noise controls on the bottom row.
+
+**Measured on stock FM Tone (emulator):** a cell is 26 px wide, with a 17 px knob and its label under it, on a 27 px row pitch. Two rows of cells fill y 13..63. Two cells stacked therefore run into the bottom row the noise keeps (canvas y 1..10), and in a 2×2, WAVE and SRC sit over encoders E and F, which turn NOIS and TYPE.
+
+**What the screen does:**
+- **The stock cell, called directly:** the grid `0x40017428` calls `view->vtable[180](view, canvas, x, y, id, value, a, locked, held, 0, 0)` per cell. Its arguments:
+  - x = 24 + 26 col;
+  - y = 27 for the top row, 0 for the bottom;
+  - a = `0x40113346(view + 148, cell)`;
+  - locked is the value getter's flag;
+  - held is 1 when locked, else `0x40113558(view + 148, cell)`.
+
+  `page.c` (`stock_cell`) makes the same call for records 227..230, which gives stock knobs with Waverider's labels (SUB, OCT, WAVE, SRC: wr_label answers).
+- **Two layouts built** (`SUB_LAYOUT` in page.c), both framed in the emulator:
+  - **3, the default:** the four cells as a stock grid row over A..D, the noise field a strip under them (x 24..121), the noise's four on the bottom row over E..H. Every cell sits over its encoder.
+  - **1, the 2×2 as picked:** the field top right with "NOISE" over it, and the noise's four two by two below it. It's cramped, and the cells don't sit over their encoders.
+- **The noise field** (`noise_field`):
+  - Its dots are seeded, so it stands still; denser for a louder NOIS, thinning to the right with DEC (Inf stays level).
+  - It's heavier at the bottom for a darker COLR, and for PNK and BRN.
+  - DIG draws two-pixel dashes.
+  - In the emulator, NOIS 54 → 74 → 104 gets denser.
+
+**Open:**
+- the owner's choice between the two layouts;
+- OCT, WAVE, SRC and TYPE draw as knobs, because that's FM Tone's record type; a stock value box would read better for a list;
+- the defaults after CLEAR TRK PRESET for slots 50..57, which come from `wr_range` (SUB, NOIS 0; COLR centred; DEC Inf) and aren't checked yet.
+
+## What the sub and the noise cost (2026-10-07, SHARC runner)
+
+`scripts/sharc_waverider_p3_cost.py` puts Waverider on track 0 (osc 1, a note at block 1) and MIDI on the others, and runs 4 blocks. Each case differs from the control in one thing. These are instructions, not cycles; our code runs from L1, where the two are close.
+
+| case | per voice and block | × 16 voices, share of a frame |
+|---|---|---|
+| sub SIN | +742 | 1.8 % |
+| noise WHT, DEC Inf | +905 | 2.2 % |
+| noise PNK, DEC 40 (the longest path) | +2,022 | 4.9 % |
+| both | +2,764 | 6.6 % |
+
+- **The two add up:** 742 + 2,022 = 2,764, with nothing shared.
+- **The 16-voice column is an extrapolation:** the per-voice figure × 16, over the 666,667 cycles of a frame. It isn't a run.
+- **Against the factory machines** (`docs/sharc-load.md`): an idle FM Tone track costs +11,113 instructions a block over MIDI, and WaveTone +8,177. A Waverider voice with both on is about 1,825 + 2,764.
+- **Still owed for the perf gate:** the instrument's load (`tools/dn2sharc_load.py --idle`) and a soak, against factory WaveTone with the same chord.
+
+## The scope's data: what the reply carries (2026-10-07)
+
+- **The reply already holds per-track audio:** 32 records of 84 B (`+0x1c..+0xa9c`), read as 28 channels of 24 bits per sample. On the instrument they change with a held note (`docs/for-digikit-coldfire-sharc-link.md` §8).
+- **If one channel is a track's own output, page 4's scope needs no DSP change.** The ColdFire's frame hook would keep the shown track's samples in a ring, and the page would draw from a rising zero crossing.
+- **The runner can't say which channel it is.** After 6 blocks with a note on track 0 (`scripts/sharc_reply_channels.py`, peak 0.09 in the track buffer), every record on both reply pages is 0. The records are filled outside the render call the runner emulates.
+- **The mapping needs the instrument:** PEEK the reply at `0x800053a4` while a single track plays, a different track each time, and correlate the 28 channels.

@@ -221,4 +221,21 @@ Measured with the USB probe on `p3subdot2`/`p3subsum2`-era firmware (`tools/dn2r
 
 **Repeated on a clean project (CREATE NEW, stock sounds):** tracks 1 and 2 nothing; track 7 on channels 0/1 (548k, L = R), as predicted, so the block starts at track 7. The ColdFire receives both reply pages into the one buffer at `0x800053a4`, alternately, so a page carrying tracks 1–6 would have shown in about half the readings: none of 80 did. Tracks 1–6 travel by another route, still to find.
 
-**For page 4's scope:** tracks 7–16 need no DSP change. The ColdFire frame hook keeps the shown track's pair in a ring and the page draws it from a rising zero crossing. Tracks 1–6 need either the place the stock firmware sends them (to find: the DSP's second reply page, or another buffer), or our DSP code copying the shown track into spare reply words.
+**Tracks 1–6 ride the other link: the SSI0 TDM stream** (2026-10-07, the same session, `tools/dn2tdm_audio.py`). The ColdFire receives the SHARC's SSI0 stream into the double-buffered window at `0x4E6DF100` (eDMA 48; `docs/audio-dma.md`): 2 × 32 frames of 64 bytes, 16 longword slots each. The stock engine hands that window and the reply records (`0x800053c0`) to the same routine, `0x40138460`.
+
+| Held | SSI0 slots with signal |
+|---|---|
+| nothing (control) | none, all 16 zero |
+| track 1 | 0/1, 2/3 |
+| track 9 (whose audio is in the reply records) | 0/1 only |
+| track 2 | 0/1, 4/5 (predicted) |
+| track 6 | 0/1, 12/13 (predicted) |
+
+- **Slots 0/1: the main mix**, which every track reaches.
+- **Slots 2..13: tracks 1–6, one pair each:** track t on slots 2t and 2t + 1.
+- **Slots 14/15:** zero in every state read.
+- The levels read about 250× lower than the reply's when each longword is taken as a left-justified 24-bit sample, so the slot format (likely right-justified) is still to settle. For a scope only the shape matters.
+
+**So every track reaches the ColdFire:** tracks 1–6 in SSI0 slots 2t / 2t + 1, tracks 7–16 in the reply records' channels 2(t − 7) / 2(t − 7) + 1, and the main mix in SSI0 slots 0/1.
+
+**For page 4's scope:** no DSP change for any track. The ColdFire keeps the shown track's samples in a ring from whichever link carries it, and the page draws them from a rising zero crossing.

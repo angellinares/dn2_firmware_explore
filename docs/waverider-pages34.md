@@ -198,3 +198,25 @@ The noise changes 224..256 of 256 samples in every case it's on. Rerun after the
 - **If one channel is a track's own output, page 4's scope needs no DSP change.** The ColdFire's frame hook would keep the shown track's samples in a ring, and the page would draw from a rising zero crossing.
 - **The runner can't say which channel it is.** After 6 blocks with a note on track 0 (`scripts/sharc_reply_channels.py`, peak 0.09 in the track buffer), every record on both reply pages is 0. The records are filled outside the render call the runner emulates.
 - **The mapping needs the instrument:** PEEK the reply at `0x800053a4` while a single track plays, a different track each time, and correlate the 28 channels.
+
+## The reply's audio records, mapped on the instrument (2026-10-07)
+
+Measured with the USB probe on `p3subdot2`/`p3subsum2`-era firmware (`tools/dn2reply_audio.py`, read-only PEEK of the 32 records × 84 B at `0x800053a4 + 0x1c`; each record 28 channels of 24 bits). One note held at a time, 10–20 readings each. Readings saved in `out/reply-audio/`.
+
+| Held | Channels with signal |
+|---|---|
+| nothing (control) | 26/27 only, RMS ≈ 17: idle noise in every state |
+| track 9, Waverider, unison 2 voices (×3, the last a positive control after the track 6 runs) | 4/5 strong (RMS 490k..704k), 20–25 weaker |
+| track 9, unison off | 4/5 at about half (313k, L ≈ R), 20–25 halved |
+| track 10 (effects on) | 6/7 (panned right: 192k / 731k), 20–25 |
+| track 16 | 18/19 (556k, L = R); 20/21 ≈ 1 |
+| track 6, FM Tone default, audible (×2) | nothing |
+| track 6, Waverider (×1) | nothing |
+
+**The layout:**
+- **Channels 0–19 are tracks 7–16, one stereo pair each:** track t on 2(t − 7) and 2(t − 7) + 1. Three points (9, 10, 16) fit, and 16 was predicted before it was read.
+- **20–25: three stereo buses,** most likely the effects (they follow the sends: strong for tracks 9 and 10, about 1 for track 16).
+- **26–27: idle noise,** never silent, never louder.
+- **Tracks 1–6 are not in this record.** The control (track 9 again, after the track 6 runs) lit as before, so the read worked.
+
+**For page 4's scope:** tracks 7–16 need no DSP change. The ColdFire frame hook keeps the shown track's pair in a ring and the page draws it from a rising zero crossing. Tracks 1–6 need either the place the stock firmware sends them (to find: the DSP's second reply page, or another buffer), or our DSP code copying the shown track into spare reply words.

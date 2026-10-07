@@ -11,6 +11,8 @@ runs them, with the sub's four frame words (params 50..53: SUB, OCT, WAVE, SRC) 
 | SUB 0 (the control) | the track buffer is `live.render_two`'s without a sub, bit for bit |
 | SUB 100, OCT -1, SIN, SRC OSC1 | bit for bit `live.render_two` with the sub |
 | SUB 100, OCT -2, TRI | the same |
+| SUB 100, OCT -3, SIN | the same: three octaves down |
+| SUB 100, OCT 3 (above the range) | the same as -3: the DSP clamps it |
 | SUB 80, SQR, SRC OSC2, osc 2 on (detuned) | the same: the sub follows osc 2's increment |
 | SUB 100, PLS, SRC OSC2, osc 2 off (LEV2 0) | the same: a skipped osc 2 has no increment, so osc 1's |
 
@@ -64,6 +66,8 @@ def main(argv=None) -> int:
         ("control: SUB 0", {SUB: 0}, False),
         ("SIN, OCT -1, SRC OSC1", {SUB: 0x6400, OCT: 0x0000, WAVE: 0x0000, SRC: 0x0000}, False),
         ("TRI, OCT -2", {SUB: 0x6400, OCT: 0x0100, WAVE: 0x0100, SRC: 0x0000}, False),
+        ("SIN, OCT -3", {SUB: 0x6400, OCT: 0x0200, WAVE: 0x0000, SRC: 0x0000}, False),
+        ("SIN, OCT past -3 (clamped)", {SUB: 0x6400, OCT: 0x0300, WAVE: 0x0000, SRC: 0x0000}, False),
         ("SQR, SRC OSC2, osc 2 on (a fifth up)", {SUB: 0x5000, OCT: 0x0000, WAVE: 0x0200, SRC: 0x0100}, True),
         ("PLS, SRC OSC2, osc 2 off", {SUB: 0x6400, OCT: 0x0000, WAVE: 0x0300, SRC: 0x0100}, False),
     ]
@@ -107,7 +111,7 @@ def main(argv=None) -> int:
             checks[name] = bad == 0 and (heard == 0 if words[SUB] == 0 else heard > 0)
             report["cases"][name] = {"mismatches": bad, "samples_the_sub_changes": heard,
                                      "frame_words": per_block[-1] if per_block else None}
-            tag = name.split(":")[0].split(",")[0].replace(" ", "_").lower()
+            tag = "".join(ch if ch.isalnum() else "_" for ch in name.lower()).strip("_")   # the whole case: SIN at -1 and -3 differ
             g.wav(f"sub_{tag}.wav", got, a.seconds, wavs, f"the runner: {name}, note 60")
     report["checks"] = checks
     report["wavs"] = wavs

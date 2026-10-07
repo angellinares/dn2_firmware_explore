@@ -102,9 +102,9 @@ wr_sub_halves.:
       R13 = LSHIFT R13 BY -8;
       R12 = 3;
       R13 = MIN(R13, R12);
-      // the step's shift: -(1 + OCT >> 8), OCT at most 1
+      // the step's shift: -(1 + OCT >> 8), OCT at most 2 (-3 oct, live.SUB_OCTAVES)
       R7 = LSHIFT R7 BY -8;
-      R12 = 1;
+      R12 = 2;
       R7 = MIN(R7, R12);
       R12 = -1;
       R7 = R12 - R7;

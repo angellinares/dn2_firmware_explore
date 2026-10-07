@@ -25,13 +25,14 @@
 #define WAVERIDER_PAGE 1
 #include "pool.h"
 #include "events.h"
+#include "../ui/canvas.h"
+#include "../ui/noise_strip.h"
 
 typedef unsigned int u32;
 typedef unsigned char u8;
 typedef unsigned short u16;
 
 #define GET_VALUE  ((int (*)(void *, u32, u8 *))0x4006538E)   /* (view, id, &flag) */
-#define SET_PIXEL  ((void (*)(void *, int, int, int))0x40113B90)  /* (canvas, x, y, on) */
 #define TEXT       ((void (*)(void *, u32, int, int, int, const char *, ...))0x4011545C)
 #define PAGE_COUNT ((int (*)(void *))0x400173CA)
 #define PAGE_DOTS  ((void (*)(void *, void *, int, int, int))0x4006598A)
@@ -649,20 +650,6 @@ static void *method(void *obj, int offset)
     return *(void **)(*(char **)obj + offset);
 }
 
-static void px(void *c, int x, int y)
-{
-    SET_PIXEL(c, x, y, 1);
-}
-
-static void column(void *c, int x, int y0, int y1)
-{
-    if (y0 > y1) {
-        int t = y0; y0 = y1; y1 = t;
-    }
-    for (int y = y0; y <= y1; y++)
-        px(c, x, y);
-}
-
 /* A control's value under its label: a dotted track with the value filled in,
  * from the left, or from the centre for a control whose default is the middle
  * of its range (TUNE). A control of a few steps (TBL: 0..0x100) is drawn as
@@ -683,21 +670,21 @@ static void indicator(void *c, int cx, int y, u32 id, int v)
         for (int k = 0; k < n; k++) {
             int a = x0 + k * w, b = a + w - 2;
             for (int x = a; x <= b; x++) {
-                px(c, x, y);
+                canvas_px(c, x, y);
                 if (k == at)
-                    px(c, x, y + 1);
+                    canvas_px(c, x, y + 1);
             }
         }
         return;
     }
 
     for (int x = x0; x <= x1; x += 2)
-        px(c, x, y);
+        canvas_px(c, x, y);
     int at = x0 + (v - lo) * (x1 - x0) / span;
     int from = (2 * def == lo + hi) ? cx : x0;
-    column(c, at, y, y + 1);
+    canvas_column(c, at, y, y + 1);
     for (int x = (from < at ? from : at); x <= (from < at ? at : from); x++)
-        px(c, x, y + 1);
+        canvas_px(c, x, y + 1);
 }
 
 #if WR_MARKERS
@@ -707,7 +694,7 @@ static void approx(void *c, int x, int y)
 {
     for (int k = 0; k < 2; k++) {
         int yy = y + 1 + 3 * k;
-        px(c, x, yy); px(c, x + 1, yy + 1); px(c, x + 2, yy); px(c, x + 3, yy + 1);
+        canvas_px(c, x, yy); canvas_px(c, x + 1, yy + 1); canvas_px(c, x + 2, yy); canvas_px(c, x + 3, yy + 1);
     }
 }
 
@@ -740,15 +727,15 @@ static void modulation(void *c, int cx, int y, int label_y, u32 id, int set, u32
     int speed = tier(id);
     if (speed == 0) {
         for (int x = a; x <= b; x += 2)
-            px(c, x, y);
+            canvas_px(c, x, y);
     } else {
         for (int x = a; x <= b; x++)            /* the band: a 50 % dither, the panel's grey */
             for (int yy = y - 1; yy <= y; yy++)
                 if (((x + yy) & 1) == 0)
-                    px(c, x, yy);
+                    canvas_px(c, x, yy);
     }
     if (speed < 2)
-        column(c, track_x(id, cx, set + off), y - 1, y);
+        canvas_column(c, track_x(id, cx, set + off), y - 1, y);
     else
         approx(c, cx + 10, label_y);            /* "too fast to draw" beside the label */
 }
@@ -793,11 +780,11 @@ static void curve(void *c, int tbl, int pos)
         span(tbl, pos, x, &lo, &hi);
         if (hi - lo <= 2)                   /* a smooth stretch: one pixel, at its middle */
             lo = hi = (lo + hi) >> 1;
-        column(c, WAVE_X + x, lo, hi);
+        canvas_column(c, WAVE_X + x, lo, hi);
         if (x > 0 && lo > last_hi)
-            column(c, WAVE_X + x, last_hi + 1, lo);
+            canvas_column(c, WAVE_X + x, last_hi + 1, lo);
         else if (x > 0 && hi < last_lo)
-            column(c, WAVE_X + x, hi, last_lo - 1);
+            canvas_column(c, WAVE_X + x, hi, last_lo - 1);
         last_lo = lo;
         last_hi = hi;
     }
@@ -854,18 +841,18 @@ static void wave(void *c, void *view, int page)
             else continue;                      /* they touch in this column */
             for (int y = y0 + 2; y <= y1 - 2; y++)
                 if (y % 3 == 0)
-                    px(c, WAVE_X + x, y);
+                    canvas_px(c, WAVE_X + x, y);
         }
         for (int x = 0; x < WR_WIDTH; x += 2)
-            px(c, WAVE_X + x, POS_Y);
+            canvas_px(c, WAVE_X + x, POS_Y);
         int a = WAVE_X + from * (WR_WIDTH - MARK) / WR_POS_MAX;
         int b = WAVE_X + to * (WR_WIDTH - MARK) / WR_POS_MAX + MARK - 1;
         for (int x = a; x <= b; x++)            /* the positions swept, under the bar */
             if ((x & 1) == 0)
-                px(c, x, CURSOR_Y);
+                canvas_px(c, x, CURSOR_Y);
         int m = WAVE_X + set_pos * (WR_WIDTH - MARK) / WR_POS_MAX;
         for (int k = 0; k < MARK; k++)
-            column(c, m + k, POS_Y, POS_Y + 1);
+            canvas_column(c, m + k, POS_Y, POS_Y + 1);
         return;
     }
 #endif
@@ -873,7 +860,7 @@ static void wave(void *c, void *view, int page)
     curve(c, tbl, pos);
 
     for (int x = 0; x < WR_WIDTH; x += 2)
-        px(c, WAVE_X + x, POS_Y);
+        canvas_px(c, WAVE_X + x, POS_Y);
 #if WR_MARKERS
     int m = WAVE_X + set_pos * (WR_WIDTH - MARK) / WR_POS_MAX;
     int h = WAVE_X + pos * (WR_WIDTH - MARK) / WR_POS_MAX;
@@ -881,12 +868,12 @@ static void wave(void *c, void *view, int page)
      * as the cursor passes under the knob's own marker (owner, modview4f) */
     if (sw->hi - sw->lo > QUANT || moved >= QUANT || moved <= -QUANT)
         for (int k = 0; k < MARK; k += 2)
-            px(c, h + k, CURSOR_Y);
+            canvas_px(c, h + k, CURSOR_Y);
 #else
     int m = WAVE_X + pos * (WR_WIDTH - MARK) / WR_POS_MAX;
 #endif
     for (int k = 0; k < MARK; k++)
-        column(c, m + k, POS_Y, POS_Y + 1);
+        canvas_column(c, m + k, POS_Y, POS_Y + 1);
 }
 
 /* Page 3 (owner's layout A, 2026-10-07): the sub-oscillator's four controls as the
@@ -898,6 +885,9 @@ static void wave(void *c, void *view, int page)
  * top row and 0 for the bottom, with `a` = 0x40113346(view + 148, cell), `locked` the
  * value getter's flag, and `held` 1 when locked, else 0x40113558(view + 148, cell). */
 #define SUB_PAGE   2
+#ifndef SUB_LAYOUT
+#define SUB_LAYOUT 4               /* where the controls and the strip go: see sub_noise */
+#endif
 #define CELL_DRAW  180
 #define CELL_A     ((int (*)(void *, int))0x40113346u)
 #define CELL_HELD  ((int (*)(void *, int))0x40113558u)
@@ -907,10 +897,13 @@ static void wave(void *c, void *view, int page)
 #ifndef SUB_CELL_TOP
 #define SUB_CELL_TOP 27
 #endif
+#define SUB_STRIP_Y0 15            /* layout 4: the wave's span on the oscillator pages, */
+#define SUB_STRIP_Y1 39            /* clear of both rows' modulation markers */
 #ifndef SUB_CELL_LOW
 #define SUB_CELL_LOW 0
 #endif
 
+#if SUB_LAYOUT != 4
 static void stock_cell(void *view, void *canvas, int cell, int x, int y)
 {
     u8 flag = 0;
@@ -922,127 +915,43 @@ static void stock_cell(void *view, void *canvas, int cell, int x, int y)
     ((void (*)(void *, void *, int, int, u32, int, int, int, int, int, int))method(view, CELL_DRAW))
         (view, canvas, x, y, id, value, a, flag, held, 0, 0);
 }
+#endif
 
-/* the noise as a short trace of its own generator, x0..x1 by y0..y1 (y up): the DSP's
- * steps (noise.asm, dnfw.waverider.live.NoiseVoice) in Q16 integers, one sample a column
- * after a warm-up, from a fixed seed so it stands still. TYPE and COLR give it the sound's
- * texture (WHT jagged, PNK wandering, BRN a slow drift, DIG two levels), NOIS its height,
- * and DEC its outline: column x is x / NOISE_ENV_WIDTH s after the note. The Python mirror
- * dnfw.waverider.noise_glyph predicts every pixel.
- * With SUB above 0 the sub joins it at its own scale (owner): WAVE's shape, SUB's height,
- * OCT as cycles across the strip (-1 oct two, -2 oct one). SUB_GLYPH 3 draws the sub solid
- * over the noise dotted (every other column); 4 one line, their sum, as the track adds them. */
-#include "noise_env.h"
+/* the noise and the sub as their traces (ui/noise_strip: the generator's and the shape's
+ * own steps, as the voice plays them), from page 3's eight values. SUB_GLYPH 3 draws the
+ * sub solid over the noise dotted; 4 one line, their sum (owner, comparing both) */
 #ifndef SUB_GLYPH
 #define SUB_GLYPH 3
 #endif
-#define NOISE_SEED   0x9E3779B9u
-#define NOISE_WARMUP 256
-#define NOISE_UNIT   4                  /* full scale, in pixels */
+#if SUB_LAYOUT == 4
+#define NOISE_UNIT   10                 /* full scale, in pixels: the strip is 25 high */
+#else
+#define NOISE_UNIT   4
+#endif
 
-static int qmul(int v, int c)            /* Q16 x Q16, 0 <= c < 2^16, no 64-bit product */
+static int sub_value_of(void *view, int k)
 {
-    return (v >> 16) * c + (int)(((u32)(v & 0xFFFF) * (u32)c) >> 16);
-}
-
-static int sub_q16(u32 phase, int wave)  /* live.sub_value in Q16 */
-{
-    int h = (int)((phase << 1) >> 17);                  /* x mod 0.5: 0..32767 */
-    if (wave == 0) {
-        int y = (int)(((u32)h * (u32)(32768 - h)) >> 12);
-        return (phase >> 31) ? -y : y;
-    }
-    if (wave == 1)
-        return 4 * ((phase >> 31) ? h : 32768 - h) - 65536;
-    if (wave == 2)
-        return (phase >> 31) ? -65536 : 65536;
-    return phase < 0x40000000u ? 65536 : -21845;
-}
-
-static int scaled(int y, int level)      /* y x level / 100, rounding to zero */
-{
-    return y >= 0 ? y * level / 100 : -(-y * level / 100);
-}
-
-static int to_row(int y, int half)
-{
-    int r = (y * NOISE_UNIT + 0x8000) >> 16;
-    return r > half ? half : r < -half ? -half : r;
+    u8 flag;
+    return (GET_VALUE(view, wr_ids[SUB_PAGE][k], &flag) & 0xFFFF) >> 8;
 }
 
 static void noise_field(void *c, void *view, int x0, int x1, int y0, int y1)
 {
-    static const int pink_a[3] = { 65382, 63111, 37356 }, pink_d[3] = { 6491, 19432, 68989 - 65536 };
-    u8 flag;
-    int nois = (GET_VALUE(view, wr_ids[SUB_PAGE][4], &flag) & 0xFFFF) >> 8;     /* 0..127 */
-    int type = (GET_VALUE(view, wr_ids[SUB_PAGE][5], &flag) & 0xFFFF) >> 8;     /* WHT PNK BRN DIG */
-    int colr = (GET_VALUE(view, wr_ids[SUB_PAGE][6], &flag) & 0xFFFF) >> 8;     /* 0..127, 64 flat */
-    int dec = (GET_VALUE(view, wr_ids[SUB_PAGE][7], &flag) & 0xFFFF) >> 8;      /* 0..126, 127 Inf */
-    int sub = (GET_VALUE(view, wr_ids[SUB_PAGE][0], &flag) & 0xFFFF) >> 8;      /* 0..127 */
-    int octv = (GET_VALUE(view, wr_ids[SUB_PAGE][1], &flag) & 0xFFFF) >> 8;     /* 0 -1 oct, 1 -2 */
-    int wave = (GET_VALUE(view, wr_ids[SUB_PAGE][2], &flag) & 0xFFFF) >> 8;     /* SIN TRI SQR PLS */
-    if (type > 3) type = 3;
-    if (wave > 3) wave = 3;
-    int cy = (y0 + y1) >> 1, half = (y1 - y0) >> 1;
-    int w = x1 - x0 + 1;
-    u32 sub_step = (u32)(0xFFFFFFFFu / (u32)w) * (octv == 0 ? 2u : 1u), sub_phase = 0;
-#if SUB_GLYPH != 4
-    int sub_last = 0;
-#endif
-    u32 x = NOISE_SEED;
-    int pink[3] = { 0, 0, 0 }, brown = 0, lp = 0, env = 0xFFFF, last = 0;
-    for (int i = 0; i < NOISE_WARMUP + w; i++) {
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        int wn = (int)x >> 15, n;
-        if (type == 0) {
-            n = wn;
-        } else if (type == 1) {
-            for (int j = 0; j < 3; j++)
-                pink[j] = qmul(pink[j], pink_a[j]) + qmul(wn, pink_d[j]) + (j == 2 ? wn : 0);
-            n = (pink[0] + pink[1] + pink[2] + qmul(wn, 12111)) >> 2;
-        } else if (type == 2) {
-            brown = qmul(brown, 64225) + qmul(wn, 9830);
-            n = brown;
-        } else {
-            n = (x >> 31) ? -32768 : 32768;
-        }
-        lp += (n - lp) >> 3;
-        int y = n - (((colr - 64) * lp) >> 6);
-        if (i < NOISE_WARMUP)
-            continue;
-        y = scaled(y, nois);
-        if (dec < 127) {
-            y = qmul(y, env);
-            env = qmul(env, noise_env[dec]);
-        }
-        int k = i - NOISE_WARMUP, col = x0 + k;
-        int sy = scaled(sub_q16(sub_phase, wave), sub);
-        sub_phase += sub_step;
-#if SUB_GLYPH == 4
-        int r = to_row(y + sy, half);
-        column(c, col, cy + (k ? last : r), cy + r);
-#else
-        int r = to_row(y, half);
-        if (!sub || !(k & 1))                   /* under a sub, the noise dotted */
-            column(c, col, cy + (k ? last : r), cy + r);
-        if (sub) {
-            int q = to_row(sy, half);
-            column(c, col, cy + (k ? sub_last : q), cy + q);
-            sub_last = q;
-        }
-#endif
-        last = r;
-    }
+    struct noise_strip_values v = {
+        .sub = sub_value_of(view, 0), .octave = sub_value_of(view, 1), .shape = sub_value_of(view, 2),
+        .nois = sub_value_of(view, 4), .type = sub_value_of(view, 5),
+        .colr = sub_value_of(view, 6), .dec = sub_value_of(view, 7),
+    };
+    struct strip_box box = { x0, x1, y0, y1, NOISE_UNIT };
+    noise_strip_draw(c, &v, &box, SUB_GLYPH);
 }
 
 /* SUB_LAYOUT 1: the cells two by two on the left, the field top right, the noise's four
  * two by two below it; 3: the cells as a stock grid row on top (A..D over their
- * encoders), the field a strip under them, the noise's four on the bottom row */
-#ifndef SUB_LAYOUT
-#define SUB_LAYOUT 3
-#endif
+ * encoders), the field a strip under them, the noise's four on the bottom row;
+ * 4 (default, owner on p3subdot2: the knobs at the top looked odd and took the wave's
+ * room, and OCT, WAVE and SRC barely turned): the oscillator pages' layout, both rows as
+ * labels and bars, the strip where their wave is */
 
 static void sub_noise(void *view, void *canvas)
 {
@@ -1050,16 +959,19 @@ static void sub_noise(void *view, void *canvas)
     for (int k = 0; k < 4; k++)
         stock_cell(view, canvas, k, SUB_CELL_X0 + 26 * (k & 1), k < 2 ? SUB_CELL_TOP : SUB_CELL_LOW);
     for (int y = 1; y <= TOP_LABEL_Y + 4; y += 2)                  /* the divider */
-        px(canvas, 76, y);
+        canvas_px(canvas, 76, y);
     TEXT(canvas, FONT, 100, TOP_LABEL_Y, CENTRED, "NOISE");
     noise_field(canvas, view, 80, 121, 32, TOP_LABEL_Y - 3);
-#else
+#elif SUB_LAYOUT == 3
     for (int k = 0; k < 4; k++)
         stock_cell(view, canvas, k, SUB_CELL_X0 + 26 * k, SUB_CELL_TOP);
     noise_field(canvas, view, WAVE_X, 121, BOT_BAR_Y + 5, SUB_CELL_TOP - 2);
+#else
+    noise_field(canvas, view, WAVE_X, 121, SUB_STRIP_Y0, SUB_STRIP_Y1);
 #endif
 }
 
+#if SUB_LAYOUT != 4
 /* where page 3 puts control i (4..7, the noise's) */
 static void sub_place(int i, int *cx, int *label_y, int *bar_y)
 {
@@ -1074,6 +986,7 @@ static void sub_place(int i, int *cx, int *label_y, int *bar_y)
     *bar_y = BOT_BAR_Y;
 #endif
 }
+#endif
 
 void wr_page_draw(void *view, void *canvas)
 {
@@ -1103,12 +1016,14 @@ void wr_page_draw(void *view, void *canvas)
     wr_probe.wave_ticks += DTCN0 - w0;
 #endif
 
-    for (int i = page == SUB_PAGE ? 4 : 0; i < 8; i++) {      /* page 3: the cells drew A..D */
+    for (int i = page == SUB_PAGE && SUB_LAYOUT != 4 ? 4 : 0; i < 8; i++) {  /* layouts 1, 3: the cells drew A..D */
         int top = i < 4;
         int cx = COL0 + COLW * (i & 3) + COLW / 2;
         int label_y = top ? TOP_LABEL_Y : BOT_LABEL_Y, bar_y = top ? TOP_BAR_Y : BOT_BAR_Y;
+#if SUB_LAYOUT != 4
         if (page == SUB_PAGE)
             sub_place(i, &cx, &label_y, &bar_y);
+#endif
         u32 id = wr_ids[page][i];
         if (id == WR_TBL_ID || id == WR_TBL2_ID) {
             /* TBL is a counter: the table loaded, by its number, on the label row, and its

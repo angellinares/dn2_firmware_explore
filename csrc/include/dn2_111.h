@@ -379,4 +379,8 @@ static inline void *dn2_memcpy(void *dst, const void *src, u32 n)
 }
 #endif /* __ASSEMBLER__ */
 
+/* The canvas's pixel setter: (canvas, x, y, on), y counting up from the bottom edge.
+ * The FILL draw grows a 1-pixel rectangle in both modes (docs, wavetable page). */
+#define DN2_SET_PIXEL  0x40113B90
+
 #endif

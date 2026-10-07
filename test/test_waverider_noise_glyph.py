@@ -36,7 +36,7 @@ def test_the_types_differ_in_texture():
 
 
 def test_the_c_table_is_generated_from_the_mirror():
-    assert (ROOT / "csrc/waverider/noise_env.h").read_text() == g.header(98)
+    assert (ROOT / "csrc/ui/noise_env.h").read_text() == g.header(98)
 
 
 def test_the_sub_trace_is_the_dsp_s_shapes():
@@ -45,11 +45,11 @@ def test_the_sub_trace_is_the_dsp_s_shapes():
             assert abs(g.sub_value(i, wave) / g.Q - live.sub_value(i, wave)) < 1e-3, (wave, i)
 
 
-def test_oct_draws_two_cycles_at_minus_1_and_one_at_minus_2():
+def test_oct_draws_four_two_and_one_cycles_for_minus_1_2_3():
     def crossings(octave):
         s = g.sub_samples(100, octave, 2, 98)
         return sum(1 for a, b in zip(s, s[1:]) if (a > 0) != (b > 0))
-    assert (crossings(0), crossings(1)) == (3, 1)
+    assert (crossings(0), crossings(1), crossings(2)) == (7, 3, 1)
 
 
 def test_sub_0_leaves_the_noise_alone_in_both_glyphs():

@@ -422,9 +422,11 @@ def gain(lev1: int) -> float:
 
 # Page 3 (docs/waverider-pages34.md): the sub-oscillator, on FM Tone's records in slots
 # 50..53, which a WaveTone-type sound doesn't have. Its own phase steps at the followed
-# oscillator's increment >> (1 + OCT): OCT 0 is an octave down, 1 two. Its shapes need
+# oscillator's increment >> (1 + OCT): OCT 0 is an octave down, 1 two, 2 three (owner,
+# 2026-10-07: a -3 was asked for). Its shapes need
 # no table, and each is the float32 arithmetic sub.asm does, in its order.
 SUB_SLOTS = (50, 51, 52, 53)           # SUB (level), OCT, WAVE, SRC
+SUB_OCTAVES = ("-1", "-2", "-3")      # OCT's values, as the page names them
 SUB_WAVES = ("SIN", "TRI", "SQR", "PLS")
 SUB_THIRD = -1.0 / 3.0                 # PLS's low level: a 25 % pulse with no DC
 
@@ -449,7 +451,7 @@ def render_sub(phase: int, inc: int, sub: tuple, block: int) -> tuple[list[float
     next phase). INC is the followed oscillator's own."""
     lev, octave, wave = sub[0], sub[1], sub[2]
     g = gain(lev)
-    step = inc >> (1 + min((octave & 0xFFFF) >> 8, 1))
+    step = inc >> (1 + min((octave & 0xFFFF) >> 8, len(SUB_OCTAVES) - 1))
     w = min((wave & 0xFFFF) >> 8, 3)
     out = []
     for _ in range(block):

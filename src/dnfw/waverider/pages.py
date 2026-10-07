@@ -54,7 +54,8 @@ This module is pure: it builds the source; `coldfire.compose` assembles and plac
 
 from __future__ import annotations
 
-from .live import DCLK_DEFAULT, MOVE_SHAPES, SYNC_INDEX, SYNC_NOTES, dclk_names, smth_names
+from .live import (DCLK_DEFAULT, MOVE_SHAPES, SUB_OCTAVES, SUB_WAVES, SYNC_INDEX, SYNC_NOTES,
+                   dclk_names, smth_names)
 
 LOAD = 0x4670A000                 # RAM above BSS (0x466b74d0), clear of every declared range (docs/mods-compatibility.md): 0x4670C000 until pages 3 and 4, when the renderer outgrew the 16 KB to C_END; bootscreen's stamp ends at 0x46708140
 C_LOAD = LOAD + 0xC00             # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2, 0x800 until the TBL turn, 0x900 until pages 3 and 4)
@@ -125,7 +126,7 @@ PAGES = (
 # Type), so wr_range and wr_fmt answer for them on a Waverider track only: MOVE steps
 # shape by shape and the header names the shape; TRIG reads Retrig / Free.
 VALUE_NAMES = {253: MOVE_SHAPES, 257: MOVE_SHAPES, 259: ("Retrig", "Free"),
-               228: ("-1", "-2"), 229: ("SIN", "TRI", "SQR", "PLS"), 230: ("OSC1", "OSC2"),
+               228: SUB_OCTAVES, 229: SUB_WAVES, 230: ("OSC1", "OSC2"),
                232: ("WHT", "PNK", "BRN", "DIG"),
                248: ("Off", "On"), 260: ("Off", "On")}
 # record id -> (min, max, default), as the firmware's limits getter returns them

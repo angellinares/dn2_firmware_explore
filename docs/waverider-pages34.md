@@ -155,9 +155,25 @@ The noise changes 224..256 of 256 samples in every case it's on. Rerun after the
 
     The mirror's `strip` predicts both: 25 of 25 emulator strips each, over WAVE × OCT by TYPE, with SUB 0 and NOIS 0 rows. As a control, each build's frames checked against the other's rule match only the 5 with SUB 0, where the two rules coincide.
 
+**Layout 4, labels and bars (the default since 2026-10-07):** the owner, on `p3subdot2`: the knobs at the top looked odd and took the waveform's room, and OCT, WAVE and SRC barely moved from the left across all their values (a stock knob draws a few-valued record near its minimum).
+- Page 3 now has the oscillator pages' layout: both rows are labels with bars. OCT, WAVE and SRC are segmented bars, one segment per value, as TYPE already was. The stock cells (`stock_cell`) remain only for `SUB_LAYOUT` 1 and 3.
+- The strip takes the wave's place: x 24..121, y 15..39, full scale 10 px (`noise_glyph.LAYOUT4`).
+- Emulator, builds `p3bardot1` / `p3barsum1`: 25 of 25 strips match the mirror for each `SUB_GLYPH`. As a control, each build's frames against the other glyph's rule match only the 5 with SUB 0, and the OCT −3 frame doesn't match the −2 rule.
+
+**OCT −3 (owner, 2026-10-07):** OCT is −1, −2, −3 (`live.SUB_OCTAVES`).
+- On the DSP, sub.asm clamps OCT at 2 (was 1), so the step is the followed increment >> (1 + OCT).
+- `sharc_waverider_sub.py` passes 7 of 7 bit for bit. The new cases are SIN at −3, and OCT 3, which the DSP clamps to −3. `out/waverider/sub_sin__oct__3.wav` is the −3 case.
+- **The strip's cycles changed with it:** −1 four, −2 two, −3 one (until now −1 two, −2 one), so each shape shows whole at every octave.
+
+**The strip as reusable modules (owner, 2026-10-07: new code in parts any machine can reuse):**
+- `csrc/synth/`: `fixq16.h` (Q16 multiply and level), `noise_q16` (the generator), `sub_q16` (the shapes).
+- `csrc/ui/`: `canvas.h` (pixels), `noise_strip` (the strip, from plain values and a box), and `noise_env.h`.
+- `page.c` only reads page 3's eight values and calls `noise_strip_draw`.
+- `cpage.MODULES` compiles them beside page.c. `test/test_csrc_modules.py` fails if anything in `synth/` or `ui/` includes a machine's headers or names a Waverider symbol.
+- The rest of `page.c` hasn't been split yet.
+
 **Open:**
-- the owner's choice between the two layouts;
-- OCT, WAVE, SRC and TYPE draw as knobs, because that's FM Tone's record type; a stock value box would read better for a list;
+- the owner's choice between `SUB_GLYPH` 3 and 4, now on layout 4;
 - the defaults after CLEAR TRK PRESET for slots 50..57, which come from `wr_range` (SUB, NOIS 0; COLR centred; DEC Inf) and aren't checked yet.
 
 ## What the sub and the noise cost (2026-10-07, SHARC runner)

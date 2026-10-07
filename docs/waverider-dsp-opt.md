@@ -51,7 +51,7 @@ So **eight encodings in opt2 have never run on this DSP**. If opt2 stops the DSP
 | `sharc_waverider_noise.py` | 5/5 | 5/5 |
 | `sharc_waverider_dclk_hold.py` | 4/4 | 4/4 |
 | `sharc_waverider_m5.py` (bit for bit, the whole Waverider path) | PASS | PASS |
-| build: integrity 21/21, boot_gate, check_coldfire, projects, pool 10/10, modinfo, wavepool | all pass | OPT2_BUILD |
+| build: integrity 21/21, boot_gate, check_coldfire, projects, pool 10/10, modinfo, wavepool | all pass | all pass |
 
 ## Cost
 

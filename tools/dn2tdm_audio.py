@@ -10,9 +10,9 @@ slots carry what.
 
 It reads the whole 4 KB window N times (read-only PEEK), saves each to DIR/LABEL.K.bin,
 and prints, per slot, how many of the N x 64 frames are non-zero and their RMS, taking
-the slot as a 24-bit sample left-justified in a big-endian longword (the record loop
-shifts by 8). A slot that carries audio in one state and not another stands out
-whatever the exact format.
+the slot as a 24-bit sample in the longword's low three bytes, sign-extended (the raw
+window read on the instrument, 2026-10-08: track 6 at about +-780,000). Until then this
+shifted it down by 8 as well, so the levels it printed were 256 times too small.
 
 Read-only: PEEK only. Quit Transfer first (memory probe-after-flash).
 """
@@ -35,8 +35,8 @@ FRAME_BYTES, SLOTS = 64, 16
 
 
 def s24(b: bytes) -> int:
-    v = int.from_bytes(b, "big", signed=True)
-    return v >> 8
+    v = int.from_bytes(b, "big") & 0xFFFFFF
+    return v - (1 << 24) if v & 0x800000 else v
 
 
 def slots(blobs: list[bytes]) -> list[tuple[int, float]]:

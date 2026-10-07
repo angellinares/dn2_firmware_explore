@@ -8,8 +8,11 @@
 
 #include "../include/dn2_111.h"
 
-/* track 0..15 -> its last DN2_BLOCK samples, mono (L + R) / 2, as int16 (the top 16 of the
- * 24 bits); returns 0 for a track out of range */
-int dn2_track_block(unsigned track, short *out);
+/* track 0..15 -> its samples since the last call, mono (L + R) / 2, as int16 (the top 16
+ * of the 24 bits), into out (room for DN2_SSI_FRAMES); returns how many: DN2_BLOCK for
+ * tracks 7..16 (the reply holds one block), the frames the receive DMA wrote since the last
+ * call for tracks 1..6 (about DN2_BLOCK a frame; a new track starts DN2_BLOCK back); 0 for
+ * a track out of range. One caller: it keeps the SSI0 read position. */
+int dn2_track_take(unsigned track, short *out);
 
 #endif

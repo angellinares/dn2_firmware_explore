@@ -234,7 +234,7 @@ Measured with the USB probe on `p3subdot2`/`p3subsum2`-era firmware (`tools/dn2r
 - **Slots 0/1: the main mix**, which every track reaches.
 - **Slots 2..13: tracks 1–6, one pair each:** track t on slots 2t and 2t + 1.
 - **Slots 14/15:** zero in every state read.
-- The levels read about 250× lower than the reply's when each longword is taken as a left-justified 24-bit sample, so the slot format (likely right-justified) is still to settle. For a scope only the shape matters.
+- **The slot format:** a 24-bit sample in the longword's low three bytes, sign-extended (raw window, 2026-10-08: track 6 at about ±780,000). The levels in the table above were read with an extra shift by 8, so they are 256 times too small; the slots they name are right.
 
 **So every track reaches the ColdFire:** tracks 1–6 in SSI0 slots 2t / 2t + 1, tracks 7–16 in the reply records' channels 2(t − 7) / 2(t − 7) + 1, and the main mix in SSI0 slots 0/1.
 
@@ -256,3 +256,13 @@ Measured with the USB probe on `p3subdot2`/`p3subsum2`-era firmware (`tools/dn2r
 - **Not checkable in the emulator:** the audio frame function (`0x40025e0a`) never runs there (0 hits), so the ISR feeding the ring, the half rule's timing, and the SSI0 sample format are for the instrument.
 
 **Cost:** the ISR reads 32 samples and writes 32 a frame, while a track is named (from page 4 until another SYN page is drawn). The drive chunk grew 4.4 KB (the ring), 25 KB of its 64 KB still free.
+
+### scope1 on the instrument (owner, 2026-10-08): tracks 1–6 ran, 7–16 stood still
+
+**What the owner saw:** the same preset on track 6 drew a running wave, on track 8 a still one ("track 8 looks more correct").
+
+**What the ring held** (`tools/dn2scope_ring.py`, track 6 shown, a steady note): the step from one sample to the next averaged 360 inside each 32-sample block and about 6,600 across a block's start, 18 times more, with no block repeated. The large step sat at sample 31, the last of the block, in nearly every block, sometimes also mid-block (samples 11–13, 19–21).
+
+**The cause:** scope1 copied the SSI0 half the stock ISR's rule names, which follows the *transmit* channel (eDMA 50). The *receive* channel (eDMA 48) lags it, so when the copy ran, the half's last frame (and, now and then, more) still held the previous lap's sample. The reply path (tracks 7–16) is complete when read, so it stayed clean.
+
+**The fix (scope2):** `dn2_track_take` keeps a read cursor in the 64-frame window and, each frame, copies every frame from the cursor up to the receive DMA's own write position (eDMA 48's DADDR, `0xFC045610`): exactly the frames written since the last call, about 32. A new track starts one block back. Harness (ui1200M, WSL venv): with the window and the DMA position injected and the position stepped by 32, 31, 33, 30, 34, 32, 1, 63, 32, 29 frames, 33 of 33 calls returned exactly the new frames, in order, for tracks 1, 4 and 6.

@@ -10,7 +10,8 @@ volatile struct trace_ring wr_scope_ring __attribute__((section(".data"))) = { 0
 
 void wr_scope_feed(void)
 {
-    short b[DN2_BLOCK];
-    if (dn2_track_block(wr_events.scope_track, b))
-        trace_ring_push(&wr_scope_ring, b, DN2_BLOCK);
+    short b[DN2_SSI_FRAMES];
+    int n = dn2_track_take(wr_events.scope_track, b);
+    if (n)
+        trace_ring_push(&wr_scope_ring, b, n);
 }

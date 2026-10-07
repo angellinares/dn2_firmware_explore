@@ -163,12 +163,12 @@ wr_mod_shape.:
       R15 = R15 + R0;
       R2 = 5;
       COMP(R11, R2);
-      IF GE JUMP 0x16ec18;              // -> wr_mod_b. (looping: wraps)
+      IF GE JUMP 0x16ec3e;              // -> wr_mod_b. (looping: wraps)
       COMPU(R15, R7);
-      IF GE JUMP 0x16ec18;              // -> wr_mod_b.
+      IF GE JUMP 0x16ec3e;              // -> wr_mod_b.
       R15 = -1;
       // the rest (MPOS, MLEV) is wr_mod_b, after wr_t5v_exit in reader_m9.asm's
       // span, which hands the shape's value to shapes.asm (R7 = the phase before)
-      JUMP 0x16ec18;                    // -> wr_mod_b.
+      JUMP 0x16ec3e;                    // -> wr_mod_b.
 .wr_mod..end:
       .type wr_mod.,STT_FUNC;

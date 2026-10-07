@@ -359,6 +359,6 @@ wr_t5v_next.:
 
       // M9b: the restore and the way back live after wr_render5 (reader_m9.asm), in
       // the reader's code span: this one has no room left for them
-      JUMP 0x16ebbd;                    // -> wr_t5v_exit.
+      JUMP 0x16ebe3;                    // -> wr_t5v_exit.
 .wr_type5v..end:
       .type wr_type5v.,STT_FUNC;

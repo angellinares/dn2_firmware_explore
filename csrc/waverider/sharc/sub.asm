@@ -142,45 +142,72 @@ wr_sub_followed.:
       R8 = DM(0x2dde24);                // the dispatch's R9: the block size
       DM(0x2e2448) = R8;
       R8 = PASS R8;
-      IF EQ JUMP 0x171117;              // -> wr_sub_done. (count 0: nothing)
+      IF EQ JUMP 0x171143;              // -> wr_sub_done. (count 0: nothing)
       R15 = -25;                        // h's scale, 2^-25
 
-.GLOBAL wr_sub_loop.;
-wr_sub_loop.:
-      R0 = LSHIFT R11 BY 1;
-      R0 = LSHIFT R0 BY -8;
-      F0 = FLOAT R0 BY R15;             // h = x mod 0.5, exact
-      R12 = 1;                          // opt1 O3: a data move after the F0 compute (anomaly 20000072)
+      // opt2 O6 (A2): WAVE can't change within a block, so it is tested once here and each
+      // shape runs its own loop (until opt2 every sample walked the compare chain). SQR and
+      // PLS don't use h, so their loops skip it. The arithmetic per shape is unchanged.
+      R12 = 1;
       R13 = PASS R13;
-      IF EQ JUMP 0x1710d7;              // -> wr_sub_sin.
+      IF EQ JUMP 0x1710db;              // -> wr_sub_sin.
       COMP(R13, R12);
-      IF EQ JUMP 0x1710ec;              // -> wr_sub_tri.
+      IF EQ JUMP 0x171104;              // -> wr_sub_tri.
       R12 = 2;
       COMP(R13, R12);
-      IF EQ JUMP 0x171101;              // -> wr_sub_sqr.
+      IF EQ JUMP 0x17112d;              // -> wr_sub_sqr.
+
+.GLOBAL wr_sub_pls.;
+wr_sub_pls.:
       R1 = 0x3f800000;                  // PLS: +1 for the first quarter
       R2 = 0x40000000;
       COMPU(R11, R2);
-      IF LT JUMP 0x17110b;              // -> wr_sub_have.
+      IF LT JUMP 0x1710cc;              // -> wr_sub_pls_have.
       R1 = -0x41555555;                 // f32(-1/3), 0xbeaaaaab (written signed, as selmap reads it)
-      JUMP 0x17110b;                    // -> wr_sub_have.
+.GLOBAL wr_sub_pls_have.;
+wr_sub_pls_have.:
+      F1 = F6 * F1;                     // gain x shape
+      R2 = DM(0, I2);                   // what the oscillators wrote
+      F1 = F2 + F1;
+      DM(I2, M6) = F1;
+      R11 = R11 + R10;                  // phase += step, mod 2^32
+      R8 = R8 - 1;                      // samples left (opt1 O2: in R8, which the loop doesn't use)
+      IF NE JUMP 0x1710be;              // -> wr_sub_pls.
+      JUMP 0x171143;                    // -> wr_sub_done.
+
 .GLOBAL wr_sub_sin.;
 wr_sub_sin.:
-      R12 = 0x3f000000;                 // 0.5
+      R0 = LSHIFT R11 BY 1;
+      R0 = LSHIFT R0 BY -8;
+      F0 = FLOAT R0 BY R15;             // h = x mod 0.5, exact
+      R12 = 0x3f000000;                 // 0.5 (a data move after the F0 compute: anomaly 20000072)
       F1 = F12 - F0;
       F1 = F0 * F1;
       R12 = 0x41800000;                 // 16.0
       F1 = F1 * F12;
       R2 = PASS R11;
-      IF GE JUMP 0x17110b;              // -> wr_sub_have. (the first half)
+      IF GE JUMP 0x1710f5;              // -> wr_sub_sin_have. (the first half)
       R12 = R12 - R12;                  // +0.0
       F1 = F12 - F1;
-      JUMP 0x17110b;                    // -> wr_sub_have.
+.GLOBAL wr_sub_sin_have.;
+wr_sub_sin_have.:
+      F1 = F6 * F1;                     // gain x shape
+      R2 = DM(0, I2);                   // what the oscillators wrote
+      F1 = F2 + F1;
+      DM(I2, M6) = F1;
+      R11 = R11 + R10;                  // phase += step, mod 2^32
+      R8 = R8 - 1;                      // samples left (opt1 O2: in R8, which the loop doesn't use)
+      IF NE JUMP 0x1710db;              // -> wr_sub_sin.
+      JUMP 0x171143;                    // -> wr_sub_done.
+
 .GLOBAL wr_sub_tri.;
 wr_sub_tri.:
+      R0 = LSHIFT R11 BY 1;
+      R0 = LSHIFT R0 BY -8;
+      F0 = FLOAT R0 BY R15;             // h = x mod 0.5, exact
+      R12 = 0x3f000000;                 // 0.5 (a data move after the F0 compute: anomaly 20000072)
       R2 = PASS R11;
-      IF LT JUMP 0x1710f5;              // -> wr_sub_tri_a. (the second half: a = h)
-      R12 = 0x3f000000;                 // 0.5
+      IF LT JUMP 0x171115;              // -> wr_sub_tri_a. (the second half: a = h)
       F0 = F12 - F0;                    // the first half: a = 0.5 - h
 .GLOBAL wr_sub_tri_a.;
 wr_sub_tri_a.:
@@ -188,22 +215,30 @@ wr_sub_tri_a.:
       F1 = F0 * F12;
       R12 = 0x3f800000;                 // 1.0
       F1 = F1 - F12;
-      JUMP 0x17110b;                    // -> wr_sub_have.
-.GLOBAL wr_sub_sqr.;
-wr_sub_sqr.:
-      R1 = 0x3f800000;                  // +1
-      R2 = PASS R11;
-      IF GE JUMP 0x17110b;              // -> wr_sub_have.
-      R1 = -0x40800000;                 // -1.0, 0xbf800000
-.GLOBAL wr_sub_have.;
-wr_sub_have.:
       F1 = F6 * F1;                     // gain x shape
       R2 = DM(0, I2);                   // what the oscillators wrote
       F1 = F2 + F1;
       DM(I2, M6) = F1;
       R11 = R11 + R10;                  // phase += step, mod 2^32
       R8 = R8 - 1;                      // samples left (opt1 O2: in R8, which the loop doesn't use)
-      IF NE JUMP 0x1710ae;              // -> wr_sub_loop.
+      IF NE JUMP 0x171104;              // -> wr_sub_tri.
+      JUMP 0x171143;                    // -> wr_sub_done.
+
+.GLOBAL wr_sub_sqr.;
+wr_sub_sqr.:
+      R1 = 0x3f800000;                  // +1
+      R2 = PASS R11;
+      IF GE JUMP 0x171137;              // -> wr_sub_sqr_have.
+      R1 = -0x40800000;                 // -1.0, 0xbf800000
+.GLOBAL wr_sub_sqr_have.;
+wr_sub_sqr_have.:
+      F1 = F6 * F1;                     // gain x shape
+      R2 = DM(0, I2);                   // what the oscillators wrote
+      F1 = F2 + F1;
+      DM(I2, M6) = F1;
+      R11 = R11 + R10;                  // phase += step, mod 2^32
+      R8 = R8 - 1;                      // samples left (opt1 O2: in R8, which the loop doesn't use)
+      IF NE JUMP 0x17112d;              // -> wr_sub_sqr.
 
 .GLOBAL wr_sub_done.;
 wr_sub_done.:

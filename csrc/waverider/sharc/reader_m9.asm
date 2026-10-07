@@ -98,8 +98,10 @@ wr_render5.:
       R15 = -23;                        // sample fraction scale, 2^-23
       R8 = -15;                         // int16 -> float full scale, 2^-15
       R12 = PASS R12;
-      IF EQ JUMP 0x16ebb5;              // -> wr5_done. (count 0: write nothing)
+      IF EQ JUMP 0x16ebdb;              // -> wr5_done. (count 0: write nothing)
+      R0 = PASS R12;                    // opt2 O4: the count, for LCNTR
       R12 = -16;
+      LCNTR = R0, DO wr5_last. UNTIL LCE;   // opt2 O4: E2-active (the mix branch is in the body)
 
 .GLOBAL wr5_loop.;
 wr5_loop.:
@@ -108,33 +110,27 @@ wr5_loop.:
       // R4..R7 hold the addresses until the samples replace them
       R0 = LSHIFT R9 BY -24;            // w0 = k >> 1
       R0 = LSHIFT R0 BY 2;              // its byte offset in a row
-      R1 = R9 + R13;
+      R1 = R9 + R13, R2 = DM(6, I4);    // opt2 O5: with frame f0's row
       R1 = LSHIFT R1 BY -24;            // w1 = (k + 1) >> 1, mod 256
       R1 = LSHIFT R1 BY 2;
-      R2 = DM(6, I4);                   // frame f0's row
       R4 = R2 + R0;                     // frame f0, word w0's address
-      R5 = R2 + R1;                     // frame f0, word w1's
+      R5 = R2 + R1, R2 = DM(7, I4);     // frame f0, word w1's; opt2 O5: with frame f1's row (the add reads the old R2)
       I0 = R4;
       I1 = R5;
-      R2 = DM(7, I4);                   // frame f1's row
       R6 = R2 + R0;                     // frame f1, word w0's address
       R7 = R2 + R1;                     // frame f1, word w1's
       R2 = 16;
       R3 = LSHIFT R9 BY -19;
       R3 = R3 AND R2;                   // shB = 16 * (k & 1)
-      R2 = R2 - R3;                     // shA = 16 - shB (M5d: SUB, a stock shape; XOR was not)
-      R4 = DM(0, I0);                   // frame f0, word w0
-      R5 = DM(0, I1);                   // frame f0, word w1
+      R2 = R2 - R3, R4 = DM(0, I0);     // shA = 16 - shB; opt2 O5: with frame f0, word w0
+      R4 = LSHIFT R4 BY R2, R5 = DM(0, I1);   // opt2 O5: with frame f0, word w1
       I0 = R6;
       I1 = R7;
-      R4 = LSHIFT R4 BY R2;
       R4 = ASHIFT R4 BY R12;            // s00 = sample k
       R5 = LSHIFT R5 BY R3;
       R5 = ASHIFT R5 BY R12;            // s01 = sample k + 1
-      R6 = DM(0, I0);                   // frame f1, word w0
-      R7 = DM(0, I1);                   // frame f1, word w1
-      F4 = FLOAT R4 BY R8;
-      F5 = FLOAT R5 BY R8;
+      F4 = FLOAT R4 BY R8, R6 = DM(0, I0);    // opt2 O5: with frame f1, word w0
+      F5 = FLOAT R5 BY R8, R7 = DM(0, I1);    // opt2 O5: with frame f1, word w1
       R6 = LSHIFT R6 BY R2;
       R6 = ASHIFT R6 BY R12;            // s10
       R7 = LSHIFT R7 BY R3;
@@ -149,27 +145,28 @@ wr5_loop.:
       F7 = F7 - F6;
       F7 = F0 * F7;
       F6 = F6 + F7;                     // b = s10 + fr * (s11 - s10)
+.NOCOMPRESS;                            // opt2 O4: a hardware loop's last 11 instructions are 48-bit (PRM 4-42)
       F6 = F6 - F4;
       F6 = F11 * F6;
       F4 = F4 + F6;                     // y = a + ff * (b - a)
       R0 = DM(0x2de6c0);                // M9a: the gain, LEV / 100
       F4 = F0 * F4;                     // y * gain
-      R9 = R9 + R10;                    // phase += inc, mod 2^32
       // M9b: osc 2 adds into the buffer osc 1 wrote (DM 0x2de6c4 = 1); osc 1 never
       // reads it, since the dispatch may leave anything there (NaN included)
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
-      IF EQ JUMP 0x16ebaa;              // -> wr5_store.
+      IF EQ JUMP 0x16ebd2;              // -> wr5_store.
       R1 = DM(0, I2);                   // what osc 1 wrote
       F4 = F4 + F1;
 .GLOBAL wr5_store.;
 wr5_store.:
       DM(I2, M6) = F4;
-      R0 = DM(4, I4);
-      R1 = 1;
-      R0 = R0 - R1;
-      DM(4, I4) = R0;                   // samples left
-      IF NE JUMP 0x16eb41;              // -> wr5_loop.
+.GLOBAL wr5_last.;
+wr5_last.:
+      R9 = R9 + R10;                    // phase += inc, mod 2^32 (opt2 O4: the loop's last instruction)
+.COMPRESS;
+      R0 = R0 - R0;
+      DM(4, I4) = R0;                   // 0: the count word as the software loop left it
 
 .GLOBAL wr5_done.;
 wr5_done.:
@@ -239,7 +236,7 @@ wr_mod_have.:
       R0 = DM(0x2de7c4);
       R2 = 0x3200;
       R0 = R0 - R2;
-      IF EQ JUMP 0x16ec3a;              // -> wr_mod_lev. (no depth: POS untouched)
+      IF EQ JUMP 0x16ec60;              // -> wr_mod_lev. (no depth: POS untouched)
       R12 = R12 - R12;
       F0 = FLOAT R0 BY R12;
       F2 = FLOAT R1 BY R12;
@@ -250,14 +247,14 @@ wr_mod_have.:
       R12 = PASS R0;
       R4 = R12 + R4;
       R4 = PASS R4;
-      IF GE JUMP 0x16ec3a;              // -> wr_mod_lev.
+      IF GE JUMP 0x16ec60;              // -> wr_mod_lev.
       R4 = R4 - R4;
 .GLOBAL wr_mod_lev.;
 wr_mod_lev.:
       // MLEV: LEV x (1 - MLEV/0x7f00 x (1 - shape/0xffff))
       R0 = DM(0x2de7c8);
       R0 = PASS R0;
-      IF EQ JUMP 0x16ec5d;              // -> wr_mod_done. (no depth: LEV untouched)
+      IF EQ JUMP 0x16ec83;              // -> wr_mod_done. (no depth: LEV untouched)
       R12 = R12 - R12;
       F0 = FLOAT R0 BY R12;
       R12 = 0x38010204;                 // f32(1 / 0x7f00)

@@ -59,7 +59,7 @@ The runner counts instructions (`scripts/sharc_waverider_p3_cost.py`, per voice 
 
 | path | scope2 | opt1 | opt2 |
 |---|---|---|---|
-| sub SIN | +742 | +678 | 7/7_COST |
+| sub SIN | +742 | +678 | +586 |
 | noise WHT, DEC Inf | +905 | +809 | +809 |
 | noise PNK, DEC 40 | +2,022 | +1,926 | +1,926 |
 | both | +2,764 | +2,604 | +2,512 |

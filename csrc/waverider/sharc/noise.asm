@@ -133,8 +133,8 @@ wr_noise_held.:
       I2 = R2;
       R0 = DM(0x2dde24);                // the dispatch's R9: the block size
       DM(0x2e3000) = R0;
-      R0 = PASS R0;
-      IF EQ JUMP 0x171447;              // -> wr_noise_done. (count 0: nothing)
+      R10 = PASS R0;                    // opt1 O2: the count in R10, which the loop doesn't use
+      IF EQ JUMP 0x17143f;              // -> wr_noise_done. (count 0: nothing)
       R15 = -31;                        // w's scale, 2^-31
 
 .GLOBAL wr_noise_loop.;
@@ -145,8 +145,8 @@ wr_noise_loop.:
       R11 = R11 XOR R0;
       R0 = LSHIFT R11 BY 5;
       R11 = R11 XOR R0;
-      F0 = FLOAT R11 BY R15;            // w, -1 .. 1
-      R1 = PASS R0;                     // WHT: n = w
+      F1 = FLOAT R11 BY R15;            // w, -1 .. 1 (opt1 O3: into F1, not F0: anomaly 20000072)
+      R0 = PASS R1;                     // w in R0 too, as before; WHT: n = w
       R7 = PASS R7;
       IF EQ JUMP 0x171424;              // -> wr_noise_tilt.
       R12 = 1;
@@ -220,10 +220,7 @@ wr_noise_have.:
       R2 = DM(0, I2);                   // what the oscillators and the sub wrote
       F1 = F2 + F1;
       DM(I2, M6) = F1;
-      R0 = DM(0x2e3000);
-      R1 = 1;
-      R0 = R0 - R1;
-      DM(0x2e3000) = R0;                // samples left
+      R10 = R10 - 1;                    // samples left (opt1 O2: in a register)
       IF NE JUMP 0x1713af;              // -> wr_noise_loop.
 
 .GLOBAL wr_noise_done.;

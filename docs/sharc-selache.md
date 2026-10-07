@@ -209,3 +209,11 @@ Getting the comparable figure means regenerating SLEIGH from the corrected
 table (`tools/sharcspec/ghidra/gen_sleigh.py`, which #33 also touched) and
 re-importing. **Until that is run, no claim should be made about L2 becoming
 readable** — the decoder result makes it *likely* and is not evidence of it.
+
+## selas mis-encodes `ASHIFT … BY` an immediate (2026-10-08)
+
+Found while moving the reader's four `Rn = ASHIFT Rn BY R12` to immediates (opt1's first draft): selas assembled `R4 = ASHIFT R4 BY -16` as `023e 0020 f044`. Stock DN2 1.11 writes the same operation as `023e 7801 f0xx` (118 negative ASHIFT immediates in stock, e.g. `R4 = ashift(R6, -16)` = `023e7801f046`): the opcode bits differ (`0x20` where stock has `0x01`), not only the sign-extension bits that `fix_shift_imm` repairs for LSHIFT.
+
+- **digikit's runner** halts on it (`unsupported ShiftImm opcode 0x20`), and sharcdb can't name it (`shiftimm(dataex=0x0, shiftimm=0x20f044)`). That is how it showed.
+- **The decode step of `sharc_waverider_m5.py` passed it**, so that step isn't enough for a shift immediate of a new kind: the encoding audit (`scripts/sharc_encoding_audit.py`, sharcdb databases of stock and of the build) is what flags an instruction neither tool can name.
+- **Our sources use only LSHIFT immediates** (which `fix_shift_imm` repairs) and ASHIFT by a register. Keep it that way until `fix_shift_imm` learns ASHIFT's encoding from stock's 118.

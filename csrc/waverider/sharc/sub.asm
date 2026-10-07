@@ -142,7 +142,7 @@ wr_sub_followed.:
       R8 = DM(0x2dde24);                // the dispatch's R9: the block size
       DM(0x2e2448) = R8;
       R8 = PASS R8;
-      IF EQ JUMP 0x17111f;              // -> wr_sub_done. (count 0: nothing)
+      IF EQ JUMP 0x171117;              // -> wr_sub_done. (count 0: nothing)
       R15 = -25;                        // h's scale, 2^-25
 
 .GLOBAL wr_sub_loop.;
@@ -150,9 +150,9 @@ wr_sub_loop.:
       R0 = LSHIFT R11 BY 1;
       R0 = LSHIFT R0 BY -8;
       F0 = FLOAT R0 BY R15;             // h = x mod 0.5, exact
+      R12 = 1;                          // opt1 O3: a data move after the F0 compute (anomaly 20000072)
       R13 = PASS R13;
       IF EQ JUMP 0x1710d7;              // -> wr_sub_sin.
-      R12 = 1;
       COMP(R13, R12);
       IF EQ JUMP 0x1710ec;              // -> wr_sub_tri.
       R12 = 2;
@@ -202,10 +202,7 @@ wr_sub_have.:
       F1 = F2 + F1;
       DM(I2, M6) = F1;
       R11 = R11 + R10;                  // phase += step, mod 2^32
-      R0 = DM(0x2e2448);
-      R1 = 1;
-      R0 = R0 - R1;
-      DM(0x2e2448) = R0;                // samples left
+      R8 = R8 - 1;                      // samples left (opt1 O2: in R8, which the loop doesn't use)
       IF NE JUMP 0x1710ae;              // -> wr_sub_loop.
 
 .GLOBAL wr_sub_done.;

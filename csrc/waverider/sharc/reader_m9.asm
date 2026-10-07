@@ -52,7 +52,7 @@
 // reader counts `count` down to 0 (machine5_live.asm rewrites it every block) and
 // keeps the two frame-row addresses in words 6 and 7.
 //
-// Clobbers R0-R15, I0, I2, I4, ASTAT. Uses M6 = 1, M7 = -1, M14 = 1 as fixed by the
+// Clobbers R0-R15, I0, I1 (opt1; dclk.asm reloads it after each call), I2, I4, ASTAT. Uses M6 = 1, M7 = -1, M14 = 1 as fixed by the
 // SHARC C ABI. Not ABI-clean: machine5_live.asm saves what it needs. I3 and I5 are
 // the loop's own pointers and are not touched.
 //
@@ -103,33 +103,36 @@ wr_render5.:
 
 .GLOBAL wr5_loop.;
 wr5_loop.:
+      // opt1 O1: each tap's address goes into I0 or I1 at least four instructions before
+      // the read through it (SHARC+ PRM table 4-38: a DAG register's load-to-use stall);
+      // R4..R7 hold the addresses until the samples replace them
       R0 = LSHIFT R9 BY -24;            // w0 = k >> 1
       R0 = LSHIFT R0 BY 2;              // its byte offset in a row
       R1 = R9 + R13;
       R1 = LSHIFT R1 BY -24;            // w1 = (k + 1) >> 1, mod 256
       R1 = LSHIFT R1 BY 2;
       R2 = DM(6, I4);                   // frame f0's row
-      R3 = R2 + R0;
-      I0 = R3;
-      R4 = DM(0, I0);                   // frame f0, word w0
-      R3 = R2 + R1;
-      I0 = R3;
-      R5 = DM(0, I0);                   // frame f0, word w1
+      R4 = R2 + R0;                     // frame f0, word w0's address
+      R5 = R2 + R1;                     // frame f0, word w1's
+      I0 = R4;
+      I1 = R5;
       R2 = DM(7, I4);                   // frame f1's row
-      R3 = R2 + R0;
-      I0 = R3;
-      R6 = DM(0, I0);                   // frame f1, word w0
-      R3 = R2 + R1;
-      I0 = R3;
-      R7 = DM(0, I0);                   // frame f1, word w1
+      R6 = R2 + R0;                     // frame f1, word w0's address
+      R7 = R2 + R1;                     // frame f1, word w1's
       R2 = 16;
       R3 = LSHIFT R9 BY -19;
       R3 = R3 AND R2;                   // shB = 16 * (k & 1)
       R2 = R2 - R3;                     // shA = 16 - shB (M5d: SUB, a stock shape; XOR was not)
+      R4 = DM(0, I0);                   // frame f0, word w0
+      R5 = DM(0, I1);                   // frame f0, word w1
+      I0 = R6;
+      I1 = R7;
       R4 = LSHIFT R4 BY R2;
       R4 = ASHIFT R4 BY R12;            // s00 = sample k
       R5 = LSHIFT R5 BY R3;
       R5 = ASHIFT R5 BY R12;            // s01 = sample k + 1
+      R6 = DM(0, I0);                   // frame f1, word w0
+      R7 = DM(0, I1);                   // frame f1, word w1
       F4 = FLOAT R4 BY R8;
       F5 = FLOAT R5 BY R8;
       R6 = LSHIFT R6 BY R2;

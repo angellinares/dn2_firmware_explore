@@ -31,8 +31,11 @@ then answer with Waverider's pages and labels:
 The labels and the page layout are the owner's (2026-10-01), from the Waverider mockup,
 with our own names:
 
-    page 1, OSC 1   A TUNE  B LEV   C POS   D TBL   E RATE  F MPOS  G MLEV  H MOVE
-    page 2, OSC 2   A DETN  B LEV   C POS   D TBL   E RATE  F MPOS  G MLEV  H MOVE
+    page 1, OSC 1   A TUNE  B LEV   C POS   D TBL   E RATE  F MLEV  G MPOS  H MOVE
+    page 2, OSC 2   A DETN  B LEV   C POS   D TBL   E RATE  F MLEV  G MPOS  H MOVE
+
+MLEV and MPOS were F and G the other way round until 2026-10-07 (owner: each mod control
+under the control it moves, MLEV under LEV, MPOS under POS).
 
 Only TUNE, POS and TBL work in M7 (the loop reads TUN1, WAV1 and TBL1), and LEV from M9a
 (LEV1, the reader's gain); page 2's DETN, LEV, POS and TBL from M9b (osc 2: TUN2, LEV2,
@@ -111,8 +114,8 @@ LONG_NAMES = {238: "Osc1 Tune", 239: "Osc1 Position", 247: "Osc1 Table",
 
 # the pages, encoders A..H; 0 is an empty place
 PAGES = (
-    (238, 241, 239, 247, 240, 246, 252, 253),   # OSC 1: TUNE LEV POS TBL RATE MPOS MLEV MOVE
-    (242, 245, 243, 251, 244, 250, 256, 257),   # OSC 2: DETN LEV POS TBL RATE MPOS MLEV MOVE
+    (238, 241, 239, 247, 240, 252, 246, 253),   # OSC 1: TUNE LEV POS TBL RATE MLEV MPOS MOVE
+    (242, 245, 243, 251, 244, 256, 250, 257),   # OSC 2: DETN LEV POS TBL RATE MLEV MPOS MOVE
     SUBNOISE,                                   # page 3: SUB OCT WAVE SRC / NOIS TYPE COLR DEC
     (249, 259, 254, 0, 248, 260, 255, 258),     # page 4 (page 3 until 2026-10-07): PRST (RSET: Off/On/Random), TRIG (TYPE: 0 restart),
 )                                               # DCLK; SYN1, SYN2, SMT1, SMT2 (M10b-2)

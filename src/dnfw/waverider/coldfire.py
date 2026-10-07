@@ -372,6 +372,11 @@ TURN_STOCK = bytes.fromhex("242f00382e2f003c")
 # The header line ("Osc1 Table=Prim.") is printed once, at 0x4006782a, as "%s=%s" with the
 # control's long name and its value text; d2 = the id. wr_head drops the name for TBL.
 HEAD_SITE = 0x4006781C                  # move.l %fp@(-36),%sp@- ; pea 0x40216cee
+# param_set_slot_to_id(slot, type, filter): the per-type list (the table at 0x42c64d18)
+# behind p-locks, LFO destinations and CC. wr_slot_id adds page 3's eight on a Waverider
+# track (docs/waverider-pages34.md).
+SLOT_ID_SITE = 0x400DC02A               # move.l %d2,-(%sp) ; moveq #100,%d1 ; movea.l %sp@(8),%a0
+SLOT_ID_STOCK = bytes.fromhex("2f027264206f0008")
 HEAD_STOCK = bytes.fromhex("2f2effdc487940216cee")
 
 
@@ -545,6 +550,11 @@ def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
     edit(TURN_SITE, bytes.fromhex("4eb9") + _long(playout["wr_turn"]) + bytes.fromhex("4e71"),
          "the knob turn's current value: TBL1 and TBL2 read unsigned on a Waverider track, "
          "so a turn from the pool's last tables steps instead of falling to Prim.", TURN_STOCK)
+    _need(content, SLOT_ID_SITE + 8, bytes.fromhex("4ef9") + _long(layout["slot_shim"]),
+          "param_set_slot_to_id's type load, already the type-5 shim's jmp (step 4)")
+    edit(SLOT_ID_SITE, bytes.fromhex("4eb9") + _long(playout["wr_slot_id"]) + bytes.fromhex("4e71"),
+         "the per-type parameter list: page 3's eight records (slots 50..57) on a Waverider "
+         "track, so they take p-locks and LFOs; every other answer stock's", SLOT_ID_STOCK)
     _need(content, HEAD_SITE + 10, bytes.fromhex("2f2a006c4eb9400562e6"), "the header's printf")
     edit(HEAD_SITE, bytes.fromhex("4eb9") + _long(playout["wr_head"]) + bytes.fromhex("4e714e71"),
          "the header: TBL1 and TBL2 on a Waverider track show their value only (the pool "

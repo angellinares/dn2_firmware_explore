@@ -65,9 +65,14 @@ Branch `feature/waverider-pages34-ui`, build `out/wt128/waverider-pages34b-usbpr
 - **The header names them in Waverider's terms:** "Sub Octave=-2", "Noise Type=DIG", "Sub Level=74", "Noise Colour=-10", "Noise Decay=74". SUB and NOIS read 0..127, COLR -64..+63, DEC 0..126 then Inf, and OCT, WAVE, SRC and TYPE by name.
 - **Room:** the pages chunk moved from `0x4670C000` to `0x4670A000` (RAM above BSS, clear of every declared range; bootscreen's stamp ends at `0x46708140`), and the renderer to `LOAD + 0xB00`. The assembly is 2,662 B, the renderer 14,044 B.
 
+- **The per-type list (`wr_slot_id` at `0x400dc02a`):** slots 50..57 of a Waverider sound answer records 227..234. A Waverider sound is type 5, or type 1 on a Waverider track, since the UI reports it as WaveTone. Every other answer is stock's; the hook chains with the type-5 shim at `0x400dc032`.
+  - **Emulator:** the LFO destination list on a Waverider track offers Sub Level, Sub Octave, Sub Wave, Sub Source, Noise Level, Noise Type, Noise Colour and Noise Decay, in their own SYN group before the oscillators', ordered by record id.
+  - **The control:** on a WaveTone track the list is stock's (Osc1 Tune, Osc1 Waveform, Osc1 Phase Dist...), none of the eight.
+
 **Not yet:**
 - the sound, on the DSP;
-- p-locks and LFO destinations for the eight (the hook at `0x400dc02a`);
+- p-locks for the eight, tried on the instrument (they go through the same list);
+- the destinations' order: the eight come first, in a group of their own;
 - a new sound's defaults for them;
 - the oscilloscope;
 - the middle strips of the chosen layouts (both pages draw oscillator 1's wave meanwhile).

@@ -54,7 +54,7 @@ from __future__ import annotations
 from .live import DCLK_DEFAULT, MOVE_SHAPES, SYNC_INDEX, SYNC_NOTES, dclk_names, smth_names
 
 LOAD = 0x4670A000                 # RAM above BSS (0x466b74d0), clear of every declared range (docs/mods-compatibility.md): 0x4670C000 until pages 3 and 4, when the renderer outgrew the 16 KB to C_END; bootscreen's stamp ends at 0x46708140
-C_LOAD = LOAD + 0xB00             # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2, 0x800 until the TBL turn, 0x900 until pages 3 and 4)
+C_LOAD = LOAD + 0xC00             # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2, 0x800 until the TBL turn, 0x900 until pages 3 and 4)
 C_END = 0x46710000                # the platform runtime starts here
 ACTIVE_TRACK = 0x42431A6C         # byte: the UI's active track, 0..15
 KIT_POINTER = 0x800052A0          # the live kit; sound t at + 52 + 1163 t
@@ -73,6 +73,7 @@ SUBTITLE = "Waverider"             # where WaveTone's say "WaveTone"
 
 SUBNOISE = (227, 228, 229, 230, 231, 232, 233, 234)    # SUB OCT WAVE SRC / NOIS TYPE COLR DEC
 SUBNOISE_LABELS = dict(zip(SUBNOISE, ("SUB", "OCT", "WAVE", "SRC", "NOIS", "TYPE", "COLR", "DEC")))
+SUBNOISE_SLOT0 = 50                # their sound slots: 50..57 (the record table's slot field)
 SUBNOISE_PLAIN = (227, 231)        # SUB, NOIS: 0..127 (wr_rate_fmt row 4)
 SUBNOISE_COLR = 233                # -64..+63 (row 5)
 SUBNOISE_DEC = 234                 # 0..126, Inf (row 6)
@@ -135,7 +136,7 @@ RECORD_TABLE = 0x401F7F94         # record id N at + 60 N (the naming routine at
 SPRINTF = 0x40000E82              # (buffer, format, ...), as the stock naming routines call it
 
 LABELS_OUT = ("is_wr", "wr_count", "wr_page", "wr_label", "wr_long", "wr_icons", "wr_grid", "wr_grid9",
-              "wr_fmt", "wr_vfmt", "wr_range", "wr_turn", "wr_head", "descriptors")
+              "wr_fmt", "wr_vfmt", "wr_range", "wr_turn", "wr_head", "wr_slot_id", "descriptors")
 GRID = 0x40017428                 # the stock grid: (view, canvas)
 GRID9 = 0x400175E4                # WaveTone's page-3 grid (page id 9): (view, canvas)
 ICON_PAGE = 7                     # the SYN page draw's id for WaveTone's OSC page
@@ -537,6 +538,40 @@ wr_head:
 head_none:  .asciz ""
 head_value: .asciz "%s%s"
     .align 2
+
+| -- param_set_slot_to_id(slot, type, filter) at 0x400dc02a, every per-machine list's
+| source (p-locks, LFO destinations, CC): its first two instructions (`move.l %d2,-(%sp)
+| ; moveq #100,%d1`, 4 bytes) and the next (`movea.l %sp@(8),%a0`, 4) now jsr here and a
+| nop. Slot 50..57 of a Waverider sound: page 3's record, 227 + slot - 50, straight back
+| to the caller. A Waverider sound is type 5 (its own type: the engine's callers), or type
+| 1 on a Waverider track (the UI reports 5 as WaveTone, 1). Anything else: the three
+| displaced instructions, then on after them (the return address, site + 6, is the nop:
+| back through a1, which the stock code loads only after), with the stack as stock's.
+wr_slot_id:
+    move.l  %sp@(8),%d0
+    subi.l  #{SUBNOISE_SLOT0},%d0
+    moveq   #{len(SUBNOISE) - 1},%d1
+    cmp.l   %d0,%d1
+    bcs.s   9f
+    move.l  %d0,%a0
+    moveq   #{NEW_TYPE},%d1
+    cmp.l   %sp@(12),%d1
+    beq.s   2f
+    moveq   #1,%d1
+    cmp.l   %sp@(12),%d1
+    bne.s   9f
+    bsr.w   is_wr
+    tst.l   %d0
+    beq.s   9f
+2:  move.l  %a0,%d0
+    addi.l  #{SUBNOISE[0]},%d0
+    addq.l  #4,%sp
+    rts
+9:  movea.l %sp@+,%a1
+    move.l  %d2,%sp@-
+    moveq   #100,%d1
+    movea.l %sp@(8),%a0
+    jmp     %a1@
 
     .align 2
 fmt_table:

@@ -1,6 +1,9 @@
 /**
  * LFO trig modes ONE and HALF hold the value they stopped at.
  *
+ * SUPERSEDED (2026-10-09) by lfolength.js, the LFO ONE/HALF fix (both evaluators, and the
+ * length from the start phase). Kept as published for the build confirmed on hardware.
+ *
  * The browser half of `src/dnfw/mods/lfohold.py`, which carries the evidence.
  * The short version: stock 1.11's LFO evaluator stops a ONE at the end of its
  * cycle and a HALF at the middle by overwriting the LFO's output with a fixed

@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<meta name="description" content="Fix the Digitone II LFO trig modes ONE and HALF so they hold the value they stopped at, built entirely in your browser.">
+<meta name="description" content="LFO hold, the first Digitone II fix for LFO trig modes ONE and HALF: what it did, and why the LFO ONE/HALF fix supersedes it.">
 <link rel="stylesheet" href="css/base.css">
 <style>
   .step { margin: 2.5rem 0; }
@@ -64,95 +64,43 @@
 <div class="wrap">
 
 <header class="top">
-  <p class="eyebrow"><a href="index.html">Digitone II Mods</a> / bug fixes / LFO hold</p>
+  <p class="eyebrow"><a href="index.html">Digitone II Mods</a> / bug fixes / LFO hold (superseded)</p>
   <h1>LFO Hold</h1>
   <p class="lede">
-    An LFO in TRIG MODE ONE should run one cycle and stop; in HALF, half a cycle and stop.
-    On the factory firmware it stops, but then jumps to the centre: a square LFO on the
-    filter &ldquo;turns off&rdquo; after one cycle, or &ldquo;jumps back to the middle&rdquo;.
-    This fix makes it hold the value it reached. Pick your firmware, download a signed image.
+    The first fix for LFO TRIG MODE ONE and HALF. It is kept here as a record: what it did,
+    how it was tested, and why it was replaced. It is no longer offered as a download.
   </p>
 </header>
 
 <div class="note">
-  <p><strong>Everything happens in this tab.</strong> Your firmware file is never
-  uploaded — this page has no server to upload it to. It is static files on
-  GitHub Pages; you can read every line in the
-  <a href="https://github.com/angellinares/dn2_firmware_explore/tree/main/site/js">repository</a>.</p>
-  <p><strong>Prove your way back before you flash anything.</strong> The Early Start-up
-  Menu reflashes stock firmware over MIDI. Do that once, with an unmodified image,
-  <em>before</em> you flash a modified one — and back up your +Drive, which no tool
-  here can recover.</p>
+  <p><strong>Superseded on 2026-10-09 by the <a href="lfo-fix.html">LFO ONE/HALF fix</a>.</strong>
+  Two things came to light after this fix was published:</p>
+  <ul>
+    <li>The MIDI tracks&rsquo; LFOs run through a second copy of the LFO code, which this fix did
+    not touch. On a MIDI track, ONE and HALF still jumped when they stopped.</li>
+    <li>A second community report: with the start phase (SPH) moved, ONE and HALF end too early,
+    or in HALF too late. The firmware stops them at fixed points of the cycle, not one cycle (or
+    half) after the trig.
+    <a href="https://discord.com/channels/772159427486023730/772160179386580993/1557769845855092747">Source</a></li>
+  </ul>
+  <p>The LFO ONE/HALF fix does what this one did, on both copies, and fixes the length too.
+  The two write the same bytes, so they were never meant to be combined.</p>
 </div>
 
-<section class="combines">
-  <h2>Combines with</h2>
-  <p>This mod's row of the <a href="index.html#compatibility">compatibility table</a>, generated
-  by <code>dnfw mods matrix</code>: &#10003; combines in either order; &#10003;* in one order
-  only; &#10007; cannot be combined. Hover a cell for the reason.</p>
-<!-- dnfw:matrix-row lfohold -->
-<div class="scroll">
-<table class="matrix">
-  <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfohold</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>reloadconfirm</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
-  <tbody>
-    <tr><th scope="row">LFO hold <code>lfohold</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
-  </tbody>
-</table>
-</div>
-<!-- /dnfw:matrix-row -->
-  <p><!-- dnfw:combines lfohold -->With Arpeggiator SHUF and RAND, Arpeggiator p-locks, Boot screen, LFO modulation of the FX, Layering onto MIDI tracks, A fourth LFO, New LFO waveforms, Arpeggiator on MIDI tracks, More modulation destinations, Reload confirm, Song guard, FM drum transients, USB SysEx probe (diagnostic), Waverider, a sixth machine. See the compatibility table<!-- /dnfw:combines -->.</p>
-</section>
-
-<section class="step">
-  <div class="step-head"><span class="step-num">1</span><h2>Your firmware</h2></div>
-  <p>A Digitone&nbsp;II OS 1.11 <code>.syx</code> from Elektron &mdash; or an image
-  another page here has already built, to combine mods (see the table above).</p>
-
-  <div class="drop" id="drop">
-    <p><label class="filebtn" for="syx">Choose a .syx file</label>
-      <input type="file" id="syx" accept=".syx,.SYX" hidden></p>
-    <p class="hint">or drag it here</p>
-  </div>
-
-  <div id="loaded" class="hidden">
-    <dl class="facts" id="facts"></dl>
-    <div class="verdict" id="verdict"></div>
-  </div>
-</section>
-
-<section class="step hidden" id="step2">
-  <div class="step-head"><span class="step-num">2</span><h2>What changes</h2></div>
+<section>
+  <h2>What it did</h2>
   <dl class="facts">
-    <dt>ONE</dt><dd>After one cycle the LFO stays at the value its waveform ended on, instead of jumping to the centre. A square on the filter ends closed and stays closed</dd>
-    <dt>HALF</dt><dd>After half a cycle the LFO stays at the waveform&rsquo;s middle value. A square stays open; a triangle stays at its peak</dd>
-    <dt>Unchanged</dt><dd>FREE, TRIG and HOLD; the random waveform, which already kept its last value; the next trig, which restarts the LFO as before</dd>
-    <dt>Why</dt><dd>The firmware stops these modes by writing a fixed value per waveform into the LFO&rsquo;s output, the centre for nearly all of them. The fix removes those two writes, so the output keeps the last value it computed</dd>
-    <dt>Writes</dt><dd id="writes">&mdash;</dd>
+    <dt>Fixed</dt><dd>LFO TRIG MODE ONE and HALF jumping to the centre when they stop, instead of holding the value they reached</dd>
+    <dt>ONE</dt><dd>After one cycle the LFO stayed at the value its waveform ended on. A square on the filter ended closed and stayed closed</dd>
+    <dt>HALF</dt><dd>After half a cycle the LFO stayed at the waveform&rsquo;s middle value. A square stayed open; a triangle stayed at its peak</dd>
+    <dt>Why</dt><dd>The firmware stops these modes by writing a fixed value per waveform into the LFO&rsquo;s output, the centre for nearly all of them. The fix removed those two writes (audio tracks)</dd>
+    <dt>Changes</dt><dd>2 in-place edits of 4&nbsp;B in section 3, nothing appended</dd>
+    <dt>Tested</dt><dd>Flashed 2026-10-08 against factory 1.11 on the same patch (a square LFO on the filter): ONE and HALF held with the fix and jumped without it; TRIG and FREE unchanged; the click at a square&rsquo;s edges was the factory&rsquo;s, the same with and without the fix</dd>
+    <dt>Code</dt><dd><code>src/dnfw/mods/lfohold.py</code> and <code>site/js/mods/lfohold.js</code> in the repository, kept as published</dd>
   </dl>
-
-  <div class="note">
-    <p><strong>Confirmed on a Digitone&nbsp;II, 2026-10-08</strong>, against factory 1.11 on the
-    same patch (a square LFO on the filter): ONE and HALF hold with the fix and jump to the
-    middle without it. The click you may hear at a square&rsquo;s edges is the factory&rsquo;s, the
-    same with and without the fix. Reported by the community on official 1.10 as well.</p>
-    <p><a href="https://discord.com/channels/772159427486023730/772160179386580993/1557329020587090001">Source</a></p>
-  </div>
+  <p>Reported by the community on official 1.10 as well.
+  <a href="https://discord.com/channels/772159427486023730/772160179386580993/1557329020587090001">Source</a></p>
 </section>
-
-<section class="step hidden" id="step3">
-  <div class="step-head"><span class="step-num">3</span><h2>Build it</h2></div>
-  <p>
-    The image is rebuilt, re-signed with the key derived from your own file, and
-    every integrity field is checked again. Nothing downloads unless all of them pass.
-  </p>
-  <div class="verdict" id="buildVerdict"></div>
-</section>
-
-<div class="bar hidden" id="bar">
-  <button class="primary" id="buildBtn">Build firmware</button>
-  <button id="resetBtn">Start over</button>
-  <span class="status" id="status"></span>
-</div>
 
 <footer>
   <p>
@@ -162,5 +110,3 @@
 </footer>
 
 </div>
-
-<script type="module" src="js/app/lfohold-page.js"></script>

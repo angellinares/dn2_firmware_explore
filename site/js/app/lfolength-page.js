@@ -1,11 +1,11 @@
 /**
- * The LFO hold page: which mod, and what the user sees of it.
+ * The LFO ONE/HALF fix page: which mod, and what the user sees of it.
  * Loading, verifying, building and the download live in `shell.js`.
  */
 
 import { $, buildAndOffer, openFirmware, status, wireDrop } from "./shell.js";
 import { replacement } from "../firmware.js";
-import { apply, extents } from "../mods/lfohold.js";
+import { apply, extents } from "../mods/lfolength.js";
 
 let state = { firmware: null, filename: "firmware.syx" };
 
@@ -16,7 +16,7 @@ async function ready(firmware) {
   state.firmware = firmware;
   const found = extents(firmware);
   const bytes = found.reduce((n, e) => n + e.length, 0);
-  $("writes").textContent = `${found.length} places in section 3, ${bytes} bytes in all, nothing appended`;
+  $("writes").textContent = `${found.length} ranges, ${bytes} bytes in section 3: 4 hooks, 4 NOP'd stores and the shared start-up loader, which copies a 264-byte code chunk to RAM`;
   for (const id of ["step2", "step3", "bar"]) $(id).classList.remove("hidden");
   status("Loaded. Ready to build.");
 }
@@ -26,7 +26,7 @@ async function buildImage() {
   await buildAndOffer(
     state.firmware,
     new Map([[3, replacement(state.firmware, 3, content)]]),
-    { filename: state.filename, suffix: "lfohold", note: notes[0] });
+    { filename: state.filename, suffix: "lfofix", note: notes[0] });
 }
 
 function open(file) {

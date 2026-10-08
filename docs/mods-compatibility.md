@@ -131,7 +131,7 @@ Two checks came out of the failure:
 ## The table
 
 <!-- dnfw:matrix -->
-| | `arpmodes` | `arpplocks` | `bootscreen` | `fxmod` | `layermidi` | `lfo4` | `lfohold` | `lfowaves` | `midiarp` | `moddest` | `reloadconfirm` | `songguard` | `transients` | `usbprobe` | `waverider` |
+| | `arpmodes` | `arpplocks` | `bootscreen` | `fxmod` | `layermidi` | `lfo4` | `lfolength` | `lfowaves` | `midiarp` | `moddest` | `reloadconfirm` | `songguard` | `transients` | `usbprobe` | `waverider` |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `arpmodes` | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
 | `arpplocks` | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
@@ -139,7 +139,7 @@ Two checks came out of the failure:
 | `fxmod` | yes | yes | yes | - | yes | order | yes | yes | yes | yes | yes | yes | yes | yes | **NO** |
 | `layermidi` | yes | yes | yes | yes | - | yes | yes | yes | **NO** | yes | yes | yes | yes | yes | yes |
 | `lfo4` | yes | yes | yes | order | yes | - | yes | order | yes | order | yes | yes | yes | yes | **NO** |
-| `lfohold` | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes |
+| `lfolength` | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes |
 | `lfowaves` | yes | yes | yes | yes | yes | order | yes | - | yes | yes | yes | yes | yes | yes | yes |
 | `midiarp` | yes | yes | yes | yes | **NO** | yes | yes | yes | - | yes | yes | yes | yes | yes | yes |
 | `moddest` | yes | yes | yes | yes | yes | order | yes | yes | yes | - | yes | yes | yes | yes | yes |

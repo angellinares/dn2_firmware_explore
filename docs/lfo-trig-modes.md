@@ -47,6 +47,49 @@ The same on TRI, SIN and SAW. A later start phase gives a shorter run, and HALF 
 on its own stop point runs a whole cycle: rivvi's report, in stock. The `lfohold`
 NOPs change none of these lengths (`--hold`: the same stops, the last value held).
 
+## Two evaluators, and 1.12
+
+The MIDI tracks' LFOs run through a second evaluator with the same logic, **B**
+(`0x401373dc`, state block `0x4463f498`, phase 0..21,600,000 a cycle; driven with
+`--midi`, which writes B's tempo-derived rate words, zero in `ui1200M`). B stops at the
+same fixed points (ONE 55, 42, 28, 14 frames at SPH 0, 32, 64, 96) and jumps to the same
+stop tables through `%a5@`. **`lfohold` as first published covered A only**: B's stores
+are `0x401374e4` (HALF) and `0x4013751e` (ONE).
+
+**1.12** carries both problems: its evaluator A (`0x40137a06`) is 1.11's instruction for
+instruction, only the addresses moved (+0x2e0; the state block at `0x44640c18`).
+
+## The fix: `lfolength`
+
+`scripts/build_lfo_length.py` (the design and the register notes), the mod
+`src/dnfw/mods/lfolength.py`, four hooks into a 264 B CODE chunk at `0x467f8000`. Measured
+(`--fix`): every start phase now runs one cycle (A 47 frames, B 55) in ONE and half a
+cycle (24, 28) in HALF, and `--compare` shows each tracing TRIG's waveform until the stop,
+**max difference 0** on TRI, SIN and SAW at SPH 0..127, both evaluators.
+
+| SPH | ONE stock | ONE fixed | HALF stock | HALF fixed |
+|---|---|---|---|---|
+| 0 | 47 | 47 | 24 | 24 |
+| 32 | 35 | 47 | 12 | 24 |
+| 64 | 24 | 47 | 47 | 24 |
+| 96 | 12 | 47 | 35 | 24 |
+| 127 | 47 | 47 | 24 | 24 |
+
+The comparison caught one bug of mine on the way: the latch's reconstruction (`extbl`,
+`swap`, `lsll #8`) carried a negative byte's sign bits into the low word, a 1/256-cycle
+offset at SPH 64 and up (0x80 on TRI). A `clrw` after the `swap` fixed it.
+
+Implications traced (the owner's rule):
+- the latch is each record's `+119`, which neither evaluator, their resets, nor B's flag
+  setter (`0x401373b8`, which writes `+118`) touches; whole-record copies carry it;
+- only ONE and HALF shift; TRIG keeps stock's start; a latch left by a mode change mid-run
+  is folded into the phase (`--switch`: ONE/HALF -> FREE, HOLD, TRIG at frame 10 equal stock);
+- RND (SPH = SLEW) never reaches the hooks; waveforms past 0..5 (lfowaves' new ones, where
+  SPH means steps, width, repeats or a position) don't latch;
+- lfowaves repoints B's waveform table inside `lea 0x4020b340,%a1`, so B's waveform hook sits
+  on the 6 bytes before it, and lfohold's B sites are asserted with the instruction after
+  each store.
+
 ## A fix that respects stock
 
 **Shift the phase's origin:** on a trig, start the phase at 0 and latch the SPH point;

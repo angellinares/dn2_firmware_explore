@@ -23,7 +23,7 @@ from ..mods import bootscreen as bootscreen_mod
 from ..mods import fxmod as fxmod_mod
 from ..mods import layermidi as layermidi_mod
 from ..mods import lfo4 as lfo4_mod
-from ..mods import lfohold as lfohold_mod
+from ..mods import lfolength as lfolength_mod
 from ..mods import lfowaves as lfowaves_mod
 from ..mods import midiarp as midiarp_mod
 from ..mods import moddest as moddest_mod
@@ -37,6 +37,7 @@ from .files import read_image
 NAME = "mods"
 HELP = "list, extract and apply firmware mods"
 
+# Not here: superseded mods, kept in the tree for the record (lfohold -> lfolength, 2026-10-09).
 REGISTRY = {transients_mod.ID: transients_mod,
             moddest_mod.ID: moddest_mod,
             bootscreen_mod.ID: bootscreen_mod,
@@ -47,7 +48,7 @@ REGISTRY = {transients_mod.ID: transients_mod,
             arpplocks_mod.ID: arpplocks_mod,
             arpmodes_mod.ID: arpmodes_mod,
             lfo4_mod.ID: lfo4_mod,
-            lfohold_mod.ID: lfohold_mod,
+            lfolength_mod.ID: lfolength_mod,
             songguard_mod.ID: songguard_mod,
             waverider_mod.ID: waverider_mod,
             reloadconfirm_mod.ID: reloadconfirm_mod,

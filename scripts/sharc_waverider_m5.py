@@ -65,7 +65,7 @@ import sharc_waverider_m4 as m4                                # noqa: E402
 import sharc_waverider_render as m1                            # noqa: E402
 import sharc_waverider_voice as m2                             # noqa: E402
 from dnfw.image import bootstream, sharc_object                # noqa: E402
-from dnfw.waverider import dsp, live, render, testtable        # noqa: E402
+from dnfw.waverider import dsp, live, mip, render, testtable        # noqa: E402
 from dnfw.waverider import frame as FR                         # noqa: E402
 from dnfw.waverider import voice as V                          # noqa: E402
 
@@ -76,7 +76,10 @@ LOOP_RESUME = 0x1C944C          # where machine5_live rejoins the per-track chai
 
 
 SHIPPED_KEYS = (("reader", "READER_SW"), ("machine5_live", "LOOP_SW"), ("modulator", "MOD_SW"), ("sync", "SYNC_SW"),
-                ("smooth", "SMOOTH_SW"), ("dclk", "DCLK_SW"), ("sub", "SUB_SW"), ("noise", "NOISE_SW"))
+                ("smooth", "SMOOTH_SW"), ("dclk", "DCLK_SW"), ("sub", "SUB_SW"), ("noise", "NOISE_SW"),
+                (("reader_miph" if mip.INTERP == "hermite" else "reader_mip"), "MIP_SW"))
+# (reader_mip and reader_miph load at the same address; the image carries the one
+# dnfw.waverider.mip.INTERP picks, so that one is the one decoded)
 
 
 def shipped_sources() -> tuple[str, ...]:

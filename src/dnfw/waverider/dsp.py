@@ -52,7 +52,7 @@ import pathlib
 import struct
 
 from ..image import bootstream, sharc_object
-from . import harmonics, live, testtable
+from . import harmonics, live, mip, testtable
 from . import render as reference
 
 STOCK_SHA256 = "336e340aa0cdcd34e314cfa44849f709a3134f6bd4cd57dfc7e15702c83115e2"
@@ -86,8 +86,14 @@ DIRECTORY_MAGIC = 0x57525431                 # 'WRT1'
 # sample pool. DDR has no 0x28 load alias: a block's target is the address itself.
 STOCK_DDR_END = 0x8052FBE0
 DDR_REGION = (0x80600000, 0x80A00000)
-TABLE_BYTES = 0x4000                         # 16 frames x 512 int16
-TABLES_DM = (0x80600000, 0x80604000)
+TABLE_BYTES = 0x4000                         # 16 frames x 512 int16 (a pool table, without levels)
+# The baked tables are mip-mapped (dnfw.waverider.mip): eight levels, 65,024 B each, 64 KB
+# apart. TABLES_AT is where their bytes load; TABLES_DM what the directory (and so the reader
+# block) holds: the address with bit 0 set, which tells reader_mip.asm to pick a level.
+MIP_TABLE_BYTES = 0x10000
+MIP_FLAG = 1
+TABLES_AT = (0x80600000, 0x80610000)
+TABLES_DM = tuple(a | MIP_FLAG for a in TABLES_AT)
 
 IDLE_DM = 0x2DEA00                           # idle_load.asm, in the gap before table 0
 IDLE_SW = IDLE_DM // 2                       # 0x16f500
@@ -144,6 +150,9 @@ NOISE_SW = NOISE_DM // 2                     # 0x171300
 NOISE_DECAY_DM = 0x2E2C00                    # its envelope factor per DEC, 128 float32 (live.noise_decay_table)
 NOISE_STATE_DM = 0x2E2E00                    # 16 voices x 32 bytes (x seeded, live.noise_seeds), then its count
 NOISE_STATE_BYTES = 0x210
+MIP_LEVELS_DM = 0x2E3100                     # reader_mip.asm's level records, 8 x 32 bytes (mip.level_records)
+MIP_DM = 0x2E3400                            # reader_mip.asm: the reader, with mip-mapped tables
+MIP_SW = MIP_DM // 2                         # 0x171a00
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 
 # stock sites
@@ -177,7 +186,7 @@ class DspError(ValueError):
 def tables() -> list[list[list[int]]]:
     """The two original tables, in slot order: 0 = a 32-harmonic saw darkening to a
     sine (`testtable`'s frames reversed), 1 = the overtone series (`harmonics`)."""
-    return [list(reversed(testtable.table())), harmonics.table()]
+    return [mip.MipTable(list(reversed(testtable.table()))), mip.MipTable(harmonics.table())]
 
 
 def sw_to_load(sw: int) -> int:
@@ -204,7 +213,7 @@ def objects() -> dict[str, bytes]:
     return {name: sharc_object.load_bytes(bytes.fromhex(spec[name]["object_parcels_be"]))
             for name in ("reader", "machine5_live", "entry_jump", "idle_load", "idle_jump", "block_count",
                          "entry_mark", "emark_jump", "modulator", "shapes", "load", "pool", "sync",
-                         "smooth", "dclk", "sub", "noise")}
+                         "smooth", "dclk", "sub", "noise", "reader_mip", "reader_miph")}
 
 
 def noise_state() -> bytes:
@@ -272,6 +281,9 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("noise.asm (wr_noise)", NOISE_DM, obj["noise"]),
         ("the noise's decay factors, 128 float32", NOISE_DECAY_DM, struct.pack("<128f", *live.noise_decay_table())),
         ("the noise's state (seeds, then zeros)", NOISE_STATE_DM, noise_state()),
+        ("reader_mip.asm's level records", MIP_LEVELS_DM, mip.level_records()),
+        (("reader_miph.asm (wr_miph, Hermite)", MIP_DM, obj["reader_miph"]) if mip.INTERP == "hermite"
+         else ("reader_mip.asm (wr_mip)", MIP_DM, obj["reader_mip"])),
     ]
     out = []
     for k, (what, at, payload) in enumerate(raw):
@@ -281,11 +293,11 @@ def spans() -> list[tuple[str, int, bytes]]:
         if "asm" in what and end - at - len(payload) < 64:
             raise DspError(f"{what} leaves fewer than 64 bytes of NOP padding")
         out.append((what, dm_to_load(at), payload + bytes(end - at - len(payload))))
-    for what, at, frames in (("table 0: saw -> sine (testtable reversed)", TABLES_DM[0], t[0]),
-                             ("table 1: the overtone series (harmonics)", TABLES_DM[1], t[1])):
-        payload = reference.dsp_bytes(frames)
-        if len(payload) != TABLE_BYTES:
-            raise DspError(f"{what} is {len(payload)} bytes, not {TABLE_BYTES}")
+    for what, at, table in (("table 0: saw -> sine (testtable reversed), mip-mapped", TABLES_AT[0], t[0]),
+                            ("table 1: the overtone series (harmonics), mip-mapped", TABLES_AT[1], t[1])):
+        payload = table.dsp_bytes()
+        if len(payload) > MIP_TABLE_BYTES:
+            raise DspError(f"{what} is {len(payload)} bytes, more than {MIP_TABLE_BYTES}")
         out.append((what, at, payload))                  # DDR: the target is the address
     out.append(("pool directory (zeros: no table loaded yet)", POOL_DIR, bytes(POOL_ZEROS)))
     return out

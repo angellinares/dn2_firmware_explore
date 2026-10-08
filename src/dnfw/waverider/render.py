@@ -70,19 +70,29 @@ def _f32(x: float) -> float:
     return struct.unpack("<f", struct.pack("<f", x))[0]
 
 
-def hermite(ym: float, y0: float, y1: float, y2: float, fr: float, r) -> float:
-    """4-point, 3rd-order Hermite (Catmull-Rom) between y0 and y1 at FR, each operation
-    rounded by R in this order (the DSP's contract, the SHARC study's B2):
+def hermite(ym: float, y0: float, y1: float, y2: float, hfr: float, r) -> float:
+    """4-point, 3rd-order Hermite (Catmull-Rom) between y0 and y1, the SHARC study's B2,
+    in the form reader_miph.asm computes, each operation rounded by R in this order. HFR
+    is half the sample fraction (the DSP converts the fraction one power of two lower,
+    exactly), so no float constant is needed:
 
-        c1 = 0.5 * (y1 - ym)
-        c2 = ((ym - 2.5 * y0) + 2 * y1) - 0.5 * y2
-        c3 = 0.5 * (y2 - ym) + 1.5 * (y0 - y1)
-        y  = ((c3 * fr + c2) * fr + c1) * fr + y0
+        c3 = ((t + t) + t) + (y2 - ym)              t = y0 - y1      3(y0 - y1) + y2 - ym
+        c1 = y1 - ym
+        c2 = ((a + a) + ((b + b) + (b + b))) - d    a = ym - y0, b = y1 - y0, d = y2 - y0
+        fr = hfr + hfr                              exact
+        y  = ((c3 * fr + c2) * fr + c1) * hfr + y0
     """
-    c1 = r(0.5 * r(y1 - ym))
-    c2 = r(r(r(ym - r(2.5 * y0)) + r(2.0 * y1)) - r(0.5 * y2))
-    c3 = r(r(0.5 * r(y2 - ym)) + r(1.5 * r(y0 - y1)))
-    return r(r(r(r(r(r(c3 * fr) + c2) * fr) + c1) * fr) + y0)
+    t = r(y0 - y1)
+    c3 = r(r(r(t + t) + t) + r(y2 - ym))
+    c1 = r(y1 - ym)
+    a = r(ym - y0)
+    a2 = r(a + a)
+    bb = r(y1 - y0)
+    b2 = r(bb + bb)
+    b4 = r(b2 + b2)
+    c2 = r(r(a2 + b4) - r(y2 - y0))
+    fr = r(hfr + hfr)
+    return r(r(r(r(r(r(c3 * fr) + c2) * fr) + c1) * hfr) + y0)
 
 
 def render(table: list[list[int]], phase: int, inc: int, pos: int, count: int,
@@ -126,8 +136,9 @@ def render(table: list[list[int]], phase: int, inc: int, pos: int, count: int,
             b = r(s10 + r(fr * r(s11 - s10)))
         else:
             km, k2 = (k0 - 1) % points, (k0 + 2) % points
-            a = hermite(*(row0[k] / FULL_SCALE for k in (km, k0, k1, k2)), fr, r)
-            b = hermite(*(row1[k] / FULL_SCALE for k in (km, k0, k1, k2)), fr, r)
+            hfr = r((phase & ((1 << shift) - 1)) / (1 << (shift + 1)))
+            a = hermite(*(row0[k] / FULL_SCALE for k in (km, k0, k1, k2)), hfr, r)
+            b = hermite(*(row1[k] / FULL_SCALE for k in (km, k0, k1, k2)), hfr, r)
         out.append(r(a + r(ff * r(b - a))))
         phase = (phase + inc) & 0xFFFFFFFF
     return out, phase

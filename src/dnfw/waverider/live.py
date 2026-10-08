@@ -43,7 +43,7 @@ from __future__ import annotations
 import math
 import struct
 
-from . import render
+from . import mip, render
 
 RATE = 48000.0
 A4_NOTE, A4_HZ = 69, 440.0
@@ -556,7 +556,7 @@ def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
         tun1 = rest[0] if rest else TUN1_ZERO
         g = gain(rest[1] if len(rest) > 1 else LEV1_UNITY)
         tab = tables[slot(tbl1, len(tables))]
-        samples, phase = render.render(tab, phase, increment(tuned(note, tun1), table_t),
+        samples, phase = mip.read(tab, phase, increment(tuned(note, tun1), table_t),
                                        position(wav1),
                                        block, precision)
         out += [_f32(g * y) for y in samples] if precision == "float32" else [g * y for y in samples]
@@ -632,11 +632,11 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
             inc = increment(tuned(note, tun) if k == 0 else tuned2(note, tun, oscs[0][2]), table_t)
             incs[k] = inc
             phase0 = phase[k]
-            samples, phase[k] = render.render(tab, phase0, inc, pos, block, precision)
+            samples, phase[k] = mip.read(tab, phase0, inc, pos, block, precision)
             y = [_f32(g * v) for v in samples] if precision == "float32" else [g * v for v in samples]
             if fade[k] is not None:             # M10b-2: DCLK, the old settings fading out
                 (otab, opos, og), rem = fade[k]
-                old, _ = render.render(otab, phase0, inc, opos, block, precision)
+                old, _ = mip.read(otab, phase0, inc, opos, block, precision)
                 y = crossfade(y, [_f32(og * v) for v in old], rem, dclk_inverses()[min(dclk >> 8, 127)])
                 fade[k][1] = rem - block
                 if fade[k][1] <= 0:

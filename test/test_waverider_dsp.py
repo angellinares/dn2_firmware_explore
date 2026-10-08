@@ -16,7 +16,7 @@ import struct
 import pytest
 
 from dnfw.image import bootstream, sharc_object
-from dnfw.waverider import dsp, harmonics, live, reduce, render, testtable
+from dnfw.waverider import dsp, harmonics, live, mip, reduce, render, testtable
 from dnfw.waverider import render as reference
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -176,14 +176,14 @@ def test_the_loader_renders_through_case_3_from_the_frame_copy():
     assert "R0 = 0x201000;" in src and dsp.LOAD_AREA[1] - dsp.LOAD_AREA[0] == 0x201000
     assert "R0 = 3;" in src and "COMPU(R12, R0);" in src                   # 4-aligned; the start tested alone
     # the load area is DDR the stock image does not use, above both baked tables
-    assert dsp.DDR_REGION[0] <= dsp.TABLES_DM[-1] + dsp.TABLE_BYTES <= dsp.LOAD_AREA[0]
+    assert dsp.DDR_REGION[0] <= dsp.TABLES_AT[-1] + dsp.MIP_TABLE_BYTES <= dsp.LOAD_AREA[0]
     assert dsp.LOAD_AREA[1] <= dsp.DDR_REGION[1]
     assert dsp.LOAD_STATE_DM >= dsp.CMD_TABLE_DM + 32
 
 
 def test_directory_names_both_tables():
     d = dsp.directory()
-    assert struct.unpack_from("<4I", d) == (0x57525431, 2, 0x80600000, 0x80604000)
+    assert struct.unpack_from("<4I", d) == (0x57525431, 2, 0x80600001, 0x80610001)   # bit 0: mip-mapped
 
 
 def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
@@ -192,10 +192,13 @@ def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
     last = max(b.target + b.count for b in bootstream.walk(stock7).blocks
                if b.count and b.target >= 0x80000000)
     assert last == dsp.STOCK_DDR_END
-    for k, at in enumerate(dsp.TABLES_DM):
-        assert last < at and at + dsp.TABLE_BYTES <= 0x80A00000
+    for k, at in enumerate(dsp.TABLES_AT):
+        assert dsp.TABLES_DM[k] == at | dsp.MIP_FLAG
+        assert last < at and at + dsp.MIP_TABLE_BYTES <= 0x80A00000
         assert bootstream.read_span(built, at, dsp.TABLE_BYTES) == \
-            reference.dsp_bytes(dsp.tables()[k])
+            reference.dsp_bytes(dsp.tables()[k])                  # level 0: the frames as today
+        assert bootstream.read_span(built, at, len(dsp.tables()[k].dsp_bytes())) == \
+            dsp.tables()[k].dsp_bytes()
     # L1 keeps only code and state: MOVE's shapes and their random state (M10b-4) sit
     # where table 0 began; after them the loader, its command table and its state, the
     # pool lookup, then SYNC, SMTH and DCLK (M10b-2), their tables, and their state, which
@@ -214,7 +217,12 @@ def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
     at, p = sp["SMTH's and DCLK's state (zeros)"]
     assert at == dsp.dm_to_load(dsp.SMOOTH_STATE_DM) and at + len(p) == dsp.dm_to_load(dsp.SUB_DM) and not any(p)
     at, p = sp["the noise's state (seeds, then zeros)"]           # page 3: the last span runs to the region's end
-    assert at == dsp.dm_to_load(dsp.NOISE_STATE_DM) and at + len(p) == dsp.dm_to_load(dsp.REGION[1])
+    assert at == dsp.dm_to_load(dsp.NOISE_STATE_DM) and at + len(p) == dsp.dm_to_load(dsp.MIP_LEVELS_DM)
+    # then the mip level records and the mip reader (L1 block 1), which runs to the region's end
+    at, p = sp["reader_mip.asm's level records"]
+    assert at == dsp.dm_to_load(dsp.MIP_LEVELS_DM) and at + len(p) == dsp.dm_to_load(dsp.MIP_DM)
+    at, p = sp["reader_miph.asm (wr_miph, Hermite)" if mip.INTERP == "hermite" else "reader_mip.asm (wr_mip)"]
+    assert at == dsp.dm_to_load(dsp.MIP_DM) and at + len(p) == dsp.dm_to_load(dsp.REGION[1])
     assert struct.unpack_from("<128f", sp["the noise's decay factors, 128 float32"][1]) == live.noise_decay_table()
     assert struct.unpack_from("<128f", sp["SMTH's coefficients, 128 float32"][1]) == live.smth_table()
 
@@ -335,12 +343,13 @@ def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
     assert at[0] == dsp.REGION[0] and ends[-1] == dsp.REGION[1]
     assert all(e == a for e, a in zip(ends, at[1:]))           # no unwritten gap
     obj = dsp.objects()
-    code_spans = [x for x in sp if "asm" in x[0]]
-    assert len(code_spans) == 14                              # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm, sync/smooth/dclk.asm (M10b-2), sub/noise.asm (page 3)
+    code_spans = [x for x in sp if "asm (" in x[0]]
+    assert len(code_spans) == 15                              # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm, sync/smooth/dclk.asm (M10b-2), sub/noise.asm (page 3), reader_mip.asm
     for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["idle_load"],
                                                      obj["block_count"], obj["entry_mark"], obj["modulator"],
                                                      obj["shapes"], obj["load"], obj["pool"], obj["sync"],
-                                                     obj["smooth"], obj["dclk"], obj["sub"], obj["noise"])):
+                                                     obj["smooth"], obj["dclk"], obj["sub"], obj["noise"],
+                                                     obj["reader_miph" if mip.INTERP == "hermite" else "reader_mip"])):
         assert payload[:len(code)] == code
         assert len(payload) - len(code) >= 64 and not any(payload[len(code):]), what
 
@@ -380,10 +389,12 @@ def test_the_idle_stub_is_placed_and_returns_where_its_source_says():
     src = [ln.split("//", 1)[0].strip() for ln in text.splitlines()]
     src = [c for c in src if c and not c.startswith(".") and not c.endswith(":")]
     at = {c: dsp.IDLE_SW + o // 2 for c, o in zip(src, offs)}
-    assert at["R8 = DM(0x2de100);"] == 0x16F57B                   # wr_idle_out.
-    assert at["R8 = DM(0x2de10c);"] == 0x16F55A                   # wr_idle_after.
+    assert at["R8 = DM(0x2de100);"] == 0x16F58A                  # wr_idle_out.
     assert be[offs[src.index("IF GE JUMP 0x16f53d;")]:][:6].hex() == "06220016f53d"
-    assert at["R11 = DM(0x2de13c);"] == 0x16F53D                  # wr_idle_busy.
+    assert at["R11 = 666667;"] == 0x16F53D                        # wr_idle_busy.
+    assert dsp.IDLE_SW + offs[src.index("R9 = DM(0x2de144);")] // 2 == 0x16F55B                   # wr_idle_max.
+    assert at["R9 = DM(0x2de148);"] == 0x16F566                   # wr_idle_count.
+    assert at["DM(0x2de148) = R9;"] == 0x16F587                   # wr_idle_keep.
     last = offs[len(src) - 1]
     assert be[last:last + 6].hex() == "063e00b88aab" and dsp.IDLE_RETURN_SW == 0xB88AAB
     # its DM: 0x2de100..0x2de117, after the 16 reader blocks (to 0x2de100) and inside the state block
@@ -394,7 +405,10 @@ def test_the_idle_stub_is_placed_and_returns_where_its_source_says():
                       "DM(0x2de114) = R9;", "DM(0x2de10c) = R8;", "DM(0x2de110) = R9;",
                       "DM(0x2de128) = R9;", "DM(0x2de12c) = R9;",
                       "DM(0x2c49d4) = R9;", "DM(0x2c59d4) = R9;", "DM(0x2c49dc) = R9;", "DM(0x2c59dc) = R9;",
-                      "DM(0x2c49e0) = R9;", "DM(0x2c59e0) = R9;"}
+                      "DM(0x2c49e0) = R9;", "DM(0x2c59e0) = R9;",
+                      "DM(0x2de140) = R9;", "DM(0x2de144) = R10;", "DM(0x2de144) = R9;", "DM(0x2de148) = R9;"}
+    # frame-max's counters (0x2de140..0x2de14b) are past IDLE_STATE but inside the zeroed state block
+    assert 0x2de14c <= dsp.STATE_DM + dsp.STATE_BYTES
 
 
 def test_the_block_counter_goes_on_to_the_loop():

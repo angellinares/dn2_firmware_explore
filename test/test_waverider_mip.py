@@ -54,9 +54,14 @@ def test_a_low_note_reads_level_zero_bit_for_bit():
 def test_hermite_passes_through_samples_and_lines():
     ident = lambda x: x
     assert render.hermite(0.1, 0.4, -0.2, 0.3, 0.0, ident) == 0.4
-    # Catmull-Rom reproduces a straight line exactly
+    # Catmull-Rom reproduces a straight line exactly (hermite takes half the fraction)
     for fr in (0.0, 0.25, 0.5, 0.9):
-        assert abs(render.hermite(-1.0, 0.0, 1.0, 2.0, fr, ident) - fr) < 1e-12
+        assert abs(render.hermite(-1.0, 0.0, 1.0, 2.0, fr / 2, ident) - fr) < 1e-12
+    # and a cubic's samples: the textbook form at fr
+    ym, y0, y1, y2, fr = 0.3, -0.1, 0.7, 0.2, 0.37
+    book = (((-0.5 * ym + 1.5 * y0 - 1.5 * y1 + 0.5 * y2) * fr + (ym - 2.5 * y0 + 2 * y1 - 0.5 * y2)) * fr
+            + 0.5 * (y1 - ym)) * fr + y0
+    assert abs(render.hermite(ym, y0, y1, y2, fr / 2, ident) - book) < 1e-12
 
 
 def test_hermite_reads_cleaner_than_linear_on_a_sine():

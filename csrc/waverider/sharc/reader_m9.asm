@@ -64,6 +64,9 @@
 
 .GLOBAL wr_render5.;
 wr_render5.:
+      // mip-maps (2026-10-08): the reader is reader_mip.asm now; every caller still enters
+      // here. What follows is opt2's reader, kept unreached for the record.
+      JUMP 0x171a00;                    // -> wr_mip. (reader_mip.asm)
       I4 = R4;                          // I4 -> parameter block
       R8 = DM(0, I4);                   // table (a byte address)
       R9 = DM(1, I4);                   // phase
@@ -98,7 +101,7 @@ wr_render5.:
       R15 = -23;                        // sample fraction scale, 2^-23
       R8 = -15;                         // int16 -> float full scale, 2^-15
       R12 = PASS R12;
-      IF EQ JUMP 0x16ebdb;              // -> wr5_done. (count 0: write nothing)
+      IF EQ JUMP 0x16ebde;              // -> wr5_done. (count 0: write nothing)
       R0 = PASS R12;                    // opt2 O4: the count, for LCNTR
       R12 = -16;
       LCNTR = R0, DO wr5_last. UNTIL LCE;   // opt2 O4: E2-active (the mix branch is in the body)
@@ -155,7 +158,7 @@ wr5_loop.:
       // reads it, since the dispatch may leave anything there (NaN included)
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
-      IF EQ JUMP 0x16ebd2;              // -> wr5_store.
+      IF EQ JUMP 0x16ebd5;              // -> wr5_store.
       R1 = DM(0, I2);                   // what osc 1 wrote
       F4 = F4 + F1;
 .GLOBAL wr5_store.;
@@ -236,7 +239,7 @@ wr_mod_have.:
       R0 = DM(0x2de7c4);
       R2 = 0x3200;
       R0 = R0 - R2;
-      IF EQ JUMP 0x16ec60;              // -> wr_mod_lev. (no depth: POS untouched)
+      IF EQ JUMP 0x16ec63;              // -> wr_mod_lev. (no depth: POS untouched)
       R12 = R12 - R12;
       F0 = FLOAT R0 BY R12;
       F2 = FLOAT R1 BY R12;
@@ -247,14 +250,14 @@ wr_mod_have.:
       R12 = PASS R0;
       R4 = R12 + R4;
       R4 = PASS R4;
-      IF GE JUMP 0x16ec60;              // -> wr_mod_lev.
+      IF GE JUMP 0x16ec63;              // -> wr_mod_lev.
       R4 = R4 - R4;
 .GLOBAL wr_mod_lev.;
 wr_mod_lev.:
       // MLEV: LEV x (1 - MLEV/0x7f00 x (1 - shape/0xffff))
       R0 = DM(0x2de7c8);
       R0 = PASS R0;
-      IF EQ JUMP 0x16ec83;              // -> wr_mod_done. (no depth: LEV untouched)
+      IF EQ JUMP 0x16ec86;              // -> wr_mod_done. (no depth: LEV untouched)
       R12 = R12 - R12;
       F0 = FLOAT R0 BY R12;
       R12 = 0x38010204;                 // f32(1 / 0x7f00)

@@ -28,6 +28,8 @@ This module is pure: numbers in, numbers out.
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 POINTS = 512
@@ -95,3 +97,64 @@ def render(levels: list[list[list[int]]], phase: int, inc: int, pos: int, count:
     """`dnfw.waverider.render.render` on the level this block's increment plays."""
     from . import render as reader          # noqa: PLC0415
     return reader.render(levels[level_for(inc)], phase, inc, pos, count, precision, interp)
+
+
+# Between samples: the reader a build ships, "linear" (reader_mip.asm) or "hermite"
+# (reader_miph.asm). The comparison builds set DNFW_WAVERIDER_INTERP=hermite; the default is
+# linear, and everything (the image, the reference, the gates) follows it.
+INTERP = os.environ.get("DNFW_WAVERIDER_INTERP", "linear")
+if INTERP not in ("linear", "hermite"):
+    raise ValueError(f"DNFW_WAVERIDER_INTERP is {INTERP!r}, not linear or hermite")
+
+
+class MipTable(list):
+    """A table (a list of 512-point frames, as everywhere else) that also carries its
+    levels: the reader plays it mip-mapped. Code that only reads frames sees a table."""
+
+    def __init__(self, frames, oversample: int = OVERSAMPLE):
+        super().__init__(frames)
+        self.oversample = oversample
+        self._levels = None
+
+    @property
+    def levels(self) -> list[list[list[int]]]:
+        if self._levels is None:
+            self._levels = table_levels(list(self), self.oversample)
+        return self._levels
+
+    def dsp_bytes(self) -> bytes:
+        """The table in the DSP's DDR: level 0..7 one after another, each frame-major,
+        little-endian int16 (dnfw.waverider.render.dsp_bytes per level)."""
+        from . import render as reader  # noqa: PLC0415
+        return b"".join(reader.dsp_bytes(level) for level in self.levels)
+
+
+def level_offsets(frames: int = 16, oversample: int = OVERSAMPLE) -> list[int]:
+    """Each level's byte offset in a MipTable's DSP bytes."""
+    out, at = [], 0
+    for k in range(LEVELS):
+        out.append(at)
+        at += 2 * frames * points(k, oversample)
+    return out
+
+
+def level_records(frames: int = 16, oversample: int = OVERSAMPLE) -> bytes:
+    """reader_mip.asm's level records, 8 words each: the byte offset, log2 of a frame's
+    bytes, the word index's shift, one sample of phase, the fraction mask and scale, and
+    (reader_miph.asm, Hermite) the scale of half the fraction."""
+    import struct  # noqa: PLC0415
+    out = b""
+    for k, off in enumerate(level_offsets(frames, oversample)):
+        b = points(k, oversample).bit_length() - 1
+        one = 1 << (32 - b)
+        out += struct.pack("<IIiIIiiI", off, b + 1, -(33 - b), one, one - 1, -(32 - b), -(33 - b), 0)
+    return out
+
+
+def read(table, phase: int, inc: int, pos: int, count: int, precision: str = "ideal"):
+    """What the shipped reader plays for TABLE: its levels for a MipTable, level 0
+    otherwise, between samples by INTERP."""
+    from . import render as reader  # noqa: PLC0415
+    if isinstance(table, MipTable):
+        return render(table.levels, phase, inc, pos, count, precision, INTERP)
+    return reader.render(table, phase, inc, pos, count, precision, INTERP)

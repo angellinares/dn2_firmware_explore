@@ -35,17 +35,21 @@ SET_FRAC = bytes.fromhex("a93c000000204e75")                # movel #32,%macsr ;
 TRACK = 0
 SLOT0, DEST = 17, 66                                        # LFO3's eight mirror slots; its cell
 MODES = {"TRIG": 1, "ONE": 3, "HALF": 4}
-WAVES = {"TRI": 0, "SIN": 1, "SQR": 2, "SAW": 3, "EXP": 4, "RMP": 5, "RND": 6}
+WAVES = {"TRI": 0, "SIN": 1, "SQR": 2, "SAW": 3}
 # --hold: the two stores that put the stop table's value in the output (state +84)
 HOLD_SITES = ((0x401378EC, bytes.fromhex("25500054")),     # HALF: movel %a0@,%a2@(84)
               (0x40137920, bytes.fromhex("25480054")))     # ONE:  movel %a0,%a2@(84)
 NOP2 = bytes.fromhex("4e714e71")
 
 
-def run(m, buf, rate, out1, out2, span, mode, wave, frames, mult):
+SPH_SHIFT = 8
+SPD = 0x7000                                                # SPD's cell: 0x4000 is 0, below it negative
+
+
+def run(m, buf, rate, out1, out2, span, mode, wave, frames, mult, sph=0):
     block = MIRROR_AT + TRACK * MIRROR_BYTES
     #       SPD     MULT    FADE    DEST        WAVE       SPH  MODE       DEP
-    row = (0x7000, mult << 8, 0x4000, DEST << 8, wave << 8, 0, mode << 8, 0x6000)
+    row = (SPD, mult << 8, 0x4000, DEST << 8, wave << 8, (sph << SPH_SHIFT) & 0xFFFF, mode << 8, 0x6000)
     resting = bytearray(struct.pack(">H", REST) * (span // 2))
     for k, value in enumerate(row):
         at = block + 2 * (SLOT0 + k)
@@ -71,8 +75,14 @@ def main() -> int:
     p.add_argument("--frames", type=int, default=400)
     p.add_argument("--mult", type=int, default=8, help="MULT index (the speed doubles per step)")
     p.add_argument("--hold", action="store_true", help="NOP the two stop-table stores: hold the last output")
-    p.add_argument("--waves", default="TRI,SIN,SQR,SAW,EXP,RMP,RND", help="comma-separated, from WAVES")
+    p.add_argument("--spd", type=lambda v: int(v, 0), default=0x7000, help="SPD's cell (0x4000 = 0; below it the LFO runs backwards)")
+    p.add_argument("--sph-shift", type=int, default=8, help="SPH's cell = SPH << this (8 or 9: which the panel writes is the question)")
+    p.add_argument("--period", action="store_true", help="the free-running period, and where each SPH starts")
+    p.add_argument("--sph", type=int, nargs="+", default=None,
+                   help="start phases (SPH, 0..127) to sweep: prints, per mode, the frame each stops at")
     a = p.parse_args()
+    global SPH_SHIFT, SPD
+    SPH_SHIFT, SPD = a.sph_shift, a.spd
     m = Machine(SNAP)
     if a.hold:
         for at, stock in HOLD_SITES:
@@ -86,8 +96,27 @@ def main() -> int:
     m.call(frac)
     rate = m.long(RATE)
     out1, out2 = m.alloc(256), m.alloc(256)
-    for wname in a.waves.split(","):
-        wave = WAVES[wname]
+    if a.period:
+        # TRIG on TRI, SPH 0: the frames between successive maxima, and the phase word (state +80)
+        seen = run(m, buf, rate, out1, out2, span, MODES["TRIG"], 0, a.frames, a.mult, 0)
+        peaks = [i for i in range(1, len(seen) - 1) if seen[i] >= seen[i - 1] and seen[i] > seen[i + 1]]
+        print(f"  TRI TRIG peaks at frames {peaks[:8]}; period {[b - a2 for a2, b in zip(peaks, peaks[1:])][:6]}")
+        for sph in a.sph or [0, 32, 64, 96, 127]:
+            seen = run(m, buf, rate, out1, out2, span, MODES["TRIG"], 0, 4, a.mult, sph)
+            print(f"  SPH {sph:3d}: TRIG starts {seen[0]:#06x}")
+        return 0
+    if a.sph is not None:
+        # the free-running period, from TRIG at SPH 0: frames between two maxima
+        for wname, wave in (("TRI", 0), ("SIN", 1), ("SAW", 3)):
+            for mname in ("ONE", "HALF"):
+                row = []
+                for sph in a.sph:
+                    seen = run(m, buf, rate, out1, out2, span, MODES[mname], wave, a.frames, a.mult, sph)
+                    stop = max((i for i in range(1, len(seen)) if seen[i] != seen[i - 1]), default=0)
+                    row.append(f"SPH {sph:3d}: stops at {stop:3d}, start {seen[0]:#06x}, end {seen[-1]:#06x}")
+                print(f"  {wname} {mname:4s} " + " | ".join(row))
+        return 0
+    for wname, wave in WAVES.items():
         for mname, mode in MODES.items():
             seen = run(m, buf, rate, out1, out2, span, mode, wave, a.frames, a.mult)
             print(f"  {wname} {mname:4s}: {describe(seen)}")

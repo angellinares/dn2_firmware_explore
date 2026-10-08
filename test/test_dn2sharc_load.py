@@ -30,3 +30,14 @@ def test_summary_and_the_cost_over_silent(tmp_path):
     sl.append(path, {"when": "t", "label": "waverider-1", **sl.summary([424000] * 5), "over_silent": 8000})
     assert sl.baseline(path) == 416000
     assert path.read_text(encoding="utf-8").splitlines()[0].startswith("when,label,n,median")
+
+
+def test_peak_windows_timed_by_the_dsps_blocks():
+    F = sl.FRAME_CYCLES
+    # (idle total, blocks total): 3 blocks at 40 % idle, then 2 blocks at 10 % idle, then none
+    r = [(0, 10), (int(3 * F * 0.4), 13), (int(3 * F * 0.4 + 2 * F * 0.1), 15),
+         (int(3 * F * 0.4 + 2 * F * 0.1), 15)]
+    w = sl.peak_windows(r)
+    assert len(w) == 2                                   # the window where no block passed is dropped
+    assert w[0]["frames"] == 3 and abs(w[0]["load"] - 0.6) < 1e-6
+    assert w[1]["frames"] == 2 and abs(w[1]["load"] - 0.9) < 1e-6

@@ -4040,3 +4040,7 @@ runs before a PR. The suite only gives a pass when each check has first been sho
 fail on a build made broken on purpose, as the boot check is calibrated against its
 stock control. Built on `scripts/emulib/` and the existing harnesses; and anything about
 digikit itself that we learn goes back there as a PR.
+
+## 35. Granular synthesis (owner, 2026-10-08: after Wavefinder)
+
+The owner wants to explore granular synthesis once Wavefinder is finished. Reference to start from: https://acestudio.ai/blog/what-is-granular-synthesis/ (an introduction: grains, their size, density, position and pitch, windowing, clouds versus time-stretch). Nothing designed yet. What already exists that it would build on: Waverider's table store and reader (tables or samples on the +Drive, loaded at run time), the SHARC cycle estimate (`docs/sharc-cycle-model.md`) to size a grain engine's cost per voice before writing it, and the measured frame budget (opt2: 56.5 % used with 16 Waverider voices).

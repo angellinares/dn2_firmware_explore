@@ -4,6 +4,9 @@
     python tools/dn2sharc_load.py LABEL --idle [--seconds 1] [--n 10]
                                   the SHARC's whole load, from its idle time (a build
                                   with idle_load.asm: dnfw.waverider.dsp, patch 4)
+    python tools/dn2sharc_load.py LABEL --peak [--for 30]
+                                  the same load over the shortest windows the probe
+                                  can resolve: its median, p99 and worst window
 
     e.g.  silent                  first, with nothing sounding: the baseline
           waverider-1             one held note on a Waverider track
@@ -22,6 +25,18 @@ Each reading is one PEEK, so N readings are N frames sampled at the round
 trip's pace, not consecutive frames. The row printed and appended to the CSV is
 the median, the 5th and 95th percentile, the extremes, and the median's
 difference from the CSV's latest `silent` row: the cost of what LABEL added.
+
+**`--peak`** reads the reply's idle and block words back to back for FOR seconds,
+one PEEK each, so each window is one probe round trip (a few frames). Its length
+is the DSP's own block count from the same read (block_count.asm: one block a
+frame), never the ColdFire's frame count from a second call: the two are read at
+different moments, and in a 9-frame window one frame of skew is 11 %. It prints
+the windows' load median, p99 and maximum: an average over a second hides a rare
+heavy frame; this narrows it to a few frames, not one (a single frame's peak needs
+the DSP to keep its own maximum). Missed blocks are checked over the whole run:
+the DSP's blocks against the ColdFire's frames, both cumulative, read at the start
+and the end; fewer blocks than frames (beyond a frame or two of read skew) means
+the per-block routine missed frames, audio the DAC never got.
 A benchmark wants the same track, the same note and no overdrive or FX, so
 only the synth differs.
 
@@ -60,6 +75,7 @@ BLOCKS_WORD = REPLY + 8               # reply word 2: block_count.asm's cumulati
 # reply words 3, 4: idle_load.asm's busy time split at the dispatch's MARK (before / after it)
 FRAME_CYCLES = 1_000_000_000 / 1500   # the core's 1 GHz (docs/sharc-load.md, the clock) per frame
 COLUMNS = ("when", "label", "n", "median", "p5", "p95", "min", "max", "over_silent")
+PEAK_COLUMNS = ("when", "label", "windows", "frames_median", "median", "p99", "max", "missed_blocks")
 
 
 def cycles(word0: bytes) -> int:
@@ -90,11 +106,11 @@ def baseline(path: pathlib.Path) -> int | None:
     return int(rows[-1]["median"]) if rows else None
 
 
-def append(path: pathlib.Path, row: dict) -> None:
+def append(path: pathlib.Path, row: dict, columns=COLUMNS) -> None:
     new = not path.exists()
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, COLUMNS)
+        w = csv.DictWriter(f, columns)
         if new:
             w.writeheader()
         w.writerow(row)
@@ -109,13 +125,15 @@ def main(argv=None) -> int:
     p.add_argument("--port", default="Digitone II")
     p.add_argument("--idle", action="store_true", help="the whole load, from the idle stub's word 1")
     p.add_argument("--seconds", type=float, default=1.0)
+    p.add_argument("--peak", action="store_true", help="the load over the shortest windows the probe resolves")
+    p.add_argument("--for", dest="duration", type=float, default=30.0, help="--peak: seconds to sample")
     a = p.parse_args(argv)
     import dn2probe as dp
     import winmidi
     port = winmidi.Port(a.port, None, None)
-    if a.idle:
+    if a.idle or a.peak:
         try:
-            return idle_main(dp, dp.Probe(port), a)
+            return (peak_main if a.peak else idle_main)(dp, dp.Probe(port), a)
         finally:
             port.close()
     try:
@@ -139,11 +157,64 @@ def main(argv=None) -> int:
     return 0
 
 
+def _reading(dp, pr):
+    """(idle total, ColdFire frames, blocks, MARK0 split, MARK split) now."""
+    data = dp.decode_peek(pr.call(dp.req_peek, IDLE_WORD, 16))["data"]
+    frames = dp.decode_stats(pr.call(dp.req_stats))["frames"]
+    return cycles(data[:4]), frames, cycles(data[4:8]), cycles(data[8:12]), cycles(data[12:16])
+
+
+def peak_windows(readings: list[tuple[int, int]]) -> list[dict]:
+    """Consecutive (idle total, blocks total) readings, each from one PEEK -> per
+    window: blocks (= frames) and load (0..1). Windows with no block are dropped."""
+    out = []
+    for a, b in zip(readings, readings[1:]):
+        load = load_from_idle(a, b)
+        if load is not None:
+            out.append({"frames": (b[1] - a[1]) & 0xFFFFFFFF, "load": load})
+    return out
+
+
+def peak_main(dp, pr, a) -> int:
+    def word_pair():
+        data = dp.decode_peek(pr.call(dp.req_peek, IDLE_WORD, 8))["data"]
+        return cycles(data[:4]), cycles(data[4:8])
+    start = _reading(dp, pr)
+    if not start[2]:
+        print("  reply word 2 is 0: this build has no block_count.asm, so --peak has no window clock")
+        return 1
+    readings, t_end = [word_pair()], time.monotonic() + a.duration
+    while time.monotonic() < t_end:
+        readings.append(word_pair())
+    end = _reading(dp, pr)
+    if readings[-1][0] == readings[0][0]:
+        print("  reply word 1 did not move: this build has no idle stub, or the SHARC never idled")
+        return 1
+    w = peak_windows(readings)
+    loads = sorted(x["load"] for x in w)
+    sizes = sorted(x["frames"] for x in w)
+    at = lambda v, q: v[min(len(v) - 1, int(q * len(v)))]
+    worst = max(w, key=lambda x: x["load"])
+    frames = (end[1] - start[1]) & 0xFFFFFFFF
+    blocks = (end[2] - start[2]) & 0xFFFFFFFF
+    print("%-16s SHARC load over %d windows of %d..%d frames (median %d): median %.1f %%, p99 %.1f %%, "
+          "worst %.1f %% (a %d-frame window)"
+          % (a.label, len(w), sizes[0], sizes[-1], at(sizes, 0.5), 100 * at(loads, 0.5),
+             100 * at(loads, 0.99), 100 * worst["load"], worst["frames"]))
+    print("  blocks %d over %d ColdFire frames (%+d): %s"
+          % (blocks, frames, blocks - frames,
+             "no frame missed" if blocks >= frames - 2 else "THE DSP MISSED FRAMES"))
+    append(a.csv.with_name("sharc-peak-load.csv"), {"when": time.strftime("%Y-%m-%d %H:%M:%S"),
+           "label": a.label, "windows": len(w), "frames_median": at(sizes, 0.5),
+           "median": round(100 * at(loads, 0.5), 2), "p99": round(100 * at(loads, 0.99), 2),
+           "max": round(100 * loads[-1], 2), "missed_blocks": max(0, frames - blocks)},
+           PEAK_COLUMNS)
+    return 0
+
+
 def idle_main(dp, pr, a) -> int:
     def reading():
-        data = dp.decode_peek(pr.call(dp.req_peek, IDLE_WORD, 16))["data"]
-        frames = dp.decode_stats(pr.call(dp.req_stats))["frames"]
-        return cycles(data[:4]), frames, cycles(data[4:8]), cycles(data[8:12]), cycles(data[12:16])
+        return _reading(dp, pr)
     prev, loads = reading(), []
     for _ in range(a.n if a.n != 100 else 10):
         time.sleep(a.seconds)

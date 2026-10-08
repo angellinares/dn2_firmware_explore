@@ -9,6 +9,16 @@ inside blocks. A continuous capture has boundary steps like the inside ones; a b
 twice, skipped, or from the half still being filled shows as boundary steps far larger, and
 as blocks equal to an earlier one.
 
+**The read itself can tear.** A 4 KB read is several PEEKs (PEEK_MAX 1,024), about
+4 ms each, and the ISR writes ~6 blocks per round trip into the oldest positions
+while they are read, so the snapshot's oldest blocks are the newest audio: one
+seam, at a block boundary, about 6 blocks per round trip in (2026-10-08: the
+boundary-step excess first read as the DSP's, clustered at blocks 6, 12, 18 on
+every track and patch). So the write count is read again after the data, and the
+blocks written meanwhile, plus one, are left out of the analysis. `big_boundary`
+and `big_inside` count steps over twice the snapshot's inside p99 at and away
+from block starts: a continuous capture has them in the 1:31 ratio of the steps.
+
 Read-only: PEEK only. Quit Transfer first (memory probe-after-flash).
 """
 from __future__ import annotations
@@ -27,18 +37,26 @@ from dn2probe_frame import read                                # noqa: E402
 RING = 2048
 
 
-def analyse(blob: bytes) -> dict:
+def analyse(blob: bytes, w_after: int | None = None) -> dict:
+    """BLOB (the write count, then the ring) -> continuity figures. W_AFTER, the write
+    count read after the ring, drops the blocks the ISR overwrote during the read."""
     w = int.from_bytes(blob[:4], "big")
     s = [int.from_bytes(blob[4 + 2 * i: 6 + 2 * i], "big", signed=True) for i in range(RING)]
     order = [s[(w + i) % RING] for i in range(RING)]            # oldest first
+    torn = 0 if w_after is None else min(RING, ((w_after - w) & 0xFFFFFFFF) + 32)
     inside, boundary = [], []
-    for i in range(1, RING):
+    for i in range(torn + 1, RING):
         (boundary if (w + i) % 32 == 0 else inside).append(abs(order[i] - order[i - 1]))
-    blocks = [tuple(order[k:k + 32]) for k in range(0, RING, 32)]
+    if not inside or not boundary:
+        return {"w": w, "torn": torn, "peak": max(map(abs, s)), "usable": 0}
+    blocks = [tuple(order[k:k + 32]) for k in range(torn, RING - 31, 32)]
     repeats = sum(1 for k in range(1, len(blocks)) if blocks[k] in blocks[max(0, k - 4):k])
     mean = lambda v: sum(v) / len(v) if v else 0.0
-    return {"w": w, "peak": max(map(abs, s)), "step_inside": mean(inside), "step_boundary": mean(boundary),
-            "worst_boundary": max(boundary), "worst_inside": max(inside), "repeated_blocks": repeats}
+    p99 = sorted(inside)[int(0.99 * len(inside))]
+    return {"w": w, "torn": torn, "peak": max(map(abs, s)), "step_inside": mean(inside),
+            "step_boundary": mean(boundary), "worst_boundary": max(boundary), "worst_inside": max(inside),
+            "big_boundary": sum(1 for d in boundary if d > 2 * p99),
+            "big_inside": sum(1 for d in inside if d > 2 * p99), "repeated_blocks": repeats}
 
 
 def main(argv=None) -> int:
@@ -56,8 +74,9 @@ def main(argv=None) -> int:
         pr = dp.Probe(port)
         for k in range(a.n):
             blob = read(pr, a.ring, 4 + 2 * RING)
-            (a.dir / f"{a.label}.{k:02d}.bin").write_bytes(blob)
-            r = analyse(blob)
+            w_after = int.from_bytes(read(pr, a.ring, 4), "big")
+            (a.dir / f"{a.label}.{k:02d}.bin").write_bytes(blob + w_after.to_bytes(4, "big"))
+            r = analyse(blob, w_after)
             print(f"{a.label}.{k}: " + "  ".join(f"{n} {v:.0f}" if isinstance(v, float) else f"{n} {v}" for n, v in r.items()))
             time.sleep(0.2)
     finally:

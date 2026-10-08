@@ -183,7 +183,8 @@ def test_the_loader_renders_through_case_3_from_the_frame_copy():
 
 def test_directory_names_both_tables():
     d = dsp.directory()
-    assert struct.unpack_from("<4I", d) == (0x57525431, 2, 0x80600001, 0x80610001)   # bit 0: mip-mapped
+    assert struct.unpack_from("<4I", d) == (0x57525431, 2, dsp.TABLES_AT[0] | 1, dsp.TABLES_AT[1] | 1)   # bit 0: mip-mapped
+    assert dsp.TABLES_AT == ((0x80600000, 0x80611000) if mip.guarded() else (0x80600000, 0x80610000))
 
 
 def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
@@ -195,8 +196,10 @@ def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
     for k, at in enumerate(dsp.TABLES_AT):
         assert dsp.TABLES_DM[k] == at | dsp.MIP_FLAG
         assert last < at and at + dsp.MIP_TABLE_BYTES <= 0x80A00000
-        assert bootstream.read_span(built, at, dsp.TABLE_BYTES) == \
-            reference.dsp_bytes(dsp.tables()[k])                  # level 0: the frames as today
+        stride = 2 * mip.row_points(0)                          # level 0's rows: 512 points (+ guards)
+        lead = 2 * mip.GUARD_BEFORE if mip.guarded() else 0
+        for f, frame in enumerate(dsp.tables()[k]):              # level 0: the frames as today
+            assert bootstream.read_span(built, at + f * stride + lead, 1024) == reference.dsp_bytes([frame])
         assert bootstream.read_span(built, at, len(dsp.tables()[k].dsp_bytes())) == \
             dsp.tables()[k].dsp_bytes()
     # L1 keeps only code and state: MOVE's shapes and their random state (M10b-4) sit
@@ -221,7 +224,8 @@ def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
     # then the mip level records and the mip reader (L1 block 1), which runs to the region's end
     at, p = sp["reader_mip.asm's level records"]
     assert at == dsp.dm_to_load(dsp.MIP_LEVELS_DM) and at + len(p) == dsp.dm_to_load(dsp.MIP_DM)
-    at, p = sp["reader_miph.asm (wr_miph, Hermite)" if mip.INTERP == "hermite" else "reader_mip.asm (wr_mip)"]
+    at, p = sp[{"hermite": "reader_miph.asm (wr_miph, Hermite)",
+                 "hermite2": "reader_miph2.asm (wr_miph2, Hermite, 16-bit taps)"}.get(mip.INTERP, "reader_mip.asm (wr_mip)")]
     assert at == dsp.dm_to_load(dsp.MIP_DM) and at + len(p) == dsp.dm_to_load(dsp.REGION[1])
     assert struct.unpack_from("<128f", sp["the noise's decay factors, 128 float32"][1]) == live.noise_decay_table()
     assert struct.unpack_from("<128f", sp["SMTH's coefficients, 128 float32"][1]) == live.smth_table()
@@ -349,7 +353,7 @@ def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
                                                      obj["block_count"], obj["entry_mark"], obj["modulator"],
                                                      obj["shapes"], obj["load"], obj["pool"], obj["sync"],
                                                      obj["smooth"], obj["dclk"], obj["sub"], obj["noise"],
-                                                     obj["reader_miph" if mip.INTERP == "hermite" else "reader_mip"])):
+                                                     obj[{"hermite": "reader_miph", "hermite2": "reader_miph2"}.get(mip.INTERP, "reader_mip")])):
         assert payload[:len(code)] == code
         assert len(payload) - len(code) >= 64 and not any(payload[len(code):]), what
 

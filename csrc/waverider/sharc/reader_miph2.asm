@@ -20,6 +20,9 @@
 // - **One cubic.** The four taps are blended between the frames first, t = a + ff (b - a),
 //   then one Catmull-Rom on the blend: the same curve in exact arithmetic (it is linear in
 //   its samples), half the cubics.
+// - **A plain table** (no flag: every pool table until stage 3) has no levels and no
+//   guards, so it goes to opt2's reader (reader_m9.asm's wr5_plain), which plays it as
+//   before, bit for bit. Only R4 matters there; this entry has not changed it.
 // - **The 28 kHz limit** (dnfw.waverider.mip.LIMITS): T[k] = ceil(28 kHz / top(k)) in
 //   phase units, so a level keeps harmonics to 28 kHz; those past 24 kHz fold back above
 //   20 kHz.
@@ -50,7 +53,7 @@ wr_miph2.:
       R13 = R13 - R13;
       R1 = 1;
       R2 = R8 AND R1;
-      IF EQ JUMP 0x171a5a;              // -> wr_miph2_level. (plain: level 0)
+      IF EQ JUMP 0x16eb03;              // -> wr5_plain. (no flag: opt2's reader, reader_m9.asm; R4 is untouched)
       R8 = R8 - R1;                     // the table's address without the flag
       R2 = 1;
       R1 = 0x95eb41;                    // T[0] = ceil(28 kHz / 255)

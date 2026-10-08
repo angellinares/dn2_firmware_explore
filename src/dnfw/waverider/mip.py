@@ -116,9 +116,10 @@ def render(levels: list[list[list[int]]], phase: int, inc: int, pos: int, count:
 
 # Between samples: the reader a build ships, "linear" (reader_mip.asm), "hermite"
 # (reader_miph.asm) or "hermite2" (reader_miph2.asm: 16-bit loads from guarded rows, the
-# frames blended before one cubic). The comparison builds set DNFW_WAVERIDER_INTERP; the
-# default is linear, and everything (the image, the reference, the gates) follows it.
-INTERP = os.environ.get("DNFW_WAVERIDER_INTERP", "linear")
+# frames blended before one cubic). The default is hermite2 (the owner's pick, 2026-10-09:
+# mip2h); the comparison builds set DNFW_WAVERIDER_INTERP, and everything (the image, the
+# reference, the gates) follows it.
+INTERP = os.environ.get("DNFW_WAVERIDER_INTERP", "hermite2")
 if INTERP not in ("linear", "hermite", "hermite2"):
     raise ValueError(f"DNFW_WAVERIDER_INTERP is {INTERP!r}, not linear, hermite or hermite2")
 
@@ -199,4 +200,6 @@ def read(table, phase: int, inc: int, pos: int, count: int, precision: str = "id
     from . import render as reader  # noqa: PLC0415
     if isinstance(table, MipTable):
         return render(table.levels, phase, inc, pos, count, precision, INTERP)
-    return reader.render(table, phase, inc, pos, count, precision, INTERP)
+    # a plain table: hermite2 hands it to opt2's linear reader (reader_m9.asm's wr5_plain)
+    return reader.render(table, phase, inc, pos, count, precision,
+                         "linear" if INTERP == "hermite2" else INTERP)

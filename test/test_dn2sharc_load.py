@@ -47,3 +47,11 @@ def test_bar_histogram_places_heavy_windows_in_the_bar():
     w = [{"load": 0.9, "t": 2.0 * k + 0.01} for k in range(5)] + [{"load": 0.5, "t": 1.0}]
     h = sl.bar_histogram(w, 2.0, 0.8, bins=16)
     assert h[0] == 5 and sum(h) == 5
+
+
+def test_frame_max_summary():
+    F = sl.FRAME_CYCLES
+    s = [(5, 0), (5, int(0.6 * F)), (5, int(0.6 * F)), (6, int(1.05 * F)), (7, int(0.61 * F))]
+    r = sl.frame_max_summary(s)
+    assert r["overruns"] == 2
+    assert [round(x, 2) for x in r["windows"]] == [0.6, 1.05, 0.61]

@@ -311,6 +311,6 @@ wr_mod_done.:
       R8 = R8 OR R7;
       DM(0, I0) = R8;
       // PRST, moved to idle_load.asm's span in M10b-3 for the room; it returns to the loop
-      JUMP 0x16f58a;                    // -> wr_prst. (idle_load.asm)
+      JUMP 0x16f599;                    // -> wr_prst. (idle_load.asm)
 .wr_mod_b..end:
       .type wr_mod_b.,STT_FUNC;

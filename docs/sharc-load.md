@@ -204,3 +204,20 @@ Three independent points agree:
 
 ## Open
 - **What the count covers.** This is the handler's own count. Whether it includes all voice rendering (the engine task at `0x1c9fe7` loops on the handler) or leaves some DSP work out has not been read.
+
+## Bursts, and a build that keeps its own maximum (2026-10-08)
+
+`dn2sharc_load.py --peak` (one PEEK per window of ~4 frames, timed by the DSP's block count) found, on opt2: median 57 %, p99 59-61 %, and rare bursts of ~40-49 frame-% of extra work, every 15-30 s, more often with note starts. They are the platform's: the factory WaveTone shows the same size (4 in 120 s at 16 trigs a bar; Waverider 3 in 60 s). No frame was ever missed (the DSP's blocks equal the ColdFire's frames over every run), and the audio was continuous at every block boundary (`tools/dn2scope_ring.py`, with its torn-read fix). Voice stealing (two tracks, priority high) adds ~1 point and a +0.5-point step at each trig, not bigger bursts.
+
+A window of 2+ frames can't tell a burst spread over two frames (~81 % each, harmless) from one frame at ~105 %. **The frame-max build** (`waverider-framemax-usbprobe`, branch `feature/sharc-frame-max`) makes the idle stub keep, in reply words 3 and 4 (in place of the A/C split): the number of busy stretches of a frame or more, and each ~1 s window's longest stretch. `--frame-max` reads them. A stretch of a frame or more means the DSP never idled for a whole frame; it is an audio overrun only if the stretch was all audio work (a lower-priority DSP task could fill it too), so a non-zero count is checked against the missed-block count and the audio, not read alone.
+
+**The frame-max readings (2026-10-08, framemax build, same saved project, 120 s each):**
+
+| state | overruns | longest stretch per ~1 s: median | max |
+|---|---|---|---|
+| nothing playing | 0 | 59.6 % | 59.7 % |
+| 16-note chord (retrig each bar) | 0 | 60.4 % | 61.9 % (every ~16 s) |
+| 16 trigs a bar | 0 | 61.6 % | 63.1 % |
+| voice stealing (2 tracks, priority high) | 0 | 64.1 % | 67.0 % |
+
+One overrun since boot, before the first reading (start-up or the project load). **No busy stretch reached 68 % of a frame in any state**, so `--peak`'s ~45 frame-% "bursts" weren't DSP work: most likely the probe's read of reply words 1-2 straddling the ColdFire's per-frame rewrite of its reply copy (same size on every machine, more often when the ColdFire is busier), unverified. The worst frame leaves ~33 % of the DSP free.

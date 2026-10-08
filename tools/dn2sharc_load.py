@@ -4,6 +4,9 @@
     python tools/dn2sharc_load.py LABEL --idle [--seconds 1] [--n 10]
                                   the SHARC's whole load, from its idle time (a build
                                   with idle_load.asm: dnfw.waverider.dsp, patch 4)
+    python tools/dn2sharc_load.py LABEL --frame-max [--for 60]
+                                  a frame-max build: frame overruns, and each second's
+                                  longest busy stretch, kept by the DSP itself
     python tools/dn2sharc_load.py LABEL --peak [--for 30]
                                   the same load over the shortest windows the probe
                                   can resolve: its median, p99 and worst window
@@ -25,6 +28,14 @@ Each reading is one PEEK, so N readings are N frames sampled at the round
 trip's pace, not consecutive frames. The row printed and appended to the CSV is
 the median, the 5th and 95th percentile, the extremes, and the median's
 difference from the CSV's latest `silent` row: the cost of what LABEL added.
+
+**`--frame-max`** needs a build whose idle stub keeps them (feature/sharc-frame-max,
+idle_load.asm): reply word 3 counts busy stretches of a frame or more (666,667 cycles:
+the DSP worked through a frame boundary without idling once), and word 4 holds the
+longest stretch of the last window of 1,500 stretches (about a second). It samples
+both four times a second for FOR seconds and prints the overruns in that time and the
+windows' longest stretches as a share of a frame. In such a build words 3 and 4 no
+longer carry the A/C split, so `--idle`'s split columns are meaningless there.
 
 **`--peak`** reads the reply's idle and block words back to back for FOR seconds,
 one PEEK each, so each window is one probe round trip (a few frames). Its length
@@ -126,6 +137,7 @@ def main(argv=None) -> int:
     p.add_argument("--idle", action="store_true", help="the whole load, from the idle stub's word 1")
     p.add_argument("--seconds", type=float, default=1.0)
     p.add_argument("--peak", action="store_true", help="the load over the shortest windows the probe resolves")
+    p.add_argument("--frame-max", action="store_true", help="a frame-max build: overruns and each second's longest stretch")
     p.add_argument("--for", dest="duration", type=float, default=30.0, help="--peak: seconds to sample")
     p.add_argument("--bar", type=float, default=0.0,
                    help="--peak: a bar's length in seconds (e.g. 2.0 at 120 BPM): where in the bar the heavy windows fall")
@@ -133,9 +145,10 @@ def main(argv=None) -> int:
     import dn2probe as dp
     import winmidi
     port = winmidi.Port(a.port, None, None)
-    if a.idle or a.peak:
+    if a.idle or a.peak or a.frame_max:
         try:
-            return (peak_main if a.peak else idle_main)(dp, dp.Probe(port), a)
+            run = frame_max_main if a.frame_max else peak_main if a.peak else idle_main
+            return run(dp, dp.Probe(port), a)
         finally:
             port.close()
     try:
@@ -235,6 +248,39 @@ def peak_main(dp, pr, a) -> int:
            "median": round(100 * at(loads, 0.5), 2), "p99": round(100 * at(loads, 0.99), 2),
            "max": round(100 * loads[-1], 2), "missed_blocks": max(0, frames - blocks)},
            PEAK_COLUMNS)
+    return 0
+
+
+def frame_max_summary(samples: list[tuple[int, int]]) -> dict:
+    """(overruns total, last window's longest stretch) samples -> the overruns in the
+    span and the distinct window maxima, as shares of a frame."""
+    overruns = (samples[-1][0] - samples[0][0]) & 0xFFFFFFFF
+    windows, prev = [], None
+    for _, longest in samples:
+        if longest and longest != prev:
+            windows.append(longest / FRAME_CYCLES)
+        prev = longest
+    return {"overruns": overruns, "windows": windows}
+
+
+def frame_max_main(dp, pr, a) -> int:
+    def words():
+        data = dp.decode_peek(pr.call(dp.req_peek, IDLE_WORD + 8, 8))["data"]
+        return cycles(data[:4]), cycles(data[4:8])
+    samples, t_end = [words()], time.monotonic() + a.duration
+    while time.monotonic() < t_end:
+        time.sleep(0.25)
+        samples.append(words())
+    r = frame_max_summary(samples)
+    w = sorted(r["windows"])
+    if not w:
+        print("  reply word 4 never held a window's maximum: not a frame-max build, or no busy stretch closed a window")
+        return 1
+    print("%-16s frame overruns in %.0f s: %d   (cumulative since boot: %d)"
+          % (a.label, a.duration, r["overruns"], samples[-1][0]))
+    print("  longest busy stretch per ~1 s window, as a share of a frame, over %d windows: "
+          "median %.1f %%, max %.1f %%   (all: %s)"
+          % (len(w), 100 * w[len(w) // 2], 100 * w[-1], ", ".join("%.0f" % (100 * x) for x in r["windows"])))
     return 0
 
 

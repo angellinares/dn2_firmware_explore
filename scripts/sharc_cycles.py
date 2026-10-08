@@ -186,7 +186,7 @@ def fit_cmd(a) -> int:
         for k in free:
             old[k] = {"value": round(float(new[k]), 3), "unit": table[k].unit, "source": "fit",
                       "note": f"fit {a.measurements.name}: " + ", ".join(p.name for p in pairs)}
-        COSTS.write_text(json.dumps({"costs": old}, indent=1) + "\n", encoding="utf-8")
+        COSTS.write_bytes((json.dumps({"costs": old}, indent=1) + "\n").encode("utf-8"))
         print(f"  -> {COSTS}")
     return 0
 

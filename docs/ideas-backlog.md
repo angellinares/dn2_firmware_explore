@@ -4044,3 +4044,16 @@ digikit itself that we learn goes back there as a PR.
 ## 35. Granular synthesis (owner, 2026-10-08: after Wavefinder)
 
 The owner wants to explore granular synthesis once Wavefinder is finished. Reference to start from: https://acestudio.ai/blog/what-is-granular-synthesis/ (an introduction: grains, their size, density, position and pitch, windowing, clouds versus time-stretch). Nothing designed yet. What already exists that it would build on: Waverider's table store and reader (tables or samples on the +Drive, loaded at run time), the SHARC cycle estimate (`docs/sharc-cycle-model.md`) to size a grain engine's cost per voice before writing it, and the measured frame budget (opt2: 56.5 % used with 16 Waverider voices).
+
+## 36. Investigate: LFO trig modes ONE and HALF don't hold (community report, 2026-10-07/08)
+
+**The report** (Elektron community Discord, 2026-10-07): with a square LFO (driving a comb filter between two harmonics), TRIG MODE **ONE** seems to turn the modulation off after one cycle instead of holding its last position, and **HALF** jumps back to the middle. The reporter runs a modded box; a second user reproduced it on official **1.10**, and saw it with other LFO parameters too ("the full/half settings are broken"). A workaround offered there: SQR, speed 0, TRIG, and use the fade ramp. The owner said they'd investigate, and maybe "mod it out of sight".
+
+**What the manual promises** (DN2 manual, MOD page, Trig Mode; in our words): ONE starts at the trig, runs to the end of the waveform and stops, acting like an envelope; HALF runs to the middle of the waveform and stops. So the question is what "stops" outputs. Holding the value reached is what the reporter expects. A square's value at the end of its cycle, or at the middle, sits on an edge, so the output could flip there by design. And depth may be applied as if the LFO were off.
+
+**How to settle it:**
+1. Reproduce on **1.11** (the owner's version) with a clear control: a square, ONE and HALF, START PHASE 0 and 64, on a destination you can see (filter frequency), against TRIG mode.
+2. In the emulator, use the LFO evaluator mapped for LFO4 (evaluator A; `scripts/lfo4_harness.py`, `docs/` LFO4 notes). Step one LFO through a ONE and a HALF cycle and read its output and phase state after the stop. Is the stopped output the waveform at the stop phase, at phase 0, or zero (the bipolar centre)?
+3. If it's a bug (the output drops to 0, or the phase wraps before the hold), find where the stop is decided, and size a patch: hold the last output value, or clamp the phase just short of the wrap.
+
+**A fix would be a ColdFire patch.** The LFOs are computed on the ColdFire (the modulation reaches the DSP in the frame), so no DSP change. It goes through the usual gates and test plan; the factory behaviour stays selectable if any doubt remains.

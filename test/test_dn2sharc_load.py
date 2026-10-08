@@ -41,3 +41,9 @@ def test_peak_windows_timed_by_the_dsps_blocks():
     assert len(w) == 2                                   # the window where no block passed is dropped
     assert w[0]["frames"] == 3 and abs(w[0]["load"] - 0.6) < 1e-6
     assert w[1]["frames"] == 2 and abs(w[1]["load"] - 0.9) < 1e-6
+
+
+def test_bar_histogram_places_heavy_windows_in_the_bar():
+    w = [{"load": 0.9, "t": 2.0 * k + 0.01} for k in range(5)] + [{"load": 0.5, "t": 1.0}]
+    h = sl.bar_histogram(w, 2.0, 0.8, bins=16)
+    assert h[0] == 5 and sum(h) == 5

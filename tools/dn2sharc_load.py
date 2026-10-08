@@ -127,6 +127,8 @@ def main(argv=None) -> int:
     p.add_argument("--seconds", type=float, default=1.0)
     p.add_argument("--peak", action="store_true", help="the load over the shortest windows the probe resolves")
     p.add_argument("--for", dest="duration", type=float, default=30.0, help="--peak: seconds to sample")
+    p.add_argument("--bar", type=float, default=0.0,
+                   help="--peak: a bar's length in seconds (e.g. 2.0 at 120 BPM): where in the bar the heavy windows fall")
     a = p.parse_args(argv)
     import dn2probe as dp
     import winmidi
@@ -164,14 +166,25 @@ def _reading(dp, pr):
     return cycles(data[:4]), frames, cycles(data[4:8]), cycles(data[8:12]), cycles(data[12:16])
 
 
-def peak_windows(readings: list[tuple[int, int]]) -> list[dict]:
+def peak_windows(readings: list[tuple[int, int]], stamps: list[float] | None = None) -> list[dict]:
     """Consecutive (idle total, blocks total) readings, each from one PEEK -> per
-    window: blocks (= frames) and load (0..1). Windows with no block are dropped."""
+    window: blocks (= frames), load (0..1) and, given STAMPS (seconds, one per
+    reading), the window's end time. Windows with no block are dropped."""
     out = []
-    for a, b in zip(readings, readings[1:]):
+    for k, (a, b) in enumerate(zip(readings, readings[1:])):
         load = load_from_idle(a, b)
         if load is not None:
-            out.append({"frames": (b[1] - a[1]) & 0xFFFFFFFF, "load": load})
+            out.append({"frames": (b[1] - a[1]) & 0xFFFFFFFF, "load": load,
+                        "t": None if stamps is None else stamps[k + 1]})
+    return out
+
+
+def bar_histogram(windows: list[dict], bar: float, above: float, bins: int = 16) -> list[int]:
+    """How many windows over ABOVE fall in each 1/BINS of a BAR-second bar (by end time)."""
+    out = [0] * bins
+    for x in windows:
+        if x["load"] > above and x["t"] is not None:
+            out[int((x["t"] % bar) / bar * bins) % bins] += 1
     return out
 
 
@@ -183,14 +196,16 @@ def peak_main(dp, pr, a) -> int:
     if not start[2]:
         print("  reply word 2 is 0: this build has no block_count.asm, so --peak has no window clock")
         return 1
-    readings, t_end = [word_pair()], time.monotonic() + a.duration
+    t0 = time.monotonic()
+    readings, stamps, t_end = [word_pair()], [0.0], t0 + a.duration
     while time.monotonic() < t_end:
         readings.append(word_pair())
+        stamps.append(time.monotonic() - t0)
     end = _reading(dp, pr)
     if readings[-1][0] == readings[0][0]:
         print("  reply word 1 did not move: this build has no idle stub, or the SHARC never idled")
         return 1
-    w = peak_windows(readings)
+    w = peak_windows(readings, stamps)
     loads = sorted(x["load"] for x in w)
     sizes = sorted(x["frames"] for x in w)
     at = lambda v, q: v[min(len(v) - 1, int(q * len(v)))]
@@ -201,6 +216,17 @@ def peak_main(dp, pr, a) -> int:
           "worst %.1f %% (a %d-frame window)"
           % (a.label, len(w), sizes[0], sizes[-1], at(sizes, 0.5), 100 * at(loads, 0.5),
              100 * at(loads, 0.99), 100 * worst["load"], worst["frames"]))
+    log = a.csv.with_name("sharc-peak-windows") / f"{a.label}.csv"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("w", encoding="utf-8", newline="") as f:
+        f.write("t,frames,load\n")
+        f.writelines("%.4f,%d,%.4f\n" % (x["t"], x["frames"], x["load"]) for x in w)
+    if a.bar:
+        hi = at(loads, 0.99)
+        h = bar_histogram(w, a.bar, hi)
+        print("  windows over p99 (%.1f %%) by sixteenth of a %.2f s bar: %s" % (100 * hi, a.bar, h))
+        print("  (the clock is this computer's, started at an arbitrary point in the bar: look for a cluster, not its position)")
+    print("  windows logged to", log)
     print("  blocks %d over %d ColdFire frames (%+d): %s"
           % (blocks, frames, blocks - frames,
              "no frame missed" if blocks >= frames - 2 else "THE DSP MISSED FRAMES"))

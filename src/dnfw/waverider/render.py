@@ -100,8 +100,9 @@ def render(table: list[list[int]], phase: int, inc: int, pos: int, count: int,
     """-> (`count` samples, the phase after them).
 
     `phase`, `inc` are u32 (see the module docstring); `pos` is Q16. INTERP is between
-    samples: "linear" (the DSP's today) or "hermite" (`hermite`); between frames it is
-    linear either way.
+    samples: "linear" (the DSP's today), "hermite" (`hermite` on each frame, then the frames
+    blended) or "hermite2" (each of the four taps blended between the frames first, then one
+    `hermite`: the same curve in exact arithmetic, half the cubics; reader_miph2.asm).
     """
     frames, points = len(table), len(table[0])
     bits = points.bit_length() - 1
@@ -115,7 +116,7 @@ def render(table: list[list[int]], phase: int, inc: int, pos: int, count: int,
         raise ValueError("count must be at least 1")
     if precision not in ("ideal", "float32"):
         raise ValueError(f"unknown precision {precision!r}")
-    if interp not in ("linear", "hermite"):
+    if interp not in ("linear", "hermite", "hermite2"):
         raise ValueError(f"unknown interpolation {interp!r}")
     r = _f32 if precision == "float32" else (lambda x: x)
     f0 = pos >> 16
@@ -134,11 +135,21 @@ def render(table: list[list[int]], phase: int, inc: int, pos: int, count: int,
             s10, s11 = row1[k0] / FULL_SCALE, row1[k1] / FULL_SCALE
             a = r(s00 + r(fr * r(s01 - s00)))
             b = r(s10 + r(fr * r(s11 - s10)))
-        else:
+        elif interp == "hermite":
             km, k2 = (k0 - 1) % points, (k0 + 2) % points
             hfr = r((phase & ((1 << shift) - 1)) / (1 << (shift + 1)))
             a = hermite(*(row0[k] / FULL_SCALE for k in (km, k0, k1, k2)), hfr, r)
             b = hermite(*(row1[k] / FULL_SCALE for k in (km, k0, k1, k2)), hfr, r)
+        else:
+            km, k2 = (k0 - 1) % points, (k0 + 2) % points
+            hfr = r((phase & ((1 << shift) - 1)) / (1 << (shift + 1)))
+            taps = []
+            for k in (km, k0, k1, k2):
+                sa, sb = row0[k] / FULL_SCALE, row1[k] / FULL_SCALE
+                taps.append(r(sa + r(ff * r(sb - sa))))
+            out.append(hermite(*taps, hfr, r))
+            phase = (phase + inc) & 0xFFFFFFFF
+            continue
         out.append(r(a + r(ff * r(b - a))))
         phase = (phase + inc) & 0xFFFFFFFF
     return out, phase

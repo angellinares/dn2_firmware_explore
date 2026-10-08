@@ -55,10 +55,25 @@ def top_harmonic(level: int) -> int:
     return (POINTS >> (level + 1)) - 1
 
 
-def level_for(inc: int) -> int:
-    """The level a block at phase increment INC (u32) plays: the lowest that doesn't alias."""
+def limit_units(limit_hz: int) -> int:
+    """A level's harmonic limit in phase-increment units (24 kHz is HALF)."""
+    return limit_hz * (1 << 32) // 48000
+
+
+def thresholds(limit_hz: int) -> list[int]:
+    """The reader's T[k], k = 0..6: a block plays level k while inc < T[k]
+    (ceil(limit / top harmonic), so top_harmonic(k) * inc < limit)."""
+    lim = limit_units(limit_hz)
+    return [-(-lim // top_harmonic(k)) for k in range(LEVELS - 1)]
+
+
+def level_for(inc: int, limit_hz: int | None = None) -> int:
+    """The level a block at phase increment INC (u32) plays: the lowest whose top harmonic
+    stays below LIMIT_HZ (24 kHz: nothing aliases; above it, the harmonics past Nyquist
+    fold back to 48 kHz - h, at or above 48 kHz - LIMIT_HZ)."""
+    lim = limit_units(LIMIT_HZ if limit_hz is None else limit_hz)
     k = 0
-    while k < LEVELS - 1 and top_harmonic(k) * (inc & 0xFFFFFFFF) >= HALF:
+    while k < LEVELS - 1 and top_harmonic(k) * (inc & 0xFFFFFFFF) >= lim:
         k += 1
     return k
 
@@ -99,12 +114,33 @@ def render(levels: list[list[list[int]]], phase: int, inc: int, pos: int, count:
     return reader.render(levels[level_for(inc)], phase, inc, pos, count, precision, interp)
 
 
-# Between samples: the reader a build ships, "linear" (reader_mip.asm) or "hermite"
-# (reader_miph.asm). The comparison builds set DNFW_WAVERIDER_INTERP=hermite; the default is
-# linear, and everything (the image, the reference, the gates) follows it.
+# Between samples: the reader a build ships, "linear" (reader_mip.asm), "hermite"
+# (reader_miph.asm) or "hermite2" (reader_miph2.asm: 16-bit loads from guarded rows, the
+# frames blended before one cubic). The comparison builds set DNFW_WAVERIDER_INTERP; the
+# default is linear, and everything (the image, the reference, the gates) follows it.
 INTERP = os.environ.get("DNFW_WAVERIDER_INTERP", "linear")
-if INTERP not in ("linear", "hermite"):
-    raise ValueError(f"DNFW_WAVERIDER_INTERP is {INTERP!r}, not linear or hermite")
+if INTERP not in ("linear", "hermite", "hermite2"):
+    raise ValueError(f"DNFW_WAVERIDER_INTERP is {INTERP!r}, not linear, hermite or hermite2")
+
+# The harmonic limit a level is chosen against (2026-10-08): 24 kHz (nothing aliases, but
+# just above an octave step the band ends near 12 kHz) for mip1 / mip1h; hermite2 ships
+# 28 kHz (the worst band 14 kHz, every alias it adds between 20 and 24 kHz). The reader's
+# thresholds are literals in its source, so each reader has one limit.
+LIMITS = {"linear": 24000, "hermite": 24000, "hermite2": 28000}
+LIMIT_HZ = LIMITS[INTERP]
+
+# hermite2's rows carry guard samples, so its four taps (i-1 .. i+2) never wrap: one
+# sample before the frame (its last) and two after (its first two).
+GUARD_BEFORE, GUARD_AFTER = 1, 2
+
+
+def guarded() -> bool:
+    return INTERP == "hermite2"
+
+
+def row_points(level: int, oversample: int = OVERSAMPLE) -> int:
+    """The int16 a stored row of LEVEL takes: its points, plus the guards for hermite2."""
+    return points(level, oversample) + ((GUARD_BEFORE + GUARD_AFTER) if guarded() else 0)
 
 
 class MipTable(list):
@@ -124,9 +160,13 @@ class MipTable(list):
 
     def dsp_bytes(self) -> bytes:
         """The table in the DSP's DDR: level 0..7 one after another, each frame-major,
-        little-endian int16 (dnfw.waverider.render.dsp_bytes per level)."""
+        little-endian int16 (dnfw.waverider.render.dsp_bytes per level); for hermite2 each
+        row is [last, frame..., first, second] (`row_points`)."""
         from . import render as reader  # noqa: PLC0415
-        return b"".join(reader.dsp_bytes(level) for level in self.levels)
+        if not guarded():
+            return b"".join(reader.dsp_bytes(level) for level in self.levels)
+        rows = [[f[-1]] + list(f) + list(f[:GUARD_AFTER]) for level in self.levels for f in level]
+        return reader.dsp_bytes(rows)
 
 
 def level_offsets(frames: int = 16, oversample: int = OVERSAMPLE) -> list[int]:
@@ -134,14 +174,16 @@ def level_offsets(frames: int = 16, oversample: int = OVERSAMPLE) -> list[int]:
     out, at = [], 0
     for k in range(LEVELS):
         out.append(at)
-        at += 2 * frames * points(k, oversample)
+        at += 2 * frames * row_points(k, oversample)
     return out
 
 
 def level_records(frames: int = 16, oversample: int = OVERSAMPLE) -> bytes:
     """reader_mip.asm's level records, 8 words each: the byte offset, log2 of a frame's
     bytes, the word index's shift, one sample of phase, the fraction mask and scale, and
-    (reader_miph.asm, Hermite) the scale of half the fraction."""
+    (reader_miph.asm, Hermite) the scale of half the fraction. reader_miph2.asm reads the
+    same words: its row stride is 2^(word 1) + 6 bytes (the guards), its sample index is
+    phase >> (32 - b) (word 5 as a shift)."""
     import struct  # noqa: PLC0415
     out = b""
     for k, off in enumerate(level_offsets(frames, oversample)):

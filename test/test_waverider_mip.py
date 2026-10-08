@@ -34,11 +34,11 @@ def test_level_zero_is_the_frame_and_levels_are_band_limited():
 def test_level_for_keeps_every_kept_harmonic_below_nyquist():
     for hz in (30, 65.4, 130.8, 261.6, 523.3, 1046.5, 2093.0, 4186.0, 8000.0):
         inc = render.increment(hz)
-        k = mip.level_for(inc)
+        k = mip.level_for(inc, 24000)
         assert mip.top_harmonic(k) * hz < 24000 or k == mip.LEVELS - 1
         if k:
             assert mip.top_harmonic(k - 1) * hz >= 24000           # the lowest that doesn't alias
-    assert mip.level_for(render.increment(65.4)) == 0
+    assert mip.level_for(render.increment(65.4), 24000) == 0
 
 
 def test_a_low_note_reads_level_zero_bit_for_bit():
@@ -74,3 +74,35 @@ def test_hermite_reads_cleaner_than_linear_on_a_sine():
     lin = np.asarray(render.render(table, 0, inc, 0, 256, "ideal", "linear")[0])
     her = np.asarray(render.render(table, 0, inc, 0, 256, "ideal", "hermite")[0])
     assert np.abs(her - ideal).max() < np.abs(lin - ideal).max() / 10
+
+
+def test_hermite2_is_hermite_with_the_frames_blended_first():
+    # the same curve in exact arithmetic (Catmull-Rom is linear in its samples)
+    p = np.arange(64) * 2 * np.pi / 64
+    a = [int(v) for v in np.rint(20000 * np.sin(p))]
+    b = [int(v) for v in np.rint(20000 * np.sin(3 * p + 1))]
+    table = [a, b]
+    inc = render.increment(700.0)
+    one = np.asarray(render.render(table, 0, inc, 0x8000, 128, "ideal", "hermite")[0])
+    two = np.asarray(render.render(table, 0, inc, 0x8000, 128, "ideal", "hermite2")[0])
+    assert np.abs(one - two).max() < 1e-12
+
+
+def test_thresholds_match_the_readers_literals():
+    import pathlib
+    import re
+    sharc = pathlib.Path(__file__).resolve().parent.parent / "csrc/waverider/sharc"
+    for name, limit in (("reader_mip", 24000), ("reader_miph", 24000), ("reader_miph2", 28000)):
+        lits = [int(x, 16) for x in re.findall(r"R1 = (0x[0-9a-f]+);\s*// T\[\d\]", (sharc / f"{name}.asm").read_text())]
+        assert lits == mip.thresholds(limit), name
+    assert mip.thresholds(24000)[0] == 0x808081          # ceil(2^31 / 255)
+
+
+def test_level_limit_keeps_harmonics_to_the_limit():
+    for hz in (196.0, 392.0, 2093.0):
+        inc = render.increment(hz)
+        for limit in (24000, 28000):
+            k = mip.level_for(inc, limit)
+            assert mip.top_harmonic(k) * hz < limit or k == mip.LEVELS - 1
+            if k:
+                assert mip.top_harmonic(k - 1) * hz >= limit * (1 - 1e-6)

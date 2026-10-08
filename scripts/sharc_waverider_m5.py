@@ -77,7 +77,7 @@ LOOP_RESUME = 0x1C944C          # where machine5_live rejoins the per-track chai
 
 SHIPPED_KEYS = (("reader", "READER_SW"), ("machine5_live", "LOOP_SW"), ("modulator", "MOD_SW"), ("sync", "SYNC_SW"),
                 ("smooth", "SMOOTH_SW"), ("dclk", "DCLK_SW"), ("sub", "SUB_SW"), ("noise", "NOISE_SW"),
-                (("reader_miph" if mip.INTERP == "hermite" else "reader_mip"), "MIP_SW"))
+                ({"hermite": "reader_miph", "hermite2": "reader_miph2"}.get(mip.INTERP, "reader_mip"), "MIP_SW"))
 # (reader_mip and reader_miph load at the same address; the image carries the one
 # dnfw.waverider.mip.INTERP picks, so that one is the one decoded)
 
@@ -383,6 +383,23 @@ def decode_check(dk, image: Image, work: pathlib.Path, use_selmap: bool) -> dict
             insn = dk.st.decode_at(image.memory, None, load_sw + off // 2)
             if insn.kind in ("unknown", "uncertain") or (insn.length_bytes or 0) != end - off:
                 bad.append(f"+{off} digikit {insn.type_name}/{insn.length_bytes} vs {end - off}")
+            sub = m3.SUBWORD_LOAD.match(lines[k].split("//", 1)[0].strip())
+            if sub:
+                # a byte / short-word load, re-encoded as Type 3d (m3.fix_subword): digikit must
+                # read 3d with this load's fields; selmap has no Type 3d and reads 3a with a
+                # compute field of 0x31xxxx, so it is held to the load's registers only
+                f = insn.fields or {}
+                l, x, w = m3.SUBWORD[sub.group(4).upper()]
+                want3d = {"u": 1, "i[2:0]": int(sub.group(2)), "m[2:0]": int(sub.group(3)), "cond[4:0]": 31,
+                          "g": 0, "d": 0, "l": l, "ureg[6:0]": int(sub.group(1)), "ex": 0, "w": w, "x": x}
+                if insn.type_name != "3d" or {k2: f.get(k2) for k2 in want3d} != want3d:
+                    bad.append(f"+{off} digikit {insn.type_name} {f} vs Type 3d {want3d}")
+                if use_selmap:
+                    n, text = sel.get(off, (0, "?"))
+                    plain = norm(f"R{sub.group(1)} = DM(I{sub.group(2)}, M{sub.group(3)})")
+                    if n != 6 or not norm(text).endswith(plain):
+                        bad.append(f"+{off} selmap {n}B '{text}' vs a 3a reading of '{lines[k].strip()}'")
+                continue
             if use_selmap:
                 n, text = sel.get(off, (0, "?"))
                 want = norm(lines[k])

@@ -27,8 +27,10 @@ produce the same file, byte for byte; that is tested.
 | `layermidi` | TRACK WILL TRIGGER onto a MIDI track plays it over MIDI: notes, chords, releases | confirmed on hardware | yes |
 | `arpplocks` | MODE, SPEED, RANGE and N.LEN lockable per trig | confirmed on hardware; changed since, emulator-checked | no |
 | `bootscreen` | Your own mark in the start-up animation | confirmed on hardware | yes |
+| `reloadconfirm` | FUNC + NO can ask before it reloads the pattern (a switch in SETTINGS > PERSONALIZE) | confirmed on hardware | yes |
 | `transients` | Replace the FM drum transient bank with your own samples | confirmed on hardware | yes |
 | `songguard` | A song with a damaged row count loads as empty instead of halting the instrument (a stock bug) | confirmed on hardware | no |
+| `lfohold` | LFO TRIG MODE ONE and HALF hold the value they stopped at, instead of jumping to the centre (a stock bug) | confirmed on hardware | yes |
 
 **Combining them.** `dnfw mods matrix` tries every pair in both orders and
 writes the result into `docs/mods-compatibility.md` and the site. Most pairs

@@ -1,0 +1,21 @@
+#!/bin/sh
+# Keep the site's common sections in step with the mods (scripts/site_check.py).
+#
+# Runs only when the commit touches the site, the README or a mod. The check is
+# fast; regenerating the compatibility table is not (~8 minutes), so a commit
+# that changes a mod only gets a reminder to rerun `dnfw mods matrix`, and the
+# check fails if the table no longer has every mod.
+#
+# Installed for this clone by `git config core.hooksPath .githooks` (as pre-push).
+# Bypass deliberately with --no-verify.
+
+staged=$(git diff --cached --name-only)
+echo "$staged" | grep -qE '^(site/|README\.md$|src/dnfw/mods/|src/dnfw/cli/mods\.py$)' || exit 0
+
+if echo "$staged" | grep -qE '^src/dnfw/(mods/|cli/mods\.py$)'; then
+    echo "pre-commit: a mod changed. If its bytes or its compatibility changed, rerun" >&2
+    echo "  python -m dnfw.cli.main mods matrix STOCK_1.11.syx --page site/<each page>.html --page docs/mods-compatibility.md" >&2
+fi
+
+python scripts/site_check.py || exit 1
+exit 0

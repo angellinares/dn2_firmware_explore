@@ -131,21 +131,23 @@ Two checks came out of the failure:
 ## The table
 
 <!-- dnfw:matrix -->
-| | `arpmodes` | `arpplocks` | `bootscreen` | `fxmod` | `layermidi` | `lfo4` | `lfowaves` | `midiarp` | `moddest` | `songguard` | `transients` | `usbprobe` | `waverider` |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `arpmodes` | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| `arpplocks` | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| `bootscreen` | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| `fxmod` | yes | yes | yes | - | yes | order | yes | yes | yes | yes | yes | yes | **NO** |
-| `layermidi` | yes | yes | yes | yes | - | yes | yes | **NO** | yes | yes | yes | yes | yes |
-| `lfo4` | yes | yes | yes | order | yes | - | order | yes | order | yes | yes | yes | **NO** |
-| `lfowaves` | yes | yes | yes | yes | yes | order | - | yes | yes | yes | yes | yes | yes |
-| `midiarp` | yes | yes | yes | yes | **NO** | yes | yes | - | yes | yes | yes | yes | yes |
-| `moddest` | yes | yes | yes | yes | yes | order | yes | yes | - | yes | yes | yes | yes |
-| `songguard` | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes |
-| `transients` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | **NO** |
-| `usbprobe` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes |
-| `waverider` | yes | yes | yes | **NO** | yes | **NO** | yes | yes | yes | yes | **NO** | yes | - |
+| | `arpmodes` | `arpplocks` | `bootscreen` | `fxmod` | `layermidi` | `lfo4` | `lfohold` | `lfowaves` | `midiarp` | `moddest` | `reloadconfirm` | `songguard` | `transients` | `usbprobe` | `waverider` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `arpmodes` | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `arpplocks` | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `bootscreen` | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `fxmod` | yes | yes | yes | - | yes | order | yes | yes | yes | yes | yes | yes | yes | yes | **NO** |
+| `layermidi` | yes | yes | yes | yes | - | yes | yes | yes | **NO** | yes | yes | yes | yes | yes | yes |
+| `lfo4` | yes | yes | yes | order | yes | - | yes | order | yes | order | yes | yes | yes | yes | **NO** |
+| `lfohold` | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes |
+| `lfowaves` | yes | yes | yes | yes | yes | order | yes | - | yes | yes | yes | yes | yes | yes | yes |
+| `midiarp` | yes | yes | yes | yes | **NO** | yes | yes | yes | - | yes | yes | yes | yes | yes | yes |
+| `moddest` | yes | yes | yes | yes | yes | order | yes | yes | yes | - | yes | yes | yes | yes | yes |
+| `reloadconfirm` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | yes |
+| `songguard` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes |
+| `transients` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | **NO** |
+| `usbprobe` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes |
+| `waverider` | yes | yes | yes | **NO** | yes | **NO** | yes | yes | yes | yes | yes | yes | **NO** | yes | - |
 
 - **arpmodes + arpplocks: yes**: disjoint bytes. *Note:* emulator, 2026-09-26: arpplocks' MODE lock takes its ceiling from setMode's clamp (0x4004bf01), which arpmodes widens to 6. Turning MODE with every step held locks DOWN CYCL SHUF RAND RAND RAND with both, and DOWN CYCL CYCL ... with arpplocks alone (scripts/emu_arp_modes.py). A locked SHUF or RAND playing from a trig was not run.
 - **arpmodes + midiarp: yes**: disjoint bytes. *Note:* a MIDI track's arp runs the same step, so SHUF and RAND should reach MIDI tracks; not run.

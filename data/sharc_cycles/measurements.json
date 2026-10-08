@@ -1,0 +1,10 @@
+{"note": "Instrument readings 2026-10-08 (tools/dn2sharc_load.py --idle, 60 x 1 s, medians), NEW project: track 1 Waverider, LEV2 100, SUB 100 SIN, NOIS 100 PNK DEC ~40, 16 voices. The unit renders all 16 voices playing or not, so silent pairs use the runner's one-voice test patch scaled by 16.",
+ "free": ["dag_move_use", "br_taken_ok", "br_wrong_taken"],
+ "pairs": [
+  {"name": "opt1 - scope2, silent", "a": "waverider-opt1-usbprobe:osc2+sub+noise", "b": "waverider-scope2-usbprobe:osc2+sub+noise",
+   "cycles_a": 400000.2, "cycles_b": 420666.9, "scale": 16, "sigma": 1000},
+  {"name": "opt2 - opt1, silent", "a": "waverider-opt2-usbprobe:osc2+sub+noise", "b": "waverider-opt1-usbprobe:osc2+sub+noise",
+   "cycles_a": 376667.0, "cycles_b": 400000.2, "scale": 16, "sigma": 1000},
+  {"name": "opt2 - scope2, silent", "a": "waverider-opt2-usbprobe:osc2+sub+noise", "b": "waverider-scope2-usbprobe:osc2+sub+noise",
+   "cycles_a": 376667.0, "cycles_b": 420666.9, "scale": 16, "sigma": 1000}
+ ]}

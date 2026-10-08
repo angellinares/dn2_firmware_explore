@@ -1,0 +1,16 @@
+{
+ "costs": {
+  "dag_move_use": {
+   "value": 1.052,
+   "unit": "scale",
+   "source": "fit",
+   "note": "fit measurements.json: opt1 - scope2, silent, opt2 - opt1, silent, opt2 - scope2, silent"
+  },
+  "br_taken_ok": {
+   "value": 8.219,
+   "unit": "cycles",
+   "source": "fit",
+   "note": "fit measurements.json: opt1 - scope2, silent, opt2 - opt1, silent, opt2 - scope2, silent"
+  }
+ }
+}

@@ -10,7 +10,9 @@ where it can be:
   (`bake.to_bytes`); which side swaps is a question for the transfer, not here.
 - **Phase** is a u32 accumulator: bits 31..23 index the 512 samples, bits 22..0
   are the fraction to the next one, and it wraps mod 2^32, which is mod 512
-  samples. `increment(freq, rate)` gives the step.
+  samples. `increment(freq, rate)` gives the step. A shorter frame (a mip level,
+  `dnfw.waverider.mip`: 512 >> k points) takes its index from the top 9 - k bits
+  and its fraction from the rest; the step and the cycle are the same.
 - **Frame position** is Q16: bits 19..16 the frame 0..15, bits 15..0 the
   fraction towards the next frame; frame 15 has no next and interpolates with
   itself.
@@ -68,21 +70,43 @@ def _f32(x: float) -> float:
     return struct.unpack("<f", struct.pack("<f", x))[0]
 
 
+def hermite(ym: float, y0: float, y1: float, y2: float, fr: float, r) -> float:
+    """4-point, 3rd-order Hermite (Catmull-Rom) between y0 and y1 at FR, each operation
+    rounded by R in this order (the DSP's contract, the SHARC study's B2):
+
+        c1 = 0.5 * (y1 - ym)
+        c2 = ((ym - 2.5 * y0) + 2 * y1) - 0.5 * y2
+        c3 = 0.5 * (y2 - ym) + 1.5 * (y0 - y1)
+        y  = ((c3 * fr + c2) * fr + c1) * fr + y0
+    """
+    c1 = r(0.5 * r(y1 - ym))
+    c2 = r(r(r(ym - r(2.5 * y0)) + r(2.0 * y1)) - r(0.5 * y2))
+    c3 = r(r(0.5 * r(y2 - ym)) + r(1.5 * r(y0 - y1)))
+    return r(r(r(r(r(r(c3 * fr) + c2) * fr) + c1) * fr) + y0)
+
+
 def render(table: list[list[int]], phase: int, inc: int, pos: int, count: int,
-           precision: str = "ideal") -> tuple[list[float], int]:
+           precision: str = "ideal", interp: str = "linear") -> tuple[list[float], int]:
     """-> (`count` samples, the phase after them).
 
-    `phase`, `inc` are u32 (see the module docstring); `pos` is Q16.
+    `phase`, `inc` are u32 (see the module docstring); `pos` is Q16. INTERP is between
+    samples: "linear" (the DSP's today) or "hermite" (`hermite`); between frames it is
+    linear either way.
     """
     frames, points = len(table), len(table[0])
-    if points != 1 << (PHASE_BITS - INDEX_SHIFT):
-        raise ValueError(f"a frame must be {1 << (PHASE_BITS - INDEX_SHIFT)} points, not {points}")
+    bits = points.bit_length() - 1
+    if points != 1 << bits or not 2 <= bits <= PHASE_BITS - INDEX_SHIFT:
+        raise ValueError(f"a frame must be a power of two, 4..{1 << (PHASE_BITS - INDEX_SHIFT)} "
+                         f"points, not {points}")
+    shift = PHASE_BITS - bits                 # 23 at 512 points; a mip level's is wider (dnfw.waverider.mip)
     if not 0 <= pos <= (frames - 1) * POS_ONE:
         raise ValueError(f"position {pos:#x} is outside 0..{(frames - 1) * POS_ONE:#x}")
     if count < 1:
         raise ValueError("count must be at least 1")
     if precision not in ("ideal", "float32"):
         raise ValueError(f"unknown precision {precision!r}")
+    if interp not in ("linear", "hermite"):
+        raise ValueError(f"unknown interpolation {interp!r}")
     r = _f32 if precision == "float32" else (lambda x: x)
     f0 = pos >> 16
     f1 = min(f0 + 1, frames - 1)
@@ -90,13 +114,20 @@ def render(table: list[list[int]], phase: int, inc: int, pos: int, count: int,
     row0, row1 = table[f0], table[f1]
     out = []
     for _ in range(count):
-        k0 = phase >> INDEX_SHIFT
+        k0 = phase >> shift
         k1 = (k0 + 1) % points
-        fr = (phase & FRAC_MASK) / (1 << INDEX_SHIFT)   # exact
-        s00, s01 = row0[k0] / FULL_SCALE, row0[k1] / FULL_SCALE
-        s10, s11 = row1[k0] / FULL_SCALE, row1[k1] / FULL_SCALE
-        a = r(s00 + r(fr * r(s01 - s00)))
-        b = r(s10 + r(fr * r(s11 - s10)))
+        # exact at 512 points (23 bits); a mip level's wider fraction is rounded to float32,
+        # as the DSP's FLOAT of it is
+        fr = r((phase & ((1 << shift) - 1)) / (1 << shift))
+        if interp == "linear":
+            s00, s01 = row0[k0] / FULL_SCALE, row0[k1] / FULL_SCALE
+            s10, s11 = row1[k0] / FULL_SCALE, row1[k1] / FULL_SCALE
+            a = r(s00 + r(fr * r(s01 - s00)))
+            b = r(s10 + r(fr * r(s11 - s10)))
+        else:
+            km, k2 = (k0 - 1) % points, (k0 + 2) % points
+            a = hermite(*(row0[k] / FULL_SCALE for k in (km, k0, k1, k2)), fr, r)
+            b = hermite(*(row1[k] / FULL_SCALE for k in (km, k0, k1, k2)), fr, r)
         out.append(r(a + r(ff * r(b - a))))
         phase = (phase + inc) & 0xFFFFFFFF
     return out, phase

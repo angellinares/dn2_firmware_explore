@@ -108,7 +108,11 @@ SPH << 9 scale this note first assumed was that halving.
 negative, then a cycle back if below 0: every value stays within one cycle. Run as the
 bare instruction sequence over phases 0..cycle and points -cycle..cycle for both
 evaluators' cycles: 6056/6056 equal (phase + point) mod cycle; the old sequence reads
-2.564 cycles at 0.9 of a run from SPH 85.
+2.564 cycles at 0.9 of a run from SPH 85. Audio-track and MIDI-track grids 1680/1680 again.
+
+**On the instrument (lfofix2, e0c4b6bc, 2026-10-09):** all pass, on an audio track (the
+owner): lfofix1's steps and SPH 74, 85, 100, 120 run their full length and hold, no flips
+or click at the end.
 
 **Lessons.** A test rig's arithmetic is part of what is tested: check the emulator's
 multiply against the chip's definition before trusting a result that depends on it. And

@@ -481,7 +481,7 @@ one is checked against factory firmware on the same patch, so the fix is the onl
   <div class="mod-head">
     <h3>LFO ONE and HALF: the right length, and a hold at the end</h3>
     <span class="mod-id">lfolength</span>
-    <span class="tag research">Emulator-tested; on the instrument: pending</span>
+    <span class="tag ready">Confirmed on hardware</span>
   </div>
   <p>
     The manual says TRIG MODE ONE runs the LFO for one cycle and stops, and HALF for half a
@@ -505,7 +505,7 @@ one is checked against factory firmware on the same patch, so the fix is the onl
     <dt>Fixes</dt><dd>ONE and HALF ending early (or HALF late) when SPH isn&rsquo;t 0; ONE and HALF jumping to the centre when they stop. Audio and MIDI tracks</dd>
     <dt>Cause</dt><dd>The LFO code tests for the cycle&rsquo;s middle and end instead of half a cycle and a cycle since the trig, and stops by writing a fixed value per waveform into the output. The fix counts from the start phase and removes those writes</dd>
     <dt>Changes</dt><dd>8 edits in section 3 (4 hooks, 4 stores removed) and a 260&nbsp;B code chunk the shared start-up loader copies to RAM</dd>
-    <dt>Tested</dt><dd>In the emulator, factory against fixed over every mode, waveform, start phase, speed direction, fade and retrig pattern: only ONE and HALF change, and they trace the free-running waveform until they stop. The hold on audio tracks was confirmed on hardware on 2026-10-08 as the first version, <a href="lfo-hold.html">LFO hold</a>, which this supersedes. OS 1.12 has the same bugs</dd>
+    <dt>Tested</dt><dd>In the emulator, factory against fixed over every mode, waveform, start phase, speed direction, fade and retrig pattern: only ONE and HALF change, and they trace the free-running waveform until they stop. Confirmed on a Digitone&nbsp;II on 2026-10-09 on an audio track: ONE and HALF run their full length from every start phase tried (SPH 0 to 120) and hold at the end. The hold was first confirmed on 2026-10-08 as <a href="lfo-hold.html">LFO hold</a>, which this supersedes. MIDI tracks: emulator. OS 1.12 has the same bugs</dd>
     <dt>Combines</dt><dd><!-- dnfw:combines lfolength -->With Arpeggiator SHUF and RAND, Arpeggiator p-locks, Boot screen, LFO modulation of the FX, Layering onto MIDI tracks, A fourth LFO, New LFO waveforms, Arpeggiator on MIDI tracks, More modulation destinations, Reload confirm, Song guard, FM drum transients, USB SysEx probe (diagnostic), Waverider, a sixth machine. See the compatibility table<!-- /dnfw:combines --></dd>
   </dl>
 

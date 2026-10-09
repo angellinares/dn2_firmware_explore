@@ -66,7 +66,11 @@ def source() -> list[list[float]]:
 
 
 def write_wav(path: pathlib.Path, samples: np.ndarray) -> None:
-    pcm = np.clip(np.rint(samples * 32767), -32768, 32767).astype("<i2").tobytes()
+    """Floats (full scale 1.0) or int16 values (an integer array, written as they are)."""
+    if np.issubdtype(samples.dtype, np.integer):
+        pcm = samples.astype("<i2").tobytes()
+    else:
+        pcm = np.clip(np.rint(samples * 32767), -32768, 32767).astype("<i2").tobytes()
     path.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(path), "wb") as w:
         w.setnchannels(1)
@@ -89,7 +93,7 @@ def main(argv=None) -> int:
     src = source()
     tables = {g: reduce.to_int16(src, count=g[0], points=g[1]) for g in GEOMETRIES}
     for (f, n), t in tables.items():
-        write_wav(a.out / "tables" / f"WRtest_{f}x{n}_wt{n}.wav", np.array(t, dtype=float).ravel() / 32768)
+        write_wav(a.out / "tables" / f"WRtest_{f}x{n}_wt{n}.wav", np.array(t, dtype=np.int16).ravel())
         (a.out / "tables" / f"WRtest_{f}x{n}.raw").write_bytes(np.array(t, dtype=">i2").tobytes())
         print(f"  {f:2d} x {n:4d}: {2 * f * n / 1024:6.0f} KB as stored, "
               f"{G.size_bytes(f, n) / 1024:6.0f} KB with levels and guards")

@@ -5,12 +5,12 @@
 
 The build's own layout (`src/dnfw/mods/waverider_code.json`) says where to look. The
 +Drive is zeros but for a store, written here with `dnfw.waverider.store`: slot 0 the
-pool test table (`testtable.pool_table`), slot 3 the baked test table, and slot 5 a
-table the pool cannot play (32 waves). The image boots from reset with `panel_drive
---card-extent`.
+pool test table (`testtable.pool_table`), slot 3 the baked test table, slot 5 a table
+the pool cannot play (frames of 96 points: not a power of two), and slot 7 one of 5
+frames of 1024 points. The image boots from reset with `panel_drive --card-extent`.
 
 With no pool list on the card the working project follows the automatic pool: pool
-entries 0 and 1 are slots 0 and 3. `--record` also places a pool list for the working
+entries 0, 1 and 2 are slots 0, 3 and 7. `--record` also places a pool list for the working
 project (record 0, `dnfw.waverider.poolrecord`) naming slots [3, 5, 0]: entry 0 is
 slot 3, entry 1 is empty (slot 5 is stored but not playable), entry 2 is slot 0, and
 the count is 3 (docs/for-dnx-waverider-pool.md). `--full` makes that list all 128
@@ -27,10 +27,10 @@ the chunk's sequence in reply word 6 (0x800053a4 + 0x18), which nothing else wri
 | check | must hold |
 |---|---|
 | the store | wr_store: generation 1, no read errors |
-| the pool | slots 0 and 3 (slot 5, 32 waves, left out); names their first 15 characters |
-| the frames | every frame the loader sent is `dnfw.waverider.loadframes`'s, byte for byte: table 0 to pool 0, table 3 to pool 1, then the directory naming both |
-| acknowledged | the pool reads ready, count 2, every chunk acked once and none resent |
-| the display spans | both pool tables' spans at 0x46a00000 equal `dnfw.waverider.wave.pool_spans` |
+| the pool | slots 0, 3 and 7 (slot 5, 96 points, left out); names their first 15 characters |
+| the frames | every frame the loader sent is `dnfw.waverider.loadframes`'s, byte for byte: the request directory's magic cleared, table 0 to entry 0, table 3 to entry 1, table 7 to entry 2 (whole sectors), then the directory with their geometry, its magic last |
+| acknowledged | the pool reads ready, count 3, every chunk acked once and none resent |
+| the display spans | the pool tables' spans at 0x46a00000 equal `dnfw.waverider.wave.pool_spans` (16 shown frames of any table) |
 | no answer | a second boot, never acknowledged: the loader gives up after 8 timeouts and the pool offers nothing |
 
 The frames go to out/waverider/emu_pool_frames.bin, for
@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import pathlib
 import struct
 import subprocess
@@ -67,7 +68,7 @@ REPLY_ACK = 0x800053A4 + 0x18     # reply word 6, load.asm's answer
 SPANS = 0x46A00000
 SPAN_BYTES = 16 * 2 * 96
 QUIET = "00" * 44                 # a frame's first 44 bytes, its masks (32..43) zero
-AUTO_PLAN = [0, 3]                # pool entry j -> store slot, None empty
+AUTO_PLAN = [0, 3, 7]             # pool entry j -> store slot, None empty
 RECORD_LIST = [3, 5, 0]
 RECORD_PLAN = [3, None, 0]
 FULL_LIST = [0, 3] * (LF.dsp.POOL_SLOTS // 2)   # --full: every entry, each slot named 64 times
@@ -76,15 +77,17 @@ CLEARED = (b"\x7f" * 96 + b"\x81" * 96) * 16   # an empty entry's spans
 
 def store_extents(work: pathlib.Path, record: bool = False, full: bool = False) -> tuple[list[str], dict]:
     """-> panel_drive's --card-extent arguments, and what was stored."""
-    tables = {0: ("Pulse narrowing", testtable.pool_table()), 3: ("Saw to sine", testtable.table())}
+    five = [[int(round(20000 * math.sin(2 * math.pi * (f + 1) * k / 1024))) for k in range(1024)] for f in range(5)]
+    tables = {0: ("Pulse narrowing", testtable.pool_table()), 3: ("Saw to sine", testtable.table()),
+              7: ("Five of 1024", five)}
     entries, payloads = {}, {}
     for n, (name, t) in tables.items():
         data = LF.table_be(t)
-        entries[n] = ST.Entry(name, 16, 512, ST.slot_start(n), len(data), ST.xxh32(data), 0, len(data))
+        entries[n] = ST.Entry(name, len(t), len(t[0]), ST.slot_start(n), len(data), ST.xxh32(data), 0, len(data))
         payloads[n] = data
-    wide = bytes(32 * 512 * 2)                     # 32 waves: stored, not playable
-    entries[5] = ST.Entry("Too wide", 32, 512, ST.slot_start(5), len(wide), ST.xxh32(wide), 0, len(wide))
-    payloads[5] = wide
+    odd = bytes(16 * 96 * 2)                       # frames of 96 points: stored, not playable
+    entries[5] = ST.Entry("Not a power", 16, 96, ST.slot_start(5), len(odd), ST.xxh32(odd), 0, len(odd))
+    payloads[5] = odd
     index = ST.index_bytes(entries)
     files = {ST.REGION: ST.superblock(1, len(entries), index, ST.DATA_END), ST.REGION + 1: index}
     files.update({ST.REGION + ST.slot_start(n): p for n, p in payloads.items()})
@@ -98,15 +101,23 @@ def store_extents(work: pathlib.Path, record: bool = False, full: bool = False) 
     return args, {"tables": tables, "payloads": payloads}
 
 
-def expected_frames(stored, plan, seq: int = 1) -> list[bytes]:
-    out = []
+def expected_frames(stored, plan, seq: int = 1, generation: int = 1) -> list[bytes]:
+    """A fill: the request directory's magic cleared, each table as whole sectors (the
+    +Drive past a table reads zeros here), the directory, its magic last."""
+    out = [LF.magic_frame(0, seq)]
+    seq += 1
+    geometry = {}
     for j, n in enumerate(plan):
         if n is None:
             continue
-        f = LF.table_frames(LF.pool_address(j) - LF.dsp.LOAD_AREA[0], stored["payloads"][n], seq)
+        t = stored["tables"][n][1]
+        data = stored["payloads"][n]
+        data += bytes(512 * LF.sectors(len(t), len(t[0])) - len(data))
+        f = LF.table_frames(LF.pool_address(j) - LF.dsp.LOAD_AREA[0], data, seq)
         out += f
         seq += len(f)
-    return out + LF.directory_frames({j: LF.pool_address(j) for j, n in enumerate(plan) if n is not None}, seq)
+        geometry[j] = (len(t), len(t[0]))
+    return out + LF.directory_frames(geometry, generation, seq)
 
 
 def fields(hexdata: str, names: list[str]) -> dict:
@@ -156,7 +167,7 @@ def main(argv=None) -> int:
         # the one before it quiet), the chunk read back, its sequence acknowledged.
         # then a write's mark (wr_store.changes, which route.c's commit raises) and the
         # same exchange again: the refill, its sequences going on from the first fill's
-        again = expected_frames(stored, plan, len(want) + 1)
+        again = expected_frames(stored, plan, len(want) + 1, generation=2)
         steps = [f"wait:{a.wait}"]
         for k, f in enumerate(want + again):
             if k == len(want):
@@ -194,12 +205,12 @@ def main(argv=None) -> int:
 
     (a.out / "emu_pool_frames.bin").write_bytes(b"".join(got))
     model_spans = b"".join(CLEARED if n is None else wave.pool_spans(stored["tables"][n][1]) for n in plan)
-    short = {0: "Pulse narrowing", 3: "Saw to sine"}
+    short = {0: "Pulse narrowing", 3: "Saw to sine", 7: "Five of 1024"}
     frames_ok = [g == w for g, w in zip(got, want)]
     checks = {
         "every run ran to its end": all(r.get("outcome") == "done" for r in (first, run, silent)),
         "the store: generation 1, no read errors": st["generation"] == 1 and st["read_errors"] == 0,
-        f"the pool took slots {plan}, not 5 (32 waves)": slot_of == [0xFF if n is None else n for n in plan],
+        f"the pool took slots {plan}, not 5 (96 points)": slot_of == [0xFF if n is None else n for n in plan],
         "their names' first 15 characters": names == [short.get(n, "") for n in plan],
         f"all {len(want)} frames are dnfw.waverider.loadframes', byte for byte":
             len(got) == len(want) and all(frames_ok),

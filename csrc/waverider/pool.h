@@ -3,7 +3,7 @@
 #ifndef WAVERIDER_POOL_H
 #define WAVERIDER_POOL_H
 
-#define POOL_SLOTS     128                 /* 16 KiB tables after the load area's directory */
+#define POOL_SLOTS     128                 /* entries: 512 KiB each after the load area's directory */
 #define WR_POOL_WIDTH  96                  /* the page's wave strip, as wr_spans */
 #define POOL_NAME      16                  /* a pool name: up to 15 characters of the stored one, NUL */
 #define TBL_NAME_SHOWN 14                  /* TBL's header after "T:126 "; longer: 12, then ".." (owner) */
@@ -16,7 +16,7 @@
  * a fill's directory is acknowledged; GENERATION the store's (0: there was none). */
 struct wr_pool {
     unsigned int magic;                    /* 'WRPL' */
-    unsigned int state;                    /* 0 waiting, 1 filling, 2 directory, 3 ready, 5 failed */
+    unsigned int state;                    /* 0 waiting, 1 filling, 2 directory, 3 ready, 4 clearing, 5 failed, 6 the magic */
     unsigned int count, fills, generation, changes_seen, spare;
     unsigned char slot_of[POOL_SLOTS];     /* the store slot of pool entry j, 0xFF empty */
     char names[POOL_SLOTS][POOL_NAME];     /* its name's first 15 characters, for TBL's text */

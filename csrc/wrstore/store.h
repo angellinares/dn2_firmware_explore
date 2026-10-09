@@ -58,15 +58,20 @@ u8 *wr_store_index(void);
  * its superblock, generation + 1 (route.c). -> 1 written, 0 the +Drive write failed. */
 u32 wr_store_commit_entry(u32 n, const u8 *entry);
 
-#define WR_TABLE_BYTES 0x4000u              /* 16 x 512 int16: the table the DSP reads */
+#define WR_MAX_WAVES   64                   /* what the DSP builds levels for (build3.asm, dnfw.waverider.table3) */
+#define WR_MIN_POINTS  64
+#define WR_MAX_POINTS  4096
 
-/* Can the DSP play slot n's table? Used, a wavetable of 16 x 512 int16 big-endian, in
- * its own extent. The automatic pool is the slots for which this holds, in order. */
+/* Can the DSP play slot n's table? Used, a wavetable of 1..64 waves of 64..4096 int16
+ * big-endian (a power of two), whole, in its own extent. The automatic pool is the slots
+ * for which this holds, in order; a stored table it refuses shows no name in the pool. */
 static inline int wr_store_playable(const u8 *e, u32 n)
 {
-    return (be16(e + E_FLAGS) & 1) && be16(e + E_KIND) == 1 && be16(e + E_WAVES) == 16
-        && be16(e + E_POINTS) == 512 && be16(e + E_FORMAT) == 1
-        && be32(e + E_START) == DATA_START + n * SLOT_SECTORS && be32(e + E_LENGTH) == WR_TABLE_BYTES;
+    u32 waves = be16(e + E_WAVES), points = be16(e + E_POINTS);
+    return (be16(e + E_FLAGS) & 1) && be16(e + E_KIND) == 1 && be16(e + E_FORMAT) == 1
+        && waves >= 1 && waves <= WR_MAX_WAVES
+        && points >= WR_MIN_POINTS && points <= WR_MAX_POINTS && !(points & (points - 1))
+        && be32(e + E_START) == DATA_START + n * SLOT_SECTORS && be32(e + E_LENGTH) == 2 * waves * points;
 }
 
 #endif

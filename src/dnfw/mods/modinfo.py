@@ -25,7 +25,10 @@ Layout, big-endian:
 | 56 | 12 | commit, e.g. `a97b3ca1d2` (`+` at the end: uncommitted changes) |
 | 68 | 1 | mod count, then 3 zero bytes |
 | 72 | 16 each | a mod: id (12, NUL-padded), xxHash32 of its code (4; 0 for none) |
-| 248 | 4 | reserved, zero |
+| 248 | 1 | the most waves a table the pool plays has (64), when caps has `playable` |
+| 249 | 1 | log2 of the fewest points (6: 64) |
+| 250 | 1 | log2 of the most points (12: 4096) |
+| 251 | 1 | flags: 1 the points must be a power of two |
 | bytes - 4 | 4 | xxHash32 of everything before it (252 in version 1) |
 
 A reader takes the hash from `bytes - 4`, accepts a `bytes` larger than it knows, and
@@ -44,7 +47,8 @@ BYTES = 256
 MARKER = b"MODINFO-UNFILLED"      # at 24 until the build writes the record
 MARKER_AT = 24
 MOD_AT, MOD_BYTES, MAX_MODS = 72, 16, 11
-CAPS = {0x01: "store", 0x02: "pool", 0x04: "rename", 0x10: "pool_cas", 0x20: "page"}   # 0x08 unused
+CAPS = {0x01: "store", 0x02: "pool", 0x04: "rename", 0x10: "pool_cas", 0x20: "page",
+        0x40: "playable"}   # 0x08 unused
 
 
 class ModInfoError(Exception):
@@ -87,7 +91,7 @@ def fill(payload: bytes, mods: list[tuple[str, int]], tag: str, commit: str, os:
     for k, (mid, code) in enumerate(mods):
         at = MOD_AT + MOD_BYTES * k
         rec[at:at + MOD_BYTES] = _text(mid, 12) + struct.pack(">I", code)
-    rec[248:256] = bytes(8)                           # reserved, and the hash
+    rec[252:256] = bytes(4)                           # the hash (248..251 the chunk's: the playable bounds)
     out = bytearray(payload[:start] + bytes(rec) + payload[start + BYTES:])
     image_id = xxh32(bytes(out))                      # the id and the hash still zero
     struct.pack_into(">I", out, start + 20, image_id)
@@ -121,4 +125,6 @@ def parse(rec: bytes) -> dict:
             "pool_slots": pool_slots, "pool_version": pool_version, "store_slots": store_slots,
             "image_id": struct.unpack_from(">I", rec, 20)[0],
             "os": text(24, 32), "tag": text(32, 56), "commit": text(56, 68), "mods": mods,
-            "filled": rec[MARKER_AT:MARKER_AT + len(MARKER)] != MARKER}
+            "filled": rec[MARKER_AT:MARKER_AT + len(MARKER)] != MARKER,
+            "playable": ({"max_waves": rec[248], "min_points": 1 << rec[249], "max_points": 1 << rec[250],
+                          "power_of_two": bool(rec[251] & 1)} if caps & 0x40 else None)}

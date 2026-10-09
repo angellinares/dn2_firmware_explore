@@ -1,7 +1,7 @@
 """The frames the ColdFire's loader sends to the DSP (`csrc/waverider/loader.c`), as bytes.
 
-One subject: what a load frame and the pool directory look like, so the two halves can
-be checked against one description. The SHARC gate (`scripts/sharc_waverider_pool.py`)
+One subject: what a load frame and the pool's request directory look like, so the two
+halves can be checked against one description. The SHARC gate (`scripts/sharc_waverider_pool.py`)
 feeds these frames to the DSP's handler; the ColdFire's own frames, captured in the
 emulator, must equal them byte for byte.
 
@@ -12,8 +12,8 @@ word byte-swapped) is the frame as the DSP sees it (`docs/drive-load-command.md`
 
 The store keeps a table as int16 big-endian, frame-major (`docs/waverider-store.md`),
 which is what the loader reads off the +Drive into a chunk's payload unchanged. In
-DDR that lands as int16 little-endian in the same order: `render.dsp_bytes`, the
-reader's layout.
+DDR that lands as int16 little-endian in the same order, which build3.asm builds the
+levels from (`dnfw.waverider.table3`).
 
 Nothing here does I/O.
 """
@@ -54,27 +54,41 @@ def table_frames(dest: int, table_be: bytes, seq: int = 1) -> list[bytes]:
     return out
 
 
-def pool_directory(entries: dict[int, int], count: int = dsp.POOL_SLOTS) -> bytes:
-    """The pool directory pool.asm reads, as the ColdFire holds it: the magic, COUNT,
-    then COUNT entries, ENTRIES[j] the DDR address of pool table j (0 for none)."""
-    words = [dsp.POOL_MAGIC, count] + [entries.get(j, 0) for j in range(count)]
+def pool_directory(entries: dict[int, tuple[int, int]], generation: int, count: int = dsp.POOL_SLOTS) -> bytes:
+    """The request directory build3.asm reads, from its word 1, as the ColdFire holds it:
+    COUNT, GENERATION, 0, then COUNT words, entry j's frames | points << 16 (ENTRIES[j]
+    = (frames, points); 0 for none). Its magic is sent apart, last (`magic_frame`)."""
+    words = [count, generation, 0] + [(lambda g: g[0] | g[1] << 16 if g else 0)(entries.get(j)) for j in range(count)]
     return b"".join(struct.pack(">HH", w & 0xFFFF, w >> 16) for w in words)
 
 
 def pool_address(j: int) -> int:
-    """Pool table j's DDR address: after the directory's 4 KB, one 16 KB table each."""
+    """Pool entry j's table, as stored, in DDR: after the directory's 4 KB, 512 KiB each."""
     if not 0 <= j < dsp.POOL_SLOTS:
         raise ValueError(f"pool slot {j} is outside 0..{dsp.POOL_SLOTS - 1}")
-    return dsp.POOL_TABLES + j * dsp.TABLE_BYTES
+    return dsp.POOL_RAW + j * dsp.POOL_RAW_BYTES
 
 
-def directory_frames(entries: dict[int, int], seq: int) -> list[bytes]:
-    """The pool directory, sent last, to the area's first 4 KB."""
-    return table_frames(dsp.POOL_DIR - dsp.LOAD_AREA[0], pool_directory(entries), seq)
+def magic_frame(magic: int, seq: int) -> bytes:
+    """The request directory's word 0 alone: 0 before a fill rewrites the tables, the
+    magic once the directory is whole."""
+    return frame(dsp.POOL_DIR - dsp.LOAD_AREA[0], struct.pack(">HH", magic & 0xFFFF, magic >> 16), seq)
+
+
+def directory_frames(entries: dict[int, tuple[int, int]], generation: int, seq: int) -> list[bytes]:
+    """The request directory, sent last: its body from word 1, then its magic."""
+    body = table_frames(dsp.POOL_DIR + 4 - dsp.LOAD_AREA[0], pool_directory(entries, generation), seq)
+    return body + [magic_frame(dsp.POOL_MAGIC, seq + len(body))]
+
+
+def sectors(frames: int, points: int) -> int:
+    """The +Drive sectors pool.c reads for a table: whole sectors, the last one's tail
+    whatever the slot holds past the table."""
+    return (2 * frames * points + 511) // 512
 
 
 def table_be(table: list[list[int]]) -> bytes:
-    """A 16 x 512 int16 table as the store keeps it: big-endian, frame-major."""
+    """An int16 table as the store keeps it: big-endian, frame-major."""
     return b"".join(struct.pack(">h", v) for f in table for v in f)
 
 

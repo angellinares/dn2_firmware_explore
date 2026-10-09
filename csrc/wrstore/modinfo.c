@@ -14,6 +14,7 @@
 
 #include "routekit.h"
 #include "records.h"
+#include "store.h"
 #include "../waverider/pool.h"
 
 #define INFO_KIND    0x4Du                  /* 'M' (a table is 0x57, a pool list 0x50) */
@@ -27,20 +28,24 @@
 /* 0x08 is unused: it was `delete`, which every build with the store has (DNX, rev 1 review) */
 #define CAP_CAS      0x10u                  /* /wavepool: a sent generation is a compare-and-swap */
 #define CAP_PAGE     0x20u                  /* the instrument's wavetable page (PRESET/KIT page 2) */
-#define CAPS (CAP_STORE | CAP_POOL | CAP_RENAME | CAP_CAS | CAP_PAGE)
+#define CAP_PLAYABLE 0x40u                  /* bytes 248..251 say which stored tables the pool plays */
+#define CAPS (CAP_STORE | CAP_POOL | CAP_RENAME | CAP_CAS | CAP_PAGE | CAP_PLAYABLE)
+#define PLAY_POW2    0x01u                  /* byte 251: the points must be a power of two */
 
 #define B16(v) (u8)((v) >> 8), (u8)(v)
 #define B32(v) (u8)((v) >> 24), (u8)((v) >> 16), (u8)((v) >> 8), (u8)(v)
 
 /* 0 magic, 4 version, 6 bytes, 8 caps, 12 pool slots, 14 pool record version,
  * 16 store slots, 18 the characters of a name the pool keeps, 19 those TBL's header
- * shows; from 20 the build's part, its marker at 24 until written. The hash is at
- * bytes - 4 (252), over everything before it. */
+ * shows; from 20 the build's part, its marker at 24 until written; 248 the most waves
+ * the pool plays, 249 and 250 log2 of the fewest and most points, 251 PLAY_POW2
+ * (wr_store_playable's bounds). The hash is at bytes - 4 (252), over everything before it. */
 u8 wr_modinfo[INFO_BYTES] __attribute__((section(".data"), aligned(4))) = {   /* .data: GCC puts no const there */
     'D', 'N', 'M', 'I', B16(1), B16(INFO_BYTES), B32(CAPS),
     B16(POOL_ENTRIES), B16(RECORD_VERSION), B16(SLOTS), POOL_NAME - 1, TBL_NAME_SHOWN,
     B32(0),
     'M', 'O', 'D', 'I', 'N', 'F', 'O', '-', 'U', 'N', 'F', 'I', 'L', 'L', 'E', 'D',
+    [248] = WR_MAX_WAVES, __builtin_ctz(WR_MIN_POINTS), __builtin_ctz(WR_MAX_POINTS), PLAY_POW2,
 };
 
 void mi_root_entry(void);

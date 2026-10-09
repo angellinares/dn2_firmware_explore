@@ -113,8 +113,11 @@ def main() -> int:
           len(head) == 31 and struct.unpack(">III", head[13:25])[:2] == (0x4D, 1)
           and struct.unpack(">I", head[25:29])[0] == MI.BYTES and head[29] == 0, head.hex())
     check("the record checks out and is filled: magic, version, hash", info.get("ok") and info.get("filled"), info)
-    check("capabilities: store, pool, rename, pool_cas, page",
-          info.get("capabilities") == ["store", "pool", "rename", "pool_cas", "page"], info.get("capabilities"))
+    check("capabilities: store, pool, rename, pool_cas, page, playable",
+          info.get("capabilities") == ["store", "pool", "rename", "pool_cas", "page", "playable"], info.get("capabilities"))
+    check("playable: 1..64 waves of 64..4096 points, a power of two (store.h)",
+          info.get("playable") == {"max_waves": 64, "min_points": 64, "max_points": 4096, "power_of_two": True},
+          info.get("playable"))
     check("names: the pool keeps 15 characters, TBL's header shows 14",
           (info.get("name_kept"), info.get("name_shown")) == (15, 14), (info.get("name_kept"), info.get("name_shown")))
     check("pool: 128 slots, record version 2; store: 256 slots",

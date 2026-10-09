@@ -47,7 +47,10 @@ DNX's rule, adopted here. **The root listing is the primary signal; the error st
 | 56 | 12 | commit, e.g. `a97b3ca08f`; a trailing `+` means it was built with uncommitted changes |
 | 68 | 1 | mod count, then 3 zero bytes |
 | 72 | 16 each | a mod: its id (12 bytes, NUL-padded), then the xxHash32 of its code (4 bytes; 0 when it has none). Up to 11 |
-| 248 | 4 | reserved, zero |
+| 248 | 1 | with `playable` (0x40): the most waves a table the pool plays has, **64** |
+| 249 | 1 | with `playable`: log2 of the fewest points, **6** (64) |
+| 250 | 1 | with `playable`: log2 of the most points, **12** (4096) |
+| 251 | 1 | with `playable`: flags; 0x01 the points must be a power of two (set) |
 | `bytes - 4` | 4 | xxHash32 of everything before it, seed 0 (the hash the store and the pool records use): 252 in version 1 |
 
 **The record grows by appending.** A reader:
@@ -71,6 +74,7 @@ One bit per thing DNX does differently.
 | 0x08 | (unused) | was `delete` in rev 1: every build with the store has delete, so the flag said nothing. Not to be reused, and a reader infers nothing from it, set or clear |
 | 0x10 | pool_cas | a refused write that sent a generation means "the instrument changed this pool"; without the bit DNX can't say that |
 | 0x20 | page | the instrument has its own wavetable page (PRESET/KIT, page 2): DNX's only way to know there is a second writer of the working project's pool, so a refused write can say "the instrument changed this pool" |
+| 0x40 | playable | judges a stored table by bytes 248..251: it plays when it has 1..max waves of min..max points (a power of two when 0x01 is set), its length 2 x waves x points, in its own slot; without the bit, the 16 x 512 rule of earlier builds |
 
 **Unknown bits must be ignored.** That's the opposite of the pool record's rule, where an undefined flag is refused, and the difference is deliberate:
 - a data record must not be half-understood;

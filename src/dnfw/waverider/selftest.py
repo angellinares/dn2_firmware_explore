@@ -38,9 +38,10 @@ STATE_BYTES = 0x100
 TEST_DM = 0x2DF900                      # the test block: sizes, array addresses, level rows
 TEST_BYTES = 0x140
 PUB_DM = STATE_DM + 0xC0
-PUB_ENTRIES = 10
+PUB_ENTRIES = 16
 PUB_NAMES = ("runs", "differs", "ref lo", "ref hi", "hash lo", "hash hi",
-             "forward cycles", "split cycles", "levels cycles", "run cycles")
+             "forward cycles", "split cycles", "fft3 h after the forward", "run cycles",
+             "STKYX", "PCSTKP", "MODE1", "L6", "L7", "a 10-iteration loop counted")
 FFT3_DM, SPEC3_DM = 0x2E2000, 0x2E2800  # their PLACEMENT IS FIXED lines
 SPEC3_JOIN_SW = 0x171469                # selftest.asm's CALL; checked against spec3.json
 SHARC = pathlib.Path(__file__).resolve().parents[3] / "csrc" / "waverider" / "sharc"

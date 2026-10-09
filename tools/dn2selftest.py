@@ -62,9 +62,9 @@ def report(seen: dict[int, int], expected: dict) -> str:
         lines.append(f"  REF {ref:#010x}: {verdict}")
     if 4 in seen and 5 in seen:
         lines.append(f"  latest hash {(seen[5] << 27) | seen[4]:#010x}")
-    for k in range(6, 10):
+    for k in range(6, selftest.PUB_ENTRIES):
         if k in seen:
-            lines.append(f"  {selftest.PUB_NAMES[k]}: {seen[k]:,}")
+            lines.append(f"  {selftest.PUB_NAMES[k]}: {seen[k]:,} ({seen[k]:#x})")
     return "\n".join(lines)
 
 

@@ -18,7 +18,9 @@
 //
 // PUB[0] runs  [1] runs whose hash differs from REF  [2] REF low 27 bits  [3] REF >> 27
 // [4] the last hash low 27  [5] its >> 27  [6] forward cycles  [7] split  [8] the levels
-// [9] a whole run.  One entry a call goes to reply word 2 of both reply pages as
+// [9] a whole run; fftselftest2: [8] fft3's scratch h after the forward (N if every
+// stage ran), [10] STKYX, [11] PCSTKP, [12] MODE1, [13] L6, [14] L7, [15] a 10-iteration
+// DO loop's count, all at entry.  One entry a call goes to reply word 2 of both reply pages as
 // IDX << 27 | (value & 0x7ffffff), halves swapped (tools/dn2selftest.py), as ddrscan.asm.
 //
 // It saves what it and fft3/spec3 change that the idle loop could hold (R0-R15, I0-I6,
@@ -82,9 +84,30 @@ wr_selftest.:
       DM(0x2df894) = M10;
       DM(0x2df898) = M11;
       DM(0x2df89c) = M12;
-      DM(0x2df8a0) = LCNTR;
 
+      // -- the diagnostic (fftselftest2): the core state the idle task gives us
+.COMPRESS;
+      R0 = STKYX;
+      DM(0x2df8e8) = R0;                // PUB[10]: STKYX (LSEM, LSOV, PCEM, PCFL, SSEM, SSOV ...)
+      R0 = PCSTKP;
+      DM(0x2df8ec) = R0;                // PUB[11]: the PC stack's depth
+      R0 = MODE1;
+      DM(0x2df8f0) = R0;                // PUB[12]
+      R0 = L6;
+      DM(0x2df8f4) = R0;                // PUB[13]
+      R0 = L7;
+      DM(0x2df8f8) = R0;                // PUB[14]
+.NOCOMPRESS;
+      R0 = R0 - R0;
+      R1 = 1;
+      LCNTR = 10, DO wr_selftest_probe_end. UNTIL LCE;
+.GLOBAL wr_selftest_probe_end.;
+wr_selftest_probe_end.:
+      R0 = R0 + R1;
+      DM(0x2df8fc) = R0;                // PUB[15]: a 10-iteration loop's count
+.COMPRESS;
       R0 = EMUCLK;
+.NOCOMPRESS;
       DM(0x2df8ac) = R0;                // T0
       R0 = R0 - R0;
       DM(0x2df8a8) = R0;                // H = 0
@@ -107,7 +130,11 @@ wr_selftest.:
       R0 = DM(0x2df920);
       DM(0x2e407c) = R0;
       CALL 0x171000;                    // wr_fft3
+      R0 = DM(0x2e4080);
+      DM(0x2df8a0) = R0;                // fft3's scratch h after the stages (M if they all ran)
+.COMPRESS;
       R0 = EMUCLK;
+.NOCOMPRESS;
       DM(0x2df8b0) = R0;                // T1
 
       // -- spec3 split: DST -> A, B
@@ -126,7 +153,9 @@ wr_selftest.:
       R0 = DM(0x2df930);
       DM(0x2e40b8) = R0;
       CALL 0x171400;                    // wr_spec3_split
+.COMPRESS;
       R0 = EMUCLK;
+.NOCOMPRESS;
       DM(0x2df8b4) = R0;                // T2
 
       R2 = DM(0x2df900);
@@ -206,10 +235,13 @@ wr_selftest_level.:
       IF NE JUMP wr_selftest_level.;
 
       // -- the run's cycles and hash
+.COMPRESS;
       R0 = EMUCLK;
+.NOCOMPRESS;
       R1 = DM(0x2df8b4);
       R1 = R0 - R1;
-      DM(0x2df8e0) = R1;                // PUB[8]: the levels
+      R1 = DM(0x2df8a0);
+      DM(0x2df8e0) = R1;                // PUB[8] (fftselftest2): fft3's scratch h after the forward's stages
       R1 = DM(0x2df8ac);
       R1 = R0 - R1;
       DM(0x2df8e4) = R1;                // PUB[9]: the run
@@ -260,7 +292,7 @@ wr_selftest_counted.:
       // -- publish one entry a call
       R3 = DM(0x2df8bc);                // IDX
       R3 = R3 + 1;
-      R4 = 10;
+      R4 = 16;
       COMPU(R3, R4);
       IF LT JUMP wr_selftest_keep.;
       R3 = R3 - R3;
@@ -322,7 +354,6 @@ wr_selftest_keep.:
       M10 = DM(0x2df894);
       M11 = DM(0x2df898);
       M12 = DM(0x2df89c);
-      LCNTR = DM(0x2df8a0);
       JUMP 0x16f500;                    // -> wr_idle
 
 // -- H = rotl(H, 5) XOR word, over R2 words from R0 (clobbers R1, R3, R4, I0)

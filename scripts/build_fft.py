@@ -16,7 +16,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-SOURCES = {"fft": 0x16F800, "rfft": 0x16F900, "fft2": 0x16FC00}   # name -> load sw
+SOURCES = {"fft": 0x16F800, "rfft": 0x16F900, "fft2": 0x16FC00, "fft3": 0x171000, "spec3": 0x171400,
+           "selftest": 0x16F800, "mipb3": 0x171600}   # name -> load sw
 TOOLCHAIN = "selache selas -proc ADSP-21569 (js216/selache 2b26d3b, GPL-3.0, WSL)"
 
 

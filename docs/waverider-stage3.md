@@ -34,6 +34,11 @@ real compromise (the owner); points only matter for low notes.
    in the pool page (`csrc/waverider/pool.c:119`): a stored table the DSP can't play shows
    **no name**, which the owner saw on pool slots 9..11 (DNX, 2026-10-09). When the gate
    widens, a table that still can't play (too big, an odd geometry) must stay visibly
-   different, not take a name and play Prim. under it.
+   different, not take a name and play Prim. under it. **DNX depends on this** (DNX,
+   2026-10-09): a `/waverider` listing carries no geometry (every slot reports the fixed
+   512 KiB extent), so DNX's pane can only judge a slot with a file read per slot; today its
+   `unplayableReason` and the instrument's blank name agree on the one check. Widening the
+   gate without a visible difference leaves DNX as the only warning, at 128 reads. (The
+   automatic pool filters by geometry; the instrument's ADD does not.)
 5. **The perf gate** (`perf-stability-gate`): runner worst case, instrument load and a soak
    against the factory machines, one variable per pair.

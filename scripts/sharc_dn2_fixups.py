@@ -62,6 +62,22 @@ post-fix), or replaces the step outright:
       parameter picked up its neighbour as bits 16-31 (Milestone 4, measured
       at 0x1c29fa; control: plain FEXT, opcode 0x10, at 0x1c28fc is right).
       The result register is recomputed after the step.
+  G14 the fixed-point CLIP (`Rn = CLIP Rx BY Ry`, ALU opcode 0x63) is not in
+      compute_alu's table ("unsupported full compute ... opcode=0x63"): bind() adds it,
+      Rx if |Rx| < |Ry| else |Ry| with Rx's sign. For mipb3.asm's int16 rows
+      (2026-10-09).
+  G13 Type 1a (a compute with a DM and a PM transfer) in SIMD went through G1's compute
+      two-pass, so PEy's pass moved the same words as PEx's. In 277760a's own SIMD
+      handling the DM companion is right but the PM one is not modelled (a load leaves
+      the S register Unknown, a store writes nothing). It now runs as G1's memory
+      two-pass with both I registers a word up for PEy, PEy's stores kept. For fft3.asm's
+      butterflies (2026-10-09).                                   ("simd two-pass")
+  G12 Type 19a with the bit-reverse bit (`BITREV(Ia, data32)`, `Ib = BITREV(Ia, data32)`,
+      PRM "Bit-Reverse Instruction"; bit 39, the classic manuals and digikit's own
+      decode table) is decoded as 19a_bitrev but not executed (`forms_dag` runs 19a
+      and 19a_scaled only). The step is replaced: Ia + data, its 32 bits reversed, to
+      the destination (Is XOR Idis in the DAG g names, as 19a). For the stage 3 FFT
+      (2026-10-09).                                               ("bitrev")
   G9  (ours, not the runner's) G1's two-pass assumed every memory form names
       its DAG field `i`; the 16-bit Type 3c names it `dmi`. Met in SIMD at
       0x1c2857 in sw 0x1c2712 (Milestone 3).
@@ -108,6 +124,23 @@ def bind(tools_dir: str) -> None:
     ACCESS_WIDTHS, UREG_CODES = _aw, _uc
     _dm_read, _dm_write, _simd_active = _r, _w, _sa
     Const, _signed = _c, _s
+    from sharc_core import compute_alu as _ca  # noqa: PLC0415
+    if 0x63 not in _ca.ALU_OPS:                # G14
+        _ca.ALU_OPS[0x63] = _clip_fixed(_ca)
+
+
+def _clip_fixed(ca):
+    """G14: `Rn = CLIP Rx BY Ry` (fixed-point ALU opcode 0x63, PRM Table 18-5 and
+    "RN = clip RX by RY"): Rx if |Rx| < |Ry|, else |Ry| with Rx's sign. AZ and AN follow
+    the result, the other flags clear, as min/max (the PRM's flag table for both)."""
+    def alu_clip_fixed(rn, rx, ry, left, right, values, special, approx_recips):
+        if isinstance(left, ca.Const) and isinstance(right, ca.Const):
+            a, b = ca._signed32(left.value), abs(ca._signed32(right.value))
+            value = ca.Const((a if abs(a) < b else (b if a >= 0 else -b)) & 0xFFFFFFFF)
+        else:
+            value = ca.Unknown("clip(R%d, R%d)" % (rx, ry))
+        return rn, value, "clip", ca._astatx_alu_logical(value)
+    return alu_clip_fixed
 
 
 def F(f, name):
@@ -135,7 +168,7 @@ COND_UNSUPPORTED = {"6b_shiftimm", "6a_mem", "7a"}
 COND_NATIVE = {31, 0x17}          # the predicates the runner already runs (0x17: Type 7a only)
 MR_PAIRS = (("MRF", "MSF"), ("MRB", "MSB"))     # PEx / PEy multiplier result registers
 LOOP_ABORT_FORMS = {"8a_rel", "8a_abs"}
-WATCH = COND_UNSUPPORTED | LOOP_ABORT_FORMS | {"3a", "4a", "4b", "3b", "15b", "13a", "17a", "17b", "2b"}
+WATCH = COND_UNSUPPORTED | LOOP_ABORT_FORMS | {"19a_bitrev", "3a", "4a", "4b", "3b", "15b", "13a", "17a", "17b", "2b"}
 NW_LO, NW_HI = 0x240000 // 4, 0x3A0000 // 4
 # PCs whose parcel digikit reads as a 32-bit Type 2b and selache as a 16-bit 2c
 AS_2C = {0x1C0E13, 0x1C4F4A}
@@ -208,7 +241,11 @@ class Fixups:
             return None
         f = insn.fields
         pc = s.pc_sw
+        if t == "19a_bitrev":
+            return ("replace", lambda r: self.bitrev(r, insn))
         if in_simd and t not in SIMD_NATIVE and t not in ("17a", "17b"):
+            if t == "1a":                       # G13: both transfers' companions
+                return ("replace", lambda r: self.two_pass(r, insn, memory=True))
             if t in MEM_NO_COMPANION and not self.is_long(t, f):
                 return ("replace", lambda r: self.two_pass(r, insn, memory=True))
             if t in FLOW:
@@ -258,6 +295,21 @@ class Fixups:
                 self.note("nw->byte I register (G4)", pc)
             return post
         return None
+
+    # -- G12 ---------------------------------------------------------------------------
+    def bitrev(self, runner, insn):
+        s, f = runner.state, insn.fields
+        bank = 8 if F(f, "g") else 0
+        src = F(f, "is[2:0]") + bank
+        dst = (F(f, "is[2:0]") ^ F(f, "idis[2:0]")) + bank
+        v = s.uregs[16 + src]
+        if not isinstance(v, Const):
+            raise sr.Halt("BITREV of an unknown I register (G12)", s.pc_sw, insn.type_name)
+        x = (v.value + ((F(f, "data[31:16]") << 16) | F(f, "data[15:0]"))) & 0xFFFFFFFF
+        s.uregs[16 + dst] = Const(int(f"{x:032b}"[::-1], 2))
+        runner.state = seq._advance(s, insn)[0]
+        runner.instructions += 1
+        self.note("bitrev (G12)", s.pc_sw)
 
     # -- G6 ----------------------------------------------------------------------------
     def conditional(self, runner, insn):
@@ -356,15 +408,22 @@ class Fixups:
         uy[m1] = sisd
         comp = False
         if memory:
-            # the 16-bit Type 3c names its DAG fields dmi/dmm and is always DM
-            idx = (16 + F(f, "dmi")) if "dmi[2:0]" in f else \
-                16 + F(f, "i") + (8 if F(f, "g") else 0)
-            iv = uy[idx]
-            if not isinstance(iv, Const):
-                raise sr.Halt("two-pass: I register not concrete", s.pc_sw, insn.type_name)
-            uy[idx] = Const((iv.value + 4) & 0xFFFFFFFF)
-            code = F(f, "dreg") if "dreg[3:0]" in f else F(f, "ureg")
-            comp = fm._cureg_code(code) is not None
+            if "pmi[1:0]" in f:
+                # G13: Type 1a moves on DM (DAG1) and PM (DAG2) at once; both companions
+                # are the next word, and its data registers are R0-R15 (a complement each)
+                idxs = [16 + F(f, "dmi[2:0]"), 24 + ((F(f, "pmi[2:2]") << 2) | F(f, "pmi[1:0]"))]
+                code, comp = None, True
+            else:
+                # the 16-bit Type 3c names its DAG fields dmi/dmm and is always DM
+                idxs = [(16 + F(f, "dmi")) if "dmi[2:0]" in f else
+                        16 + F(f, "i") + (8 if F(f, "g") else 0)]
+                code = F(f, "dreg") if "dreg[3:0]" in f else F(f, "ureg")
+                comp = fm._cureg_code(code) is not None
+            for idx in idxs:
+                iv = uy[idx]
+                if not isinstance(iv, Const):
+                    raise sr.Halt("two-pass: I register not concrete", s.pc_sw, insn.type_name)
+                uy[idx] = Const((iv.value + 4) & 0xFFFFFFFF)
         # PEy's multiplier result registers are MSF/MSB: give them to the
         # SISD pass under PEx's names, and take them back afterwards
         sp = dict(s.special)
@@ -390,7 +449,7 @@ class Fixups:
         # in SIMD Mode": the implicit transfer then goes to its complement R5), PEx's pass
         # wrote the named S register and PEy's pass its complement: keep both, not PEy's
         # copy of the S register.
-        named_s = memory and 80 <= code <= 95 and not F(f, "d")
+        named_s = memory and code is not None and 80 <= code <= 95 and not F(f, "d")
         kept = x.uregs.get(code) if named_s else None
         for _, b in _pairs():
             x.uregs[b] = y.uregs[b]

@@ -100,6 +100,16 @@ real compromise (the owner); points only matter for low notes.
    **~119k cycles a frame with the levels in DDR** (in 8.5k, forward 14.3k, split 3.1k,
    out 39.3k, joins 8.4k, inverses 45.5k): the 16 KB of levels a frame writes cost ~25k
    of the out in cold write misses. A 64-frame table ~7.6 M cycles, ~22 ms at ~35 % idle.
+   **Passed on the instrument (2026-10-09, fftselftest3):** the fingerprint equals the
+   emulator's (0xbc1bb056) and 0 of 891,280 runs differed while a busy project played;
+   forward N = 256 8.8k cycles, a whole two-frame level run 49k (EMUCLK). The two builds
+   before it found two things the emulator does not model: **the DM and PM data caches are
+   not coherent for DDR** (fftselftest: every result 0, fft3 wrote on PM what it read on
+   DM), so every array now moves on one bus only (real parts DM, imaginary parts PM; the
+   inverse by spec3's join writing i conj Z, not a pointer swap) and
+   `scripts/sharc_bus_check.py` fails any cross-bus read in the emulator; and in the idle
+   task **L6 = L7 = 194 with CBUFEN on** (fftselftest2), so I6 and I7 are never walked.
+   The idle task also runs on the secondary DAG and register sets (MODE1 0x1011cf8).
    **On the instrument** (`selftest.asm`, `scripts/build_selftest.py`,
    `tools/dn2selftest.py`): a diagnostic build runs the whole level build of two
    256-point frames in the DSP's idle task, over and over, and hashes every output word;

@@ -45,6 +45,7 @@ DEFAULTS: dict[str, Cost] = {
     "br_uncond_miss_db": Cost(4, "cycles", "prm", ""),
     "rti": Cost(7, "cycles", "prm", "4-40 note **"),
     "loop_exit": Cost(11, "cycles", "prm", "termination of an E2-active, short or arithmetic loop, 4-41"),
+    "loop_exit_f1": Cost(0, "cycles", "prm", "termination of an F1-active counter loop run 11 instructions or more, 4-33"),
     # memory (PRM Table 4-35; EE-412 Table 6)
     "l1_same_block": Cost(1, "cycles", "prm", "two accesses to one L1 block in a cycle, 4-35"),
     "pm_conflict_miss": Cost(1, "cycles", "prm", "PM data access, conflict-cache miss, 4-35"),

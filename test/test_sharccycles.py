@@ -138,8 +138,12 @@ def test_branches_loops_and_memory():
     c = run([Step(0x10, jmp, taken=True, in_loop=True)] * 2)
     assert c["br_wrong_taken"] == 2                       # masked in a hardware loop
     assert run([Step(0, NOP, loop_exit=True)])["loop_exit"] == 1
-    c = run([Step(0, NOP, reads=(0x2C0000, 0x2C0004)), Step(3, NOP, reads=(0x240000, 0x2C0000))])
+    c = run([Step(0, NOP, loop_exit=True, loop_f1=True)])
+    assert (c["loop_exit_f1"], c["loop_exit"]) == (1, 0)    # F1-active: no flush
+    c = run([Step(0, NOP, reads=(0x2C0000, 0x2C0010)), Step(3, NOP, reads=(0x240000, 0x2C0000))])
     assert c["l1_same_block"] == 1
+    # a SIMD / long-word pair (a word and the next) is one 64-bit access
+    assert run([Step(0, NOP, reads=(0x2C0000, 0x2C0004))])["l1_same_block"] == 0
     c = run([Step(0, NOP, reads=(0x80000000,)), Step(3, NOP, reads=(0x80000020,)),
              Step(6, NOP, writes=(0x31002000,))])
     assert (c["ddr_miss_rd"], c["ddr_hit_rd"], c["smmr_wr"]) == (1, 1, 1)

@@ -22,3 +22,4 @@ class Step:
     ireg_writes: tuple[tuple[int, str], ...] = ()   # (I register 0..15, LOAD/MOVE/IMM/DAG)
     pm_data: bool = False                      # a data access on the PM bus
     emulated: bool = False                     # the runner's fixups ran it, not the runner
+    loop_f1: bool = False                      # that loop was F1-active: its exit costs nothing

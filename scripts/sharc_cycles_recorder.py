@@ -12,7 +12,8 @@ touches. Outside an instruction (a harness tap, a hook) nothing is recorded.
 Per step it works out what the model needs from the runner's state: whether a
 branch went (a delayed branch leaves `state.pending` with a target; any other
 leaves the pc off its fall-through), whether a hardware loop ended (the loop
-stack shrank), and which I registers got a new value (`uregs` entries replaced:
+stack shrank; F1-active when its DO had the mode bit and the loop ran 11 instructions
+or more, PRM "Loop Categorization into F1-Active or E2-Active"), and which I registers got a new value (`uregs` entries replaced:
 digikit's handlers build a fresh Value only when they assign), and how.
 """
 
@@ -45,6 +46,8 @@ class Recorder:
         self._reads: list[int] = []
         self._writes: list[int] = []
         self._saved: list[tuple[object, str, object]] = []
+        self._steps = 0
+        self._loop_starts: list[tuple[bool, int]] = []   # per active loop: (F1 opcode, first step)
 
     # -- the context ---------------------------------------------------------------------
 
@@ -119,6 +122,13 @@ class Recorder:
             else:
                 taken = st.pc_sw != pc + static.length_sw
         loop_exit = len(st.loops) < self._loops and static.branch is None
+        loop_f1 = False
+        self._steps += 1
+        if len(st.loops) > self._loops:
+            self._loop_starts.append((bool(insn.fields.get("mode", 0)), self._steps))
+        while len(self._loop_starts) > len(st.loops):
+            f1, first = self._loop_starts.pop()
+            loop_f1 = f1 and self._steps - first >= 11
         u = st.uregs
         writes = []
         for i, c in enumerate(_I_CODES):
@@ -136,4 +146,4 @@ class Recorder:
                 writes.append((i, how))
         self.model.feed(ev.Step(pc, static, taken, self._loops > 0, loop_exit,
                                 tuple(self._reads), tuple(self._writes), tuple(writes),
-                                static.pm_data, emulated))
+                                static.pm_data, emulated, loop_exit and loop_f1))

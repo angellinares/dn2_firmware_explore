@@ -112,8 +112,8 @@ class Model:
     def _branch(self, s: Step) -> None:
         st = s.static
         c = self.counts
-        if s.loop_exit:
-            c["loop_exit"] += 1                     # PRM Table 4-41: 11 (E2-active, short, arithmetic)
+        if s.loop_exit:                             # PRM Table 4-41: 11 (E2-active, short,
+            c["loop_exit_f1" if s.loop_f1 else "loop_exit"] += 1    # arithmetic); F1-active 0
         if st.branch in (None, DO, RFRAME):
             return
         if st.branch == RTI:
@@ -127,17 +127,19 @@ class Model:
 
     def _memory(self, s: Step) -> None:
         c = self.counts
-        blocks = collections.Counter()
+        blocks = collections.defaultdict(set)     # L1 block -> its accesses (8-byte pairs)
         for address, kind in [(a, "rd") for a in s.reads] + [(a, "wr") for a in s.writes]:
             r = regions.data_region(address)
             if r in regions.L1:
-                blocks[r] += 1
+                # a SIMD or long-word transfer moves a word and the next as one 64-bit
+                # access: the runner reports two addresses, the block sees one access
+                blocks[r].add(address // 8)
             elif r in regions.CACHED:
                 hit = self.dcache.access(address)
                 c[f"{r}_{'hit' if hit else 'miss'}_{kind}"] += 1
             else:
                 c[f"{r}_{kind}"] += 1
-        c["l1_same_block"] += sum(k - 1 for k in blocks.values() if k > 1)   # PRM 4-35: 1
+        c["l1_same_block"] += sum(len(k) - 1 for k in blocks.values() if len(k) > 1)   # PRM 4-35: 1
         if s.pm_data:
             # PRM 4-35: a PM data access misses the 32-entry conflict cache: 1
             if s.pc in self.conflict:

@@ -54,21 +54,21 @@ class Recorder:
         rec = self
 
         def wrap_read(orig):
-            def _dm_read(state, address, width, signed=False):
+            def _dm_read(state, address, width, signed=False, **kw):
                 if rec._inside:
                     a = concrete(address)
                     if a is not None:
                         rec._reads.append(a)
-                return orig(state, address, width, signed)
+                return orig(state, address, width, signed, **kw)   # newer digikit adds keywords (normal_word)
             return _dm_read
 
         def wrap_write(orig):
-            def _dm_write(state, address, width, value):
+            def _dm_write(state, address, width, value, **kw):
                 if rec._inside:
                     a = concrete(address)
                     if a is not None:
                         rec._writes.append(a)
-                return orig(state, address, width, value)
+                return orig(state, address, width, value, **kw)
             return _dm_write
 
         for mod in mods:

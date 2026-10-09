@@ -40,9 +40,21 @@ real compromise (the owner); points only matter for low notes.
    **The real-input FFT** (`rfft.asm`: N reals as N/2 complex, a split step after the
    forward and before the inverse; `scripts/sharc_rfft_check.py`): correct to 1.7e-7 at
    N 16..2048, N 2048 ~344k cycles forward, ~341k inverse; a 2048-point frame's levels
-   ~1.33 M cycles, **a 64 x 2048 table ~85 M cycles, ~0.24 s at ~35 % idle**. Next: SIMD
-   on the second processing element (stock sets MODE1 PEYEN 82 times: a firmware form),
-   radix 4.
+   ~1.33 M cycles, **a 64 x 2048 table ~85 M cycles, ~0.24 s at ~35 % idle**.
+   **SIMD with hardware loops** (`fft2.asm`, `scripts/sharc_fft2_check.py`; designed from
+   the PRM, owner 2026-10-09: the manuals are the authority, stock a guide): PEx real,
+   PEy imaginary, twiddles stored (sin, -sin, cos, cos) so w y is two multiplies and an
+   add; post-modify walks (M registers in words: byte space scales them by the access
+   size); the inner loop 10 instructions (25 before). Correct to 1.8e-7 at M 8..1024. At
+   M 1024: 82,843 instructions (156,522 before); with a twiddle table for the transform's
+   own size ~160k cycles (269k with the 4096 table, the read misses 134k -> 26k; data in
+   L1 is worse in the model, 173k, same-block conflicts). Left: the bit reversal's
+   branches (~35k: fold it into the int16 -> float conversion with BITREV), the E2-active
+   loop exits (11k: set F1-active per PRM 4-37), multifunction packing and radix 4.
+   Found on the way: selmap prints a Type 3a modifier wrongly (bit 40 ignored: M0 as m4;
+   digikit and selas agree on the manual's field), digikit's Type 3a had no SIMD second
+   transfer at 6f812e9 (fixed upstream, 277760a), and our two-pass SIMD merge lost a
+   PEy-named load (fixed, sharc_dn2_fixups G11).
 2. **The load.** Today the pool copies 16 x 512 tables only (16 KB slots, 2 MB area at
    `0x807ff000`) through command 4's chunks. A table of any size needs a variable extent in
    the free DDR and a directory entry carrying its geometry.

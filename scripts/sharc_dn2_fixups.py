@@ -37,6 +37,12 @@ post-fix), or replaces the step outright:
   G8  a conditional Type 7a (`IF EQ MODIFY(I4, M4)`, in the amp stage
       sw 0xb80345 once a note is on) halts ("unsupported Type7a
       predicate"): only "always" (31) and 0x17 run. Handled as G6.
+  G11 (ours, not the runner's) G1's two-pass merge took every S register from the PEy
+      pass. A transfer that names the PEy register (`S5 = DM(I1, M0)`: the implicit
+      half goes to R5, PRM "DAG Transfers in SIMD Mode") then lost both halves: PEx's
+      pass loads S5 (overwritten by the merge) and PEy's loads R5 (never merged). The
+      merge now keeps the named S register from PEx and its complement from PEy.
+      Found by fft2.asm's ys load (2026-10-09).                 ("simd two-pass")
   G10 Type 8a ignores the (LA) loop-abort bit: `_type_25a_direct` calls the
       transfer without `loop_abort`, although `_transfer` supports it (Type
       9a passes it). A JUMP (LA) out of a DO loop then leaves the loop's
@@ -368,8 +374,17 @@ class Fixups:
                           "%s / %s" % (ox[0].stopped if ox else "", oy[0].stopped if oy else ""))
         x, y = ox[0], oy[0]
         swap(y.uregs)
+        # G11 (ours): when the named register is PEy's (`S5 = DM(...)`, PRM "DAG Transfers
+        # in SIMD Mode": the implicit transfer then goes to its complement R5), PEx's pass
+        # wrote the named S register and PEy's pass its complement: keep both, not PEy's
+        # copy of the S register.
+        named_s = memory and 80 <= code <= 95 and not F(f, "d")
+        kept = x.uregs.get(code) if named_s else None
         for _, b in _pairs():
             x.uregs[b] = y.uregs[b]
+        if named_s:
+            x.uregs[code] = kept
+            x.uregs[code - 80] = y.uregs[code - 80]
         if x.uregs[m1] == sisd:
             x.uregs[m1] = mode1
         for a, b in MR_PAIRS:

@@ -30,7 +30,8 @@
 //
 // Clobbers R0-R7, I0-I3, I8-I11, M0-M3, M8-M10, the loop counter. SISD only.
 //
-// PLACEMENT IS FIXED: this code loads at PM sw 0x171400 (DM 0x2e2800).
+// Placement: PM sw 0x172280 (DM 0x2e4500, dnfw.waverider.dsp); its jumps are PC-relative, so the
+// self-test build loads the same bytes elsewhere.
 
 .SECTION/PM seg_pmco;
 .NOCOMPRESS;

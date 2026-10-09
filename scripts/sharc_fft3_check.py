@@ -3,7 +3,7 @@
     python scripts/sharc_fft3_check.py [--sizes 8 64 1024] [--parts]
 
 Reads csrc/waverider/sharc/fft3.json (scripts/build_fft.py --assemble). Builds stock + the
-idle stub plus fft3.asm at sw 0x171000, the per-stage twiddle tables (TWR[h + k] =
+idle stub plus fft3.asm at sw 0x171c00, the per-stage twiddle tables (TWR[h + k] =
 cos(pi k / h), TWI[h + k] = -sin(pi k / h)) and the parameter block at 0x2e4060; for each
 size M (complex points) writes M random complex floats as split arrays (re, im) (DDR or
 L1, --where),
@@ -34,7 +34,7 @@ from dnfw.sharccycles import costs as C                         # noqa: E402
 from dnfw.waverider import dsp                                  # noqa: E402
 
 m5 = F.m5
-FFT3_SW, FFT3_DM = 0x171000, 0x2E2000
+FFT3_SW, FFT3_DM = dsp.FFT3_SW, dsp.FFT3_DM            # the stage 3 build's placement
 P3 = 0x2E4060
 SHARC = ROOT / "csrc" / "waverider" / "sharc"
 SLACK = 1024

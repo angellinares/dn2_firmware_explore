@@ -54,53 +54,47 @@ wr_miph2.:
       R1 = 1;
       R2 = R8 AND R1;
       IF EQ JUMP 0x16eb03;              // -> wr5_plain. (no flag: opt2's reader, reader_m9.asm; R4 is untouched)
-      R8 = R8 - R1;                     // the table's address without the flag
-      R2 = 1;
-      R1 = 0x95eb41;                    // T[0] = ceil(28 kHz / 255)
+      R8 = R8 - R1;                     // the table's header (dnfw.waverider.table3)
+      I1 = R8;
+      R14 = DM(1, I1);                  // S, the position's scale (float32)
+      R15 = DM(2, I1);                  // F - 1, the last frame
+      R2 = DM(3, I1);                   // K - 1: the thresholds to test
+      R3 = 0x10;
+      R3 = R8 + R3;
+      I0 = R3;                          // T[0]
+      R3 = 1;
+      R2 = PASS R2;
+      IF EQ JUMP 0x171a38;              // -> wr_miph2_level. (one level)
+.GLOBAL wr_miph2_test.;
+wr_miph2_test.:
+      R1 = DM(I0, M6);                  // T[k]: this level while inc < T[k]
       COMPU(R10, R1);
-      IF LT JUMP 0x171a5a;              // -> wr_miph2_level.
-      R13 = R13 + R2;
-      R1 = 0x12d04b5;                   // T[1] = ceil(28 kHz / 127)
-      COMPU(R10, R1);
-      IF LT JUMP 0x171a5a;              // -> wr_miph2_level.
-      R13 = R13 + R2;
-      R1 = 0x25ed098;                   // T[2] = ceil(28 kHz / 63)
-      COMPU(R10, R1);
-      IF LT JUMP 0x171a5a;              // -> wr_miph2_level.
-      R13 = R13 + R2;
-      R1 = 0x4d1344e;                   // T[3] = ceil(28 kHz / 31)
-      COMPU(R10, R1);
-      IF LT JUMP 0x171a5a;              // -> wr_miph2_level.
-      R13 = R13 + R2;
-      R1 = 0x9f49f4a;                   // T[4] = ceil(28 kHz / 15)
-      COMPU(R10, R1);
-      IF LT JUMP 0x171a5a;              // -> wr_miph2_level.
-      R13 = R13 + R2;
-      R1 = 0x15555556;                  // T[5] = ceil(28 kHz / 7)
-      COMPU(R10, R1);
-      IF LT JUMP 0x171a5a;              // -> wr_miph2_level.
-      R13 = R13 + R2;
-      R1 = 0x31c71c72;                  // T[6] = ceil(28 kHz / 3)
-      COMPU(R10, R1);
-      IF LT JUMP 0x171a5a;              // -> wr_miph2_level.
-      R13 = R13 + R2;                   // level 7, the last
+      IF LT JUMP 0x171a38;              // -> wr_miph2_level.
+      R13 = R13 + R3;
+      R2 = R2 - R3;
+      IF NE JUMP 0x171a2d;              // -> wr_miph2_test.
 
 .GLOBAL wr_miph2_level.;
 wr_miph2_level.:
       R3 = LSHIFT R13 BY 5;             // k * 32 bytes: its record
-      R4 = 0x2e3100;
+      R4 = 0x50;
       R3 = R4 + R3;
+      R3 = R8 + R3;
       I1 = R3;
       R4 = DM(0, I1);                   // the level's byte offset in the table
       R8 = R8 + R4;
       R5 = DM(1, I1);                   // b + 1: a row is 2^(b+1) + 6 bytes
 
-      // Rows: f0 = pos >> 16, f1 = min(f0 + 1, 15); row f = table + f * 2^(b+1) + f * 6
+      // pos = trunc(POS x S): POS is 0 .. 15 frames, the table F (table3.position)
+      F11 = FLOAT R11;
+      F11 = F11 * F14;
+      R11 = TRUNC F11;
+
+      // Rows: f0 = pos >> 16, f1 = min(f0 + 1, F - 1); row f = table + f * 2^(b+1) + f * 6
       R0 = LSHIFT R11 BY -16;
       R2 = 1;
       R1 = R0 + R2;
-      R2 = 15;
-      R1 = MIN(R1, R2);
+      R1 = MIN(R1, R15);
       R2 = LSHIFT R0 BY R5;
       R3 = LSHIFT R0 BY 2;
       R2 = R3 + R2;
@@ -129,7 +123,7 @@ wr_miph2_level.:
       R11 = PASS R7;                    // row b
       R8 = -15;                         // int16 -> float full scale, 2^-15
       R12 = PASS R12;
-      IF EQ JUMP 0x171b84;              // -> wr_miph2_done. (count 0: write nothing)
+      IF EQ JUMP 0x171b66;              // -> wr_miph2_done. (count 0: write nothing)
       R0 = PASS R12;                    // the count, for LCNTR
       R12 = PASS R6;                    // row a
       LCNTR = R0, DO wr_miph2_last. UNTIL LCE;   // E2-active (the mix branch is in the body)
@@ -205,7 +199,7 @@ wr_miph2_loop.:
       // osc 2 adds into the buffer osc 1 wrote (DM 0x2de6c4 = 1)
       R1 = DM(0x2de6c4);
       R1 = PASS R1;
-      IF EQ JUMP 0x171b78;              // -> wr_miph2_store.
+      IF EQ JUMP 0x171b5a;              // -> wr_miph2_store.
       R2 = DM(0, I2);                   // what osc 1 wrote
       F0 = F0 + F2;
 .GLOBAL wr_miph2_store.;

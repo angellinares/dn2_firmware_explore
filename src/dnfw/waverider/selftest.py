@@ -42,7 +42,7 @@ PUB_ENTRIES = 16
 PUB_NAMES = ("runs", "differs", "ref lo", "ref hi", "hash lo", "hash hi",
              "forward cycles", "split cycles", "fft3 h after the forward", "run cycles",
              "STKYX", "PCSTKP", "MODE1", "L6", "L7", "a 10-iteration loop counted")
-FFT3_DM, SPEC3_DM = 0x2E2000, 0x2E2800  # their PLACEMENT IS FIXED lines
+FFT3_DM, SPEC3_DM = 0x2E2000, 0x2E2800  # where this build loads them (their jumps are PC-relative)
 SPEC3_JOIN_SW = 0x171469                # selftest.asm's CALL; checked against spec3.json
 SHARC = pathlib.Path(__file__).resolve().parents[3] / "csrc" / "waverider" / "sharc"
 ARRAYS = ("src_re", "src_im", "dst_re", "dst_im", "twr", "twi", "ar", "ai", "br", "bi", "zr", "zi")
@@ -111,7 +111,8 @@ def _labels(name: str) -> dict[str, int]:
 def section7_selftest(stock: bytes, points: int = POINTS) -> bytes:
     """Stock + the idle stub + selftest.asm (the idle loop's back edge goes to it, and it
     goes on to the idle stub) + fft3.asm + spec3.asm + the test's data."""
-    if _labels("spec3")["wr_spec3_join."] != SPEC3_JOIN_SW:
+    spec3_sw = int(json.loads((SHARC / "spec3.json").read_text(encoding="utf-8"))["load_sw"], 16)
+    if _labels("spec3")["wr_spec3_join."] - spec3_sw + SPEC3_DM // 2 != SPEC3_JOIN_SW:
         raise dsp.DspError("selftest.asm's CALL to wr_spec3_join is stale: spec3.asm moved it")
     code, _ = _object("selftest")
     fft3, _ = _object("fft3")

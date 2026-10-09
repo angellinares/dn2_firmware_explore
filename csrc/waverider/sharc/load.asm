@@ -74,12 +74,12 @@ wr_load.:
       R0 = 668;
       COMPU(R11, R0);
       IF GT JUMP 0x16fb78;              // -> wr_load_refuse.
-      // the destination 4-aligned and inside the area (2 MiB + 4 KiB), and its end too;
-      // the start is tested on its own, so a destination near 2^32 can't wrap the end
+      // the destination 4-aligned and inside the area (4 KiB + 128 x 512 KiB), and its end
+      // too; the start is tested on its own, so a destination near 2^32 can't wrap the end
       R0 = 3;
       R2 = R12 AND R0;
       IF NE JUMP 0x16fb78;              // -> wr_load_refuse.
-      R0 = 0x201000;
+      R0 = 0x4001000;
       COMPU(R12, R0);
       IF GE JUMP 0x16fb78;              // -> wr_load_refuse.
       R2 = LSHIFT R11 BY 2;
@@ -87,7 +87,7 @@ wr_load.:
       COMPU(R2, R0);
       IF GT JUMP 0x16fb78;              // -> wr_load_refuse.
 
-      R0 = 0x807ff000;                  // the load area: the pool directory, then the tables
+      R0 = 0x807ff000;                  // the load area: the request directory, then the tables
       R12 = R12 + R0;
       R10 = R10 - R10;                  // the sum
       R0 = 1;

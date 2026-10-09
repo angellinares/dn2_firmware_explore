@@ -6,6 +6,7 @@ Our sources write every branch target as an absolute short-word address, with th
 target named in the comment after it, in one of two forms:
 
     IF NE JUMP 0x16ee14;              // -> wr_t5v_next.
+    CALL 0x171c00;                    // -> wr_fft3.
     DM(I7, M7) = 0x16ee13;            // return address - 1: wr_t5v_next. - 1
 
 This assembles SOURCE with selas (WSL), reads where each named label lands (LOAD_SW
@@ -27,7 +28,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-JUMP = re.compile(r"(JUMP\s+)(0x[0-9a-fA-F]+)(;\s*//\s*->\s*)([A-Za-z_][\w]*)\.")
+JUMP = re.compile(r"((?:JUMP|CALL)\s+)(0x[0-9a-fA-F]+)(;\s*//\s*->\s*)([A-Za-z_][\w]*)\.")
 RET = re.compile(r"(=\s*)(0x[0-9a-fA-F]+)(;\s*//\s*return address - 1:\s*)([A-Za-z_][\w]*)\.\s*-\s*1")
 
 
@@ -55,7 +56,8 @@ def siblings() -> dict[str, int]:
             "block_count": dsp.COUNT_SW, "entry_mark": dsp.EMARK_SW, "modulator": dsp.MOD_SW,
             "shapes": dsp.SHAPES_SW, "load": dsp.LOAD_SW, "pool": dsp.POOL_SW, "sync": dsp.SYNC_SW,
             "smooth": dsp.SMOOTH_SW, "dclk": dsp.DCLK_SW, "sub": dsp.SUB_SW, "noise": dsp.NOISE_SW,
-            "reader_mip": dsp.MIP_SW, "reader_miph": dsp.MIP_SW, "reader_miph2": dsp.MIP_SW}
+            "reader_mip": dsp.MIP_SW, "reader_miph": dsp.MIP_SW, "reader_miph2": dsp.MIP_SW,
+            "fft3": dsp.FFT3_SW, "spec3": dsp.SPEC3_SW, "mipb3": dsp.MIPB3_SW, "build3": dsp.BUILD3_SW}
 
 
 def external(skip: pathlib.Path, work: pathlib.Path) -> dict[str, int]:

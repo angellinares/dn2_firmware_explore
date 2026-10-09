@@ -36,7 +36,7 @@ from dnfw.waverider import dsp                                  # noqa: E402
 from dnfw.waverider import geometry as G                        # noqa: E402
 
 F, m5 = K.F, K.m5
-MIPB3_DM = 0x2E2C00
+MIPB3_DM = dsp.MIPB3_DM
 PB = 0x2E40C0                                    # mipb3.asm's parameter block
 GUARDS = 3
 

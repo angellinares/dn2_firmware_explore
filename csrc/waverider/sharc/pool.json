@@ -1,28 +1,24 @@
 {
   "source": "csrc/waverider/sharc/pool.asm",
-  "source_sha256": "7e83c662968c21dac4de4df4e2be2cc88273cd7e5bf0389fbba5a467f934260a",
+  "source_sha256": "a8f7d9ea2dc79e53fe7ba3942e4c6d3ab35ad8e3b29c79597e09c29c473924e7",
   "toolchain": "selache selas -proc ADSP-21569 (js216/selache 2b26d3b, GPL-3.0, WSL)",
   "section": "seg_pmco",
   "load_sw": "0x16fe00",
-  "object_parcels_be": "01802c121002807ff0000f0157525031c32106200016fe271002807ff0040180b0c206220016fe27023e000002cc0f01807ff008018011c1703e88bf92080100c22206000016fe27063e0016ee17c111063e0016ee0b",
+  "object_parcels_be": "01802c120f8200800180b0c206220016fe1c023e000002cc0f01002e4100018011c1703e88bf92080100c22206000016fe1c063e0016ee17c111063e0016ee0b",
   "instruction_offsets": [
     0,
     4,
-    10,
-    16,
+    8,
+    12,
     18,
     24,
     30,
     34,
-    40,
-    46,
-    52,
+    38,
+    42,
+    44,
+    50,
     56,
-    60,
-    64,
-    66,
-    72,
-    78,
-    80
+    58
   ]
 }

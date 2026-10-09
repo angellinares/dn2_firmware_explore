@@ -52,7 +52,8 @@
 // writes MMASK, whose default clears PEYEN when an interrupt pushes the status stack
 // (PRM "Interrupt Mask Mode").
 //
-// PLACEMENT IS FIXED: this code loads at PM sw 0x171000 (DM 0x2e2000).
+// Placement: PM sw 0x171c00 (DM 0x2e3800, dnfw.waverider.dsp); its jumps are PC-relative, so the
+// self-test build loads the same bytes elsewhere.
 
 .SECTION/PM seg_pmco;
 .NOCOMPRESS;

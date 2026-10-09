@@ -10,7 +10,8 @@ exit codes, and each gate's output with times, paths and the run's tag normalise
 line that differs is a behaviour difference between the two emulators, not noise.
 
 The gates are the ones that clear a Waverider build (out/waverider/gates_*.log) plus the
-stage 3 FFT checks and the DDR scanner's check. Nothing here touches an instrument.
+stage 3 checks (the FFTs, the two-frame levels, the int16 ends, the self-test, the idle-time
+builder) and the DDR scanner's check. Nothing here touches an instrument.
 """
 
 from __future__ import annotations
@@ -42,6 +43,11 @@ GATES = {                                       # name -> arguments after the sc
     "fft": ["scripts/sharc_fft_check.py", "--sizes", "16", "256"],
     "rfft": ["scripts/sharc_rfft_check.py", "--sizes", "32", "512"],
     "fft2": ["scripts/sharc_fft2_check.py", "--sizes", "8", "128", "--compact", "--parts"],
+    "fft3": ["scripts/sharc_fft3_check.py"],
+    "levels3": ["scripts/sharc_levels3_check.py", "--points", "256"],
+    "mipb3": ["scripts/sharc_mipb3_check.py", "--points", "256"],
+    "selftest": ["scripts/sharc_selftest_check.py"],
+    "build3": ["scripts/sharc_build3_check.py"],
 }
 NOISE = [(re.compile(r"\(\d+(\.\d+)? s"), "(T s"), (re.compile(r"\d+(\.\d+)? s\b"), "T s"),
          (re.compile(r"m5_report_\w+\.json"), "m5_report_TAG.json"),

@@ -1,4 +1,4 @@
-"""Assemble the stage 3 FFT sources (fft.asm, rfft.asm) into their .json (WSL + selache), as the other objects are.
+"""Assemble the stage 3 sources (the FFTs, spec3, mipb3, build3, the self-test) into their .json (WSL + selache), as the other objects are.
 
     python scripts/build_fft.py --assemble
 """
@@ -16,8 +16,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-SOURCES = {"fft": 0x16F800, "rfft": 0x16F900, "fft2": 0x16FC00, "fft3": 0x171000, "spec3": 0x171400,
-           "selftest": 0x16F800, "mipb3": 0x171600}   # name -> load sw
+SOURCES = {"fft": 0x16F800, "rfft": 0x16F900, "fft2": 0x16FC00, "fft3": 0x171C00, "spec3": 0x172280,
+           "selftest": 0x16F800, "mipb3": 0x172400, "build3": 0x172580}   # name -> load sw (dnfw.waverider.dsp)
 TOOLCHAIN = "selache selas -proc ADSP-21569 (js216/selache 2b26d3b, GPL-3.0, WSL)"
 
 

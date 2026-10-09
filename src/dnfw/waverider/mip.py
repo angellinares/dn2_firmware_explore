@@ -162,12 +162,13 @@ class MipTable(list):
     def dsp_bytes(self) -> bytes:
         """The table in the DSP's DDR: level 0..7 one after another, each frame-major,
         little-endian int16 (dnfw.waverider.render.dsp_bytes per level); for hermite2 each
-        row is [last, frame..., first, second] (`row_points`)."""
+        row is [last, frame..., first, second] (`row_points`), after the stage 3 header
+        reader_miph2.asm reads (dnfw.waverider.table3)."""
         from . import render as reader  # noqa: PLC0415
         if not guarded():
             return b"".join(reader.dsp_bytes(level) for level in self.levels)
-        rows = [[f[-1]] + list(f) + list(f[:GUARD_AFTER]) for level in self.levels for f in level]
-        return reader.dsp_bytes(rows)
+        from . import table3  # noqa: PLC0415
+        return table3.dsp_bytes(self.levels)
 
 
 def level_offsets(frames: int = 16, oversample: int = OVERSAMPLE) -> list[int]:
@@ -198,6 +199,9 @@ def read(table, phase: int, inc: int, pos: int, count: int, precision: str = "id
     """What the shipped reader plays for TABLE: its levels for a MipTable, level 0
     otherwise, between samples by INTERP."""
     from . import render as reader  # noqa: PLC0415
+    from . import table3  # noqa: PLC0415
+    if isinstance(table, table3.Table3):
+        return table3.read(table, phase, inc, pos, count, precision)
     if isinstance(table, MipTable):
         return render(table.levels, phase, inc, pos, count, precision, INTERP)
     # a plain table: hermite2 hands it to opt2's linear reader (reader_m9.asm's wr5_plain)

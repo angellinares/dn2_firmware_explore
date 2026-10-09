@@ -32,7 +32,7 @@ from dnfw.waverider import dsp                                  # noqa: E402
 from dnfw.waverider import geometry as G                        # noqa: E402
 
 F, m5 = K.F, K.m5
-SPEC3_SW, SPEC3_DM = 0x171400, 0x2E2800
+SPEC3_SW, SPEC3_DM = dsp.SPEC3_SW, dsp.SPEC3_DM
 PS = 0x2E40A0                                    # spec3.asm's parameter block
 
 

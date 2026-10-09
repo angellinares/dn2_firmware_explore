@@ -1,4 +1,4 @@
-"""Assemble csrc/waverider/sharc/fft.asm into fft.json (WSL + selache), as the other objects are.
+"""Assemble the stage 3 FFT sources (fft.asm, rfft.asm) into their .json (WSL + selache), as the other objects are.
 
     python scripts/build_fft.py --assemble
 """
@@ -16,9 +16,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-SRC = ROOT / "csrc" / "waverider" / "sharc" / "fft.asm"
-OUT = SRC.with_suffix(".json")
-LOAD_SW = 0x16F800
+SOURCES = {"fft": 0x16F800, "rfft": 0x16F900}      # name -> load sw
 TOOLCHAIN = "selache selas -proc ADSP-21569 (js216/selache 2b26d3b, GPL-3.0, WSL)"
 
 
@@ -29,14 +27,16 @@ def main(argv=None) -> int:
     if not a.assemble:
         p.error("nothing to do without --assemble")
     import sharc_waverider_m3 as m3  # noqa: PLC0415
-    with tempfile.TemporaryDirectory() as tmp:
-        be, offsets = m3._selas(SRC, pathlib.Path(tmp))
-    sha = hashlib.sha256(SRC.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
-    spec = {"source": SRC.relative_to(ROOT).as_posix(), "source_sha256": sha, "toolchain": TOOLCHAIN,
-            "section": "seg_pmco", "load_sw": hex(LOAD_SW), "object_parcels_be": be.hex(),
-            "instruction_offsets": offsets}
-    OUT.write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8", newline="\n")
-    print(f"wrote {OUT.name}: {len(offsets)} instructions, {len(be)} bytes")
+    for name, load_sw in SOURCES.items():
+        src = ROOT / "csrc" / "waverider" / "sharc" / f"{name}.asm"
+        with tempfile.TemporaryDirectory() as tmp:
+            be, offsets = m3._selas(src, pathlib.Path(tmp))
+        sha = hashlib.sha256(src.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+        spec = {"source": src.relative_to(ROOT).as_posix(), "source_sha256": sha, "toolchain": TOOLCHAIN,
+                "section": "seg_pmco", "load_sw": hex(load_sw), "object_parcels_be": be.hex(),
+                "instruction_offsets": offsets}
+        src.with_suffix(".json").write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8", newline="\n")
+        print(f"wrote {src.stem}.json: {len(offsets)} instructions, {len(be)} bytes")
     return 0
 
 

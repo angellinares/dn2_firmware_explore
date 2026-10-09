@@ -36,8 +36,13 @@ real compromise (the owner); points only matter for low notes.
    cycle model): a plain radix-2 complex FFT, correct to 2e-7 at N 16..2048; N 2048 is
    337,554 instructions, ~650k cycles in DDR and ~624k in L1 (memory costs 4 %: the
    instructions are the cost). A 2048-point frame's levels ~2.5 M cycles; **a 64 x 2048
-   table ~160 M cycles, ~0.46 s** at the DSP's ~35 % idle (the guess was 30 ms). Next: the
-   real-input packing (half the work), SIMD on the second processing element, radix 4.
+   table ~160 M cycles, ~0.46 s** at the DSP's ~35 % idle (the guess was 30 ms).
+   **The real-input FFT** (`rfft.asm`: N reals as N/2 complex, a split step after the
+   forward and before the inverse; `scripts/sharc_rfft_check.py`): correct to 1.7e-7 at
+   N 16..2048, N 2048 ~344k cycles forward, ~341k inverse; a 2048-point frame's levels
+   ~1.33 M cycles, **a 64 x 2048 table ~85 M cycles, ~0.24 s at ~35 % idle**. Next: SIMD
+   on the second processing element (stock sets MODE1 PEYEN 82 times: a firmware form),
+   radix 4.
 2. **The load.** Today the pool copies 16 x 512 tables only (16 KB slots, 2 MB area at
    `0x807ff000`) through command 4's chunks. A table of any size needs a variable extent in
    the free DDR and a directory entry carrying its geometry.

@@ -27,7 +27,7 @@ fixed value per waveform, the centre for nearly all of them, so a square in ONE 
 off" and in HALF "jumps back to the middle". The four stores that do it (two per
 evaluator) are NOP'd, and the LFO keeps the last value it computed.
 
-Four hooks (a `jmp` each into a platform `CODE` chunk at `0x467f8000`, 264 B) and four
+Four hooks (a `jmp` each into a platform `CODE` chunk at `0x467f8000`, 260 B) and four
 NOP'd stores, generated
 by `scripts/gen_lfolength_code.py` from `scripts/build_lfo_length.py` into
 `lfolength_code.json`, so the browser applies exactly these bytes. Every hook's stock

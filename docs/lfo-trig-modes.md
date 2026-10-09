@@ -62,7 +62,7 @@ instruction, only the addresses moved (+0x2e0; the state block at `0x44640c18`).
 ## The fix: `lfolength`
 
 `scripts/build_lfo_length.py` (the design and the register notes), the mod
-`src/dnfw/mods/lfolength.py`, four hooks into a 264 B CODE chunk at `0x467f8000`. Measured
+`src/dnfw/mods/lfolength.py`, four hooks into a 260 B CODE chunk at `0x467f8000`. Measured
 (`--fix`): every start phase now runs one cycle (A 47 frames, B 55) in ONE and half a
 cycle (24, 28) in HALF, and `--compare` shows each tracing TRIG's waveform until the stop,
 **max difference 0** on TRI, SIN and SAW at SPH 0..127, both evaluators.

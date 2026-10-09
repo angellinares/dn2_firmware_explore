@@ -16,7 +16,7 @@ async function ready(firmware) {
   state.firmware = firmware;
   const found = extents(firmware);
   const bytes = found.reduce((n, e) => n + e.length, 0);
-  $("writes").textContent = `${found.length} ranges, ${bytes} bytes in section 3: 4 hooks, 4 NOP'd stores and the shared start-up loader, which copies a 264-byte code chunk to RAM`;
+  $("writes").textContent = `${found.length} ranges, ${bytes} bytes in section 3: 4 hooks, 4 NOP'd stores and the shared start-up loader, which copies a 260-byte code chunk to RAM`;
   for (const id of ["step2", "step3", "bar"]) $(id).classList.remove("hidden");
   status("Loaded. Ready to build.");
 }

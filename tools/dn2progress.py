@@ -63,8 +63,8 @@ def render(compact: bool, show_finished: bool, keep_min: float) -> str:
     items = [d for d in progress.jobs()
              if d["state"] == "running" or (show_finished and now - (d.get("ended") or d.get("updated", now)) < keep_min * 60)]
     running = sum(d["state"] == "running" for d in items)
-    lines = [f"{BOLD}dn2 jobs{OFF}  {running} running  {DIM}{time.strftime('%H:%M:%S')}"
-             f"   c compact · f finished · p prune · q quit{OFF}", ""]
+    keys = "c compact · f finished · p prune · q quit" if cols >= 72 else "c f p q"
+    lines = [f"{BOLD}dn2 jobs{OFF}  {running} running  {DIM}{time.strftime('%H:%M:%S')}   {keys}{OFF}", ""]
     if not items:
         lines.append(DIM + "  no jobs" + OFF)
     for depth, d in tree(items):

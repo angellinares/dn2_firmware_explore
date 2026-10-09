@@ -15,7 +15,7 @@ latest value per index, and prints:
 `--watch N` repeats the read every N seconds until stopped, printing when passes or the
 count change. All zeros with no index seen means the build has no scanner (or the word is
 not reply word 2). The answer is the count once passes is 1 or more: 0 means nothing but
-the boot kernel's fill wrote the span; a count close to the whole span (126,860,288 words)
+the boot kernel's fill wrote the span; a count close to the whole span (132,856,832 words)
 means the fill did not take (the pattern never landed).
 """
 from __future__ import annotations

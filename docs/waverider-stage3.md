@@ -136,20 +136,58 @@ real compromise (the owner); points only matter for low notes.
    modelled (G13), and the fixed-point CLIP has no handler (G14); fixes for all three are
    in m-dwyer/digikit#58 (BITREV, the PM companion) and #59 (CLIP). The cycle model now
    prices F1-active exits at 0 and counts a SIMD pair as one L1 access.
-2. **The load.** Today the pool copies 16 x 512 tables only (16 KB slots, 2 MB area at
-   `0x807ff000`) through command 4's chunks. A table of any size needs a variable extent in
-   the free DDR and a directory entry carrying its geometry.
-3. **The reader.** reader_miph2 reads 16 frames and 512 points from fixed level records
-   (`mip.level_records`); it needs per-table frames, points and level records.
-4. **The gate.** `wr_store_playable` (16 x 512 only) decides both the slot and its **name**
-   in the pool page (`csrc/waverider/pool.c:119`): a stored table the DSP can't play shows
-   **no name**, which the owner saw on pool slots 9..11 (DNX, 2026-10-09). When the gate
-   widens, a table that still can't play (too big, an odd geometry) must stay visibly
-   different, not take a name and play Prim. under it. **DNX depends on this** (DNX,
-   2026-10-09): a `/waverider` listing carries no geometry (every slot reports the fixed
-   512 KiB extent), so DNX's pane can only judge a slot with a file read per slot; today its
-   `unplayableReason` and the instrument's blank name agree on the one check. Widening the
-   gate without a visible difference leaves DNX as the only warning, at 128 reads. (The
-   automatic pool filters by geometry; the instrument's ADD does not.)
+2. **The load (built, 2026-10-10).** The pool sends each table as stored and the DSP
+   builds its levels in its idle time (`csrc/waverider/sharc/build3.asm`,
+   `dnfw.waverider.table3`):
+   - **DDR.** The load area grows to `0x807ff000..0x84800000`: the request directory's 4 KB,
+     then entry j's table as stored (int16, frame-major) at `0x80800000 + j x 512 KiB`.
+     build3's arrays at `0x84800000` (32 KB apart), entry j's levels at `0x84900000 + j x
+     0x201000` (2 MB + 4 KB each, enough for 64 x 4096) to `0x94980000`, all in the free DDR
+     (`docs/sharc-ddr.md`). The templates (a header and build rows per N), S per F and the
+     4096-point twiddles (which serve every smaller transform) load with the boot stream
+     at `0x80700000`.
+   - **The protocol** (`pool.c`): clear the request directory's magic, send the tables,
+     then the directory body (count, generation, each entry's `frames | points << 16`),
+     its magic `'WRP3'` last. The DSP builds nothing while the magic is clear, starts
+     again at entry 0 on a new generation, and names an entry for `pool.asm` (its L1
+     directory `BUILT[j]`, `0x2e4100`) only once every pair of frames is done: an entry
+     being rebuilt plays Prim., never half a table. A refill no longer leaves a voice on a
+     table being rewritten.
+   - **One idle call, one pair of frames.** fft3, spec3 and mipb3 moved to free L1 above the
+     reader (`0x2e3800..0x2e4b00`, their jumps PC-relative); build3 at `0x2e4b00`. The idle
+     loop's back edge goes to build3, which goes on to idle_load.asm; a call that builds
+     sets idle_load's previous-pass time to now, so it counts as neither idle time nor one
+     long busy stretch (the load meter reads high while tables build, and no false
+     overrun). It keeps every register the idle loop could hold (checked per call).
+   - **Checked** (`scripts/sharc_build3_check.py`, the shipped section 7, in the runner):
+     16 x 512, 5 x 64, 3 x 256, 2 x 4096, 1 x 4096 and the four test geometries: every
+     header equal to `table3`'s, every row within 1 LSB of the model; an empty entry and
+     7 x 100 stay 0; nothing built with the magic clear; a new generation rebuilds, the
+     entry reading 0 meanwhile; no cross-bus read. The DSP pool gate
+     (`scripts/sharc_waverider_pool.py`, 13 checks): load frames through command 4, the
+     levels built, slot 2 (16 x 512) and slot 3 (5 x 1024, POS scaled) bit-exact to the
+     reference reader on the levels the DSP built, the 128th entry plays. The ColdFire
+     pool test (`scripts/emu_waverider_pool.py`, 10/10 on the build): the frames are
+     `loadframes`' byte for byte, the display spans of a 5 x 1024 table are the model's.
+   - **Cost, the cycle model** (now with separate DM and PM data caches, as the core has):
+     a table 64 x 2048 ~55 M cycles (32 calls, ~1.7 M each: ~0.16 s at ~35 % idle), 64 x 512
+     ~13 M, 16 x 2048 ~14 M, 16 x 512 ~3.4 M; a 4096-point pair ~6.3 M, nearly all DDR
+     misses: a 16 KB array per bus streams through a 16 KB cache once per FFT stage. To
+     measure on the instrument and to improve (stages blocked to fit the cache) under the
+     perf gate.
+   - **Found on the way:** digikit's `_dm_read` read a word only partly written as 0 under
+     `explicit_memory_model` (m-dwyer/digikit#60).
+3. **The reader (built, 2026-10-10).** A table with the flag is a `table3` table: a 1 KB
+   header (F, the position's scale S = (F - 1) / 15 rounded up, F - 1, the thresholds T[k]
+   for its N, the level records), then the rows. reader_miph2 reads its level choice,
+   records and last frame from the header and scales POS: pos = trunc(POS x S) (exact for
+   F = 16; POS 15 lands on frame F - 1). The baked tables carry the same header, so every
+   gate on them is unchanged; `table3.read` is the model, equal to `mip.read` at 16 x 512.
+4. **The gate (built, 2026-10-10).** `wr_store_playable` now takes 1..64 waves of 64..4096
+   points (a power of two), length 2 x waves x points, in the slot's own extent; anything
+   else still shows no name in the pool page. DNX told (2026-10-10): its
+   `unplayableReason` should follow the same rule on a stage 3 build. The pool page shows
+   16 frames of any table, frame d the table's frame nearest d (F - 1) / 15
+   (`wave.pool_spans`).
 5. **The perf gate** (`perf-stability-gate`): runner worst case, instrument load and a soak
    against the factory machines, one variable per pair.

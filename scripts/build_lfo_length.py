@@ -99,13 +99,12 @@ lfa_wave:
     movel   #{A_CYCLE},%d1
     macl    %d1,%d0,%acc0
     movclrl %acc0,%d0               | the latched point, -1/2 .. +1/2 cycle
-    addl    %d0,%d2
-    bpls    1f
-    addl    %d1,%d2
-    bras    2f
-1:  cmpl    %d1,%d2
-    bcss    2f
-    subl    %d1,%d2
+    tstl    %d0                     | the sum stays within one cycle either way: phase + point
+    bmis    1f                      | reaches 2.76e9 on the instrument, past a signed long
+    subl    %d1,%d0                 | point >= 0: add (point - cycle), in -cycle .. 0
+1:  addl    %d0,%d2
+    bpls    2f
+    addl    %d1,%d2                 | below 0: a cycle back
 2:  moveq   #3,%d0
     cmpl    %d0,%d4
     blts    3f
@@ -155,13 +154,12 @@ lfb_wave:
     movel   #{B_CYCLE},%d1
     macl    %d1,%d0,%acc0
     movclrl %acc0,%d0
-    addl    %d0,%d2
-    bpls    1f
-    addl    %d1,%d2
-    bras    2f
-1:  cmpl    %d1,%d2
-    bcss    2f
-    subl    %d1,%d2
+    tstl    %d0                     | the sum stays within one cycle either way: phase + point
+    bmis    1f                      | reaches 2.76e9 on the instrument, past a signed long
+    subl    %d1,%d0                 | point >= 0: add (point - cycle), in -cycle .. 0
+1:  addl    %d0,%d2
+    bpls    2f
+    addl    %d1,%d2                 | below 0: a cycle back
 2:  moveq   #3,%d0
     cmpl    %d0,%d4
     blts    3f

@@ -92,6 +92,29 @@ Implications traced (the owner's rule):
   on the 6 bytes before it, and lfohold's B sites are asserted with the instruction after
   each store.
 
+## On the instrument: lfofix1, an overflow the emulator could not reach (2026-10-09)
+
+The owner flashed `lfofix1`: ONE, SQR, SPH 85 went low (short), high (long), then **rapidly
+low, high, low** and held low; SIN at SPH 74 clicked near the end of the run. Cause: the
+waveform hook added the start point to the phase as a signed long; on the instrument the
+start point reaches 0.99 of a cycle (SPH 0..127 << 8 in the cell; the fractional `macl`
+gives cell / 32768 of a cycle), so phase + point reaches 2.76e9, past a signed long, and
+the wrong correction ran: from 0.9 of a run at SPH 85 the waveform was read at 2.56..2.65
+cycles. The emulator never got there: its EMAC returns half the fractional product
+(`docs/for-digikit-emac-frac.md`), so start points stayed under half a cycle, and the
+SPH << 9 scale this note first assumed was that halving.
+
+**The fix (lfofix2):** add (point - cycle) when the point is >= 0, the point itself when
+negative, then a cycle back if below 0: every value stays within one cycle. Run as the
+bare instruction sequence over phases 0..cycle and points -cycle..cycle for both
+evaluators' cycles: 6056/6056 equal (phase + point) mod cycle; the old sequence reads
+2.564 cycles at 0.9 of a run from SPH 85.
+
+**Lessons.** A test rig's arithmetic is part of what is tested: check the emulator's
+multiply against the chip's definition before trusting a result that depends on it. And
+test the real parameter scale: a value range the emulator cannot produce is untested, not
+clean.
+
 ## A fix that respects stock
 
 **Shift the phase's origin:** on a trig, start the phase at 0 and latch the SPH point;

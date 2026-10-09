@@ -206,6 +206,7 @@ def main() -> int:
     p.add_argument("--spd", type=lambda v: int(v, 0), default=0x7000, help="SPD's cell (0x4000 = 0; below it the LFO runs backwards)")
     p.add_argument("--sph-shift", type=int, default=8, help="SPH's cell = SPH << this (8 or 9: which the panel writes is the question)")
     p.add_argument("--midi", action="store_true", help="drive evaluator B (MIDI tracks) instead of A")
+    p.add_argument("--clicks", action="store_true", help="find frame-to-frame jumps, factory vs fixed, over SPH 64..96")
     p.add_argument("--switch", action="store_true", help="change the TRIG MODE mid-run: the fixed machine must equal stock")
     p.add_argument("--waves", nargs="+", default=None, help="--regress: only these waveforms (TRI SIN SQR SAW EXP RMP RND)")
     p.add_argument("--regress", action="store_true",
@@ -249,6 +250,25 @@ def main() -> int:
         for sph in a.sph or [0, 32, 64, 96, 127]:
             seen = run(m, buf, rate, out1, out2, span, MODES["TRIG"], 0, 4, a.mult, sph)
             print(f"  SPH {sph:3d}: TRIG starts {seen[0]:#06x}")
+        return 0
+    if a.clicks:
+        # a jump: a frame-to-frame step much larger than the wave's own around it
+        stock, sargs = _machine(False)
+        fixed, fargs = _machine(True)
+        for wname, wave in (("TRI", 0), ("SIN", 1), ("SAW", 3), ("EXP", 4), ("RMP", 5)):
+            for mname, mode in (("TRIG", 1), ("ONE", 3), ("HALF", 4)):
+                rows = []
+                for sph in a.sph or range(64, 97, 2):
+                    out = []
+                    for mach, args in ((stock, sargs), (fixed, fargs)):
+                        y = run(mach, *args, mode, wave, 60, a.mult, sph)
+                        d = [abs(y[i + 1] - y[i]) for i in range(len(y) - 1)]
+                        typ = sorted(d)[len(d) // 2] or 1
+                        big = [(i, d[i]) for i in range(len(d)) if d[i] > 8 * typ and d[i] > 0x200]
+                        out.append(big[:2])
+                    if out[0] != out[1]:
+                        rows.append(f"SPH {sph}: factory {out[0]} fixed {out[1]}")
+                print(f"  {wname} {mname}: " + ("same jumps as factory at every SPH" if not rows else " | ".join(rows)))
         return 0
     if a.switch:
         stock, sargs = _machine(False)

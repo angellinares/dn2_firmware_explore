@@ -162,25 +162,33 @@ def _selas(src: pathlib.Path, work: pathlib.Path):
 # instances in the Digitakt II 1.16 DSP firmware (the same SHARC+); none confidently in DN2.
 SUBWORD_LOAD = re.compile(r"^R(\d+)\s*=\s*DM\(\s*I([0-7])\s*,\s*M([0-7])\s*\)\s*\((BW|BWSE|SW|SWSE)\)\s*;$",
                           re.IGNORECASE)
+# `DM(Ia, Mb) = Rn (SW)` / `(BW)`: the store form, the same width table (stores have no SE)
+SUBWORD_STORE = re.compile(r"^DM\(\s*I([0-7])\s*,\s*M([0-7])\s*\)\s*=\s*R(\d+)\s*\((BW|SW)\)\s*;$",
+                           re.IGNORECASE)
 # (l, x, w), PRM 14-19's BH / BHSE encode tables (Type 3d uses the same)
 SUBWORD = {"BW": (0, 0, 0), "BWSE": (0, 1, 0), "SW": (1, 0, 0), "SWSE": (1, 1, 0)}
 
 
 def fix_subword(be: bytes, offs: list[int], texts: list[str]) -> bytes:
-    """Re-encode selas's Type 3a for each sub-word load as Type 3d: 3a's u/i/m/cond/g/d/
+    """Re-encode selas's Type 3a for each sub-word load or store as Type 3d: 3a's u/i/m/cond/g/d/
     ureg kept, compute (bits 22:0, zero for a bare load) replaced by bits 21:20 = 11,
     ex (18) = 0, and l (30), w (17), x (16) from SUBWORD."""
     out = bytearray(be)
     for o, text in zip(offs, texts):
-        mt = SUBWORD_LOAD.match(text)
-        if not mt:
-            continue
+        mt, store = SUBWORD_LOAD.match(text), False
+        if mt:
+            reg, ireg, mreg, width = mt.group(1), mt.group(2), mt.group(3), mt.group(4)
+        else:
+            mt, store = SUBWORD_STORE.match(text), True     # 2026-10-09: selas drops a store's
+            if not mt:                                       # width too (a 32-bit store)
+                continue
+            ireg, mreg, reg, width = mt.group(1), mt.group(2), mt.group(3), mt.group(4)
         word = int.from_bytes(out[o:o + 6], "big")
-        if word >> 45 != 0b010 or word & 0x7FFFFF or (word >> 30) & 1 or (word >> 31) & 1:
-            raise SystemExit(f"{text!r}: selas emitted {word:012x} at +{o}, not the Type 3a load this fix expects")
-        if (word >> 23) & 0x7F != int(mt.group(1)) or (word >> 41) & 7 != int(mt.group(2))                 or (word >> 38) & 7 != int(mt.group(3)) or not (word >> 44) & 1:
-            raise SystemExit(f"{text!r}: selas's fields at +{o} are not this load's")
-        l, x, w = SUBWORD[mt.group(4).upper()]
+        if word >> 45 != 0b010 or word & 0x7FFFFF or (word >> 30) & 1 or (word >> 31) & 1 != store:
+            raise SystemExit(f"{text!r}: selas emitted {word:012x} at +{o}, not the Type 3a access this fix expects")
+        if (word >> 23) & 0x7F != int(reg) or (word >> 41) & 7 != int(ireg)                 or (word >> 38) & 7 != int(mreg) or not (word >> 44) & 1:
+            raise SystemExit(f"{text!r}: selas's fields at +{o} are not this access's")
+        l, x, w = SUBWORD[width.upper()]
         word |= (l << 30) | (0b11 << 20) | (w << 17) | (x << 16)
         out[o:o + 6] = word.to_bytes(6, "big")
     return bytes(out)
@@ -316,12 +324,12 @@ def fix_type3a_pm(be: bytes, offs: list[int], texts: list[str]) -> bytes:
     return bytes(out)
 
 
-# `[IF cond] JUMP label [(DB)];` to one of the file's own labels.
-JUMP_LABEL = re.compile(r"^((?:IF\s+\w+\s+)?JUMP\s+)([A-Za-z_][\w.]*)(\s*(?:\(DB\))?\s*;)$", re.IGNORECASE)
+# `[IF cond] JUMP|CALL label [(DB)];` to one of the file's own labels.
+JUMP_LABEL = re.compile(r"^((?:IF\s+\w+\s+)?(?:JUMP|CALL)\s+)([A-Za-z_][\w.]*)(\s*(?:\(DB\))?\s*;)$", re.IGNORECASE)
 
 
 def fix_rel_jump(be: bytes, offs: list[int], texts: list[str], labels: dict[str, int]) -> bytes:
-    """`JUMP label`, assembled as `JUMP (PC, 0)` and its offset written here.
+    """`JUMP label` / `CALL label`, assembled as `.. (PC, 0)` and its offset written here.
 
     selas leaves a relocation for a jump to a label (sharc_object.code refuses those), so
     the older sources jump to absolute addresses worked out by hand. Type 8a's PC-relative
@@ -336,7 +344,7 @@ def fix_rel_jump(be: bytes, offs: list[int], texts: list[str], labels: dict[str,
         if target is None:
             raise SystemExit(f"{text!r}: no label {mt.group(2)!r} in this file")
         if out[o] != 0x07:
-            raise SystemExit(f"{text!r}: selas emitted {out[o:o + 6].hex()} at +{o}, not a Type 8a (PC, ..)")
+            raise SystemExit(f"{text!r}: selas emitted {out[o:o + 6].hex()} at +{o}, not a Type 8a (PC, ..)")  # JUMP and CALL alike
         rel = (offs[target] - o) // 2
         word = int.from_bytes(out[o:o + 6], "big")
         word = (word & ~0xFFFFFF) | (rel & 0xFFFFFF)

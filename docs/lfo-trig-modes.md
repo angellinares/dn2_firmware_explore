@@ -79,6 +79,8 @@ The comparison caught one bug of mine on the way: the latch's reconstruction (`e
 `swap`, `lsll #8`) carried a negative byte's sign bits into the low word, a 1/256-cycle
 offset at SPH 64 and up (0x80 on TRI). A `clrw` after the `swap` fixed it.
 
+**The regression grid** (`--regress`, factory vs fixed, each case from the same LFO state and the same random-generator state): modes FREE/TRIG/HOLD/ONE/HALF x the seven waveforms x SPH 0/32/64/96 x speed + and - x fade off/on x one trig / a retrig mid-run / a retrig after the stop: **1680/1680 on both evaluators.** Outside ONE/HALF with SPH > 0 (and RND) the fixed machine equals factory exactly; ONE/HALF trace TRIG until each stop and run factory's SPH-0 length after every trig. Two harness artifacts were found and removed on the way, both in the comparison rather than the fix: the LFO state carried from one case to the next, and RND's generator advanced differently on the two machines.
+
 Implications traced (the owner's rule):
 - the latch is each record's `+119`, which neither evaluator, their resets, nor B's flag
   setter (`0x401373b8`, which writes `+118`) touches; whole-record copies carry it;

@@ -123,7 +123,9 @@ def _machine(fix: bool):
             new = bytes.fromhex("4ef9") + struct.pack(">I", at[label])
             m.write(va, new + bytes.fromhex("4e71") * ((len(stock) - len(new)) // 2))
         m.flush()
-    PRISTINE[id(m)] = [(at, m.read(at, 0x780)) for at in (A_STATE, B_STATE)]
+    # the LFO state blocks, and the random generator RND draws from (0x4013739c: two words at
+    # 0x402a0df8), which the two machines would otherwise advance differently
+    PRISTINE[id(m)] = [(at, m.read(at, 0x780)) for at in (A_STATE, B_STATE)] + [(0x402A0DF8, m.read(0x402A0DF8, 8))]
     span = MIRROR_AT + TRACKS * MIRROR_BYTES + 32
     buf, frac = m.alloc(span), m.alloc(len(SET_FRAC))
     m.write(frac, SET_FRAC)
@@ -152,7 +154,8 @@ def regress(a) -> int:
     for spd in (0x7000, 0x1000):
         SPD = spd
         for fade in (0x4000, 0x6000):
-            for wname, wave in (("TRI", 0), ("SIN", 1), ("SQR", 2), ("SAW", 3), ("EXP", 4), ("RMP", 5), ("RND", 6)):
+            for wname, wave in [w for w in (("TRI", 0), ("SIN", 1), ("SQR", 2), ("SAW", 3), ("EXP", 4), ("RMP", 5), ("RND", 6))
+                                if not a.waves or w[0] in a.waves]:
                 for sph in (0, 32, 64, 96):
                     for pname, trigs in patterns.items():
                         for mname, mode in (("FREE", 0), ("TRIG", 1), ("HOLD", 2), ("ONE", 3), ("HALF", 4)):
@@ -204,6 +207,7 @@ def main() -> int:
     p.add_argument("--sph-shift", type=int, default=8, help="SPH's cell = SPH << this (8 or 9: which the panel writes is the question)")
     p.add_argument("--midi", action="store_true", help="drive evaluator B (MIDI tracks) instead of A")
     p.add_argument("--switch", action="store_true", help="change the TRIG MODE mid-run: the fixed machine must equal stock")
+    p.add_argument("--waves", nargs="+", default=None, help="--regress: only these waveforms (TRI SIN SQR SAW EXP RMP RND)")
     p.add_argument("--regress", action="store_true",
                    help="stock vs lfolength over the whole grid (modes, waveforms, SPH, speed, fade, retrigs)")
     p.add_argument("--compare", action="store_true", help="ONE / HALF against TRIG from the same SPH, frame by frame")

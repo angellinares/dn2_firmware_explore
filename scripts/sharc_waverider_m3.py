@@ -115,13 +115,25 @@ def load_json(path: pathlib.Path, src: pathlib.Path, do_assemble: bool, work: pa
 
 def _selas(src: pathlib.Path, work: pathlib.Path):
     """Reassemble SRC with a global label before every instruction; -> (be bytes, offsets)."""
-    lines, k, texts = [], 0, []
+    lines, k, texts, labels = [], 0, [], {}
     for line in src.read_text(encoding="utf-8").splitlines():
         text = line.split("//", 1)[0].strip()
+        if text.endswith(":") and not text.startswith("."):
+            labels[text[:-1]] = k
         if text and not text.startswith(".") and not text.endswith(":"):
             lines += [f".GLOBAL x_i{k};", f"x_i{k}:"]
             k += 1
             texts.append(text)
+            mt = TYPE19A.match(text)
+            if mt and mt.group(1) is not None:          # `Ib = BITREV/MODIFY(Ia, imm)`: selas
+                line = f"MODIFY(I{mt.group(3)}, {mt.group(4)});"   # cannot; a placeholder
+            mt = TYPE7A.match(text)
+            if mt:                                       # Type 7a: written whole by fix_type7a;
+                line = (f"{mt.group(1)};" if mt.group(1)  # the compute alone, or any 48-bit
+                        else f"MODIFY(I{mt.group(3)}, 0);")  # instruction, holds the place
+            mt = JUMP_LABEL.match(text)
+            if mt:                                       # `JUMP label`: selas leaves a relocation
+                line = f"{mt.group(1)}(PC, 0){mt.group(3)}"
         lines.append(line)
     lab = work / (src.stem + "_lab.asm")
     lab.write_bytes(("\n".join(lines) + "\n").encode())
@@ -132,7 +144,12 @@ def _selas(src: pathlib.Path, work: pathlib.Path):
     data = obj.read_bytes()
     syms = sharc_object.symbols(data)
     offs = [2 * syms[f"x_i{j}"] for j in range(k)]
-    return fix_subword(fix_shift_imm(sharc_object.code(data, "seg_pmco"), offs), offs, texts), offs
+    be = fix_subword(fix_shift_imm(fix_ashift_imm(sharc_object.code(data, "seg_pmco"), offs, texts), offs),
+                     offs, texts)
+    be = fix_type7a(fix_dual_addsub(fix_type19a(be, offs, texts), offs, texts), offs, texts)
+    be = fix_type3a_pm(be, offs, texts)
+    be = fix_rel_jump(be, offs, texts, labels)
+    return fix_loop_f1(be, offs, texts, labels), offs
 
 
 # `Rn = DM(Ia, Mb) (SWSE)` and the other byte / short widths. selas drops the width and
@@ -169,6 +186,222 @@ def fix_subword(be: bytes, offs: list[int], texts: list[str]) -> bytes:
     return bytes(out)
 
 
+# `MODIFY(Ia, imm)`, `BITREV(Ia, imm)` and the two-register forms `Ib = ..(Ia, imm)`.
+TYPE19A = re.compile(r"^(?:I(\d+)\s*=\s*)?(MODIFY|BITREV)\s*\(\s*I(\d+)\s*,\s*(-?(?:0x[0-9a-f]+|\d+))\s*\)\s*;$",
+                     re.IGNORECASE)
+
+
+def fix_type19a(be: bytes, offs: list[int], texts: list[str]) -> bytes:
+    """Type 19a (I register modify or bit-reverse by an immediate), encoded here.
+
+    selas swaps two bits: it writes the DAG select g at bit 39 and the bit-reverse flag at
+    bit 38, so `MODIFY(I9, 4)` comes out as a bit-reverse of I1 and `BITREV(I1, 4)` as a
+    modify of I9 (found 2026-10-09 with scripts/selas_roundtrip.py). The PRM's Figure 17-2
+    puts g at bit 38; the classic manuals and digikit's decode table put the bit-reverse
+    flag at bit 39 (the PRM's own bitrev figure, 17-3, prints bit 39 as 0, an erratum
+    digikit records); the stock DN2 1.11 image agrees: 78 DAG2 modifies at bit 38, 8
+    bit-reverses at bit 39 in it and the Digitakt II's together. selas also rejects
+    `Ib = MODIFY/BITREV(Ia, imm)` (a relocation), which _selas assembles as a placeholder.
+    So every such instruction is written whole: 0x16 at 47:40, bit-reverse 39, g 38,
+    Id XOR Is 37:35, Is 34:32, the immediate 31:0 (PRM Type 19a)."""
+    out = bytearray(be)
+    for o, text in zip(offs, texts):
+        mt = TYPE19A.match(text)
+        if not mt:
+            continue
+        if len(out) < o + 6 or out[o] != 0x16:
+            raise SystemExit(f"{text!r}: selas emitted {out[o:o + 6].hex()} at +{o}, not a Type 19a")
+        src = int(mt.group(3))
+        dst = int(mt.group(1)) if mt.group(1) is not None else src
+        if src > 15 or dst > 15 or (src >= 8) != (dst >= 8):
+            raise SystemExit(f"{text!r}: both I registers must be in one DAG")
+        word = (0x16 << 40) | ((mt.group(2).upper() == "BITREV") << 39) | ((src >= 8) << 38)             | (((src ^ dst) & 7) << 35) | ((src & 7) << 32) | (int(mt.group(4), 0) & 0xFFFFFFFF)
+        out[o:o + 6] = word.to_bytes(6, "big")
+    return bytes(out)
+
+
+# A plain dual add/subtract (no multiply) at the start of an instruction's text.
+DUAL_ADDSUB = re.compile(r"^([FR])(\d+)\s*=\s*\1(\d+)\s*\+\s*\1(\d+)\s*,\s*\1(\d+)\s*=\s*\1(\d+)\s*-\s*\1(\d+)\s*[,;]",
+                         re.IGNORECASE)
+
+
+def fix_dual_addsub(be: bytes, offs: list[int], texts: list[str]) -> bytes:
+    """`Fa = Fx + Fy, Fs = Fx - Fy` (and the R form) with no multiply, encoded here.
+
+    selas gets it wrong two ways (found 2026-10-09, scripts/selas_roundtrip.py): with
+    Fx outside F8-F11 or Fy outside F12-F15 it emits the add alone (`F2 = F0 + F1,
+    F3 = F0 - F1` is `F2 = F0 + F1`), and with them inside it emits the multiplier's
+    dual form with a multiply nobody asked for (`F0 = F0 * F4, F2 = F8 + F12, ...`,
+    clobbering F0). The PRM's encoding (Tables 18-3, 18-10, 18-13): compute bits 22:20 0,
+    19:16 1111 (float) or 0111 (fixed), then Fs, Fa, Fx, Fy, any registers. The compute
+    field is the instruction's low 23 bits in every form that carries one."""
+    out = bytearray(be)
+    for i, (o, text) in enumerate(zip(offs, texts)):
+        mt = DUAL_ADDSUB.match(text)
+        if not mt:
+            continue
+        fa, fx, fy, fs, fx2, fy2 = (int(mt.group(k)) for k in range(2, 8))
+        if (fx, fy) != (fx2, fy2) or max(fa, fx, fy, fs) > 15:
+            raise SystemExit(f"{text!r}: a dual add/subtract takes one Fx and one Fy")
+        end = offs[i + 1] if i + 1 < len(offs) else len(out)
+        n = end - o
+        if n not in (4, 6):
+            raise SystemExit(f"{text!r}: a {n}-byte instruction, not a 32- or 48-bit compute form")
+        word = int.from_bytes(out[o:end], "big")
+        opcode = 0b1111 if mt.group(1).upper() == "F" else 0b0111
+        compute = (opcode << 16) | (fs << 12) | (fa << 8) | (fx << 4) | fy
+        word = (word & ~0x7FFFFF) | compute
+        out[o:end] = word.to_bytes(n, "big")
+    return bytes(out)
+
+
+# `[compute,] [Ib =] MODIFY(Ia, Mc);`
+TYPE7A = re.compile(r"^(?:(.*?)\s*,\s*)?(?:I(\d+)\s*=\s*)?MODIFY\s*\(\s*I(\d+)\s*,\s*M(\d+)\s*\)\s*;$", re.IGNORECASE)
+
+
+def fix_type7a(be: bytes, offs: list[int], texts: list[str]) -> bytes:
+    """Type 7a, `[compute,] [Ib =] MODIFY(Ia, Mc)`, encoded here (48-bit only).
+
+    selas's 48-bit Type 7a is wrong: `MODIFY(I1, M7)` comes out as 040f0f800000, which
+    digikit reads `IF SV I3 = MODIFY(I4, M1)` (found 2026-10-09, scripts/selas_roundtrip.py);
+    with a compute or a second I register it leaves a relocation. digikit's layout, which
+    stock DN2 1.11 runs bit-exact through (369 instances): 0x04 at 47:40, w 39 (0: the
+    modifier unscaled), g 38, cond 37:33 (31, always), Is 32:30, Mc 29:27, Ib XOR Ia
+    26:24, bit 23 0, the compute 22:0. _selas assembles the compute alone in its place
+    (a 48-bit Type 2a whose low 23 bits are the compute field), or a Type 19a when there is
+    none, so the length holds; fix_dual_addsub has already corrected that compute."""
+    out = bytearray(be)
+    for i, (o, text) in enumerate(zip(offs, texts)):
+        mt = TYPE7A.match(text)
+        if not mt:
+            continue
+        end = offs[i + 1] if i + 1 < len(offs) else len(out)
+        if end - o != 6:
+            raise SystemExit(f"{text!r}: {end - o} bytes; Type 7a is 48-bit only (.NOCOMPRESS)")
+        src, m = int(mt.group(3)), int(mt.group(4))
+        dst = int(mt.group(2)) if mt.group(2) is not None else src
+        if max(src, dst, m) > 15 or len({x >= 8 for x in (src, dst, m)}) != 1:
+            raise SystemExit(f"{text!r}: the I and M registers must be in one DAG")
+        compute = int.from_bytes(out[o:o + 6], "big") & 0x7FFFFF if mt.group(1) else 0
+        word = (0x04 << 40) | ((src >= 8) << 38) | (31 << 33) | ((src & 7) << 30) | ((m & 7) << 27) \
+            | (((src ^ dst) & 7) << 24) | compute
+        out[o:o + 6] = word.to_bytes(6, "big")
+    return bytes(out)
+
+
+PM_ACCESS = re.compile(r"\bPM\s*\(\s*I(\d+)\s*,\s*M(\d+)\s*\)", re.IGNORECASE)
+
+
+def fix_type3a_pm(be: bytes, offs: list[int], texts: list[str]) -> bytes:
+    """A single PM transfer, `PM(Ic, Md) = ureg` / `ureg = PM(Ic, Md)` [with a compute]: g set.
+
+    selas writes Type 3a with g (bit 32, the DAG) 0 whatever the bus, so `PM(I10, M12) = R6`
+    runs as `DM(I2, M4) = R6` (found 2026-10-09 on fft3.asm: the first pass's last two
+    imaginary stores went to the real array; scripts/selas_roundtrip.py shows it). Type 3a
+    (digikit's decode table, PRM Type 3): u 44, i 43:41, m 40:38, cond 37:33, g 32, d 31,
+    l 30, ureg 29:23, compute 22:0; i and m are the register numbers less 8 for DAG2."""
+    out = bytearray(be)
+    for i, (o, text) in enumerate(zip(offs, texts)):
+        mt = PM_ACCESS.search(text)
+        if not mt or re.search(r"\bDM\s*\(", text, re.IGNORECASE):
+            continue
+        end = offs[i + 1] if i + 1 < len(offs) else len(out)
+        if end - o != 6 or out[o] >> 5 != 0b010:
+            continue                              # not Type 3a (a 16/32-bit form, Type 1, ...)
+        word = int.from_bytes(out[o:o + 6], "big")
+        ireg, mreg = int(mt.group(1)), int(mt.group(2))
+        if ireg < 8 or mreg < 8 or (word >> 41) & 7 != ireg - 8 or (word >> 38) & 7 != mreg - 8:
+            raise SystemExit(f"{text!r}: selas's fields at +{o} are not PM(I{ireg}, M{mreg})")
+        out[o:o + 6] = (word | (1 << 32)).to_bytes(6, "big")
+    return bytes(out)
+
+
+# `[IF cond] JUMP label [(DB)];` to one of the file's own labels.
+JUMP_LABEL = re.compile(r"^((?:IF\s+\w+\s+)?JUMP\s+)([A-Za-z_][\w.]*)(\s*(?:\(DB\))?\s*;)$", re.IGNORECASE)
+
+
+def fix_rel_jump(be: bytes, offs: list[int], texts: list[str], labels: dict[str, int]) -> bytes:
+    """`JUMP label`, assembled as `JUMP (PC, 0)` and its offset written here.
+
+    selas leaves a relocation for a jump to a label (sharc_object.code refuses those), so
+    the older sources jump to absolute addresses worked out by hand. Type 8a's PC-relative
+    form keeps a 24-bit two's-complement offset in short words at bits 23:0 (checked with
+    scripts/selas_roundtrip.py against digikit's decoder)."""
+    out = bytearray(be)
+    for i, (o, text) in enumerate(zip(offs, texts)):
+        mt = JUMP_LABEL.match(text)
+        if not mt:
+            continue
+        target = labels.get(mt.group(2))
+        if target is None:
+            raise SystemExit(f"{text!r}: no label {mt.group(2)!r} in this file")
+        if out[o] != 0x07:
+            raise SystemExit(f"{text!r}: selas emitted {out[o:o + 6].hex()} at +{o}, not a Type 8a (PC, ..)")
+        rel = (offs[target] - o) // 2
+        word = int.from_bytes(out[o:o + 6], "big")
+        word = (word & ~0xFFFFFF) | (rel & 0xFFFFFF)
+        out[o:o + 6] = word.to_bytes(6, "big")
+    return bytes(out)
+
+
+LOOP_F1 = re.compile(r"\bDO\s+(\S+)\s+UNTIL\s+LCE\s*\(\s*F\s*\)\s*;$", re.IGNORECASE)
+FLOW_TEXT = re.compile(r"\b(JUMP|CALL|RTS|RTI|IDLE|DO)\b", re.IGNORECASE)
+
+
+def fix_loop_f1(be: bytes, offs: list[int], texts: list[str], labels: dict[str, int]) -> bytes:
+    """`LCNTR = .., DO end UNTIL LCE (F)`: an F1-active loop, bit 23 of Type 12a set.
+
+    selas reads the (F) and drops it (bit 23 stays 0), so every loop it emits is
+    E2-active: an 11-cycle flush at each exit (PRM "Counter-Based E2-Active Loop"). An
+    F1-active loop exits for nothing, but only if no branch, IDLE or other loop's end sits
+    in its last eleven instructions (PRM "Loop Categorization into F1-Active or
+    E2-Active"), which is checked here; and the core runs it E2-active anyway when the
+    loop's whole unrolled run is under eleven instructions."""
+    out = bytearray(be)
+    ends = {}
+    for i, text in enumerate(texts):
+        mt = re.search(r"\bDO\s+(\S+)\s+UNTIL", text, re.IGNORECASE)
+        if mt:
+            ends[i] = labels.get(mt.group(1))
+    for i, text in enumerate(texts):
+        mt = LOOP_F1.search(text)
+        if not mt:
+            continue
+        end = ends[i]
+        if end is None or end <= i:
+            raise SystemExit(f"{text!r}: its end label is not a later instruction")
+        window = range(max(i + 1, end - 10), end + 1)
+        bad = [texts[j] for j in window if FLOW_TEXT.search(texts[j])] +             [texts[j] for j, e in ends.items() if j != i and e in window]
+        if bad:
+            raise SystemExit(f"{text!r}: not F1-safe, its last 11 instructions hold {bad}")
+        o = offs[i]
+        if out[o] not in (0x0C, 0x0D):
+            raise SystemExit(f"{text!r}: selas emitted {out[o:o + 6].hex()} at +{o}, not a Type 12a")
+        out[o + 3] |= 0x80                               # bit 23 of the 48-bit word
+    return bytes(out)
+
+
+ASHIFT_IMM = re.compile(r"^R\d+\s*=\s*ASHIFT\s+R\d+\s+BY\s+-?(?:0x[0-9a-f]+|\d+)\s*;$", re.IGNORECASE)
+
+
+def fix_ashift_imm(be: bytes, offs: list[int], texts: list[str]) -> bytes:
+    """`Rn = ASHIFT Rx BY imm`: the shiftimm opcode 000001, not selas's 100000.
+
+    selas writes ASHIFT by an immediate with the shiftimm field (bits 21:16) 100000, which
+    digikit's runner refuses ("unsupported ShiftImm opcode 0x20") and the PRM does not list;
+    Table 18-9 gives 000001 (found 2026-10-09 on fft3.asm). Re-written here; a negative
+    shift then gets fix_shift_imm's sign bits like LSHIFT's."""
+    out = bytearray(be)
+    for o, text in zip(offs, texts):
+        if not ASHIFT_IMM.match(text):
+            continue
+        insn = out[o:o + 6]
+        if len(insn) != 6 or insn[0] != 0x02 or insn[1] != 0x3E or insn[3] != 0x20:
+            raise SystemExit(f"{text!r}: selas emitted {insn.hex()} at +{o}, not the ASHIFT this fix expects")
+        out[o + 3] = 0x01
+    return bytes(out)
+
+
 def fix_shift_imm(be: bytes, offs: list[int]) -> bytes:
     """Type 6b shift by an immediate, `Rn = LSHIFT Rx BY -k`: sign-extend the shift field.
 
@@ -181,7 +414,7 @@ def fix_shift_imm(be: bytes, offs: list[int]) -> bytes:
     out = bytearray(be)
     for o in offs:
         insn = out[o:o + 6]
-        if len(insn) == 6 and insn[0] == 0x02 and insn[1] == 0x3E and insn[2] == 0 and insn[3] == 0                 and insn[4] & 0x80:
+        if len(insn) == 6 and insn[0] == 0x02 and insn[1] == 0x3E and insn[2] == 0 and insn[3] in (0, 1)                 and insn[4] & 0x80:                      # LSHIFT (000000) or ASHIFT (000001)
             out[o + 2] = 0x78
     return bytes(out)
 

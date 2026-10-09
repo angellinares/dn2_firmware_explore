@@ -147,6 +147,15 @@ def test_branches_loops_and_memory():
     c = run([Step(0, NOP, reads=(0x80000000,)), Step(3, NOP, reads=(0x80000020,)),
              Step(6, NOP, writes=(0x31002000,))])
     assert (c["ddr_miss_rd"], c["ddr_hit_rd"], c["smmr_wr"]) == (1, 1, 1)
+    # the DM and PM data caches are separate: a line read on PM misses after the same
+    # line read on DM, and three lines of one set fit when they are split 2 + 1
+    c = run([Step(0, NOP, reads=(0x80000000,)), Step(3, NOP, reads=(0x80000000,), pm=(0x80000000,))])
+    assert c["ddr_miss_rd"] == 2
+    way = 8 * 1024
+    c = run([Step(0, NOP, reads=(0x80000000, 0x80000000 + way), pm=(0x80000000 + way,)),
+             Step(3, NOP, reads=(0x80000000 + 2 * way,)), Step(6, NOP, reads=(0x80000000,)),
+             Step(9, NOP, reads=(0x80000000 + way,), pm=(0x80000000 + way,))])
+    assert (c["ddr_miss_rd"], c["ddr_hit_rd"]) == (3, 2)
     c = run([Step(0xB88ABB, NOP)] * 2)
     assert c["icache_miss_l2"] == 1
 

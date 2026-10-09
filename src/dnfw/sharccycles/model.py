@@ -27,7 +27,8 @@ class Model:
     def __init__(self) -> None:
         self.counts: collections.Counter[str] = collections.Counter()
         self.btb = BTB()
-        self.dcache = Cache()
+        self.dcache = Cache()                           # the DM data cache
+        self.pcache = Cache()                           # the PM data cache: separate, not coherent (fftselftest2)
         self.icache = Cache()
         self.conflict = collections.OrderedDict()      # the 32-entry conflict cache, by pc
         self._n = 0                                     # steps seen
@@ -135,7 +136,7 @@ class Model:
                 # access: the runner reports two addresses, the block sees one access
                 blocks[r].add(address // 8)
             elif r in regions.CACHED:
-                hit = self.dcache.access(address)
+                hit = (self.pcache if address in s.pm else self.dcache).access(address)
                 c[f"{r}_{'hit' if hit else 'miss'}_{kind}"] += 1
             else:
                 c[f"{r}_{kind}"] += 1

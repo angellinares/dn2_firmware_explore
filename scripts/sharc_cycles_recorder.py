@@ -144,6 +144,37 @@ class Recorder:
                 else:
                     how = ev.DAG
                 writes.append((i, how))
+        pm = ()
+        if static.pm_data and (self._reads or self._writes):
+            kind, dm_at, pm_at = self.buses(insn)
+            pm = tuple(a for a in self._reads + self._writes if self.bus_of(kind, dm_at, pm_at, a) == "PM")
         self.model.feed(ev.Step(pc, static, taken, self._loops > 0, loop_exit,
                                 tuple(self._reads), tuple(self._writes), tuple(writes),
-                                static.pm_data, emulated, loop_exit and loop_f1))
+                                static.pm_data, emulated, loop_exit and loop_f1, pm))
+
+    # -- which bus moved an address ----------------------------------------------------
+
+    def buses(self, insn) -> tuple[str, int | None, int | None]:
+        """Type 1a: ("1a", its DAG1 address, its DAG2 address) as they were before the
+        step; a form with a `g` field: "PM" when g is 1; anything else "DM"."""
+        f, t = insn.fields, insn.type_name
+        if t == "1a":
+            dm = self._iregs[f["dmi[2:0]"]]
+            pm = self._iregs[8 + ((f["pmi[2:2]"] << 2) | f["pmi[1:0]"])]
+            value = lambda v: v.value if hasattr(v, "value") else None
+            return "1a", value(dm), value(pm)
+        if f.get("g"):
+            return "PM", None, None
+        return "DM", None, None
+
+    @staticmethod
+    def bus_of(kind, dm, pm, address) -> str:
+        """Type 1a's DM transfer is at its DAG1 address (and the SIMD companion a word up),
+        its PM transfer at its DAG2 address."""
+        if kind != "1a":
+            return kind
+        if dm is not None and 0 <= address - dm <= 7:
+            return "DM"
+        if pm is not None and 0 <= address - pm <= 7:
+            return "PM"
+        return "DM"

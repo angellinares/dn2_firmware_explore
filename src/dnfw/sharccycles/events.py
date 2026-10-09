@@ -23,3 +23,4 @@ class Step:
     pm_data: bool = False                      # a data access on the PM bus
     emulated: bool = False                     # the runner's fixups ran it, not the runner
     loop_f1: bool = False                      # that loop was F1-active: its exit costs nothing
+    pm: tuple[int, ...] = ()                   # of reads and writes, the addresses moved on the PM bus

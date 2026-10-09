@@ -11,9 +11,10 @@ first pass on PM and read it back on DM and every result came out 0. The runner 
 caches, so code that breaks this passes there. This keeps, per word of cached memory,
 the bus of its last write, and records any read on the other bus.
 
-A step's bus: Type 1a's DM transfer is the address in its DAG1 register (and the SIMD
-companion one word up), the PM transfer the one in its DAG2 register; a form with a `g`
-field is PM when g is 1; anything else DM. L1 is uncached and not tracked.
+A step's bus is the recorder's (`Recorder.buses`, `Recorder.bus_of`): Type 1a's DM
+transfer is the address in its DAG1 register (and the SIMD companion one word up), the PM
+transfer the one in its DAG2 register; a form with a `g` field is PM when g is 1; anything
+else DM. L1 is uncached and not tracked.
 """
 
 from __future__ import annotations
@@ -37,32 +38,12 @@ class BusCheck(Recorder):
         self.count = 0
         self.keep = keep
 
-    def _buses(self, insn) -> tuple[str, int | None, int | None]:
-        f, t = insn.fields, insn.type_name
-        if t == "1a":
-            dm = self._iregs[f["dmi[2:0]"]]
-            pm = self._iregs[8 + ((f["pmi[2:2]"] << 2) | f["pmi[1:0]"])]
-            value = lambda v: v.value if hasattr(v, "value") else None
-            return "1a", value(dm), value(pm)
-        if f.get("g"):
-            return "PM", None, None
-        return "DM", None, None
-
-    def _bus_of(self, kind, dm, pm, address):
-        if kind != "1a":
-            return kind
-        if dm is not None and 0 <= address - dm <= 7:
-            return "DM"
-        if pm is not None and 0 <= address - pm <= 7:
-            return "PM"
-        return "DM"
-
     def after(self, runner, insn, emulated: bool) -> None:
-        kind, dm, pm = self._buses(insn)
+        kind, dm, pm = self.buses(insn)
         for a in self._reads:
             if regions.data_region(a) not in regions.CACHED:
                 continue
-            bus = self._bus_of(kind, dm, pm, a)
+            bus = self.bus_of(kind, dm, pm, a)
             w = self.writer.get(a & ~3)
             if w is not None and w != bus:
                 self.count += 1
@@ -70,7 +51,7 @@ class BusCheck(Recorder):
                     self.violations.append((self._pc, a, bus, w))
         for a in self._writes:
             if regions.data_region(a) in regions.CACHED:
-                self.writer[a & ~3] = self._bus_of(kind, dm, pm, a)
+                self.writer[a & ~3] = self.bus_of(kind, dm, pm, a)
         super().after(runner, insn, emulated)
 
     def report(self) -> str:

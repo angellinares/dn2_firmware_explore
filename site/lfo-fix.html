@@ -105,6 +105,34 @@
   <p><!-- dnfw:combines lfolength -->With Arpeggiator SHUF and RAND, Arpeggiator p-locks, Boot screen, LFO modulation of the FX, Layering onto MIDI tracks, A fourth LFO, New LFO waveforms, Arpeggiator on MIDI tracks, More modulation destinations, Reload confirm, Song guard, FM drum transients, USB SysEx probe (diagnostic), Waverider, a sixth machine. See the compatibility table<!-- /dnfw:combines -->.</p>
 </section>
 
+<section class="coverage" id="tested">
+  <h2>Tested</h2>
+  <p>Factory 1.11 against the fixed firmware, every combination of the values below, on both
+  copies of the LFO code (audio tracks and MIDI tracks).</p>
+<div class="scroll">
+<table>
+  <thead><tr><th scope="col">What was varied</th><th scope="col">Values</th><th scope="col">Cases</th><th scope="col">Result</th><th scope="col">Where</th></tr></thead>
+  <tbody>
+    <tr><td>Trig mode</td><td>FREE, TRIG, HOLD, ONE, HALF</td><td class="num">5</td><td rowspan="6">only ONE and HALF change; they follow TRIG&rsquo;s waveform until they stop</td><td rowspan="7">emulator</td></tr>
+    <tr><td>Waveform</td><td>the 7 stock ones</td><td class="num">7</td></tr>
+    <tr><td>SPH</td><td>0, 32, 64, 96</td><td class="num">4</td></tr>
+    <tr><td>Speed</td><td>+ and &minus;</td><td class="num">2</td></tr>
+    <tr><td>Fade</td><td>off and on</td><td class="num">2</td></tr>
+    <tr><td>Trigs</td><td>one, retrig mid-run, retrig after the stop</td><td class="num">3</td></tr>
+    <tr><td><strong>Totals</strong></td><td>every combination</td><td class="num">1680 audio + 1680 MIDI</td><td>all pass</td></tr>
+    <tr><td>Mode change mid-run</td><td>ONE/HALF &rarr; FREE, HOLD, TRIG</td><td class="num">3</td><td>equal to factory</td><td>emulator</td></tr>
+    <tr><td>Start-point arithmetic</td><td>every phase &times; every start point</td><td class="num">6056</td><td>all correct</td><td>offline check</td></tr>
+    <tr><td>Start-up</td><td>boot from reset, the fix&rsquo;s code in place, the LFO code run</td><td class="num">1</td><td>clean</td><td>emulator</td></tr>
+    <tr><td>Hold</td><td>ONE and HALF, square and triangle, audio track</td><td></td><td>holds the value reached</td><td>Digitone&nbsp;II, 2026-10-08</td></tr>
+    <tr><td>High SPH</td><td>0 to 120, among them 74, 85, 100, 120; audio track</td><td></td><td>full length, holds, no click or flip at the end</td><td>Digitone&nbsp;II, 2026-10-09</td></tr>
+  </tbody>
+</table>
+</div>
+  <p><strong>Not covered:</strong> start points past half a cycle in the emulator (it cannot
+  produce them; the instrument test covers them on audio tracks); MIDI tracks on the
+  instrument (emulator only).</p>
+</section>
+
 <section class="step">
   <div class="step-head"><span class="step-num">1</span><h2>Your firmware</h2></div>
   <p>A Digitone&nbsp;II OS 1.11 <code>.syx</code> from Elektron &mdash; or an image

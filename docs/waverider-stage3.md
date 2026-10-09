@@ -19,6 +19,12 @@ real compromise (the owner); points only matter for low notes.
   the owner's working pool at pool slots 9..12. Renders: two formant peaks on 16 frames where
   64 have one; the 512-point tables carry only the box filter's folded images above
   harmonic 255. Sizes with levels and guards: 1026, 257, 256, 64 KB.
+- **The model against the instrument** (2026-10-09, the owner's recording of pool slot 12,
+  `WR test 16x512`, a manual POS sweep at 130.8 Hz, 42 s): each quarter second matched to
+  the nearest POS of the model's render on harmonics 1..127 differs by a median 1.06 dB
+  (90th percentile 3.39 dB); the other geometries fit worse (16x2048 1.17 / 6.66, 64x512
+  2.27 / 5.94, 64x2048 3.17 / 8.31), and the matched POS traces the sweep 0 -> 0.93 -> 0.
+  So `geometry` predicts what the instrument plays for the table it can play today.
 
 ## What has to change
 

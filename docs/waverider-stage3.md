@@ -55,6 +55,77 @@ real compromise (the owner); points only matter for low notes.
    digikit and selas agree on the manual's field), digikit's Type 3a had no SIMD second
    transfer at 6f812e9 (fixed upstream, 277760a), and our two-pass SIMD merge lost a
    PEy-named load (fixed, sharc_dn2_fixups G11).
+   **Split arrays, two butterflies an issue** (`fft3.asm`, `scripts/sharc_fft3_check.py`,
+   2026-10-09): real and imaginary parts in separate arrays, so a SIMD access gives two
+   neighbouring points and PEx and PEy each run a butterfly (k, k+1), their twiddles
+   neighbours in per-stage tables; the butterfly in the multifunction forms (a multiply
+   with an add or an add/subtract pair, a DM and a PM transfer in one instruction: real
+   parts on DM, imaginary on PM): **four instructions for two butterflies**, pipelined so
+   no float result feeds the next instruction's compute (PRM Table 4-36: 1 stall). Each
+   stage runs its loops whichever way makes the inner one longer (over the groups while
+   h^2 <= M, over the twiddle pairs after, five instructions there: the twiddles load
+   too). The first pass is the bit reversal (BITREV on a counter whose low bits are the
+   reversed source base) fused with stages 0 and 1 (radix 4, adds only), ten
+   instructions a group of four, the next group's loads beside the last one's stores.
+   Inner loops F1-active. The inverse is the same code with real and imaginary pointers
+   swapped. Correct to 1.9e-7 at M 8..2048 both ways. **At M 1024: 13,401 instructions,
+   ~13.7k cycles with the arrays in L1** (fft2 there: 82,843 and ~147k, so ~10.8x);
+   ~54k in DDR from cold, the 405 line misses being the first touch of the 24 KB the
+   transform reads and writes (the model has one 16 KB data cache where the core has a
+   DM and a PM one). M 2048 ~28.5k cycles in L1. Left: the stage setups (~1.4k of the
+   13.7k), and where the level builder keeps its arrays (L1 is scarce, block 2 is the
+   PM cache's).
+   **Two frames a transform** (`spec3.asm`, `scripts/sharc_levels3_check.py`, 2026-10-09):
+   frame a as the real part and frame b as the imaginary part of one complex FFT; each
+   frame's spectrum is Hermitian, so splitting Z into the two (2A[k] = Z[k] + conj Z[N-k],
+   2B[k] = (Z[k] - conj Z[N-k]) / i) and joining a level's two band-limited spectra back
+   into one (Z[k] = A[k] + i B[k], Z[L-k] = conj A[k] + i conj B[k], zeros between) are
+   add/subtract pairs only, four instructions a bin; a level's inverse then gives frame
+   a's level as its real part and frame b's as its imaginary part. This replaces the
+   real-input split step (a twiddle multiply a bin) and its scheduling. Every level of
+   two 2048-point frames matches `geometry.frame_levels` to 3e-7 (the DSP's output 2N
+   times the model's: a power of two, for the int16 conversion's scale). **Two frames'
+   levels ~142.5k cycles in L1, ~71k a frame, a 64 x 2048 table ~4.6 M cycles (~13 ms at
+   ~35 % idle; ~85 M and ~0.24 s with fft.asm + rfft.asm).** Of the 142.5k: forward 28.5k,
+   split 6.2k, joins 16.8k, inverses 91k; the split and joins run near twice their
+   instructions in this test's L1 layout (arrays that move together share a block).
+   **A table's levels, int16 to int16** (`mipb3.asm`, `scripts/sharc_mipb3_check.py`,
+   2026-10-09): two pool-table frames (int16) to the split floats, and each level's
+   floats to the row the reader reads, [last, x0 .. x(L-1), x0, x1] (dnfw.waverider.mip),
+   rounded to nearest by `FIX .. BY -S` (S = log2 N + 1, the 2N above) and clipped by
+   CLIP to +-32767, in SIMD (PEx the even sample, PEy the odd; 16-bit pair loads and
+   stores, Type 3d). Every row of four 2048-point near-full-scale saws, all ten levels
+   (the band-limited saws overshoot, so the clip works), within 1 LSB of the model's
+   rint and clip (a float32 transform puts a value on the other side of .5 now and then).
+   **~119k cycles a frame with the levels in DDR** (in 8.5k, forward 14.3k, split 3.1k,
+   out 39.3k, joins 8.4k, inverses 45.5k): the 16 KB of levels a frame writes cost ~25k
+   of the out in cold write misses. A 64-frame table ~7.6 M cycles, ~22 ms at ~35 % idle.
+   **On the instrument** (`selftest.asm`, `scripts/build_selftest.py`,
+   `tools/dn2selftest.py`): a diagnostic build runs the whole level build of two
+   256-point frames in the DSP's idle task, over and over, and hashes every output word;
+   the first run's hash must equal the emulator's (`scripts/sharc_selftest_check.py`:
+   0xbc1bb056, the hash recomputed from the words read, every level matching the model
+   to 2.2e-7), and later runs must not differ from it (an interrupt or a task switch that
+   does not keep what the code uses would show there). EMUCLK gives the cycles on the
+   silicon. Code the audio interrupt can preempt must leave the C runtime's constant
+   registers alone: stock's interrupt entry pushes through `DM(I7, M7)` at once (sw
+   0x1c0ad9), so fft3 now uses M0-M4 and M8-M12 only, and `sharc_fft3_check.py` fails a
+   run that changes M5-M7, M13-M15, I7 or any L or B register. SIMD is safe there: no
+   stock code writes MMASK, whose default clears PEYEN when an interrupt pushes the
+   status stack (PRM "Interrupt Mask Mode").
+   Found on the way, all fixed in `scripts/sharc_waverider_m3.py` and checked with
+   `scripts/selas_roundtrip.py` (selas's output read back by digikit's decoder): selas
+   swaps Type 19a's g and bit-reverse bits; emits a garbage 48-bit Type 7a (`MODIFY(Ia,
+   Mb)`); drops the subtract of a dual add/subtract or adds a phantom multiply; leaves g
+   0 on a single PM transfer (`PM(I10, M12) = R6` ran as `DM(I2, M4) = R6`); writes ASHIFT
+   by an immediate with opcode 100000 (PRM: 000001); drops the F1-active bit of `DO ..
+   UNTIL LCE (F)`; drops the width of a 16-bit store (`DM(Ia, Mb) = Rn (SW)` came out
+   32-bit); rejects ROT by an immediate; and leaves relocations for `JUMP label`, `CALL
+   label`, `Ib = MODIFY(Ia, ..)` and a compute with MODIFY. In digikit's runner: BITREV is
+   decoded but not executed (sharc_dn2_fixups G12), Type 1a's SIMD PM companion is not
+   modelled (G13), and the fixed-point CLIP has no handler (G14); fixes for all three are
+   in m-dwyer/digikit#58 (BITREV, the PM companion) and #59 (CLIP). The cycle model now
+   prices F1-active exits at 0 and counts a SIMD pair as one L1 access.
 2. **The load.** Today the pool copies 16 x 512 tables only (16 KB slots, 2 MB area at
    `0x807ff000`) through command 4's chunks. A table of any size needs a variable extent in
    the free DDR and a directory entry carrying its geometry.

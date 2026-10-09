@@ -25,7 +25,8 @@
 //
 // It saves what it and fft3/spec3 change that the idle loop could hold (R0-R15, I0-I6,
 // I8-I14, M0-M4, M8-M12, LCNTR) and restores them before wr_idle. It reads M6 (= 1, the C
-// runtime's constant) and changes none of M5-M7, M13-M15, I7, L or B.
+// runtime's constant? no: the idle task runs on the secondary DAG set, so it sets its own) and
+// changes none of M5-M7, M13-M15, I7, L or B. Every array is read on the bus that wrote it.
 //
 // PLACEMENT IS FIXED: this code loads at PM sw 0x16f800 (L1 block 1, byte 0x2df000).
 //
@@ -164,11 +165,11 @@ wr_selftest_probe_end.:
       R0 = DM(0x2df924);
       CALL wr_selftest_hash.;           // AR
       R0 = DM(0x2df928);
-      CALL wr_selftest_hash.;           // AI
+      CALL wr_selftest_hash_pm.;        // AI (written on PM)
       R0 = DM(0x2df92c);
       CALL wr_selftest_hash.;           // BR
       R0 = DM(0x2df930);
-      CALL wr_selftest_hash.;           // BI
+      CALL wr_selftest_hash_pm.;        // BI
 
       // -- the levels: join, inverse fft3 (ZI, ZR -> DST_IM, DST_RE), hash both
       R0 = 0x2df940;
@@ -201,14 +202,14 @@ wr_selftest_level.:
       I0 = R0;
       R3 = DM(0, I0);
       R4 = DM(1, I0);
-      R0 = DM(0x2df938);
-      DM(0x2e4060) = R0;                // source re: ZI (the inverse)
       R0 = DM(0x2df934);
-      DM(0x2e4064) = R0;                // source im: ZR
-      R0 = DM(0x2df918);
-      DM(0x2e4068) = R0;                // dest re: DST_IM
+      DM(0x2e4060) = R0;                // source re: ZR (join wrote i conj Z)
+      R0 = DM(0x2df938);
+      DM(0x2e4064) = R0;                // source im: ZI
       R0 = DM(0x2df914);
-      DM(0x2e406c) = R0;                // dest im: DST_RE
+      DM(0x2e4068) = R0;                // dest re: DST_RE
+      R0 = DM(0x2df918);
+      DM(0x2e406c) = R0;                // dest im: DST_IM
       DM(0x2e4070) = R3;
       DM(0x2e4074) = R4;
       R0 = DM(0x2df91c);
@@ -219,13 +220,13 @@ wr_selftest_level.:
       R0 = DM(0x2df8a4);
       I0 = R0;
       R2 = DM(0, I0);                   // L words each
-      R0 = DM(0x2df914);
-      CALL wr_selftest_hash.;           // frame a's level
+      R0 = DM(0x2df918);
+      CALL wr_selftest_hash_pm.;        // frame a's level: the result's imaginary part (PM)
       R0 = DM(0x2df8a4);
       I0 = R0;
       R2 = DM(0, I0);
-      R0 = DM(0x2df918);
-      CALL wr_selftest_hash.;           // frame b's level
+      R0 = DM(0x2df914);
+      CALL wr_selftest_hash.;           // frame b's level: its real part (DM)
       R0 = DM(0x2df8a4);
       R1 = 16;
       R0 = R0 + R1;
@@ -356,18 +357,36 @@ wr_selftest_keep.:
       M12 = DM(0x2df89c);
       JUMP 0x16f500;                    // -> wr_idle
 
-// -- H = rotl(H, 5) XOR word, over R2 words from R0 (clobbers R1, R3, R4, I0)
+// -- H = rotl(H, 5) XOR word, over R2 words from R0 (clobbers R1, R3, R4, I0, M0), on DM
 .GLOBAL wr_selftest_hash.;
 wr_selftest_hash.:
       I0 = R0;
+      M0 = 1;
       R1 = DM(0x2df8a8);
       LCNTR = R2, DO wr_selftest_hash_end. UNTIL LCE;
-      R3 = DM(I0, M6);                  // M6 = 1, the C runtime's constant
+      R3 = DM(I0, M0);
       R4 = LSHIFT R1 BY 5;
       R1 = LSHIFT R1 BY -27;
       R1 = R1 OR R4;
 .GLOBAL wr_selftest_hash_end.;
 wr_selftest_hash_end.:
+      R1 = R1 XOR R3;
+      DM(0x2df8a8) = R1;
+      RTS;
+
+// -- the same on PM, for an array written on PM (clobbers R1, R3, R4, I8, M8)
+.GLOBAL wr_selftest_hash_pm.;
+wr_selftest_hash_pm.:
+      I8 = R0;
+      M8 = 1;
+      R1 = DM(0x2df8a8);
+      LCNTR = R2, DO wr_selftest_hash_pm_end. UNTIL LCE;
+      R3 = PM(I8, M8);
+      R4 = LSHIFT R1 BY 5;
+      R1 = LSHIFT R1 BY -27;
+      R1 = R1 OR R4;
+.GLOBAL wr_selftest_hash_pm_end.;
+wr_selftest_hash_pm_end.:
       R1 = R1 XOR R3;
       DM(0x2df8a8) = R1;
       RTS;

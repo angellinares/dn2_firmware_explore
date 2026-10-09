@@ -21,7 +21,8 @@
 //   in:  +0 frame a  +4 frame b  +8 N  +12 dest re  +16 dest im
 //   out: +20 source (floats)  +24 L  +28 the row (int16; L + 3 of them)  +32 S
 //
-// Clobbers R0-R3, R12, R13 and their S twins, I0-I2, I10, M0-M2, M10, the loop counter;
+// out_pm reads its source on PM (I8, M8). Clobbers R0-R3, R12, R13 and their S twins,
+// I0-I2, I8, I10, M0-M2, M8, M10, the loop counter;
 // leaves PEYEN clear. Leaves the C
 // runtime's constants (M5-M7, M13-M15), I7 and the L and B registers alone.
 //
@@ -94,6 +95,53 @@ wr_mipb3_out.:
       R1 = FIX F0 BY R13;                                       // pair k times 2^-S, rounded
 .GLOBAL wr_mipb3_out_end.;
 wr_mipb3_out_end.:
+      DM(I2, M2) = R2 (SW);                                     // pair k-1
+      NOP;                              // (a FIX result two instructions before its CLIP)
+      R2 = CLIP R1 BY R12;
+      DM(I2, M2) = R2 (SW);                                     // pair L/2 - 1
+      BIT CLR MODE1 0x200000;
+      NOP;
+      // the guards: [0] = x(L-1), [L+1] = x0, [L+2] = x1 (I2 is at [L+1])
+      MODIFY(I2, -2);
+      R2 = DM(I2, M1) (SWSE);           // x(L-1), at [L]
+      R0 = DM(0x2e40dc);
+      I1 = R0;
+      DM(I1, M1) = R2 (SW);             // [0]
+      R1 = DM(I1, M1) (SWSE);           // x0
+      R3 = DM(I1, M1) (SWSE);           // x1
+      DM(I2, M1) = R1 (SW);             // [L+1]
+      DM(I2, M1) = R3 (SW);             // [L+2]
+      RTS;
+
+// -- out_pm: the same from a source written on PM (an imaginary array: one bus per array)
+.GLOBAL wr_mipb3_out_pm.;
+wr_mipb3_out_pm.:
+      R0 = DM(0x2e40d4);
+      I8 = R0;                          // source floats, on PM
+      R0 = DM(0x2e40dc);
+      R1 = 2;
+      R0 = R0 + R1;
+      I2 = R0;                          // the row's x0, after its [last]
+      M8 = 2;                           // a pair: 8 bytes as floats ...
+      M2 = 2;                           // ... 4 as int16
+      M1 = 1;                           // one int16 (the guards, SISD)
+      R13 = DM(0x2e40e0);
+      R13 = -R13;                       // FIX .. BY -S
+      S13 = R13;
+      R12 = 32767;
+      S12 = R12;
+      R3 = DM(0x2e40d8);                // L
+      R3 = LSHIFT R3 BY -1;
+      R3 = R3 - 1;                      // the loop: pairs 1 .. L/2 - 1
+      BIT SET MODE1 0x200000;           // PEYEN: PEx the even sample, PEy the odd one
+      NOP;
+      F0 = PM(I8, M8);                  // pair 0
+      R1 = FIX F0 BY R13;
+      LCNTR = R3, DO wr_mipb3_out_pm_end. UNTIL LCE (F);
+      F0 = PM(I8, M8), R2 = CLIP R1 BY R12;                     // pair k; pair k-1 clipped
+      R1 = FIX F0 BY R13;                                       // pair k times 2^-S, rounded
+.GLOBAL wr_mipb3_out_pm_end.;
+wr_mipb3_out_pm_end.:
       DM(I2, M2) = R2 (SW);                                     // pair k-1
       NOP;                              // (a FIX result two instructions before its CLIP)
       R2 = CLIP R1 BY R12;

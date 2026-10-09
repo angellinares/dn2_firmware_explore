@@ -29,20 +29,22 @@
 // - Hardware loops; the inner ones F1-active (`(F)`: no flush on exit, PRM "Counter-
 //   Based F1-Active Loop"). Every instruction is 48-bit (.NOCOMPRESS): a loop's last
 //   eleven must be.
-// - The inverse: swap the real and imaginary pointers of both source and destination
-//   (i conj(.) on the way in and out); the result is unscaled.
+// - The inverse: the caller passes i conj(X) (spec3's join writes it) and reads the
+//   result's real and imaginary parts swapped; the result is unscaled.
 //
 // Parameter block at DM 0x2e4060 (byte addresses):
 //   +0 source re  +4 source im  +8 dest re  +12 dest im  +16 M (complex points, 8 or
 //   more, a power of two)  +20 log2 M  +24 TWR  +28 TWI
-// The source re array must be aligned to 4 M bytes (the BITREV counter); the source im
-// array is reached from it by a fixed offset, so any address. (The inverse passes the
-// imaginary array as source re: align both.) Past the destination arrays
+// Both source arrays must be aligned to 4 M bytes (each bus has its own BITREV counter).
+// Every array moves on one bus only, the real parts on DM and the imaginary parts on PM:
+// the DM and PM caches are not coherent for DDR (fftselftest2 on the instrument). So the
+// inverse is not done by swapping pointers here: spec3's join writes i conj(Z) itself. Past the destination arrays
 // up to 16 h + 32 bytes (h = sqrt M at most) and past the twiddle tables 32 bytes are read
 // (a stage's last loads run ahead), never written.
-// Scratch at DM 0x2e4080: +0 h, +4 log2 h.
+// Scratch at DM 0x2e4080: +0 h, +4 log2 h, +8 the pair-inner stages' count, +12 TWR + 4h,
+// +16 TWI + 4h.
 //
-// Clobbers R0-R15 and S0-S15, I0-I6, I8-I14, M0-M4, M8-M12, the loop counters; leaves
+// Clobbers R0-R15 and S0-S15, I0-I5, I8-I13, M0-M4, M8-M12, the loop counters; leaves
 // MODE1's PEYEN clear. Not ABI-clean: the caller saves what it needs. It leaves the C
 // runtime's constants alone (M5 = M13 = 0, M6 = M14 = 1, M7 = M15 = -1), and I7 and the
 // L and B registers: code an interrupt can preempt must, as stock's interrupt entry
@@ -58,132 +60,131 @@
 .GLOBAL wr_fft3.;
 wr_fft3.:
       // -- the first pass: SISD, bit reversal and stages 0 and 1, source -> destination.
-      //    A group (4 points) a window of 10 instructions: its eight loads on DM through
-      //    I6 (the real parts at bit-reversed 4g + 0, M/2, M/4, 3M/4, then on to the
-      //    imaginary array), its stage-0 add/subtracts as they arrive, its stage-1 ones
-      //    and its eight stores (on PM through I10) in the next window, beside the next
-      //    group's loads. Two register banks, R0-R7 and R8-R15, take turns.
+      //    A group (4 points) a window of 12 instructions. One bus per array (the DM
+      //    and PM caches are not coherent for DDR: measured, fftselftest2): the real
+      //    parts load on DM through I3 and store on DM through I2, the imaginary parts
+      //    on PM through I11 and I10. I3 and I11 are each bit-reversed from a counter
+      //    (I1, I9) whose low bits are the reversed base; the group's points sit at
+      //    0, M/2, M/4, 3M/4 from there. The stage-0 add/subtracts follow the loads,
+      //    the stage-1 ones end the window, the stores of the group before sit between.
+      //    Two register banks, R0-R7 and R8-R15, take turns.
       R8 = DM(0x2e4070);                // M
       R9 = DM(0x2e4074);                // log2 M
       R10 = DM(0x2e4060);
       I1 = R10;                         // source re
-      BITREV(I1, 0);                    // the counter: the reversed base
-      R11 = DM(0x2e4064);
-      R11 = R11 - R10;
-      R11 = ASHIFT R11 BY -2;           // source im - re, in words
-      R12 = LSHIFT R8 BY -2;            // M/4
-      R13 = R12 + R12;
-      R13 = R13 + R12;                  // 3M/4
-      R11 = R11 - R13;
-      M4 = R11;                         // re x3 (3M/4) to im x0
-      R11 = -R12;                       // -M/4
-      M3 = R11;
-      R11 = LSHIFT R8 BY -1;
-      M2 = R11;                         // M/2
+      R10 = DM(0x2e4064);
+      I9 = R10;                         // source im
+      BITREV(I1, 0);                    // the counters: the reversed bases
+      BITREV(I9, 0);
+      R10 = DM(0x2e4068);
+      I2 = R10;                         // destination re
+      R10 = DM(0x2e406c);
+      I10 = R10;                        // destination im
+      M0 = 1;
+      M8 = 1;
       R11 = 32;
       R11 = R11 - R9;
       R13 = 1;
-      R13 = LSHIFT R13 BY R11;
-      M1 = R13;                         // 2^(32 - log2 M): a group's step of the counter
-      R10 = DM(0x2e4068);
-      I10 = R10;                        // destination re
-      R11 = DM(0x2e406c);
-      R11 = R11 - R10;
-      R11 = ASHIFT R11 BY -2;           // destination im - re, in words
-      M8 = 1;
-      R13 = R11 - 1;
-      R13 = R13 - 1;
-      R13 = R13 - 1;
-      M9 = R13;                        // re y3 to im y0
-      R13 = 1;
-      R13 = R13 - R11;
-      M10 = R13;                        // im y3 to the next group's re y0
+      R13 = LSHIFT R13 BY R11;          // 2^(32 - log2 M): a group's step of the counters
+      M1 = R13;
+      M9 = R13;
+      R11 = LSHIFT R8 BY -1;
+      M2 = R11;                         // M/2
+      M10 = R11;
+      R12 = LSHIFT R8 BY -2;
+      R11 = -R12;
+      M3 = R11;                         // -M/4
+      M11 = R11;
       R12 = LSHIFT R8 BY -3;
       R12 = R12 - 1;                    // the loop: M/8 - 1 pairs of windows after the first two
-      M11 = R12;
+      M4 = R12;
       IF EQ JUMP wr_fft3_p1_small.;     // M = 8: two groups, no loop
-      I6 = BITREV(I1, 0);
-      R0 = DM(I6, M2);
-      R1 = DM(I6, M3);
-      F0 = F0 + F1, F1 = F0 - F1, R2 = DM(I6, M2);
-      R3 = DM(I6, M4);
-      F2 = F2 + F3, F3 = F2 - F3, R4 = DM(I6, M2);
-      R5 = DM(I6, M3);
-      F4 = F4 + F5, F5 = F4 - F5, R6 = DM(I6, M2);
-      F0 = F0 + F2, F2 = F0 - F2, R7 = DM(I6, M2);
-      F6 = F6 + F7, F7 = F6 - F7, MODIFY(I1, M1);
-      I6 = BITREV(I1, 0);
-      F1 = F1 + F7, F7 = F1 - F7, R8 = DM(I6, M2), PM(I10, M8) = R0;
-      F4 = F4 + F6, F6 = F4 - F6, R9 = DM(I6, M3), PM(I10, M8) = R1;
-      F8 = F8 + F9, F9 = F8 - F9, R10 = DM(I6, M2), PM(I10, M8) = R2;
-      F5 = F5 + F3, F3 = F5 - F3, R11 = DM(I6, M4), PM(I10, M9) = R7;
-      F10 = F10 + F11, F11 = F10 - F11, R12 = DM(I6, M2), PM(I10, M8) = R4;
-      R13 = DM(I6, M3), PM(I10, M8) = R3;
-      F12 = F12 + F13, F13 = F12 - F13, R14 = DM(I6, M2), PM(I10, M8) = R6;
-      F8 = F8 + F10, F10 = F8 - F10, R15 = DM(I6, M2), PM(I10, M10) = R5;
-      F14 = F14 + F15, F15 = F14 - F15, MODIFY(I1, M1);
-      LCNTR = M11, DO wr_fft3_p1_end. UNTIL LCE (F);
-      I6 = BITREV(I1, 0);
-      F9 = F9 + F15, F15 = F9 - F15, R0 = DM(I6, M2), PM(I10, M8) = R8;
-      F12 = F12 + F14, F14 = F12 - F14, R1 = DM(I6, M3), PM(I10, M8) = R9;
-      F0 = F0 + F1, F1 = F0 - F1, R2 = DM(I6, M2), PM(I10, M8) = R10;
-      F13 = F13 + F11, F11 = F13 - F11, R3 = DM(I6, M4), PM(I10, M9) = R15;
-      F2 = F2 + F3, F3 = F2 - F3, R4 = DM(I6, M2), PM(I10, M8) = R12;
-      R5 = DM(I6, M3), PM(I10, M8) = R11;
-      F4 = F4 + F5, F5 = F4 - F5, R6 = DM(I6, M2), PM(I10, M8) = R14;
-      F0 = F0 + F2, F2 = F0 - F2, R7 = DM(I6, M2), PM(I10, M10) = R13;
-      F6 = F6 + F7, F7 = F6 - F7, MODIFY(I1, M1);
-      I6 = BITREV(I1, 0);
-      F1 = F1 + F7, F7 = F1 - F7, R8 = DM(I6, M2), PM(I10, M8) = R0;
-      F4 = F4 + F6, F6 = F4 - F6, R9 = DM(I6, M3), PM(I10, M8) = R1;
-      F8 = F8 + F9, F9 = F8 - F9, R10 = DM(I6, M2), PM(I10, M8) = R2;
-      F5 = F5 + F3, F3 = F5 - F3, R11 = DM(I6, M4), PM(I10, M9) = R7;
-      F10 = F10 + F11, F11 = F10 - F11, R12 = DM(I6, M2), PM(I10, M8) = R4;
-      R13 = DM(I6, M3), PM(I10, M8) = R3;
-      F12 = F12 + F13, F13 = F12 - F13, R14 = DM(I6, M2), PM(I10, M8) = R6;
-      F8 = F8 + F10, F10 = F8 - F10, R15 = DM(I6, M2), PM(I10, M10) = R5;
+      I3 = BITREV(I1, 0);
+      I11 = BITREV(I9, 0);
+      R0 = DM(I3, M2), R4 = PM(I11, M10);
+      R1 = DM(I3, M3), R5 = PM(I11, M11);
+      F0 = F0 + F1, F1 = F0 - F1, R2 = DM(I3, M2), R6 = PM(I11, M10);
+      F4 = F4 + F5, F5 = F4 - F5, R3 = DM(I3, M2), R7 = PM(I11, M10);
+      F2 = F2 + F3, F3 = F2 - F3;
+      F6 = F6 + F7, F7 = F6 - F7;
+      F0 = F0 + F2, F2 = F0 - F2;
+      F5 = F5 + F3, F3 = F5 - F3;
+      F1 = F1 + F7, F7 = F1 - F7, MODIFY(I1, M1);
+      F4 = F4 + F6, F6 = F4 - F6, MODIFY(I9, M9);
+      I3 = BITREV(I1, 0);
+      I11 = BITREV(I9, 0);
+      R8 = DM(I3, M2), R12 = PM(I11, M10);
+      R9 = DM(I3, M3), R13 = PM(I11, M11);
+      F8 = F8 + F9, F9 = F8 - F9, R10 = DM(I3, M2), R14 = PM(I11, M10);
+      F12 = F12 + F13, F13 = F12 - F13, R11 = DM(I3, M2), R15 = PM(I11, M10);
+      F10 = F10 + F11, F11 = F10 - F11, DM(I2, M0) = R0, PM(I10, M8) = R4;
+      F14 = F14 + F15, F15 = F14 - F15, DM(I2, M0) = R1, PM(I10, M8) = R3;
+      F8 = F8 + F10, F10 = F8 - F10, DM(I2, M0) = R2, PM(I10, M8) = R6;
+      F13 = F13 + F11, F11 = F13 - F11, DM(I2, M0) = R7, PM(I10, M8) = R5;
+      F9 = F9 + F15, F15 = F9 - F15, MODIFY(I1, M1);
+      F12 = F12 + F14, F14 = F12 - F14, MODIFY(I9, M9);
+      LCNTR = M4, DO wr_fft3_p1_end. UNTIL LCE (F);
+      I3 = BITREV(I1, 0);
+      I11 = BITREV(I9, 0);
+      R0 = DM(I3, M2), R4 = PM(I11, M10);
+      R1 = DM(I3, M3), R5 = PM(I11, M11);
+      F0 = F0 + F1, F1 = F0 - F1, R2 = DM(I3, M2), R6 = PM(I11, M10);
+      F4 = F4 + F5, F5 = F4 - F5, R3 = DM(I3, M2), R7 = PM(I11, M10);
+      F2 = F2 + F3, F3 = F2 - F3, DM(I2, M0) = R8, PM(I10, M8) = R12;
+      F6 = F6 + F7, F7 = F6 - F7, DM(I2, M0) = R9, PM(I10, M8) = R11;
+      F0 = F0 + F2, F2 = F0 - F2, DM(I2, M0) = R10, PM(I10, M8) = R14;
+      F5 = F5 + F3, F3 = F5 - F3, DM(I2, M0) = R15, PM(I10, M8) = R13;
+      F1 = F1 + F7, F7 = F1 - F7, MODIFY(I1, M1);
+      F4 = F4 + F6, F6 = F4 - F6, MODIFY(I9, M9);
+      I3 = BITREV(I1, 0);
+      I11 = BITREV(I9, 0);
+      R8 = DM(I3, M2), R12 = PM(I11, M10);
+      R9 = DM(I3, M3), R13 = PM(I11, M11);
+      F8 = F8 + F9, F9 = F8 - F9, R10 = DM(I3, M2), R14 = PM(I11, M10);
+      F12 = F12 + F13, F13 = F12 - F13, R11 = DM(I3, M2), R15 = PM(I11, M10);
+      F10 = F10 + F11, F11 = F10 - F11, DM(I2, M0) = R0, PM(I10, M8) = R4;
+      F14 = F14 + F15, F15 = F14 - F15, DM(I2, M0) = R1, PM(I10, M8) = R3;
+      F8 = F8 + F10, F10 = F8 - F10, DM(I2, M0) = R2, PM(I10, M8) = R6;
+      F13 = F13 + F11, F11 = F13 - F11, DM(I2, M0) = R7, PM(I10, M8) = R5;
+      F9 = F9 + F15, F15 = F9 - F15, MODIFY(I1, M1);
 .GLOBAL wr_fft3_p1_end.;
 wr_fft3_p1_end.:
-      F14 = F14 + F15, F15 = F14 - F15, MODIFY(I1, M1);
-      F9 = F9 + F15, F15 = F9 - F15, PM(I10, M8) = R8;
-      F12 = F12 + F14, F14 = F12 - F14, PM(I10, M8) = R9;
-      PM(I10, M8) = R10;
-      F13 = F13 + F11, F11 = F13 - F11, PM(I10, M9) = R15;
-      PM(I10, M8) = R12;
-      PM(I10, M8) = R11;
-      PM(I10, M8) = R14;
-      PM(I10, M10) = R13;
+      F12 = F12 + F14, F14 = F12 - F14, MODIFY(I9, M9);
+      DM(I2, M0) = R8, PM(I10, M8) = R12;
+      DM(I2, M0) = R9, PM(I10, M8) = R11;
+      DM(I2, M0) = R10, PM(I10, M8) = R14;
+      DM(I2, M0) = R15, PM(I10, M8) = R13;
       JUMP wr_fft3_stages.;
 .GLOBAL wr_fft3_p1_small.;
 wr_fft3_p1_small.:
-      I6 = BITREV(I1, 0);
-      R0 = DM(I6, M2);
-      R1 = DM(I6, M3);
-      F0 = F0 + F1, F1 = F0 - F1, R2 = DM(I6, M2);
-      R3 = DM(I6, M4);
-      F2 = F2 + F3, F3 = F2 - F3, R4 = DM(I6, M2);
-      R5 = DM(I6, M3);
-      F4 = F4 + F5, F5 = F4 - F5, R6 = DM(I6, M2);
-      F0 = F0 + F2, F2 = F0 - F2, R7 = DM(I6, M2);
-      F6 = F6 + F7, F7 = F6 - F7, MODIFY(I1, M1);
-      I6 = BITREV(I1, 0);
-      F1 = F1 + F7, F7 = F1 - F7, R8 = DM(I6, M2), PM(I10, M8) = R0;
-      F4 = F4 + F6, F6 = F4 - F6, R9 = DM(I6, M3), PM(I10, M8) = R1;
-      F8 = F8 + F9, F9 = F8 - F9, R10 = DM(I6, M2), PM(I10, M8) = R2;
-      F5 = F5 + F3, F3 = F5 - F3, R11 = DM(I6, M4), PM(I10, M9) = R7;
-      F10 = F10 + F11, F11 = F10 - F11, R12 = DM(I6, M2), PM(I10, M8) = R4;
-      R13 = DM(I6, M3), PM(I10, M8) = R3;
-      F12 = F12 + F13, F13 = F12 - F13, R14 = DM(I6, M2), PM(I10, M8) = R6;
-      F8 = F8 + F10, F10 = F8 - F10, R15 = DM(I6, M2), PM(I10, M10) = R5;
-      F14 = F14 + F15, F15 = F14 - F15, MODIFY(I1, M1);
-      F9 = F9 + F15, F15 = F9 - F15, PM(I10, M8) = R8;
-      F12 = F12 + F14, F14 = F12 - F14, PM(I10, M8) = R9;
-      PM(I10, M8) = R10;
-      F13 = F13 + F11, F11 = F13 - F11, PM(I10, M9) = R15;
-      PM(I10, M8) = R12;
-      PM(I10, M8) = R11;
-      PM(I10, M8) = R14;
-      PM(I10, M10) = R13;
+      I3 = BITREV(I1, 0);
+      I11 = BITREV(I9, 0);
+      R0 = DM(I3, M2), R4 = PM(I11, M10);
+      R1 = DM(I3, M3), R5 = PM(I11, M11);
+      F0 = F0 + F1, F1 = F0 - F1, R2 = DM(I3, M2), R6 = PM(I11, M10);
+      F4 = F4 + F5, F5 = F4 - F5, R3 = DM(I3, M2), R7 = PM(I11, M10);
+      F2 = F2 + F3, F3 = F2 - F3;
+      F6 = F6 + F7, F7 = F6 - F7;
+      F0 = F0 + F2, F2 = F0 - F2;
+      F5 = F5 + F3, F3 = F5 - F3;
+      F1 = F1 + F7, F7 = F1 - F7, MODIFY(I1, M1);
+      F4 = F4 + F6, F6 = F4 - F6, MODIFY(I9, M9);
+      I3 = BITREV(I1, 0);
+      I11 = BITREV(I9, 0);
+      R8 = DM(I3, M2), R12 = PM(I11, M10);
+      R9 = DM(I3, M3), R13 = PM(I11, M11);
+      F8 = F8 + F9, F9 = F8 - F9, R10 = DM(I3, M2), R14 = PM(I11, M10);
+      F12 = F12 + F13, F13 = F12 - F13, R11 = DM(I3, M2), R15 = PM(I11, M10);
+      F10 = F10 + F11, F11 = F10 - F11, DM(I2, M0) = R0, PM(I10, M8) = R4;
+      F14 = F14 + F15, F15 = F14 - F15, DM(I2, M0) = R1, PM(I10, M8) = R3;
+      F8 = F8 + F10, F10 = F8 - F10, DM(I2, M0) = R2, PM(I10, M8) = R6;
+      F13 = F13 + F11, F11 = F13 - F11, DM(I2, M0) = R7, PM(I10, M8) = R5;
+      F9 = F9 + F15, F15 = F9 - F15, MODIFY(I1, M1);
+      F12 = F12 + F14, F14 = F12 - F14, MODIFY(I9, M9);
+      DM(I2, M0) = R8, PM(I10, M8) = R12;
+      DM(I2, M0) = R9, PM(I10, M8) = R11;
+      DM(I2, M0) = R10, PM(I10, M8) = R14;
+      DM(I2, M0) = R15, PM(I10, M8) = R13;
 
 .GLOBAL wr_fft3_stages.;
 wr_fft3_stages.:
@@ -301,10 +302,10 @@ wr_fft3_ki.:
       M11 = R13;
       R13 = DM(0x2e4078);
       R13 = R13 + R11;
-      I6 = R13;                         // TWR + 4h
+      DM(0x2e408c) = R13;               // TWR + 4h, for each group
       R13 = DM(0x2e407c);
       R13 = R13 + R11;
-      I14 = R13;                        // TWI + 4h
+      DM(0x2e4090) = R13;               // TWI + 4h
       R13 = DM(0x2e4068);
       I5 = R13;
       R13 = DM(0x2e406c);
@@ -330,8 +331,8 @@ wr_fft3_ki.:
       I10 = I13;
       I9 = I13;
       I11 = I13;
-      I4 = I6;
-      I12 = I14;
+      I4 = DM(0x2e408c);
+      I12 = DM(0x2e4090);
       MODIFY(I1, M2);
       MODIFY(I3, M2);
       MODIFY(I9, M10);

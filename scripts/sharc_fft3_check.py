@@ -7,7 +7,8 @@ idle stub plus fft3.asm at sw 0x171000, the per-stage twiddle tables (TWR[h + k]
 cos(pi k / h), TWI[h + k] = -sin(pi k / h)) and the parameter block at 0x2e4060; for each
 size M (complex points) writes M random complex floats as split arrays (re, im) (DDR or
 L1, --where),
-calls wr_fft3 forward, and inverse with the real and imaginary pointers swapped, and
+calls wr_fft3 forward, and inverse with the input's real and imaginary parts swapped (i conj x,
+as spec3's join writes it) and the result read swapped back (one bus per array), and
 checks both against numpy (the inverse unscaled). Prints instructions, the cycle model's
 estimate (and its breakdown with --parts) and the fix-ups the run needed.
 """
@@ -87,8 +88,6 @@ def stream(stock: bytes) -> bytes:
 
 def params(st, m: int, inverse: bool, at: dict[str, int]) -> None:
     sre, sim, dre, dim = (at["src_re"], at["src_im"], at["dst_re"], at["dst_im"])
-    if inverse:
-        sre, sim, dre, dim = sim, sre, dim, dre
     for off, v in ((0, sre), (4, sim), (8, dre), (12, dim), (16, m), (20, m.bit_length() - 1),
                    (24, at["twr"]), (28, at["twi"])):
         m5.m2.poke(st, P3 + off, v)
@@ -124,27 +123,32 @@ def main(argv=None) -> int:
                 F.poke_floats(st, at["twr"], np.concatenate([wr, np.zeros(16, np.float32)]))
                 F.poke_floats(st, at["twi"], np.concatenate([wi, np.zeros(16, np.float32)]))
                 x = (rng.standard_normal(m) + 1j * rng.standard_normal(m)).astype(np.complex64)
-                F.poke_floats(st, at["src_re"], x.real.astype(np.float32))
-                F.poke_floats(st, at["src_im"], x.imag.astype(np.float32))
+                xr, xi = (x.imag, x.real) if inverse else (x.real, x.imag)     # i conj x: swapped
+                F.poke_floats(st, at["src_re"], xr.astype(np.float32))
+                F.poke_floats(st, at["src_im"], xi.astype(np.float32))
                 params(st, m, inverse, at)
                 fix = m5.fixups({})
                 r = init.fresh_call(FFT3_SW, return_address=F.RETURN)
                 before = {c: r.state.uregs.get(c) for c in KEPT}
-                with Recorder(m5.fx) as rec:
+                from sharc_bus_check import BusCheck    # noqa: PLC0415
+                with BusCheck(m5.fx) as rec:
                     res = m5.fx.run(r, 50_000_000, fix, stop_at=(F.RETURN,))
-                y = F.read_floats(r.state, at["dst_re"], m) + 1j * F.read_floats(r.state, at["dst_im"], m)
+                yr, yi = F.read_floats(r.state, at["dst_re"], m), F.read_floats(r.state, at["dst_im"], m)
+                y = yi + 1j * yr if inverse else yr + 1j * yi
                 want = np.fft.ifft(x) * m if inverse else np.fft.fft(x)
                 err = np.max(np.abs(y - want)) / np.max(np.abs(want))
                 counts = dict(rec.model.counts)
                 cycles, parts, unpriced = C.estimate(counts, table)
                 changed = [UREG_NAME[c] for c in KEPT if r.state.uregs.get(c) != before[c]]
-                ok = res[0] == "stop" and err < 1e-5 and not changed
+                ok = res[0] == "stop" and err < 1e-5 and not changed and rec.count == 0
                 ok_all &= ok
                 print(f"  M {m:5d} {'inverse' if inverse else 'forward'}: {res[0]:>5s}  max error {err:.2e}  "
                       f"instructions {counts.get('instructions', 0):>8,}  cycles ~{cycles:>9,.0f}  "
                       f"{'PASS' if ok else 'FAIL'}" + (f"  (unpriced {unpriced})" if unpriced else ""))
                 if res[0] != "stop":
                     print(f"    {res[1]}")
+                if rec.count:
+                    print("    " + rec.report().replace(chr(10), chr(10) + "    "))
                 if changed:
                     print(f"    changed what stock code relies on: {', '.join(changed)}")
                 if a.parts:

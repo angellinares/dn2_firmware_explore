@@ -77,7 +77,7 @@ def main(argv=None) -> int:
     p.add_argument("--points", type=int, default=2048)
     p.add_argument("--where", choices=("ddr", "l1"), default="l1")
     a = p.parse_args(argv)
-    from sharc_cycles_recorder import Recorder       # noqa: PLC0415
+    from sharc_bus_check import BusCheck             # noqa: PLC0415
     n, nf = a.points, a.frames
     if nf % 2:
         p.error("an even number of frames")
@@ -99,8 +99,10 @@ def main(argv=None) -> int:
 
     def call(r, entry, what):
         r = r.fresh_call(entry, return_address=F.RETURN)
-        with Recorder(m5.fx) as rec:
+        with BusCheck(m5.fx) as rec:
             res = m5.fx.run(r, 50_000_000, m5.fixups({}), stop_at=(F.RETURN,))
+        if rec.count:
+            raise SystemExit(f"{what}: " + rec.report())
         if res[0] != "stop":
             raise SystemExit(f"{what} at {entry:#x}: {res[0]} {res[1]}")
         cycles, _, _ = C.estimate(dict(rec.model.counts), costs)
@@ -115,9 +117,9 @@ def main(argv=None) -> int:
         poke(st, K.P3, ((0, sre), (4, sim), (8, dre), (12, dim), (16, m), (20, m.bit_length() - 1),
                         (24, at["twr"]), (28, at["twi"])))
 
-    def out(r, src, size, row, s):
+    def out(r, src, size, row, s, bus="DM"):
         poke(r.state, PB, ((20, src), (24, size), (28, row), (32, s)))
-        return call(r, swb["wr_mipb3_out."], "out")
+        return call(r, swb["wr_mipb3_out." if bus == "DM" else "wr_mipb3_out_pm."], "out")
 
     with progress.Job("mipb3 check", total=nf // 2) as job, tempfile.TemporaryDirectory(dir=m5.OUT) as tmp:
         snap, m2mach = m5.snapshot_path(dk, stock, pathlib.Path(tmp))
@@ -141,16 +143,16 @@ def main(argv=None) -> int:
             r = call(r, sw3["wr_spec3_split."], "split")
             row = lambda k, fr: out_base + int(offsets[k]) + 2 * fr * (sizes[k] + GUARDS)
             r = out(r, at["src_re"], n, row(0, f), 0)
-            r = out(r, at["src_im"], n, row(0, f + 1), 0)
+            r = out(r, at["src_im"], n, row(0, f + 1), 0, "PM")
             for k in range(1, G.levels(n)):
                 L, H = sizes[k], G.top_harmonic(n, k)
                 poke(r.state, V.PS, ((0, at["zr"]), (4, at["zi"]), (8, L), (12, at["ar"]), (16, at["ai"]),
                                      (20, at["br"]), (24, at["bi"]), (28, H)))
                 r = call(r, sw3["wr_spec3_join."], "join")
-                fft(r.state, L, at["zi"], at["zr"], at["dst_im"], at["dst_re"])
+                fft(r.state, L, at["zr"], at["zi"], at["dst_re"], at["dst_im"])   # join wrote i conj Z
                 r = call(r, K.FFT3_SW, "inverse")
-                r = out(r, at["dst_re"], L, row(k, f), n.bit_length())
-                r = out(r, at["dst_im"], L, row(k, f + 1), n.bit_length())
+                r = out(r, at["dst_im"], L, row(k, f), n.bit_length(), "PM")        # frame a: the imaginary part
+                r = out(r, at["dst_re"], L, row(k, f + 1), n.bit_length())
             job.advance()
         worst, bad_rows, rows = 0, 0, 0
         for k in range(G.levels(n)):

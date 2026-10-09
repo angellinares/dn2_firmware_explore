@@ -12,6 +12,11 @@
 //   Z[k] = A[k] + i B[k]            = (Ar - Bi, Ai + Br)       k = 0 .. H
 //   Z[L-k] = conj A[k] + i conj B[k] = (Ar + Bi, Br - Ai)       k = 1 .. H
 // and zero between: its real part is frame a's level, its imaginary part frame b's.
+// One bus per array (the DM and PM caches are not coherent for DDR): join writes
+// W = i conj(Z) = (Z's imaginary part, Z's real part), and the caller runs fft3 forward on
+// W and reads the result's real and imaginary parts swapped, so W re (DM) and W im (PM)
+//   W[k] = (Br + Ai, Ar - Bi)       W[L-k] = (Br - Ai, Ar + Bi)
+// and frame a's level is the result's imaginary part, frame b's its real part.
 // The scale is left to the caller: split gives 2A and 2B, fft3's inverse is unscaled, so
 // a level comes out 2L times the model's irfft(.., L) (a power of two).
 //
@@ -104,18 +109,18 @@ wr_spec3_join.:
       R3 = R3 + 1;
       R3 = R1 - R3;
       M2 = R3;                          // L - 2H - 1 zeros between
-      R0 = DM(I0, M0), R3 = PM(I9, M8);                         // bin 0: Ar, Bi
-      F4 = F0 + F3, F5 = F0 - F3, R2 = DM(I1, M0), R1 = PM(I8, M8);     // Br, Ai
-      F6 = F2 + F1, F7 = F2 - F1, DM(I2, M0) = R5;              // Zr[0]
+      R2 = DM(I1, M0), R1 = PM(I8, M8);                         // bin 0: Br, Ai
+      F5 = F2 + F1, F4 = F2 - F1, R0 = DM(I0, M0), R3 = PM(I9, M8);     // Ar, Bi
+      F7 = F0 + F3, F6 = F0 - F3, DM(I2, M0) = R5;              // W[0] re
       R2 = DM(0x2e40bc);
       LCNTR = R2, DO wr_spec3_join_end. UNTIL LCE (F);
-      R0 = DM(I0, M0), R3 = PM(I9, M8);                         // Ar, Bi
-      F4 = F0 + F3, F5 = F0 - F3, R2 = DM(I1, M0), R1 = PM(I8, M8);     // Ar +- Bi; Br, Ai
-      F6 = F2 + F1, F7 = F2 - F1, DM(I2, M0) = R5, PM(I10, M8) = R6;    // Br +- Ai; Zr[k], Zi[k-1]
+      R2 = DM(I1, M0), R1 = PM(I8, M8);                         // Br, Ai
+      F5 = F2 + F1, F4 = F2 - F1, R0 = DM(I0, M0), R3 = PM(I9, M8);     // Br +- Ai; Ar, Bi
+      F7 = F0 + F3, F6 = F0 - F3, DM(I2, M0) = R5, PM(I10, M8) = R6;    // Ar +- Bi; W[k] re, W[k-1] im
 .GLOBAL wr_spec3_join_end.;
 wr_spec3_join_end.:
-      DM(I3, M1) = R4, PM(I11, M9) = R7;                        // Zr[L-k], Zi[L-k]
-      PM(I10, M8) = R6;                                         // Zi[H]
+      DM(I3, M1) = R4, PM(I11, M9) = R7;                        // W[L-k]
+      PM(I10, M8) = R6;                                         // W[H] im
       R0 = R0 - R0;
       LCNTR = M2, DO wr_spec3_zero_end. UNTIL LCE (F);
 .GLOBAL wr_spec3_zero_end.;

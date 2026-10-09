@@ -10,7 +10,9 @@ wr_selftest from the engine-init snapshot to its JUMP to wr_idle, RUNS times. Ch
 - the hash recomputed here from the words each hash call reads (hooked at
   wr_selftest_hash) equals the DSP's;
 - the two spectra and every level match the model (geometry.frame_levels), read from
-  the words the hash calls read.
+  the words the hash calls read;
+- no word of DDR is read on the other bus than the one that last wrote it
+  (sharc_bus_check: the DM and PM caches are not coherent on the silicon).
 
 Prints REF; --write saves it (and the build's sizes) for tools/dn2selftest.py.
 """
@@ -55,7 +57,7 @@ def main(argv=None) -> int:
     m5.m4.IMAGE = a.image
     stock = m5.m1.dn2_section7(a.image)
     image = m5.Image(dk, S.section7_selftest(stock))
-    hash_sw = S._labels("selftest")["wr_selftest_hash."]
+    hashes_sw = (S._labels("selftest")["wr_selftest_hash."], S._labels("selftest")["wr_selftest_hash_pm."])
     n = S.POINTS
     fa, fb = S.frames(n)
     want_a, want_b = G.frame_levels(fa), G.frame_levels(fb)
@@ -69,8 +71,10 @@ def main(argv=None) -> int:
             r = r.fresh_call(S.CODE_SW, return_address=F.RETURN)
             fix = m5.fixups({})
             h, reads = 0, []
+            from sharc_bus_check import BusCheck      # noqa: PLC0415
+            bus = BusCheck(m5.fx).__enter__()
             while True:
-                res = m5.fx.run(r, 50_000_000, fix, stop_at=(hash_sw, IDLE_SW))
+                res = m5.fx.run(r, 50_000_000, fix, stop_at=(*hashes_sw, IDLE_SW))
                 if res[0] != "stop":
                     raise SystemExit(f"run {run + 1}: {res[0]} {res[1]}")
                 if res[1] == IDLE_SW:
@@ -83,6 +87,9 @@ def main(argv=None) -> int:
                     h = rotl5(h) ^ w
                 fix.last.clear()
                 m5.fx.run(r, 1, fix)                                 # step off the hook
+            bus.__exit__(None, None, None)
+            print("    " + bus.report().replace(chr(10), chr(10) + "    "))
+            ok &= bus.count == 0
             dsp_h = m5.m2.word(r.state, S.STATE_DM + 0xA8)
             pub = [m5.m2.word(r.state, S.PUB_DM + 4 * k) for k in range(S.PUB_ENTRIES)]
             hashes.append(dsp_h)

@@ -81,7 +81,7 @@ def main(argv=None) -> int:
     p.add_argument("--points", type=int, default=2048)
     p.add_argument("--where", choices=("ddr", "l1"), default="l1")
     a = p.parse_args(argv)
-    from sharc_cycles_recorder import Recorder       # noqa: PLC0415
+    from sharc_bus_check import BusCheck             # noqa: PLC0415
     n = a.points
     dk = m5.m1.Digikit(a.digikit)
     m5.fx.bind(str(a.digikit / "tools"))
@@ -99,9 +99,11 @@ def main(argv=None) -> int:
     def call(r, entry):
         nonlocal total
         r = r.fresh_call(entry, return_address=F.RETURN)
-        with Recorder(m5.fx) as rec:
+        with BusCheck(m5.fx) as rec:
             res = m5.fx.run(r, 50_000_000, m5.fixups({}), stop_at=(F.RETURN,))
         cycles, _, _ = C.estimate(dict(rec.model.counts), table)
+        if rec.count:
+            raise SystemExit(f"{entry:#x}: " + rec.report())
         total += cycles
         if res[0] != "stop":
             raise SystemExit(f"{entry:#x}: {res[0]} {res[1]}")
@@ -144,10 +146,10 @@ def main(argv=None) -> int:
             job.update(step=f"level {k}: L {L}, H {H}")
             spec(r.state, at["zr"], at["zi"], L, H)
             r, i3, c3 = call(r, sw["wr_spec3_join."])
-            fft(r.state, L, at["zi"], at["zr"], at["dst_im"], at["dst_re"])      # the inverse
+            fft(r.state, L, at["zr"], at["zi"], at["dst_re"], at["dst_im"])      # the inverse: join wrote i conj Z
             r, i4, c4 = call(r, K.FFT3_SW)
-            la = F.read_floats(r.state, at["dst_re"], L) / (2 * n)
-            lb = F.read_floats(r.state, at["dst_im"], L) / (2 * n)
+            la = F.read_floats(r.state, at["dst_im"], L) / (2 * n)             # read back swapped
+            lb = F.read_floats(r.state, at["dst_re"], L) / (2 * n)
             scale = max(np.max(np.abs(want_a[k])), np.max(np.abs(want_b[k])))
             e = max(np.max(np.abs(la - want_a[k])), np.max(np.abs(lb - want_b[k]))) / scale
             ok = e < 1e-5

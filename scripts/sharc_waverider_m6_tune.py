@@ -1,6 +1,6 @@
 """Waverider Milestone 6: what the stock unpack does with WaveTone's TUN1.
 
-    python scripts/sharc_waverider_m6_tune.py [--digikit ../digikit-wt-sharcemu]
+    python scripts/sharc_waverider_m6_tune.py [--digikit ../digikit-wt-sharcemu3]
 
 TUN1 is WaveTone's parameter index 25 (`dnfw params`: "Osc1 Tune", group 1,
 range 0x7c00, default 0x4000). The frame carries it at byte 218 + 146t, the word
@@ -39,6 +39,7 @@ import sharc_waverider_m4 as m4                                # noqa: E402
 import sharc_dn2_fixups as fx                                  # noqa: E402
 from dnfw.waverider import frame as FR                         # noqa: E402
 from dnfw.waverider import voice as V                          # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 WAVETONE = 1                       # DSP machine type (voice.MACHINES)
 TUN1 = 25
@@ -58,8 +59,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--image", type=pathlib.Path, default=m4.IMAGE)
     p.add_argument("--digikit", type=pathlib.Path,
-                   default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC",
-                                                       ROOT.parent / "digikit-wt-sharcemu")))
+                   default=sharcemu.path())
     a = p.parse_args(argv)
     m4.IMAGE = a.image
     dk = m1.Digikit(a.digikit)

@@ -40,6 +40,7 @@ import sharc_waverider_m5 as g                                 # noqa: E402
 import sharc_waverider_render as m1                            # noqa: E402
 from dnfw.waverider import dsp, live                           # noqa: E402
 from dnfw.waverider import frame as FR                         # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 OUT = ROOT / "out" / "waverider"
 TRACKS = range(16)
@@ -70,7 +71,7 @@ def main(argv=None) -> int:
     ap.add_argument("--image", type=pathlib.Path,
                     default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     ap.add_argument("--digikit", type=pathlib.Path,
-                    default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC", ROOT.parent / "digikit-wt-sharcemu")))
+                    default=sharcemu.path())
     ap.add_argument("--blocks", type=int, default=16)
     ap.add_argument("--cases", default="", help="comma-separated subset of the cases to run")
     a = ap.parse_args(argv)

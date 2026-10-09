@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import sharc_waverider_m5 as g                 # noqa: E402
 from dnfw.waverider import dsp, live          # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 SUB, OCT, WAVE, SRC = live.SUB_SLOTS
 NOIS, TYPE, COLR, DEC = live.NOISE_SLOTS
@@ -37,8 +38,7 @@ FRAME_CYCLES = 666_667
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--digikit", type=pathlib.Path,
-                    default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC",
-                                                        ROOT.parent / "digikit-wt-sharcemu")))
+                    default=sharcemu.path())
     ap.add_argument("--image", type=pathlib.Path,
                     default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     ap.add_argument("--blocks", type=int, default=4)

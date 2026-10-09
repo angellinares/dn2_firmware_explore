@@ -29,6 +29,7 @@ import sharc_fft_check as F                                     # noqa: E402
 from dnfw.image import bootstream, sharc_object                 # noqa: E402
 from dnfw.sharccycles import costs as C                         # noqa: E402
 from dnfw.waverider import dsp                                  # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 m5 = F.m5
 FFT2_SW, FFT2_DM = 0x16FC00, 0x2DF800
@@ -55,7 +56,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--image", type=pathlib.Path, default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     p.add_argument("--digikit", type=pathlib.Path,
-                   default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC", ROOT.parent / "digikit-wt-sharcemu")))
+                   default=sharcemu.path())
     p.add_argument("--sizes", type=int, nargs="+", default=[8, 128])
     p.add_argument("--parts", action="store_true", help="print the cycle model's breakdown per call")
     p.add_argument("--compact", action="store_true", help="a twiddle table for M itself (NMAX = M), not for 4096")

@@ -49,6 +49,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import sharc_waverider_m5 as g                 # noqa: E402
 from dnfw.waverider import dsp                 # noqa: E402
 from dnfw.waverider import frame as FR         # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 HANDLER = 0x1C9D6B
 HANDLER_CALLER = 0x1C9FF9                       # past the engine task's cjump and its delay slots
@@ -143,7 +144,7 @@ def swapped(v: int) -> int:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--digikit", default=str(ROOT.parent / "digikit-wt-sharcemu"))
+    ap.add_argument("--digikit", default=str(sharcemu.path()))
     ap.add_argument("--frame-be", default=str(ROOT / "out/probe-frames/tail_idle.frame_be.0.bin"))
     a = ap.parse_args(argv)
 

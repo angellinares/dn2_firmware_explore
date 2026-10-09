@@ -42,6 +42,7 @@ import sharc_load_command as lc                # noqa: E402
 import sharc_waverider_m5 as g                 # noqa: E402
 from dnfw.waverider import dsp, live, render, testtable   # noqa: E402
 from dnfw.waverider import loadframes as LF    # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 SLOT = 0x0100                                  # TBL1 per slot: slot = TBL1 >> 8
 REPLY_ACK = lc.REPLY_BASE + 0x18                # reply word 6, load.asm's answer
@@ -73,8 +74,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--digikit", type=pathlib.Path,
-                    default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC",
-                                                        ROOT.parent / "digikit-wt-sharcemu")))
+                    default=sharcemu.path())
     ap.add_argument("--image", type=pathlib.Path,
                     default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     ap.add_argument("--blocks", type=int, default=8)

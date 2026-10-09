@@ -15,9 +15,11 @@ import sharc_waverider_render as m1
 import sharc_waverider_m4 as m4
 import sharc_dn2_fixups as fx
 import sharc_strict_memory as SM
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
+from dnfw import sharcemu  # noqa: E402
 
 # the runner: a digikit work/sharc-emulator checkout (DIGIKIT_SHARC picks another)
-DK = pathlib.Path(os.environ.get("DIGIKIT_SHARC", "D:/01_Code/Z_Personal/digikit-wt-sharcemu"))
+DK = sharcemu.path()
 IMG = pathlib.Path("../../../00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
 CP = pathlib.Path("../../../00_Resources/02_Builds/waverider-disc-m5c-constpitch_DN2_1.11.syx")
 WTP = pathlib.Path(sys.argv[1])

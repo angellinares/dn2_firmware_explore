@@ -2,7 +2,7 @@
 
     python scripts/sharc_waverider_m4.py \\
         --image 00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip \\
-        --digikit ../digikit-wt-sharcemu [--assemble] [--blocks 16]
+        --digikit ../digikit-wt-sharcemu3 [--assemble] [--blocks 16]
 
 Every block runs the firmware's own per-block routine, `sw 0x1c2712`: the frame
 unpack, the slot dispatch, the per-track chain. Nothing is poked into a track
@@ -69,6 +69,7 @@ from dnfw.image.coldfire import LoadedImage                    # noqa: E402
 from dnfw.params import table as ptable                        # noqa: E402
 from dnfw.waverider import frame as FR                         # noqa: E402
 from dnfw.waverider import render, testtable, voice as V       # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 OUT = ROOT / "out" / "waverider"
 RATE, BLOCK = 48000, 32
@@ -561,8 +562,7 @@ def main(argv=None):
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--image", type=pathlib.Path, default=IMAGE)
     p.add_argument("--digikit", type=pathlib.Path,
-                   default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC",
-                                                       ROOT.parent / "digikit-wt-sharcemu")))
+                   default=sharcemu.path())
     p.add_argument("--blocks", type=int, default=12)
     p.add_argument("--seconds", type=float, default=2.5)
     p.add_argument("--freq", type=float, default=375.0)

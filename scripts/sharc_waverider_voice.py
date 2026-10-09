@@ -2,7 +2,7 @@
 
     python scripts/sharc_waverider_voice.py \\
         --image 00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip \\
-        --digikit ../digikit-wt-sharcemu [--blocks 16] [--seconds 2.5]
+        --digikit ../digikit-wt-sharcemu3 [--blocks 16] [--seconds 2.5]
 
 Steps, each reported PASS or FAIL (`docs/waverider-feasibility.md`, "Milestone 2"):
 
@@ -49,6 +49,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import sharc_dn2_fixups as fx                               # noqa: E402
 import sharc_waverider_render as m1                          # noqa: E402
 from dnfw.waverider import render, testtable, voice as V    # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 OUT = ROOT / "out" / "waverider"
 RATE = 48000
@@ -366,8 +367,7 @@ def main(argv=None) -> int:
     p.add_argument("--image", type=pathlib.Path,
                    default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     p.add_argument("--digikit", type=pathlib.Path,
-                   default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC",
-                                                       ROOT.parent / "digikit-wt-sharcemu")))
+                   default=sharcemu.path())
     p.add_argument("--blocks", type=int, default=16, help="32-sample blocks per run")
     p.add_argument("--reader-blocks", type=int, default=None,
                    help="blocks for our reader's run only (default --blocks). A looped WAV "

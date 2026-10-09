@@ -2,7 +2,7 @@
 
     python scripts/sharc_waverider_render.py \\
         --image 00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip \\
-        --digikit ../digikit-wt-sharcemu [--assemble] [--seconds 0.5]
+        --digikit ../digikit-wt-sharcemu3 [--assemble] [--seconds 0.5]
 
 Three gates, each one required before the next (`docs/waverider-feasibility.md`,
 "Milestone 1"):
@@ -54,6 +54,7 @@ from dnfw.cli.files import read_image                      # noqa: E402
 from dnfw.firmware.load import load                        # noqa: E402
 from dnfw.image import bootstream, sharc_object           # noqa: E402
 from dnfw.waverider import render, testtable             # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 from emulib import paths                                  # noqa: E402
 
 SOURCE = ROOT / "csrc" / "waverider" / "sharc" / "reader.asm"
@@ -433,8 +434,7 @@ def main(argv=None) -> int:
                    default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip",
                    help="the DN2 1.11 update (.zip or .syx)")
     p.add_argument("--digikit", type=pathlib.Path,
-                   default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC",
-                                                       ROOT.parent / "digikit-wt-sharcemu")),
+                   default=sharcemu.path(),
                    help="a digikit checkout of work/sharc-emulator (env DNFW_DIGIKIT_SHARC)")
     p.add_argument("--assemble", action="store_true",
                    help="reassemble with selas and cross-decode with selmap (WSL)")

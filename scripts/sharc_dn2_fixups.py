@@ -1,4 +1,4 @@
-"""Workarounds that let digikit's SHARC runner (work/sharc-emulator, 6f812e9)
+"""Workarounds that let digikit's SHARC runner (work/sharc-emulator: written for 6f812e9, run on 277760a since 2026-10-09)
 run the DN2 1.11 voice path. Each one is a gap in the runner, measured on the
 DN2 image, and documented in `docs/for-digikit-sharc-runner-dn2.md` (sections
 6 onward) -- that is where a fix belongs; this file only steps around them.
@@ -13,7 +13,9 @@ either does nothing (the runner steps as usual), runs after the step (a
 post-fix), or replaces the step outright:
 
   G1  SIMD PEy is modelled only in Types 2c and 2a_short (compute) and 14a,
-      3b and 15a (memory companion). Everything else runs PEx only. We run
+      3b and 15a (memory companion). Everything else runs PEx only. (277760a
+      models Type 3a's companion too; the two-pass is kept for 3a so both
+      versions run the same way, and the gate suite's outputs are identical.) We run
       such an instruction twice in SISD: PEy on a copy with R<->S (and the
       other complementary pairs) swapped and the transfer address one
       normal word up, then PEx on the real state, and merge PEy's registers,
@@ -43,7 +45,9 @@ post-fix), or replaces the step outright:
       pass loads S5 (overwritten by the merge) and PEy's loads R5 (never merged). The
       merge now keeps the named S register from PEx and its complement from PEy.
       Found by fft2.asm's ys load (2026-10-09).                 ("simd two-pass")
-  G10 Type 8a ignores the (LA) loop-abort bit: `_type_25a_direct` calls the
+  G10 (277760a honours (LA) on 8a_rel itself: the fix-up now pops only when the
+      step has not, or the caller's PC-stack entry went too, which 277760a's
+      return check caught at sw 0xb8042d.) Type 8a ignores the (LA) loop-abort bit: `_type_25a_direct` calls the
       transfer without `loop_abort`, although `_transfer` supports it (Type
       9a passes it). A JUMP (LA) out of a DO loop then leaves the loop's
       PC-stack entry behind, and the next RETURN halts ("return target
@@ -288,7 +292,15 @@ class Fixups:
         if not pred:
             return None
 
+        depth = len(s.loops)
+
         def post(r):
+            # newer digikit (277760a) honours (LA) on this form itself: the step has
+            # popped the loop already, and a second pop would take the caller's entry
+            # off the PC stack too
+            if len(r.state.loops) < depth:
+                self.note("jump (LA) loop abort: done by the runner (G10)", pc)
+                return
             seq._apply_loop_abort(r.state)
             self.note("jump (LA) loop abort (G10)", pc)
         return post

@@ -38,6 +38,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import sharc_waverider_m5 as m5                                # noqa: E402
 from dnfw.waverider import dsp, live                           # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 NOTE60 = live.increment(60.0)
 
@@ -48,8 +49,7 @@ def main(argv=None) -> int:
     p.add_argument("--image", type=pathlib.Path,
                    default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     p.add_argument("--digikit", type=pathlib.Path,
-                   default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC",
-                                                       ROOT.parent / "digikit-wt-sharcemu")))
+                   default=sharcemu.path())
     p.add_argument("--blocks", type=int, default=3)
     a = p.parse_args(argv)
     dk = m5.m1.Digikit(a.digikit)

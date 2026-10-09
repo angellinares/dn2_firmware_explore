@@ -13,7 +13,9 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT / "src"), str(ROOT / "scripts")]
 import sharc_waverider_m5 as g
 from dnfw.waverider import dsp
-dkp = pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC", ROOT.parent / "digikit-wt-sharcemu"))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
+from dnfw import sharcemu  # noqa: E402
+dkp = sharcemu.path()
 dk = g.m1.Digikit(dkp); g.fx.bind(str(dkp / "tools"))
 image = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
 g.m4.IMAGE = image

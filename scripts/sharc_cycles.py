@@ -42,6 +42,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from dnfw.sharccycles import costs as C              # noqa: E402
 from dnfw.sharccycles import fit as F                # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 OUT = ROOT / "out" / "sharc_cycles"
 DATA = ROOT / "data" / "sharc_cycles"
@@ -198,8 +199,7 @@ def main(argv=None) -> int:
     e.add_argument("builds", nargs="+", type=pathlib.Path)
     e.add_argument("--blocks", type=int, default=4)
     e.add_argument("--digikit", type=pathlib.Path,
-                   default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC",
-                                                       ROOT.parent / "digikit-wt-sharcemu")))
+                   default=sharcemu.path())
     e.add_argument("--image", type=pathlib.Path,
                    default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     c = sub.add_parser("compare")

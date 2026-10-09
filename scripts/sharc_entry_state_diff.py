@@ -12,13 +12,15 @@ length, a live hardware loop or a stack depth that differs at entry is state the
 silicon may act on where the runner does not."""
 import os, sys, pathlib, tempfile
 sys.path.insert(0, "src"); sys.path.insert(0, "scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
+from dnfw import sharcemu  # noqa: E402
 import sharc_waverider_m5 as G
 import sharc_waverider_render as m1
 import sharc_waverider_m4 as m4
 import sharc_dn2_fixups as fx
 
 # the runner: a digikit work/sharc-emulator checkout (DIGIKIT_SHARC picks another)
-DK = pathlib.Path(os.environ.get("DIGIKIT_SHARC", "D:/01_Code/Z_Personal/digikit-wt-sharcemu"))
+DK = sharcemu.path()
 IMG = pathlib.Path("../../../00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
 STOCK_ENTRY, OUR_ENTRY = 0x1C6D4A, 0x180200
 dk = m1.Digikit(DK); fx.bind(str(DK / "tools")); m4.IMAGE = IMG

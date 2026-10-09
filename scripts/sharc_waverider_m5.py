@@ -2,7 +2,7 @@
 
     python scripts/sharc_waverider_m5.py \\
         --image 00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip \\
-        --digikit D:/01_Code/Z_Personal/digikit-wt-sharcemu \\
+        --digikit ../digikit-wt-sharcemu3 \\
         [--blocks 8] [--frame FILE | --frame-be FILE | --frames PATTERN]
 
 The image is `dnfw.waverider.dsp.section7(stock)` -- byte for byte what the mod
@@ -68,6 +68,7 @@ from dnfw.image import bootstream, sharc_object                # noqa: E402
 from dnfw.waverider import dsp, live, mip, render, testtable        # noqa: E402
 from dnfw.waverider import frame as FR                         # noqa: E402
 from dnfw.waverider import voice as V                          # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 OUT = ROOT / "out" / "waverider"
 SHARC = ROOT / "csrc" / "waverider" / "sharc"
@@ -456,8 +457,7 @@ def main(argv=None):
     p.add_argument("--image", type=pathlib.Path,
                    default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     p.add_argument("--digikit", type=pathlib.Path,
-                   default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC",
-                                                       ROOT.parent / "digikit-wt-sharcemu")))
+                   default=sharcemu.path())
     p.add_argument("--blocks", type=int, default=8)
     p.add_argument("--seconds", type=float, default=2.5)
     p.add_argument("--frame", help="a 2,688-byte frame in DSP memory order (dnfw.waverider.frame)")

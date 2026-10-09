@@ -2,7 +2,7 @@
 
     python scripts/sharc_waverider_m3.py \\
         --image 00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip \\
-        --digikit ../digikit-wt-sharcemu [--assemble] [--blocks 6]
+        --digikit ../digikit-wt-sharcemu3 [--assemble] [--blocks 6]
 
 Three steps, each PASS/FAIL (`docs/waverider-feasibility.md`, "Milestone 3"):
 
@@ -55,6 +55,7 @@ import sharc_waverider_render as m1                            # noqa: E402
 import sharc_waverider_voice as m2                             # noqa: E402
 from dnfw.image import sharc_object                            # noqa: E402
 from dnfw.waverider import render, testtable, voice as V       # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 OUT = ROOT / "out" / "waverider"
 RATE, BLOCK, MIDI = 48000, 32, 4
@@ -576,8 +577,7 @@ def main(argv=None):
     p.add_argument("--image", type=pathlib.Path,
                    default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     p.add_argument("--digikit", type=pathlib.Path,
-                   default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC",
-                                                       ROOT.parent / "digikit-wt-sharcemu")))
+                   default=sharcemu.path())
     p.add_argument("--blocks", type=int, default=6)
     p.add_argument("--seconds", type=float, default=2.5)
     p.add_argument("--freq", type=float, default=375.0)

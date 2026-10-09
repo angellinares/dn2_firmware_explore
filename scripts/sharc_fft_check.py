@@ -34,6 +34,7 @@ from dnfw.image import bootstream, sharc_object                 # noqa: E402
 from dnfw.sharccycles import costs as C                         # noqa: E402
 from dnfw.waverider import dsp                                  # noqa: E402
 from dnfw.waverider import geometry as G                        # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 FFT_SW, FFT_DM = 0x16F800, 0x2DF000
 TW_DM, NMAX = 0x2E0000, 4096
@@ -71,7 +72,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--image", type=pathlib.Path, default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     p.add_argument("--digikit", type=pathlib.Path,
-                   default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC", ROOT.parent / "digikit-wt-sharcemu")))
+                   default=sharcemu.path())
     p.add_argument("--sizes", type=int, nargs="+", default=[16, 256, 2048])
     p.add_argument("--where", choices=sorted(DATA), default="ddr")
     a = p.parse_args(argv)

@@ -9,6 +9,8 @@ values, each block's sequence is the full path (1..19, 10..15 once per sample), 
 last value is 19: what the probe must read on the instrument when nothing stalls."""
 import os, sys, pathlib, tempfile, collections
 sys.path.insert(0, "src"); sys.path.insert(0, "scripts")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
+from dnfw import sharcemu  # noqa: E402
 import sharc_waverider_m5 as G
 import sharc_waverider_render as m1
 import sharc_waverider_m4 as m4
@@ -16,7 +18,7 @@ import sharc_dn2_fixups as fx
 import build_waverider_disc_wtplace as W
 
 # the runner: a digikit work/sharc-emulator checkout (DIGIKIT_SHARC picks another)
-DK = pathlib.Path(os.environ.get("DIGIKIT_SHARC", "D:/01_Code/Z_Personal/digikit-wt-sharcemu"))
+DK = sharcemu.path()
 IMG = pathlib.Path("../../../00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
 dk = m1.Digikit(DK); fx.bind(str(DK / "tools")); m4.IMAGE = IMG
 stock = m1.dn2_section7(IMG)

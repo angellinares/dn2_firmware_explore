@@ -28,9 +28,16 @@ real compromise (the owner); points only matter for low notes.
 
 ## What has to change
 
-1. **Who builds the levels.** A 64 x 2048 table is 256 KiB stored and ~1 MB with levels, so
-   levels can't ride in a store slot. Built on the instrument at load (the ColdFire, or the
-   SHARC's FFT accelerator), or a larger slot. To decide.
+1. **Who builds the levels: the DSP, when a table loads (owner, 2026-10-09).** The store keeps
+   the original; the level design can change with a firmware update; a quarter of the bytes
+   cross the link. The ADSP-21569 has no FFT accelerator (FIR/IIR only), so the core does it
+   with the model's method: one forward FFT per frame, an inverse per level after level 0.
+   **First measurement** (`csrc/waverider/sharc/fft.asm`, `scripts/sharc_fft_check.py`, the
+   cycle model): a plain radix-2 complex FFT, correct to 2e-7 at N 16..2048; N 2048 is
+   337,554 instructions, ~650k cycles in DDR and ~624k in L1 (memory costs 4 %: the
+   instructions are the cost). A 2048-point frame's levels ~2.5 M cycles; **a 64 x 2048
+   table ~160 M cycles, ~0.46 s** at the DSP's ~35 % idle (the guess was 30 ms). Next: the
+   real-input packing (half the work), SIMD on the second processing element, radix 4.
 2. **The load.** Today the pool copies 16 x 512 tables only (16 KB slots, 2 MB area at
    `0x807ff000`) through command 4's chunks. A table of any size needs a variable extent in
    the free DDR and a directory entry carrying its geometry.

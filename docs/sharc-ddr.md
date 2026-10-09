@@ -2,7 +2,7 @@
 
 **Answer (2026-10-09):** 512 MB. Stock uses the first ~5.2 MB; the other ~507 MB
 (`0x80531000..0xa0000000`) was never written by anything during boot, a heavy project's
-playback, pattern and kit changes, FX at extremes and a project save. It is free for the
+playback, pattern and kit changes, the arpeggiator, FX at extremes and a project save. It is free for the
 wavetable pool, Waverider's current 4 MB (`0x80600000..0x80a00000`) included.
 
 ## Size: 512 MB [D], three sources agreeing
@@ -47,10 +47,12 @@ On the instrument (owner, 2026-10-09), each reading after ~9 s passes over 132,8
 | FX at extremes | 49, 55 | 0 | none |
 | after a project save | 58 | 0 | none |
 
+The arpeggiator was used several times during the run (owner).
+
 The pattern held from the first pass, so the fill landed (a refused value would read as
 nearly every word changed).
 
-**Limits.** A path not exercised in those ~10 minutes (the arpeggiator, MIDI tracks'
+**Limits.** A path not exercised in those ~10 minutes (MIDI tracks'
 heavy use, a firmware feature that allocates on demand) could still write there; the
 scanner build can be flashed again for any such case. The scanner only sees writes that
 leave a word different from the pattern.

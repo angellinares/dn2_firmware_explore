@@ -19,6 +19,9 @@ normalised to 32767), so each differs from the next in one thing:
     WRtest_16x512_wt512.wav     today's geometry
 
 `_wt<N>` is Tonverk's naming convention for the wave length (`docs/waverider-tables.md`).
+Each also goes out as `WRtest_<F>x<N>.raw`: the +Drive store's payload, int16 big-endian,
+frame-major, no header, which DNX writes as it is (a WAV's header and little-endian data
+are not; DNX converted the first set, store slots 78..81, 2026-10-09).
 
 **The renders** (`dnfw.waverider.geometry`, hermite2's reader with mip levels at 28 kHz, any
 geometry), each one WAV with the four tables in that order, 0.6 s apart, the four at one gain:
@@ -87,6 +90,7 @@ def main(argv=None) -> int:
     tables = {g: reduce.to_int16(src, count=g[0], points=g[1]) for g in GEOMETRIES}
     for (f, n), t in tables.items():
         write_wav(a.out / "tables" / f"WRtest_{f}x{n}_wt{n}.wav", np.array(t, dtype=float).ravel() / 32768)
+        (a.out / "tables" / f"WRtest_{f}x{n}.raw").write_bytes(np.array(t, dtype=">i2").tobytes())
         print(f"  {f:2d} x {n:4d}: {2 * f * n / 1024:6.0f} KB as stored, "
               f"{G.size_bytes(f, n) / 1024:6.0f} KB with levels and guards")
     levels = {g: G.table_levels(t) for g, t in tables.items()}

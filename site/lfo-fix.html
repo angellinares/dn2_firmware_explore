@@ -1,10 +1,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Layering to MIDI</title>
+<title>LFO ONE/HALF Fix</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<meta name="description" content="Layer a Digitone II audio track onto MIDI tracks with TRACK WILL TRIGGER, and play external gear from it, built entirely in your browser.">
+<meta name="description" content="Fix the Digitone II LFO trig modes ONE and HALF: one cycle (or half) from the start phase, holding the value they reached. Built entirely in your browser.">
 <link rel="stylesheet" href="css/base.css">
 <style>
   .step { margin: 2.5rem 0; }
@@ -64,12 +64,15 @@
 <div class="wrap">
 
 <header class="top">
-  <p class="eyebrow"><a href="index.html">Digitone II Mods</a> / layering to midi</p>
-  <h1>Layering to MIDI</h1>
+  <p class="eyebrow"><a href="index.html">Digitone II Mods</a> / bug fixes / LFO ONE and HALF</p>
+  <h1>LFO ONE/HALF Fix</h1>
   <p class="lede">
-    Layer an audio track onto MIDI tracks with TRACK WILL TRIGGER, and the MIDI
-    tracks play along over MIDI: every note, chord and release your audio track
-    plays. Pick your firmware, download a signed image.
+    An LFO in TRIG MODE ONE should run one cycle and stop; in HALF, half a cycle and stop.
+    The factory firmware gets both halves of that wrong. It stops at fixed points of the
+    cycle rather than counting from the start phase, so with SPH moved the LFO ends early
+    (or, in HALF, late). And when it stops it jumps to the centre: a square on the filter
+    &ldquo;turns off&rdquo; or &ldquo;jumps back to the middle&rdquo;. This fixes both, on audio and
+    MIDI tracks. Pick your firmware, download a signed image.
   </p>
 </header>
 
@@ -88,19 +91,18 @@
   <h2>Combines with</h2>
   <p>This mod's row of the <a href="index.html#compatibility">compatibility table</a>, generated
   by <code>dnfw mods matrix</code>: &#10003; combines in either order; &#10003;* in one order
-  only; &#10007; cannot be combined. Hover a cell for the reason. Flashed together and
-  confirmed on the instrument: this mod with the Boot screen (2026-10-02).</p>
-<!-- dnfw:matrix-row layermidi -->
+  only; &#10007; cannot be combined. Hover a cell for the reason.</p>
+<!-- dnfw:matrix-row lfolength -->
 <div class="scroll">
 <table class="matrix">
   <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfolength</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>reloadconfirm</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
   <tbody>
-    <tr><th scope="row">Layering onto MIDI tracks <code>layermidi</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="refused by hand: they fight over one feature">&#10007;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">LFO ONE/HALF fix <code>lfolength</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
   </tbody>
 </table>
 </div>
 <!-- /dnfw:matrix-row -->
-  <p><!-- dnfw:combines layermidi -->With Arpeggiator SHUF and RAND, Arpeggiator p-locks, Boot screen, LFO modulation of the FX, A fourth LFO, LFO ONE/HALF fix, New LFO waveforms, More modulation destinations, Reload confirm, Song guard, FM drum transients, USB SysEx probe (diagnostic), Waverider, a sixth machine; <strong>not</strong> with Arpeggiator on MIDI tracks (refused by hand: they fight over one feature). See the compatibility table<!-- /dnfw:combines -->.</p>
+  <p><!-- dnfw:combines lfolength -->With Arpeggiator SHUF and RAND, Arpeggiator p-locks, Boot screen, LFO modulation of the FX, Layering onto MIDI tracks, A fourth LFO, New LFO waveforms, Arpeggiator on MIDI tracks, More modulation destinations, Reload confirm, Song guard, FM drum transients, USB SysEx probe (diagnostic), Waverider, a sixth machine. See the compatibility table<!-- /dnfw:combines -->.</p>
 </section>
 
 <section class="step">
@@ -123,22 +125,24 @@
 <section class="step hidden" id="step2">
   <div class="step-head"><span class="step-num">2</span><h2>What changes</h2></div>
   <dl class="facts">
-    <dt>Set up</dt><dd>On the audio track, TRACK WILL TRIGGER: select one or more MIDI tracks</dd>
-    <dt>Playback</dt><dd>Every note the audio track plays &mdash; trigs, chords, retrigs, probability, held keys &mdash; also goes out on each layered MIDI track's channel</dd>
-    <dt>Releases</dt><dd>Note-off when the layered note ends: at its length, when a held key is let go, or at stop for INF</dd>
-    <dt>Combining</dt><dd>Several audio tracks can layer onto one MIDI track, and one audio track onto several</dd>
-    <dt>Mutes</dt><dd>A muted source sends nothing; a muted MIDI track sends nothing</dd>
-    <dt>Not layered</dt><dd>Every track behaves as stock</dd>
+    <dt>Length</dt><dd>ONE runs one whole cycle from the start phase, HALF half a cycle, whatever SPH is and in either speed direction. Factory: ONE from SPH 96 plays a quarter of a cycle, HALF from SPH 64 a whole one</dd>
+    <dt>Hold</dt><dd>When it stops, the LFO stays at the value it reached instead of jumping to the centre. A square on the filter in ONE ends closed and stays closed; in HALF it stays open; a triangle in HALF stays at its peak</dd>
+    <dt>Where</dt><dd>Audio tracks&rsquo; LFOs and MIDI tracks&rsquo; LFOs, which the firmware runs through two separate copies of the same code</dd>
+    <dt>Unchanged</dt><dd>FREE, TRIG and HOLD (TRIG still starts at SPH); the random waveform, whose SPH is SLEW; a retrig from the TRIG page, which restarts the LFO for a full run; the waveforms New LFO waveforms adds, where SPH means something else</dd>
+    <dt>Why</dt><dd>The firmware tests for &ldquo;the middle&rdquo; and &ldquo;the end&rdquo; of the cycle rather than &ldquo;half a cycle / a cycle since the trig&rdquo;, and stops by writing a fixed value per waveform into the output. The fix counts the cycle from the start phase (it starts the LFO at zero and adds the start phase back when the waveform is read) and removes those writes</dd>
     <dt>Writes</dt><dd id="writes">&mdash;</dd>
   </dl>
 
   <div class="note">
-    <p><strong>Confirmed on a Digitone&nbsp;II, 2026-10-02</strong>, recorded into
-    Ableton from an external synth on the layered MIDI track: sequenced notes, chords,
-    retrigs and probability arrive as played; INF holds until the sequencer stops; held
-    keys release cleanly; two sources into one MIDI track and one source into several
-    both work. The MIDI note arrived about 8&nbsp;ms ahead of the recorded audio &mdash;
-    the audio path's latency, not the mod's.</p>
+    <p><strong>Tested.</strong> The hold on audio tracks was confirmed on a Digitone&nbsp;II on 2026-10-08,
+    against factory 1.11 on the same patch, as the first version of this fix
+    (<a href="lfo-hold.html">LFO hold</a>, now superseded). The length and the MIDI tracks: in the
+    emulator, factory against fixed over every mode, waveform, start phase, speed direction,
+    fade and retrig pattern; only ONE and HALF change, and they now trace the free-running
+    waveform until they stop. On the instrument, 2026-10-09, audio track: ONE and HALF run their full length from SPH 0 to 120 (74, 85, 100 and 120 among them) and hold the value they reached, with no click or flip at the end.</p>
+    <p>Reported by the community: the jump <a href="https://discord.com/channels/772159427486023730/772160179386580993/1557329020587090001">Source</a>;
+    the length with the start phase moved <a href="https://discord.com/channels/772159427486023730/772160179386580993/1557769845855092747">Source</a>.
+    OS 1.12 has the same code.</p>
   </div>
 </section>
 
@@ -157,13 +161,6 @@
   <span class="status" id="status"></span>
 </div>
 
-<h2>Not with the MIDI Arpeggiator</h2>
-<p>
-  <a href="arp.html">MIDI Arpeggiator</a> also turns layered notes on MIDI tracks into
-  MIDI, when the MIDI track's own arp is on. The two no longer share any bytes, but
-  until that overlap is checked they are kept apart: they cannot be built together.
-</p>
-
 <footer>
   <p>
     Part of <a href="https://github.com/angellinares/dn2_firmware_explore">dn2_firmware_explore</a>,
@@ -173,4 +170,4 @@
 
 </div>
 
-<script type="module" src="js/app/layermidi-page.js"></script>
+<script type="module" src="js/app/lfolength-page.js"></script>

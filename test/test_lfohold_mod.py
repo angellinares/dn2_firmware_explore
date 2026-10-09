@@ -73,7 +73,7 @@ def test_refuses_an_image_already_patched(dn2_111, applied):
 def test_shares_no_byte_with_any_mod(dn2_111):
     from dnfw.cli.mods import REGISTRY
     named = [(mid, list(mod.extents(dn2_111))) for mid, mod in REGISTRY.items()
-             if mid not in ("transients",)]
+             if mid not in ("transients", "lfolength")]   # lfolength supersedes it: the same stores
     ours = [n for n in named if n[0] == lfohold.ID]
     for other in named:
         if other[0] != lfohold.ID:

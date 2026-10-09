@@ -1,5 +1,11 @@
 """LFO trig modes ONE and HALF hold the value they stopped at, instead of jumping.
 
+**SUPERSEDED (2026-10-09) by `lfolength`, the LFO ONE/HALF fix**, which does this on both
+LFO evaluators (this mod covers the audio tracks' only; the MIDI tracks' LFOs run through
+a second evaluator, `0x401373dc`) and also fixes ONE / HALF's length from the start phase.
+Kept as published for the build confirmed on hardware; the two write the same stores, so
+they don't combine.
+
 ## The stock behaviour this changes
 
 The manual says ONE runs the LFO to the end of its waveform and stops, and HALF
@@ -40,7 +46,9 @@ from . import Extent, ModError, Result
 
 ID = "lfohold"
 NAME = "LFO hold"
-SUMMARY = "LFO trig modes ONE and HALF hold the value they stopped at, instead of jumping to a fixed one."
+SUMMARY = ("Superseded by lfolength (the LFO ONE/HALF fix). LFO trig modes ONE and HALF hold "
+           "the value they stopped at, audio tracks only.")
+SUPERSEDED_BY = "lfolength"
 DEVICE = 0x15                      # Digitone II
 SECTION = 3                        # MAIN OS
 BASE = 0x40000400

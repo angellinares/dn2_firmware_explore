@@ -15,6 +15,13 @@ export const UNAVAILABLE = {
       + "The download is off until that is resolved. If you have LFO4 installed, back up your "
       + "projects and work in copies.",
   },
+  fxmod: {
+    since: "2026-10-10",
+    title: "LFO modulation of the FX is unavailable for now",
+    reason: "We are looking into a report of song data being damaged in projects used with this mod. "
+      + "The download is off until that is resolved. If you have it installed, back up your "
+      + "projects and work in copies.",
+  },
 };
 
 /** The entry for `id`, or null when the mod is on offer. */

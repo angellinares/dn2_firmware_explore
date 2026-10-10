@@ -18,11 +18,12 @@ def test_a_withdrawn_mod_is_not_offered():
         pytest.skip("node is not on PATH; the withdrawn-mod check cannot run")
     done = subprocess.run([node, str(HARNESS)], capture_output=True, text=True, cwd=ROOT)
     assert done.returncode == 0, done.stdout + done.stderr
-    assert done.stdout.count("OK  ") == 11
+    assert done.stdout.count("OK  ") == 15
 
 
 def test_the_pages_read_the_one_table():
-    page = (ROOT / "site/js/app/lfo4-page.js").read_text(encoding="utf-8")
-    assert 'flagFor("lfo4")' in page
     index = (ROOT / "site/index.html").read_text(encoding="utf-8")
-    assert 'data-mod="lfo4"' in index and "js/app/index-page.js" in index
+    assert "js/app/index-page.js" in index
+    for mod, page in (("lfo4", "lfo4-page.js"), ("fxmod", "fx-page.js")):
+        assert f'flagFor("{mod}")' in (ROOT / "site/js/app" / page).read_text(encoding="utf-8")
+        assert f'data-mod="{mod}"' in index

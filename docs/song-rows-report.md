@@ -93,6 +93,28 @@ The store rewrites unused storage. The control, from files alone: the bytes that
 
 **The bytes over the song rows are not from the project.** `c4 a? 29 08` occurs only inside song 1's row 03 in the whole image: no pattern, kit or other song holds it. Read as big-endian floats the run is -1329.28, -1353.28, -1346.00, then 13.51: the first two differ by exactly 24. Row 04 holds 16-bit values at or just under `0x7000`. So two kinds of working data from RAM, floats and then 16-bit parameter values, lay over the stored rows. Which code holds those is not known.
 
+## Song 2 rebuilt from song 1's visible values (owner, 2026-10-10)
+
+On slot 25's copy, on rivvi's mod set plus the probe, the owner entered in song 2 what the screen shows for song 1's four rows, track mutes included. `songwatch` on songs 1 and 2 (`out/rivvi/songwatch_5.log`):
+
+| step | result |
+|---|---|
+| song 2 played through its four rows | stopped at the end as set; no byte of either song changed, live or stored |
+| SAVE PROJECT, another project loaded, AM REBECCA loaded back | 40 spans cleared at the unload and restored at the reload, all byte for byte; the owner: the song looks fine |
+
+## Does stock's LFO write astray on a mod-only waveform or destination? (emulator, 2026-10-10)
+
+The owner's question: a project saved with the mods, then played on stock. `scripts/emu_stock_foreign_lfo.py` runs stock 1.11's evaluator A with every write classed as its own memory or a stray:
+
+| case | result |
+|---|---|
+| control: TRI on a stock destination | clean, the destination moves |
+| waveforms 7..15, 32, 127, 255 | clean, the destination moves |
+| destinations 99, 100 | clean, the destination moves |
+| destinations 101, 110, 127, 128, 200, 255 | clean, nothing is written (stock's bound is 100) |
+
+With `--blind` (the mirror buffer no longer counted as the evaluator's) all 21 cases report strays, so the detector fires. This covers the evaluator only: stock's load of such a project, its pages drawing those values, and the MIDI tracks' evaluator are not tested.
+
 ## Earlier case
 
 `docs/old-project-load.md`: SKETCHPAD's song 1 stored a row count of 21,503, entered

@@ -33,7 +33,6 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
-import shutil
 import subprocess
 import sys
 
@@ -42,7 +41,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import build_lfo4_tick as tick                              # noqa: E402
 
 PANEL = ROOT.parent / "digikit-rust/out/native/target-host/release/examples/panel_drive.exe"
-CARD = ROOT.parent / "dn2_firmware/out/dk-dn2-card.img"
+CARD = ROOT.parent / "dn2_firmware/out/dk-dn2-card.img"    # opened read-only: the save goes to an overlay in memory
 
 BLOCK = 0x4000                                              # what the allocator makes of RESERVE
 ARRAYS = (tick.LIVE, tick.SECOND, tick.BACKUP)
@@ -66,11 +65,9 @@ def steps(marked: bool) -> list[str]:
 
 def run(build: str, out: pathlib.Path, marked: bool) -> dict:
     out.mkdir(parents=True, exist_ok=True)
-    card = out / "card.img"
-    shutil.copyfile(CARD, card)                             # the save writes the card: never the shared one
     script = out / "steps"
     script.write_text("\n".join(steps(marked)) + "\n", newline="\n")
-    r = subprocess.run([str(PANEL), build, "--card-image", str(card), "--out", str(out),
+    r = subprocess.run([str(PANEL), build, "--card-image", str(CARD), "--out", str(out),
                         "--regs-at", f"0x{ALLOC_RETURN:08x}", "--count", f"0x{EMMC_WRITE:08x}",
                         "--steps", f"@{script}"],
                        capture_output=True, text=True, timeout=3000, stdin=subprocess.DEVNULL)

@@ -75,6 +75,22 @@ most of stock's memory is fixed areas. LFO4 takes 16 KiB of it, 0.05 %.
   "does stock write here" is weak for any address in `0x466b8000..0x46701340`.
 - Stock's peak use of the arena. It does not matter for 16 KiB; it would for megabytes.
 
+## The RAM above the section, where the other mods live (2026-10-11)
+
+The question: does stock reference `0x46701340..0x48000000`, directly or through another
+address? The SDRAM is 128 MB and its decode repeats it every 0x08000000, so the same RAM
+answers at nine addresses up to `0x8c000000`; each check below covers all nine.
+
+| check | result |
+|---|---|
+| `scripts/emu_high_ram_touch.py` on plain stock: boot, SAVE PROJECT AS three times, a walk through every page key, the preset menu, pattern, song, play, record and stop; then the emulator's own list of every 1 MiB page the guest touched | 88 pages. In the first window the highest is `0x46600000`; in the second only `0x4e600000` and `0x4e700000`, first written at `0x4e700000` by memcpy (`0x401344ac`, the bounce buffer's tail), its non-zero bytes all below `+0x1340`. No page of the range in any other window. Controls: `0x46600000` and `0x4e600000` are in the list |
+| `digikit-up/tools/refscan.py`, stock code `0x40000400..0x401d0000`, 99.94 % of bytes decoded, one scan per window | control: the bounce buffer's six sites are found. Hits in the nine ranges: `0x47efffff` twice (the high word of a double, with `0xe0000000` beside it), `0x4ead99ff` (a timeout compared with a timer count), `0x4f000000` twice and `0x7ff00000`, `0x7fffffff` (float constants and limits), `0x474e5543` ("GNUC"), `0x47f94003` and `0x6ea42090` (not addresses: an instruction pair read as one, and an added constant). No reference |
+| stock data from `0x401d0400`: every value in the nine ranges beside a valid pointer | 3,862: 2,643 text, 23 the halves of two neighbouring pointers, 1,196 inside tables of numbers and packed data. No pointer table holds one. The 1,196 were not read one by one |
+
+**What this does not show.** An address computed at run time, on a path the emulator did
+not run (the sequencer, the full audio path, USB audio, a transfer). The page list is per
+megabyte. Nothing here was measured on the instrument.
+
 ## Other mods
 
 No other mod's memory overlaps the section (`in_stock_dma` on every registered mod), and

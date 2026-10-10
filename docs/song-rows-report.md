@@ -115,6 +115,19 @@ The owner's question: a project saved with the mods, then played on stock. `scri
 
 With `--blind` (the mirror buffer no longer counted as the evaluator's) all 21 cases report strays, so the detector fires. This covers the evaluator only: stock's load of such a project, its pages drawing those values, and the MIDI tracks' evaluator are not tested.
 
+## A mod-saved sound through stock's load and save (emulator, 2026-10-10)
+
+The owner's sharper question: does stock, reading and saving the project, put LFO4's values or a mod-only destination in the wrong place? `scripts/emu_stock_sound_roundtrip.py`, stock 1.11, a live sound saved, LFO4's eight ids filled, loaded and saved again, every write classed:
+
+| what the sound holds | what stock does |
+|---|---|
+| LFO4's eight stored ids | SAVE writes zero into all eight; nothing else in the stored sound changes |
+| LFO3 DEST past stock's list (110, 127, 255) | comes back as a stock destination (19, 22, 61): the LFO points at another parameter |
+| LFO3 WAVE past stock's list (9, 13, 255) | kept as it is |
+| writes outside the sound | SAVE: none. LOAD: 86, the same addresses and count as the control |
+
+So stock keeps everything inside the sound: LFO4's settings are lost and a mod-only destination turns into another one, and nothing is put elsewhere. Back on the mods, zero ids are the case lfo4's load already treats as "no LFO4". The DEST case went through stock's own SAVE, not the mods', so the numbers it comes back as may differ for a file the mods saved.
+
 ## Earlier case
 
 `docs/old-project-load.md`: SKETCHPAD's song 1 stored a row count of 21,503, entered

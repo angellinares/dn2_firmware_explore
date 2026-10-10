@@ -77,6 +77,15 @@ p  { max-width: 42rem; }
 .mod-id {
   font-family: var(--mono); font-size: .8rem; color: var(--ink-soft);
 }
+.mod-version {
+  font-family: var(--mono); font-size: .8rem; color: var(--ink-soft);
+}
+dl.changes { margin: .9rem 0 0; }
+dl.changes dt { font-family: var(--mono); font-size: .85rem; margin-top: .8rem; }
+dl.changes dt .version { color: var(--accent); font-weight: 600; }
+dl.changes dt time { color: var(--ink-soft); margin-left: .6rem; }
+dl.changes dd { margin: .25rem 0 0; }
+dl.changes ul { margin: 0; padding-left: 1.2rem; }
 .tag {
   font-family: var(--mono); font-size: .68rem; letter-spacing: .09em;
   text-transform: uppercase; padding: .2rem .55rem; border-radius: 4px;

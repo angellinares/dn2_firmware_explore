@@ -21,6 +21,7 @@ from ..mods import arpmodes as arpmodes_mod
 from ..mods import arpplocks as arpplocks_mod
 from ..mods import bootscreen as bootscreen_mod
 from ..mods import fxmod as fxmod_mod
+from ..mods import history
 from ..mods import layermidi as layermidi_mod
 from ..mods import lfo4 as lfo4_mod
 from ..mods import lfolength as lfolength_mod
@@ -59,6 +60,12 @@ def configure(parser) -> None:
     sub = parser.add_subparsers(dest="action", required=True)
 
     sub.add_parser("list", help="show available mods and what they touch")
+
+    cl = sub.add_parser("changelog", help="each mod's version and what changed in it")
+    cl.add_argument("--mod", action="append", choices=sorted(REGISTRY), help="only these mods")
+    cl.add_argument("--write", type=pathlib.Path, nargs="+", default=[], metavar="PAGE",
+                    help="fill the generated regions (<!-- dnfw:version ID --> and "
+                         "<!-- dnfw:changes ID -->) of these HTML files")
 
     ex = sub.add_parser("extract", help="write a mod's factory content out")
     ex.add_argument("image", type=pathlib.Path)
@@ -289,7 +296,7 @@ def _list() -> int:
     for mid, mod in sorted(REGISTRY.items()):
         sections = _sections(mod)
         label = "section" if len(sections) == 1 else "sections"
-        print(f"  {mid}")
+        print(f"  {mid}  v{history.version(mid)}")
         print(f"    {mod.SUMMARY}")
         print(f"    device 0x{mod.DEVICE:02x}, {label} {', '.join(map(str, sections))}")
     print("\nTwo mods can be applied together when the byte ranges they write")
@@ -505,9 +512,29 @@ def _matrix(args) -> int:
     return 0
 
 
+def _changelog(args) -> int:
+    wrong = history.problems(REGISTRY)
+    for line in wrong:
+        print(f"  {line}")
+    if wrong:
+        return 1
+    for mid in args.mod or sorted(REGISTRY):
+        print(f"{mid}  {getattr(REGISTRY[mid], 'NAME', mid)}")
+        print(history.changes_text(mid))
+    for page in args.write:
+        text = page.read_text(encoding="utf-8")
+        new = history.rewrite(text)
+        if new != text:
+            page.write_text(new, encoding="utf-8", newline=chr(10))
+            print(f"  rewrote the version and changes regions of {page}")
+    return 0
+
+
 def run(args) -> int:
     if args.action == "list":
         return _list()
+    if args.action == "changelog":
+        return _changelog(args)
     if args.action == "matrix":
         return _matrix(args)
     if args.action == "extract":

@@ -8,13 +8,13 @@ const { outputName } = await import("../site/js/app/shell.js");
 const ok = (name, pass) => { console.log(`${pass ? "OK  " : "FAIL"} ${name}`); if (!pass) process.exitCode = 1; };
 
 ok("the version follows the mod's suffix",
-   outputName("Digitone_II_OS1.11.syx", "fxmod", "fxmod", { fxmod: "1.2.3" }) === "Digitone_II_OS1.11_fxmod_v1.2.3.syx");
+   outputName("Digitone_II_OS1.11.syx", "fxmod", "fxmod", { fxmod: "1.2.3" }) === "Digitone_II_OS1.11_fxmod_1.2.3.syx");
 ok("a second mod on a modded file adds its own, so the name lists the mix",
-   outputName("Digitone_II_OS1.11_fxmod_v1.2.3.syx", "lfofix", "lfolength", { lfolength: "1.0.1" })
-     === "Digitone_II_OS1.11_fxmod_v1.2.3_lfofix_v1.0.1.syx");
-ok("the extension is matched whatever its case", outputName("FW.SYX", "x", "fxmod", { fxmod: "1.0.0" }) === "FW_x_v1.0.0.syx");
+   outputName("Digitone_II_OS1.11_fxmod_1.2.3.syx", "lfofix", "lfolength", { lfolength: "1.0.1" })
+     === "Digitone_II_OS1.11_fxmod_1.2.3_lfofix_1.0.1.syx");
+ok("the extension is matched whatever its case", outputName("FW.SYX", "x", "fxmod", { fxmod: "1.0.0" }) === "FW_x_1.0.0.syx");
 ok("without a mod the name has no version (control)", outputName("fw.syx", "bench") === "fw_bench.syx");
-ok("the real table is used by default", outputName("fw.syx", "fxmod", "fxmod") === `fw_fxmod_v${VERSIONS.fxmod}.syx`);
+ok("the real table is used by default", outputName("fw.syx", "fxmod", "fxmod") === `fw_fxmod_${VERSIONS.fxmod}.syx`);
 
 const dir = new URL("../site/js/app/", import.meta.url);
 const pages = readdirSync(dir).filter((f) => f.endsWith("-page.js"));

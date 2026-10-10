@@ -122,7 +122,7 @@ export async function openFirmware(file, { onReady, extraFacts = () => [], unava
 
 /** The downloaded file's name: the firmware's, the mod's suffix, and the mod's version. */
 export function outputName(filename, suffix, mod = null, versions = VERSIONS) {
-  const version = mod && versions[mod] ? `_v${versions[mod]}` : "";
+  const version = mod && versions[mod] ? `_${versions[mod]}` : "";
   return filename.replace(/\.syx$/i, "") + `_${suffix}${version}.syx`;
 }
 
@@ -131,7 +131,7 @@ export function outputName(filename, suffix, mod = null, versions = VERSIONS) {
  * download only if every check passes.
  *
  * `suffix` names the output, and `mod` (the mod's id) adds its version:
- * `dn2_1.11.syx` -> `dn2_1.11_<suffix>_v<version>.syx`.
+ * `dn2_1.11.syx` -> `dn2_1.11_<suffix>_<version>.syx`.
  * A withdrawn mod's page passes its entry as `unavailable`: nothing is built.
  */
 export async function buildAndOffer(firmware, replacements, {

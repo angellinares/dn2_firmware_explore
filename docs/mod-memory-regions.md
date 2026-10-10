@@ -71,10 +71,11 @@ From each mod's own declaration (`ram()`), 2026-10-11:
 |---|---|
 | `scripts/emu_heap_requests.py`: boot, SAVE PROJECT AS, the DNX upload, the panel walk, on stock and on the fixed LFO4 build | stock 46,521 requests, 0 failed; fixed 46,394 requests, 0 failed; 987 eMMC writes and 394 LZ4 decompress calls on both. The only large site reached: the uploader's 1 MiB |
 | `scripts/emu_lfo4_state_memory.py` | a marker in the arrays survives a save; the first block goes to `reserve`; none of the 4,095 later blocks recorded lies in it |
+| `scripts/emu_heap_reach.py`: the allocator's bitmap read after start-up, after SAVE PROJECT AS, after the DNX upload and after the panel walk | stock holds 14,875 to 14,917 live blocks and the highest ends **3.00 MiB** into the 32 MiB arena at all four points; the fixed LFO4 build 14,878 to 14,920, the same 3.00 MiB. Control: the bits counted equal the allocator's own count at every point |
 
 **Not shown.**
-- Stock's peak use of the arena. The arena is cleared with stock's data at start-up and the allocator keeps its free lists inside it, so neither the touched pages nor the highest non-zero byte measure it (both read 32 MiB).
-- The load of an older project, and the 2.7 MB requests: not reached in the emulator runs. If three or more 4 MiB blocks and a project-sized block were ever live at once, 16 KiB less in the lower half could be the difference. For 16 KiB that is unlikely; for 0.67 MiB it has to be measured first.
+- Stock's peak use during an operation. At rest it holds 3.00 MiB (above). What it takes and releases inside one operation is known only from the request sites: one project-sized block (the upper half) in a save and in each step of an older project's conversion, and the requests of 2.7 MB, which take 4 MiB each.
+- The load of an older project, and the 2.7 MB requests: not reached in the emulator runs. With 3 MiB held at rest the lower half has 13 MiB free, room for three 4 MiB blocks; a fourth at the same moment would spill into the upper half on stock too.
 - The same on the instrument.
 
 ## The two regions side by side

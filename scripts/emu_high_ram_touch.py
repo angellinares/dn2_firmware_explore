@@ -9,8 +9,14 @@ nine addresses; stock reaches its DMA section through the second (`0x4e......`).
 digikit's board keeps RAM in 1 MiB pages and maps a page the first time the guest touches
 it, recording that first touch (panel_drive's `touched` step). So after a run the list is
 the megabytes stock touched, in every window, with no list of addresses to get wrong.
-One panel_drive boot of plain stock, a project save and a walk through the panel's pages;
-then the same run again to read whole the pages that fall in `0x46700000..0x48000000`.
+One panel_drive boot of plain stock; a project save; a walk through the panel's pages; the
+saved project read over the Data API as DNX reads it, raw and compressed; and, with
+`--upload FRAMES`, a compressed project uploaded as DNX sends it. Then the same run again
+to read whole the pages that fall in `0x46700000..0x48000000`.
+
+The heap is not measured here: its arena is cleared with stock's data at start-up and holds
+the allocator's own lists, so neither its touched pages nor its last non-zero byte say how
+much stock used (docs/mod-memory-regions.md).
 
 Controls, pages stock is known to touch: `0x46600000` (the end of its data) and
 `0x4e600000` (the eMMC bounce buffer, `0x4e6f1300`). Both must answer, or a silent page
@@ -26,7 +32,12 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import struct
 import subprocess
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from emu_waverider_rename import Frames                     # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PANEL = ROOT.parent / "digikit-rust/out/native/target-host/release/examples/panel_drive.exe"
@@ -45,19 +56,43 @@ WALK = [s for key in (1, 2, 3, 4, 5, 6, 7, 12, 23, 12, 24, 12, 20, 19, 21, 21, 8
         for s in (f"tap:{key}", "wait:40M")]
 
 
-def run(build: str, out: pathlib.Path, peeks: list[int]) -> tuple[list[dict], dict[int, bytes]]:
+# the Data API as DNX drives it: where panel_drive injects a SysEx message and what it calls
+SYSEX = ["--call-at", "0x4002e464", "--call-fn", "0x4012166e", "--call-args", "2"]
+RAW_CHUNKS = 787                                            # a stored project, 12,890,159 bytes, in 16 KiB chunks
+PACKED_CHUNKS = 16                                          # the same compressed, about 190 KB
+
+
+def data_api_read(path: bytes, form: bytes, handle: int, chunks: int) -> list[str]:
+    """Open PATH, read CHUNKS chunks, close it: FORM empty for raw, one byte 1 for compressed.
+    HANDLE is the number the open returns: 1 for the first file open, 2 for the second."""
+    f = Frames()
+    f.frame("open", 0x54, path + bytes(1) + struct.pack(">I", 0x4000) + form)
+    for k in range(chunks):
+        f.frame(f"seq{k}", 0x55, struct.pack(">II", handle, k))
+    f.frame("close", 0x56, struct.pack(">I", handle))
+    return [f"send:{h}" for _, h in f.lines]
+
+
+def run(build: str, out: pathlib.Path, peeks: list[int], upload: list[str]) -> tuple[list[dict], dict[int, bytes]]:
     """One boot and the scenario; then the pages touched, and each of PEEKS read whole."""
     out.mkdir(parents=True, exist_ok=True)
-    steps = SAVE_AS + WALK + ["touched"] + [f"peek:0x{a:08x}:{MIB}" for a in peeks]
+    first = 2 if upload else 1                              # a handle is the count of files opened since start-up
+    transfers = ([f"send:{h}" for h in upload] + (["wait:300M"] if upload else [])
+                 + data_api_read(b"/projects/2", bytes([1]), first, PACKED_CHUNKS)
+                 + data_api_read(b"/projects/2", b"", first + 1, RAW_CHUNKS))
+    steps = SAVE_AS + transfers + WALK + ["touched"] + [f"peek:0x{a:08x}:{MIB}" for a in peeks]
     script = out / "steps"
     script.write_text(chr(10).join(steps) + chr(10), newline=chr(10))
-    r = subprocess.run([str(PANEL), build, "--card-image", str(CARD), "--out", str(out), "--steps", f"@{script}"],
-                       capture_output=True, text=True, timeout=3600, stdin=subprocess.DEVNULL)
+    r = subprocess.run([str(PANEL), build, "--card-image", str(CARD), "--out", str(out), *SYSEX,
+                        "--count", "0x400efb70,0x400ef5d0,0x4012c780,0x4012c59a", "--steps", f"@{script}"],
+                       capture_output=True, text=True, timeout=7200, stdin=subprocess.DEVNULL)
     if not r.stdout.strip():
         raise SystemExit(f"no output: {r.stderr[-800:]}")
     d = json.loads(r.stdout.strip().splitlines()[-1])
     if d["outcome"] != "done":
         raise SystemExit(f"{d['outcome']} {d.get('fault')}")
+    names = {"0x400efb70": "LZ4 compress", "0x400ef5d0": "LZ4 decompress", "0x4012c780": "eMMC write", "0x4012c59a": "eMMC read"}
+    print("  the scenario ran: " + ", ".join(f"{names[w['pc']]} x{w['hits']}" for w in d["watched"]))
     touched = next(x["touched"] for x in d["results"] if "touched" in x)
     whole = [bytes.fromhex(x["hex"]) for x in d["results"] if "hex" in x]
     return touched, dict(zip(peeks, whole))
@@ -80,16 +115,18 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("build")
     p.add_argument("--out", default=str(ROOT / "out/high-ram-touch"))
+    p.add_argument("--upload", help="a file of SysEx messages (hex, one a line): a compressed project sent to /projects/3")
     a = p.parse_args(argv)
     out = pathlib.Path(a.out)
-    touched, _ = run(a.build, out, [])
+    upload = pathlib.Path(a.upload).read_text().split() if a.upload else []
+    touched, _ = run(a.build, out, [], upload)
     pages = {int(t["page"], 16): t for t in touched}
     ok = True
     for c in CONTROLS:
         ok &= c in pages
         print(f"  {'ok  ' if c in pages else 'FAIL'} control: page {c:#010x} is among the {len(pages)} touched")
     high = sorted(page for page in pages if LO <= ram(page) < HI)
-    _, whole = run(a.build, out, high)                      # the same run again, those pages read whole
+    _, whole = run(a.build, out, high, upload)              # the same run again, those pages read whole
     beyond = []
     print(f"  touched pages whose RAM is in {LO:#010x}..{HI:#010x}, under any address: {len(high)}")
     for page in high:

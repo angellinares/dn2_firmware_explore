@@ -241,6 +241,29 @@ Step 1 of the hunt (an agent's forensics on rivvi's image, SKETCHPAD OS111 of 20
 - **Still seen on 2026-10-05:** SKETCHPAD-repaired against its readback from slot 20 differs in 354 window bytes over 43 chunks.
 - **Not followed:** four more state blocks off the 64 KiB lattice in rivvi's A02, A03 and A09; address-shaped values in rivvi's settings at image `0xc3e080..0xc3e0f0`; 1,023 changed bytes outside windows in chunk 0x63 of the slot 20 readback.
 
+## The cause: lfo4's arrays lie in the eMMC driver's bounce buffer (2026-10-10)
+
+Step 2 of the hunt (an agent's static read and emulator runs; scripts and outputs in the session scratchpad, `step2/`). The two literals and the copy were read again here.
+
+- **The buffer.** Stock's eMMC driver keeps a 64 KiB bounce buffer at `0x4e6f1300`. `ACR0 = 0x4007e020` (set at `0x40000564`) caches `0x40000000..0x47ffffff` only, and stock reaches a DMA section of its RAM through an uncached window 0x08000000 above it: `0x4e6b8000..0x4e701340` is RAM `0x466b8000..0x46701340`, the end of stock's data rounded up to a page, to just past the buffer. So the buffer is RAM `0x466f1300..0x46701300`, and lfo4's live array `0x46700000..0x46700a00` is its offset `+0xed00..+0xf700`: the window measured in every 64 KiB of the damaged projects.
+- **Why no scan or watch saw it.** Stock names the buffer only as `0x4e6f1300` (six literals: `0x4012c644`, `0x4012c678`, `0x4012c744`, `0x4012c848`, `0x4012c854`, `0x4012c85a`); `0x466f1300` appears nowhere in the image. The emulators do not fold the window, so a watch on `0x466f....` reads zeros while the data sits at `0x4e6f....`. Every emulator null above was empty for this reason. `docs/memory-map.md` dismisses `0x4e541300` as opcode bytes; it is 1.10E's bounce buffer.
+- **The code.** eMMC write `0x4012c780(sector, bytes, buf)` and read `0x4012c59a` work in pieces of at most 65,536 bytes. A buffer that is not 16-byte aligned goes through the bounce: `memcpy(0x4e6f1300, buf, n)` at `0x4012c85e` before the DMA on a write, `memcpy(buf, 0x4e6f1300, n)` at `0x4012c754` after it on a read. The project images are unaligned (`0x405cd96c` and the slot cache `0x42c71a8c`, both 12 modulo 16), so every piece of a project passes through it from offset 0, and image offset modulo 64 KiB is the bounce offset.
+- **What happens on a unit with lfo4.** SAVE PROJECT: a piece is copied to the bounce, evaluator A writes the live LFO state into `+0xed00..+0xf700` before the DMA ends, and the card receives it; the image in RAM stays clean. LOAD and any other read into an unaligned buffer: the same race lands in RAM. In the other direction every piece overwrites the live LFO state with project bytes, and the bounce's last 0x300 bytes and a 16-longword table at `0x4e701300` lie over the start of lfo4's second array.
+- **Confirmed in the emulator on stock** (`panel_drive`, SAVE PROJECT AS): 591 eMMC writes (3 saves of 197 pieces), all 591 through the copy into `0x4e6f1300`, none by direct DMA; pieces of 64 KiB from `0x42c71a8c`, the last `0xb004` (196 x 65,536 + 0xb004 = 12,890,116); 3,601 reads, all through the bounce; the buffer zeros before and project bytes after. Control: `operator new`, 38,552 hits. Not shown in the emulator: the evaluator running during a save (it never runs there); the time series of step 1 is the evidence from the instrument. Not verified on hardware: that the two addresses are one RAM (stock's own use of the window and the exact offset say so).
+- **Not the transfer codec.** The LZ4 rings of the Data API are heap blocks; a compressed read and an upload on rivvi's set, the arrays filled with markers, left the arrays and the image clean. A transfer still reads and writes the card underneath.
+
+| our placement | overlap with stock's `0x466b8000..0x46701340` |
+|---|---|
+| lfo4 live `0x46700000..0x46700a00` | inside the bounce buffer |
+| lfo4 second `0x46701000..0x46701a00` | first 0x300 bytes inside it, then 0x40 over the table |
+| lfo4 backup `0x46702000..0x46702a00` | none found |
+| `0x46710000`, `0x4678xxxx`, `0x467a0000`, lfolength `0x467f8000` | none found |
+| C chunks and tables `0x46800000`, `0x46900000`, `0x46f00000` | none found |
+
+No stock reference above `0x4e701340` was found in either window. One other `0x4e` value, `0x4ead99ff` in a compare at `0x400db9d0`, was taken for a constant and not read.
+
+**The fix, not built:** the three arrays out of fixed addresses, into memory stock itself treats as taken; a build check that refuses any placement inside `0x466b8000..0x46701340` or its window; the emulators folding the window (a digikit change).
+
 ## Earlier case
 
 `docs/old-project-load.md`: SKETCHPAD's song 1 stored a row count of 21,503, entered

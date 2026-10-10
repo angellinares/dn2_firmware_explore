@@ -50,7 +50,7 @@ BASE = 0x40000400
 
 EVAL_A = 0x40137726
 MIRROR_SLOTS, MIRROR_BYTES = 101, 202
-STATE = (0x46700000, 0x46701000, 0x46702000)   # live, second, backup (v6a's relocation)
+STATE = (0x4464ABF0, 0x4464BBF0, 0x4464CBF0)   # live, second, backup: the heap's first block (build_lfo4_tick.POOL)
 STATE_LEN, STATE_STRIDE = 2560, 160
 TRACKS = 16
 DEST_SLOT = 76                                  # what the build points LFO4 at

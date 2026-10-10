@@ -54,7 +54,7 @@ LIVE_CONTAINER, SOUND_AT, SOUND = 0x800052A0, 52, 1163
 # write it makes, less what may legitimately differ: the LFO state arrays (an
 # idle LFO4's record stops advancing), our own BSS (counters, row caches) and
 # the harness's stack.
-EXCLUDE = ((0x46700000, 0x46703000), (0x46800000, 0x46900000), (0x469F0000, 0x46A00800))
+EXCLUDE = ((0x4464ABF0, 0x4464EBF0), (0x46800000, 0x46900000), (0x469F0000, 0x46A00800))
 DEST_SLOT = 76
 CASES = (("empty", 0, DEST_SLOT), ("nodest", 16, 0), ("mix", 4, DEST_SLOT), ("all", 16, DEST_SLOT))
 

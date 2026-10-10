@@ -59,7 +59,7 @@ BUILD = os.path.join(str(paths.ROOT),
 
 EVAL_A = 0x40137726
 MIRROR_AT, MIRROR_BYTES, TRACKS = 34, 202, 16
-STATE = (0x46700000, 0x46701000, 0x46702000)
+STATE = (0x4464ABF0, 0x4464BBF0, 0x4464CBF0)   # live, second, backup: the heap's first block (build_lfo4_tick.POOL)
 STATE_LEN = 2560
 REST = 0x4000
 RATE = 0x402A0DEC

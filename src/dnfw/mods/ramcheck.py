@@ -1,9 +1,15 @@
 """Every address above BSS a mod's bytes name must be RAM the mod declares.
 
-The RAM above BSS (`0x466b74d0`..`0x48000000`) belongs to no one: the firmware
-never addresses it, so every mod that uses it picks its addresses by hand and
-declares them (`ram()`), and the platform compares the declarations. A
-declaration that misses a range is invisible to that comparison. On 2026-09-30
+Stock uses RAM above BSS (`0x466b74d0`) up to `0x46701340`: its uncached DMA
+section, which it names only through the window 0x08000000 higher
+(`0x4e6b8000..0x4e701340`), with the eMMC driver's 64 KiB bounce buffer at
+`0x4e6f1300`. lfo4's state arrays sat inside that buffer until 2026-10-11 and
+every project saved on an LFO4 unit carried LFO state
+(docs/lfo4-state-memory.md). `in_stock_dma` refuses anything there, under either
+address. Above it, to `0x48000000`, no stock reference has been found: every mod
+that uses that RAM picks its addresses by hand and declares them (`ram()`), and
+the platform compares the declarations. A declaration that misses a range is
+invisible to that comparison. On 2026-09-30
 lfo4's LFO state arrays at `0x46700000` were written by its edits but not
 declared, the boot screen's stamp was placed on top of them, and the instrument
 raised V04 at `0x46700000`.
@@ -36,20 +42,40 @@ from ..patch import area
 
 LO, HI = 0x466B74D0, 0x47000000
 SLACK = 64
+STOCK_DMA = (0x466B8000, 0x46701340)     # stock's uncached DMA section, as cached addresses
+WINDOW = 0x08000000                      # the uncached window: the same RAM at address + WINDOW
 
 
-def _words(data: bytes, base: int) -> list[tuple[int, int]]:
+def in_stock_dma(stock: bytes, content: bytes, ram, reads=()) -> list[str]:
+    """What a mod places or names inside stock's DMA section, under either address.
+
+    RAM: the mod's declared ranges. CONTENT against STOCK: every address the mod's
+    own bytes name (`named`, and the same scan one window up). READS: the places
+    (`where`) a mod has shown to name stock's own buffer in order to read it."""
+    lo, hi = STOCK_DMA
+    skip = set(reads)
+    bad = [f"declares {x.what} at {x.start:#010x}..{x.end:#010x}" for x in ram
+           if x.section == RAM and x.start < hi and lo < x.end]
+    bad += [f"{at:#010x} names {v:#010x}" for at, v in named(stock, content)
+            if lo <= v < hi and at not in skip]
+    bad += [f"{at:#010x} names {v:#010x} (the uncached window)"
+            for at, v in named(stock, content, LO + WINDOW, HI + WINDOW)
+            if lo <= v - WINDOW < hi and at not in skip]
+    return bad
+
+
+def _words(data: bytes, base: int, lo: int = LO, hi: int = HI) -> list[tuple[int, int]]:
     """(address of the word, its value) for every value in the window."""
     out = []
     for at in range(0, len(data) - 3, 2):
         v = struct.unpack_from(">I", data, at)[0]
-        if LO <= v < HI:
+        if lo <= v < hi:
             out.append((base + at, v))
     return out
 
 
-def named(stock: bytes, content: bytes) -> list[tuple[int, int]]:
-    """Addresses above BSS that CONTENT names and STOCK does not."""
+def named(stock: bytes, content: bytes, LO: int = LO, HI: int = HI) -> list[tuple[int, int]]:
+    """Addresses above BSS (or in LO..HI) that CONTENT names and STOCK does not."""
     found = []
     n = len(stock)
     i = 0
@@ -61,14 +87,14 @@ def named(stock: bytes, content: bytes) -> list[tuple[int, int]]:
         while j < n and stock[j] != content[j]:
             j += 1
         lo, hi = max(0, i - 3) & ~1, min(n, j + 3)        # a word straddling the run
-        found += [(platform.BASE + a, v) for a, v in _words(bytes(content[lo:hi]), lo)
+        found += [(platform.BASE + a, v) for a, v in _words(bytes(content[lo:hi]), lo, LO, HI)
                   if not (LO <= struct.unpack_from(">I", stock, a)[0] < HI)]
         i = j
     if len(content) > platform.STOCK_LENGTH:
         for cid, data in platform.split(content)[1]:
             if cid == area.CODE:
                 code = area.CodeChunk.unpack(data)
-                found += _words(code.image, code.load)
+                found += _words(code.image, code.load, LO, HI)
     return sorted(set(found))
 
 

@@ -88,7 +88,6 @@ MAIN_OS = 3
 BASE = 0x40000400
 
 # --- where the relocated state lives ---------------------------------------
-# Unclaimed SDRAM above BSS end 0x466b74d0, below the 0x48000000 top.
 # 16 x 4 LFOs x 40 bytes = 2,560 each.  Page-spaced so a stray overrun
 # **Sixteen of what, read 2026-09-24: it depends which site reaches them.**
 # `outer` below walks the live array one record per track (202 mirror / 160 state
@@ -99,9 +98,28 @@ BASE = 0x40000400
 # equals the track's.  That block is the bridge between the two indexings.
 # The count is 16 either way, so every stride edit below is unaffected.
 # lands in nothing rather than in a neighbour.
-LIVE = 0x46700000
-SECOND = 0x46701000
-BACKUP = 0x46702000
+#
+# **Where, since 2026-10-11: a block of the firmware's own heap.** Until then the
+# three arrays sat at 0x46700000, 0x46701000 and 0x46702000, "unclaimed" RAM above
+# BSS. It is not unclaimed: stock's eMMC driver keeps a 64 KiB bounce buffer at
+# 0x4e6f1300, the uncached window of RAM 0x466f1300..0x46701300, and every piece
+# of a project passes through it on a save and a load. The live array lay inside
+# it, so every project saved on an LFO4 unit carried LFO state in each 64 KiB
+# (docs/lfo4-state-memory.md).
+#
+# Stock's allocator (0x4011ffe8) is one buddy arena, 32 MiB from POOL. `reserve`
+# below makes the very first allocation of a boot: it runs at the end of the
+# allocator's lazy initialisation, inside its mutex (recursive, 0x40001608), so
+# nothing can allocate before it. The first block of a fresh arena is its base
+# for any size (measured in the emulator, 16 bytes to 1 MiB), so the arrays have
+# fixed addresses in memory stock itself records as taken and never hands out.
+POOL = 0x4464ABF0           # the arena's base (its descriptor, 0x4029eba0)
+RESERVE = 0x3000            # one request; the allocator rounds it to a 16 KiB block
+LIVE = POOL
+SECOND = POOL + 0x1000
+BACKUP = POOL + 0x2000
+ALLOCATE = 0x4011FFE8
+ALLOCATOR_READY = 0x4029EB9C    # the arena's initialised flag
 STATE_LEN = 2560
 STATE_STRIDE = 160          # per track: 4 LFOs x 40
 STOCK_LEN = 1920
@@ -250,6 +268,11 @@ def hooks(params_va: int, cave_of: dict[str, int]) -> list[tuple[int, bytes, str
          b"\x49\xec\xff\xf0\x70\xff",
          "jsr", "b_bottom",
          ),
+        # the allocator's lazy init ends `moveq #1,%d0; move.l %d0,0x4029eb9c`
+        (0x4012006A,
+         b"\x70\x01\x23\xc0" + be32(ALLOCATOR_READY),
+         "jmp", "reserve",
+         ),
     ]
 
 
@@ -315,7 +338,7 @@ flags:
 2:  rts
 
 | ---- zero the backup array at boot -------------------------------------
-| The relocated arrays sit above the BSS clear's bound, so nothing zeroes them.
+| `reserve` clears the block the arrays live in; this stays as the evaluator's own guarantee.
 | The two initialisers cover live and second; backup is only ever a copy target,
 | and is read before it is written if the first tick's flag is clear.
 zero_backup:
@@ -355,6 +378,31 @@ b_bottom:
 1:  lea     %a4@(-16),%a4
 2:  moveq   #-1,%d0
     rts
+
+| ---- the state arrays' memory: the heap's first block --------------------
+| Reached once a boot, from the end of the allocator's lazy initialisation, with
+| its mutex held (it is recursive, so the call below nests). Replays the two
+| instructions the hook replaced, takes the arena's first block and clears it
+| (the initialisation left a free-list node at its start). A block anywhere but
+| at the arena's base means the arrays' addresses are wrong: stop on an illegal
+| instruction, which the firmware reports on the screen, and never run on.
+| The allocator's caller still has its size in %d3 and the lock routine in %a2;
+| both are callee-saved.
+reserve:
+    moveq   #1,%d0
+    move.l  %d0,{ALLOCATOR_READY:#010x}
+    pea     {RESERVE:#x}
+    jsr     {ALLOCATE:#010x}
+    addq.l  #4,%sp
+    cmpi.l  #{POOL:#010x},%d0
+    beq.s   1f
+    illegal
+1:  movea.l %d0,%a0
+    lea     %a0@({RESERVE:#x}),%a1
+2:  clr.l   %a0@+
+    cmpa.l  %a1,%a0
+    bne.s   2b
+    jmp     0x40120072
 """
 
 
@@ -416,7 +464,7 @@ def main() -> int:
 
 
 LABELS = ("a4_top", "a4_bottom", "outer", "flags",
-          "zero_backup", "b_top", "b_bottom")
+          "zero_backup", "b_top", "b_bottom", "reserve")
 
 
 def assemble_stubs(source: str, base: int) -> tuple[bytes, dict[str, int]]:

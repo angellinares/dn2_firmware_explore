@@ -96,9 +96,14 @@ IMAGE_END = 0x4030B980
 # RAM that is not in the image. BSS ends at 0x466b74d0; SDRAM tops out at 0x48000000.
 BSS = (0x402FC000, 0x466B74D0)
 SDRAM_TOP = 0x48000000
+# Stock's own RAM above BSS: its uncached DMA section, named only as 0x4e6b8000..0x4e701340
+# (the window 0x08000000 above the cached addresses). It holds the eMMC driver's 64 KiB
+# bounce buffer (0x4e6f1300). Nothing of ours may be placed in it.
+STOCK_DMA = (0x466B8000, 0x46701340)
 RAM_TENANTS = [
-    (0x46700000, 0x46700000 + 3 * 0x1000, "lfo4-tick6a",
-     "three 2,560-byte LFO state arrays (LIVE/SECOND/BACKUP), 4 KB slots",
+    (0x4464ABF0, 0x4464ABF0 + 0x4000, "lfo4 (since 2026-10-11)",
+     "three 2,560-byte LFO state arrays, 4 KB apart, in the first block of stock's heap "
+     "(taken at the allocator's initialisation; until then at 0x46700000, inside STOCK_DMA)",
      "scripts/build_lfo4_tick.py"),
     (0x46710000, 0x46710000 + 2056, "bootscreen-bang",
      "the appended data area, copied here before the BSS clear (size of intro-bang's)",

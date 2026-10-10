@@ -99,3 +99,6 @@ def ram() -> list[Extent]:
 # 0x402cf6b4: `move.w %sr,%d0 ; move.w #0x2700,%sr` (40 c0 46 fc 27 00);
 # 0x402cf6dc: `move.w %d7,%sr ; movem.l ...` (46 c7 48 d1).
 NOT_RAM = (0x402CF6B4, 0x402CF6DC)
+# Stock's audio DMA buffers (`csrc/usbprobe/dn2_111.inc`: AUD_RX 0x4e6df100, 0x4e6e0100),
+# which STATS hashes and PEEK may read. The probe writes nothing there.
+READS_STOCK_DMA = (0x402CF854, 0x402CF858, 0x402CF86C, 0x402CF874)

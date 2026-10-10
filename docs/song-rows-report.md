@@ -183,6 +183,24 @@ Not covered: any of this while the sequencer plays (it does not run in the emula
 
 So the two cases look like one thing: leftover working data lying over the start of song 1's storage, harmful only when song 1 holds something there. Not known: what writes it, and whether plain stock 1.11 does or only a modded unit (all three projects come from units that ran mods).
 
+## The leftover data is LFO evaluator state (2026-10-10)
+
+**What it is.** Stock 1.11's evaluator A, run 40 frames in the emulator, leaves its state block (`0x4463fc18`, 1,920 bytes) as 48 records of 40 bytes: `3f ff ff ff`, 0, a small number, a signed word, a value, 0, 0, three accumulators. The records in the project files have that shape and spacing. DNX's lattice walk: in rivvi's file, SKETCHPAD OS111, SKETCHPAD-repaired, projects_11 and the slot 25 reads, every record near song 1 sits on one 40-byte lattice whose origin is image `0xc3ee28` (RAM `0x4120c794` with the working image at `0x405cd96c`), 0x1d8 before song 1. The non-zero run is 54 records in rivvi's file and 57 in SKETCHPAD OS111 and projects_11. rivvi's row 03 is record 13. So LFO state lands at one fixed address, across projects and across builds from 2026-09-22 on.
+
+**Stock or lfo4: not separated.** Stock has 16 x 3 = 48 records per array and three arrays back to back (backup `0x4463ed18`, second `0x4463f498`, live `0x4463fc18`). lfo4 moves them to `0x46702000`, `0x46701000`, `0x46700000` and makes each 64 records, 2,560 bytes. A run of 57 fits one lfo4 array or two adjacent stock arrays, so the width does not decide it. Every 1.11 project held comes from a unit that ran mods; no 1.10E export and no fresh 1.11 project has a single record there.
+
+**Ruled out in the emulator:**
+
+| question | result |
+|---|---|
+| does the evaluator on an lfo4 build write into the project image? (`scripts/emu_lfo_state_escape.py`: boot from reset, LFO4 on 16 sounds, backup flag 0, 1, 0xff, 0x100) | 0 writes in the image's 12.9 MB |
+| does lfo4 leave a stock reference to the state arrays unmoved? | no: all 13 references are repointed or replaced, `0x401373b8` by a cave |
+| does stock's allocator hand out memory at lfo4's arrays? | no: its arena ends at `0x4664abf0`, below the end of stock's data (`0x466b74d0`) |
+| does stock touch memory above its data during SAVE PROJECT AS and LOAD PROJECT? (panel_drive, the card image) | no byte changes in `0x466b74d0..0x46700000`, and no access above it |
+| does 1.11's conversion of an older project leave a hole there? (`0x400e0362`, version 4 to 5) | no: it is whole-block copies, songs moved up 0x200; it carries whatever the old image held |
+
+**Not found:** the write itself. The song watch on rivvi's set saw no change at stored song 1 through hours of playback, saves and reloads, so it is tied to an event not yet reproduced.
+
 ## Earlier case
 
 `docs/old-project-load.md`: SKETCHPAD's song 1 stored a row count of 21,503, entered

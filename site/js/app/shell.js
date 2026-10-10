@@ -23,6 +23,7 @@
  */
 
 import { build, load, verify } from "../firmware.js";
+import { guardDownload } from "./notice.js";
 
 export const $ = (id) => document.getElementById(id);
 
@@ -149,6 +150,7 @@ export async function buildAndOffer(firmware, replacements, {
     link.download = name;
     link.textContent = `Download ${name}`;
     link.style.marginTop = ".8rem";
+    guardDownload(link);
     into.append(link);
     link.scrollIntoView({ behavior: "smooth", block: "nearest" });
     status(`${note}${note ? " — " : ""}${bytes.length.toLocaleString()} bytes.`);

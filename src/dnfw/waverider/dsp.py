@@ -191,6 +191,7 @@ MIPB3_SW = MIPB3_DM // 2                     # 0x172400
 BUILD3_DM = 0x2E4B00                         # build3.asm, the idle loop's back edge jumps here
 BUILD3_SW = BUILD3_DM // 2                   # 0x172580
 BUILD3_END = 0x2E5600
+FILL_MIN = 32                                # a shorter tail of zeros stays in its payload (a fill block's header is 16 bytes)
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 
 # stock sites
@@ -368,6 +369,19 @@ def spans() -> list[tuple[str, int, bytes]]:
     return out
 
 
+def stream_blocks(at: int, payload: bytes) -> bytes:
+    """A span as boot-stream blocks: its bytes, then a fill block for a tail of zeros (the
+    form stock uses for its own zeroed ranges in L1 and DDR, 4-byte aligned). The memory
+    loaded is the same; the stream is shorter by the zeros."""
+    body = len(payload.rstrip(b"\x00"))
+    body += -body % 4
+    tail = len(payload) - body
+    if at % 4 or tail % 4 or tail < FILL_MIN:
+        return bootstream.block(at, payload)
+    fill = bootstream.block(at + body, flags=bootstream.FLAG_FILL, count=tail)
+    return (bootstream.block(at, payload[:body]) if body else b"") + fill
+
+
 def twiddles(points: int):
     """fft3.asm's tables: entry h + k = (cos, -sin)(pi k / h) for each half-width h < N
     (a smaller transform reads the same entries)."""
@@ -480,11 +494,17 @@ def _check_idle_site(stock: bytes, obj: dict) -> None:
 STREAM_LIMIT = 0x100000 - 1
 
 
+def check_upload_size(section: bytes) -> None:
+    """Refuse a section 7 the ColdFire's uploader would not send (stage3c, 2026-10-10:
+    1,051,404 bytes through `section7`, which did not check: no audio frames since boot)."""
+    if len(section) > STREAM_LIMIT:
+        raise DspError(f"section 7 is {len(section):,} B: the ColdFire loads at most {STREAM_LIMIT:,} "
+                       "(a 1 MiB buffer), so the DSP would never boot")
+
+
 def _finish(out: bytearray) -> bytes:
     result = bytes(out)
-    if len(result) > STREAM_LIMIT:
-        raise DspError(f"section 7 is {len(result):,} B: the ColdFire loads at most {STREAM_LIMIT:,} "
-                       "(a 1 MiB buffer), so the DSP would never boot")
+    check_upload_size(result)
     walked = bootstream.walk(result)
     if not walked.complete or walked.stopped_at != len(result):
         raise DspError(f"the result does not walk as a boot stream ({walked.reason})")
@@ -500,7 +520,7 @@ def section7_idle_only(stock: bytes) -> bytes:
     added = idle_spans()
     _check_free(stock, added)
     out = bytearray(bootstream.insert_before_final(
-        stock, b"".join(bootstream.block(at, payload) for _, at, payload in added)))
+        stock, b"".join(stream_blocks(at, payload) for _, at, payload in added)))
     bootstream.write_span(out, l2_sw_to_load(IDLE_SITE_SW), obj["idle_jump"])
     return _finish(out)
 
@@ -538,7 +558,7 @@ def section7(stock: bytes) -> bytes:
     _check_free(stock, added)
 
     out = bytearray(bootstream.insert_before_final(
-        stock, b"".join(bootstream.block(at, payload) for _, at, payload in added)))
+        stock, b"".join(stream_blocks(at, payload) for _, at, payload in added)))
     bootstream.write_span(out, sw_to_load(ENTRY_SW), entry)
     bootstream.write_span(out, dm_to_load(LOOKUP_DM + 20), struct.pack("<I", 5))
     bootstream.write_span(out, l2_sw_to_load(IDLE_SITE_SW), build3_jump() if STAGE3 else obj["idle_jump"])
@@ -549,4 +569,5 @@ def section7(stock: bytes) -> bytes:
     walked = bootstream.walk(result)
     if not walked.complete or walked.stopped_at != len(result):
         raise DspError(f"the result does not walk as a boot stream ({walked.reason})")
+    check_upload_size(result)
     return result

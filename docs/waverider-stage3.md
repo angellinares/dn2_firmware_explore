@@ -191,3 +191,11 @@ real compromise (the owner); points only matter for low notes.
    (`wave.pool_spans`).
 5. **The perf gate** (`perf-stability-gate`): runner worst case, instrument load and a soak
    against the factory machines, one variable per pair.
+
+## stage3c did not start the DSP: section 7 over the uploader's 1 MiB (2026-10-10)
+
+The owner flashed `waverider-stage3c-usbprobe`: no sound, and PLAY did not run the sequencer. The probe: build `wr-stage3c`, 0 audio frames since boot, the DSP's reply all zeros. The ColdFire's uploader (`0x400cf34c`) refuses a boot stream whose length + 1 is over 0x100000 (`0x400cf5e4`, to `0x400cf678`), and stage3c's section 7 is 1,051,404 bytes (mip2h2: 1,009,004; stock: 836,956). stage3a and stage3b carry the same section.
+
+- **Why no gate stopped it.** `dsp._finish` checked the size, and `dsp.section7`, the path every Waverider build takes, did not go through it. `test_the_boot_stream_stays_under_the_coldfire_loaders_1_mib` was failing on this branch, with six other tests left stale by stage 3, and the suite was not run before the build was offered.
+- **The fix** (`fix/waverider-dsp-image-size`): `dsp.check_upload_size` on both paths, and `dsp.stream_blocks`: a span's tail of zeros goes as a fill block, the form stock uses for its own zeroed ranges in L1 and DDR. `waverider-stage3d-usbprobe`: 1,027,528 bytes, 21,047 under; `bootstream.load_regions` gives the same memory as stage3c byte for byte (control: one flipped byte differs).
+- **A gate that sees it in the emulator:** `boot_gate.exe BUILD --watch 0x400cf678` (the uploader's refusal). stage3c: 1 hit. stage3d and mip2h2: 0.

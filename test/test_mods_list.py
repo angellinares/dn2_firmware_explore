@@ -6,13 +6,14 @@ is listed here, and a mod spanning several sections lists them from its extents.
 
 from dnfw.cli.main import main as dnfw
 from dnfw.cli.mods import REGISTRY, _sections
+from dnfw.mods import history
 
 
 def test_list_names_every_mod(capsys):
     assert dnfw(["mods", "list"]) == 0
     out = capsys.readouterr().out
     for mid in REGISTRY:
-        assert f"  {mid}\n" in out
+        assert f"  {mid}  v{history.version(mid)}\n" in out
 
 
 def test_multi_section_mod_lists_its_sections():

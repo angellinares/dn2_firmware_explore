@@ -194,10 +194,13 @@ So the two cases look like one thing: leftover working data lying over the start
 | question | result |
 |---|---|
 | does the evaluator on an lfo4 build write into the project image? (`scripts/emu_lfo_state_escape.py`: boot from reset, LFO4 on 16 sounds, backup flag 0, 1, 0xff, 0x100) | 0 writes in the image's 12.9 MB |
+| the same on rivvi's full set with lfofix (`out/rivvi-lfo4reset1`), LFO1..3 on every track in ONE, then HALF, one trigger and 300 frames (a ONE cycle at MULT 8 is 47 frames, a HALF 24) | 0 writes in the image. The stop itself was not read back: the harness's destination cell saturates |
 | does lfo4 leave a stock reference to the state arrays unmoved? | no: all 13 references are repointed or replaced, `0x401373b8` by a cave |
 | does stock's allocator hand out memory at lfo4's arrays? | no: its arena ends at `0x4664abf0`, below the end of stock's data (`0x466b74d0`) |
 | does stock touch memory above its data during SAVE PROJECT AS and LOAD PROJECT? (panel_drive, the card image) | no byte changes in `0x466b74d0..0x46700000`, and no access above it |
 | does 1.11's conversion of an older project leave a hole there? (`0x400e0362`, version 4 to 5) | no: it is whole-block copies, songs moved up 0x200; it carries whatever the old image held |
+
+rivvi moved from the build ending `lfo4_lfohold` to the one ending `lfo4_lfofix` (owner, 2026-10-10); whether the rows broke before or after is not known.
 
 **Not found:** the write itself. The song watch on rivvi's set saw no change at stored song 1 through hours of playback, saves and reloads, so it is tied to an event not yet reproduced.
 

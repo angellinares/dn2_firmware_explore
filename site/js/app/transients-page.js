@@ -434,7 +434,7 @@ async function buildImage() {
   }
   const applied = apply(state.firmware, entries);
   await buildAndOffer(state.firmware, new Map([[7, applied.section]]), {
-    filename: state.filename, suffix: "transients",
+    filename: state.filename, mod: "transients", suffix: "transients",
     note: `${count} slot${count === 1 ? "" : "s"} replaced`,
   });
 }

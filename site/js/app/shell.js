@@ -24,6 +24,7 @@
 
 import { build, load, verify } from "../firmware.js";
 import { guardDownload } from "./notice.js";
+import { VERSIONS } from "../mods/versions.js";
 
 export const $ = (id) => document.getElementById(id);
 
@@ -119,15 +120,22 @@ export async function openFirmware(file, { onReady, extraFacts = () => [], unava
   }
 }
 
+/** The downloaded file's name: the firmware's, the mod's suffix, and the mod's version. */
+export function outputName(filename, suffix, mod = null, versions = VERSIONS) {
+  const version = mod && versions[mod] ? `_${versions[mod]}` : "";
+  return filename.replace(/\.syx$/i, "") + `_${suffix}${version}.syx`;
+}
+
 /**
  * Build with `replacements`, re-verify from the built bytes, and offer a
  * download only if every check passes.
  *
- * `suffix` names the output: `dn2_1.11.syx` -> `dn2_1.11_<suffix>.syx`.
+ * `suffix` names the output, and `mod` (the mod's id) adds its version:
+ * `dn2_1.11.syx` -> `dn2_1.11_<suffix>_<version>.syx`.
  * A withdrawn mod's page passes its entry as `unavailable`: nothing is built.
  */
 export async function buildAndOffer(firmware, replacements, {
-  filename, suffix, into = $("buildVerdict"), button = $("buildBtn"), note = "",
+  filename, suffix, mod = null, into = $("buildVerdict"), button = $("buildBtn"), note = "",
   unavailable = null,
 }) {
   if (unavailable) { status(unavailable.title); return null; }
@@ -147,7 +155,7 @@ export async function buildAndOffer(firmware, replacements, {
       return null;
     }
 
-    const name = filename.replace(/\.syx$/i, "") + `_${suffix}.syx`;
+    const name = outputName(filename, suffix, mod);
     into.querySelector("a.filebtn")?.remove();
     const link = document.createElement("a");
     link.className = "filebtn";

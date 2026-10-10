@@ -26,7 +26,7 @@ async function buildImage() {
   await buildAndOffer(
     state.firmware,
     new Map([[3, replacement(state.firmware, 3, content)]]),
-    { filename: state.filename, suffix: "layermidi", note: notes[0] });
+    { filename: state.filename, mod: "layermidi", suffix: "layermidi", note: notes[0] });
 }
 
 function open(file) {

@@ -167,7 +167,7 @@ async function buildImage() {
   const tables = state.slots.map((s) => (s.custom ? toBytes(s.table) : null));
   const { content, notes } = apply(state.firmware, tables);
   await buildAndOffer(state.firmware, new Map([[3, replacement(state.firmware, 3, content)]]),
-    { filename: state.filename, suffix: "lfowaves", note: notes[1] });
+    { filename: state.filename, mod: "lfowaves", suffix: "lfowaves", note: notes[1] });
 }
 
 function open(file) {

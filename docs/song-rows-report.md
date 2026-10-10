@@ -132,7 +132,7 @@ So stock keeps everything inside the sound: LFO4's settings are lost and a mod-o
 
 Three images compared: rivvi's file, DNX's first read of slot 25 ("before"), and slot 25 after the owner built and played song 2 on the mod build, saved there, flashed plain stock 1.11 and saved while the sequencer played ("after"). Pattern numbers below are 1-based across the banks (17..32 is bank B).
 
-**Ten empty patterns became copies of pattern 2 (A02).** In "after", patterns 8, 11, 12, 15, 113, 115, 118, 121, 126 and 128 hold pattern 2's whole record (tracks, trig pool, lock records, length 128, tempo 68; 89 trigs) with their own slot index, and their kits are kit 2 byte for byte. All ten were empty or never written in rivvi's file and in "before". Neither earlier image has any two non-empty patterns alike. Which of the three steps did it is not known: the mod session, the mod build's save, or the stock save while playing. This matches rivvi's "cleared patterns kept coming back".
+**Ten empty patterns hold copies of pattern 2 (A02): the owner's own copies.** In "after", patterns 8, 11, 12, 15, 113, 115, 118, 121, 126 and 128 hold pattern 2's whole record (tracks, trig pool, lock records, length 128, tempo 68; 89 trigs) with their own slot index, and their kits are kit 2 byte for byte. The owner copied patterns by hand that day, looking for an action that damages a song. So this is the instrument's copy and paste, which takes the kit with the pattern, and not a fault. Neither earlier image has any two non-empty patterns alike.
 
 **Song 1's four rows are identical in all three images.** Song 2 holds the owner's four rows, all valid.
 

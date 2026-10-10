@@ -204,6 +204,30 @@ rivvi moved from the build ending `lfo4_lfohold` to the one ending `lfo4_lfofix`
 
 **Not found:** the write itself. The song watch on rivvi's set saw no change at stored song 1 through hours of playback, saves and reloads, so it is tied to an event not yet reproduced.
 
+## The records are rivvi's own LFOs, and LFO4 is among them (2026-10-10)
+
+The owner's question: do the records over song 1 match the LFO settings of a sound in the file? `scripts/lfo_state_match.py` on rivvi's decoded image.
+
+**The record's fields**, measured on stock's evaluator A in the emulator by changing one setting at a time: phase (+0), output (+4), two random words (+8, +12), fade level (+16, `3f ff ff ff` once faded in), a word, **DEST as a mirror slot (+24)**, the output after DEP (+28), a phase copy (+32), flags (+36). The lattice of the section above therefore starts 16 bytes earlier, at image `0xc3ee18`: what was read as a record's first word is its fade level.
+
+**The match.** 21 records name a destination. Every one of the five slots they name is the destination of an LFO stored in the file, and only tracks 9 to 12 of A01, A02, A03 and A09 use them:
+
+| slot in the records | stored LFO | records |
+|---|---|---|
+| 89 | track 11 LFO1 (A01, A09), HOLD, RND, DEP 6937 | 7, outputs up to 12,564 |
+| 35 | track 11 LFO2 and LFO3, HOLD, RND, DEP 4395 and 42af | 11, outputs up to 1,651 |
+| 50 | tracks 9 and 10 LFO1, TRIG, DEP 3ff5 | 1, output 25 |
+| 25 | track 11 **LFO4**, HOLD | 1 |
+| 67 | track 12 **LFO4**, TRIG, waveform 10 | 1 |
+
+The size of each record's output follows the stored DEP: large for 6937, small for 4395, 25 for 3ff5.
+
+**Four records a group, not three.** Taking the record index modulo 4: position 0 holds only LFO4's destinations (25, 67), position 1 only LFO1's (89, 50), positions 2 and 3 only 35. Modulo 3 the same destinations fall on every position. Stock keeps three LFO records a track; a build with LFO4 keeps four. So the data was written by a build with LFO4, from this project.
+
+**Not explained:** slots 89, 35, 35 repeat in at least seven groups, with different phases, while the stored kits hold those settings on track 11 only. Either several tracks held that sound when the data was written, or the groups are not one per track.
+
+**TRIG MODE in the file:** no stored LFO is in ONE or HALF. Track 11's four LFOs are in HOLD; tracks 9, 10 and 12 use TRIG.
+
 ## Earlier case
 
 `docs/old-project-load.md`: SKETCHPAD's song 1 stored a row count of 21,503, entered

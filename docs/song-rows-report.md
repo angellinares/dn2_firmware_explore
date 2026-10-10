@@ -79,6 +79,20 @@ LFO4 settings, and they came back after SAVE PROJECT and a reload. Cause and fix
 `docs/mods.md` (Mod 8) and `scripts/emu_lfo4_clear.py`. In the pattern list the cleared
 pattern still showed as empty, so this alone does not light a cleared pattern up.
 
+## The file sent to the instrument and read back (2026-10-10, DNX)
+
+DNX wrote `AM REBECCA.dn2prj` to an empty +Drive slot (25) on the owner's instrument (rivvi's mod set plus the probe), read it back and compared the decoded images (12,890,116 bytes each).
+
+| region | result |
+|---|---|
+| song 1's four rows | identical, the damaged rows included |
+| patterns | 40,526 bytes differ, in 285 trig-pool slots: all free, none referenced by a track |
+| kits | 499 bytes over 21 kits; no cluster at the offset LFO4 writes |
+
+The store rewrites unused storage. The control, from files alone: the bytes that changed (four-byte values repeating with a stepping low byte) are in 107 of 128 patterns of the owner's healthy 1.11 project SKETCHPAD, in 102 of rivvi's, and in none of a never-used project. Never-written pattern records hold junk in their version field in both (A12, A62, A76, A126 in each). So the file shows damage in song 1 only. A healthy project's write and read-back has not been run.
+
+**The bytes over the song rows are not from the project.** `c4 a? 29 08` occurs only inside song 1's row 03 in the whole image: no pattern, kit or other song holds it. Read as big-endian floats the run is -1329.28, -1353.28, -1346.00, then 13.51: the first two differ by exactly 24. Row 04 holds 16-bit values at or just under `0x7000`. So two kinds of working data from RAM, floats and then 16-bit parameter values, lay over the stored rows. Which code holds those is not known.
+
 ## Earlier case
 
 `docs/old-project-load.md`: SKETCHPAD's song 1 stored a row count of 21,503, entered

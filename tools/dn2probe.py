@@ -8,7 +8,7 @@
     python tools/dn2probe.py watch [SECONDS] [--symbols out/<build>/symbols.json]
                                                 10 readings a second: frames, ISR, lfo4's pieces
     python tools/dn2probe.py stacks             every task's stack high-water mark (docs/coldfire-tasks.md)
-    python tools/dn2probe.py songwatch [SECONDS] every change to song 1, live and stored, as it happens
+    python tools/dn2probe.py songwatch [SECONDS [SONG ...]]  every change to the songs named (1 by default), live and stored
     python tools/dn2probe.py selftest           the codec, with no device
 
     options: --port "Digitone II" (a substring of the port name), or --in N --out N
@@ -523,39 +523,43 @@ def cmd_watch(pr, args):
         last = s
 
 
-# Song 1 (the firmware's song 0), live and in the working project image a save writes from.
+# A song, live and in the working project image a save writes from.
 # Live: the record `0x4004a256` reads (rows of 37 B from +0x1b, the row count at +0xe5f),
-# measured on stock 1.11. Stored: the image at COKi buffer 0x405cd85c + 0x110, song table
-# at image + 0xc3f004 (DNX's dn2song), rows of 29 B from +0x10.
-SONG_REGIONS = (('live', 0x423FE4C0, 0xEA0, 0x1B + 0x2B, 37), ('stored', 0x4120C970, 0xC00, 0x10, 29))
+# song 1 at 0x423fe4eb and one every 3,694 B (songs 1, 2 and 4 measured on stock 1.11).
+# Stored: the image at COKi buffer 0x405cd85c + 0x110, song table at image + 0xc3f004
+# (DNX's dn2song), 3,072 B a song, rows of 29 B from +0x10.
+SONG_LIVE, SONG_LIVE_STRIDE = 0x423FE4EB, 3694
+SONG_STORED, SONG_STORED_STRIDE = 0x4120C970, 0xC00
 
 
-def read_span(pr, addr, length):
-    out = b''
-    while len(out) < length:
-        n = min(PEEK_MAX, length - len(out))
-        r = decode_peek(pr.call(req_peek, addr + len(out), n))
-        if r['addr'] != addr + len(out) or len(r['data']) != n:
-            raise ValueError('short or misplaced PEEK reply at 0x%08x' % r['addr'])
-        out += r['data']
+def song_regions(songs):
+    """-> (name, address, bytes, where the rows start, row size) for each song 1..16."""
+    out = []
+    for n in songs:
+        if not 1 <= n <= 16:
+            raise ValueError('songs are 1..16')
+        out.append(('live %d' % n, SONG_LIVE + (n - 1) * SONG_LIVE_STRIDE, SONG_LIVE_STRIDE, 0x1B, 37))
+        out.append(('stored %d' % n, SONG_STORED + (n - 1) * SONG_STORED_STRIDE, SONG_STORED_STRIDE, 0x10, 29))
     return out
 
 
 def cmd_songwatch(pr, args):
-    """Song 1's bytes, live and stored, read five times a second; every change is printed
-    with its time, address, the row it falls in and the old and new bytes.
+    """The songs' bytes (song 1 unless others are named), live and stored, read in turn;
+    every change is printed with its time, address, the row it falls in and the old and
+    new bytes.
 
     Edits made on purpose show up too, so note the time of each one. A change while
     nothing is being edited is the finding.
     """
     seconds = float(args.rest[0]) if args.rest else 600.0
-    last = {name: read_span(pr, a, n) for name, a, n, _, _ in SONG_REGIONS}
+    regions = song_regions([int(x) for x in args.rest[1:]] or [1])
+    last = {name: read_span(pr, a, n) for name, a, n, _, _ in regions}
     start = time.perf_counter()
-    print('watching song 1 for %.0f s: live 0x%08x, stored 0x%08x' % (
-        seconds, SONG_REGIONS[0][1], SONG_REGIONS[1][1]), flush=True)
+    print('watching for %.0f s: %s' % (seconds, ', '.join(
+        '%s 0x%08x' % (name, a) for name, a, _, _, _ in regions)), flush=True)
     while time.perf_counter() - start < seconds:
         time.sleep(0.2)
-        for name, a, n, rows_at, row_size in SONG_REGIONS:
+        for name, a, n, rows_at, row_size in regions:
             now = read_span(pr, a, n)
             old = last[name]
             i = 0
@@ -567,7 +571,7 @@ def cmd_songwatch(pr, args):
                 while j < n and (now[j] != old[j] or (j + 1 < n and now[j + 1] != old[j + 1])):
                     j += 1
                 row = (i - rows_at) // row_size + 1 if i >= rows_at else 0
-                print('%7.2f %-6s 0x%08x +0x%03x row %2s  %s -> %s' % (
+                print('%7.2f %-9s 0x%08x +0x%03x row %2s  %s -> %s' % (
                     time.perf_counter() - start, name, a + i, i, row or '-',
                     old[i:j].hex(), now[i:j].hex()), flush=True)
                 i = j

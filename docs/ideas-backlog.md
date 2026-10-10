@@ -49,6 +49,7 @@ Where they disagree, they win and this table is wrong.
 | 27 | LFO waves follow a negative SPD | **open (a fix)** | — | how a stock generator uses SPD's sign |
 | 32 | Transient shaper | **open (roadmap)** | — | everything: where it sits (master or per voice), its controls' home, and the SHARC cost |
 | 33 | LFO shape warps: phase distortion and a power curve | **open** | — | route: new shapes with their own parameter (as `lfowaves`), or a modifier on every shape |
+| 37 | Waverider: a marker for every playing voice on the position line | **open (polish, after Waverider's stages)** | — | whether the drawn wave is one voice's or all sounding voices' together; how many markers stay readable |
 
 **The numbering is wrong and is left wrong on purpose.** There are two `## 8.`
 headings — "New LFO waveforms" and "FX machines on tracks" — and `## 7.` sits
@@ -4040,3 +4041,24 @@ runs before a PR. The suite only gives a pass when each check has first been sho
 fail on a build made broken on purpose, as the boot check is calibrated against its
 stock control. Built on `scripts/emulib/` and the existing harnesses; and anything about
 digikit itself that we learn goes back there as a PR.
+
+## 37. Waverider: a marker for every playing voice on the position line (owner, 2026-10-10: polish, later)
+
+Numbers 35 and 36 are taken by entries on branches not merged yet (granular synthesis; LFO trig modes ONE and HALF).
+
+**The request.** The position line under the wave shows one marker today: the position of the one voice the page follows. The owner wants a marker there for every voice of the track that is sounding, so a chord, unison or overlapping notes show each playhead.
+
+**To decide first: which wave is drawn above the line.** Two options, not chosen yet:
+- **One voice's wave**, as now, with the other voices shown only as markers on the line.
+- **An aggregate of every sounding voice**, so the picture matches what is heard.
+
+**What stays as it is.** The modulation indication on a parameter's destination stays linked to one voice. It only shows the speed and general movement, so one voice is enough (owner).
+
+**What exists to build on** (`docs/waverider-m10-move.md`, "Which voice the page follows"):
+- the DSP already reports each voice's position per oscillator, and the ColdFire reads those reports;
+- the page already tells which voices belong to the track and when one starts a new note, and applies the DSP's own MOVE arithmetic to place its marker.
+
+**To measure before building:**
+- how many markers stay readable on a line this wide (the marker is 3 pixels; a track can hold 16 voices), and what to draw when two land on the same pixel;
+- the page's redraw cost with all 16 voices moving, against the one-marker page;
+- for the aggregate wave: what it costs the ColdFire to sum up to 16 frames per redraw, and whether a sum of detuned or differently positioned voices reads as a wave at this size.

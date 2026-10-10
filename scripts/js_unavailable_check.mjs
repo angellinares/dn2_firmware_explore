@@ -58,7 +58,7 @@ ok("the mod list marks the card and adds the notice",
    card.tagEl.textContent === "Unavailable for now" && text(card.firstP.sibling).includes(BODY));
 
 // (c) a mod that is not withdrawn still builds
-ok("another mod has no entry", flagFor("lfolength") === null && flagFor("fxmod") === null);
+ok("another mod has no entry", flagFor("lfolength") === null && flagFor("moddest") === null);
 await openFirmware(file, { onReady: async () => {}, unavailable: flagFor("lfolength") });
 ok("a firmware file is read as before for a mod that is on offer", read === 1);
 const into = element("div");
@@ -66,6 +66,17 @@ await buildAndOffer({}, new Map(), { filename: "dn2.syx", suffix: "x", into, but
   unavailable: flagFor("lfolength") });
 ok("a build for a mod that is on offer goes ahead (a stub image fails its own checks)",
    into.children.length > 0);
+
+// fxmod is withdrawn the same way, with its own notice
+const fx = flagFor("fxmod");
+ok("fxmod carries an entry with its title and the date", fx?.since === "2026-10-10"
+   && fx.title === "LFO modulation of the FX is unavailable for now" && fx.reason.includes("back up your projects"));
+read = 0;
+ok("a firmware file is not read for fxmod",
+   await openFirmware(file, { onReady: async () => {}, unavailable: fx }) === null && read === 0);
+ok("fxmod builds nothing and offers no download", await buildAndOffer({}, new Map(),
+   { filename: "dn2.syx", suffix: "fxmod", into: element("div"), button: null, unavailable: fx }) === null);
+ok("with its entry removed fxmod is on offer", flagFor("fxmod", {}) === null);
 
 // (d) removing the entry restores LFO4
 ok("with the entry removed LFO4 is on offer", flagFor("lfo4", {}) === null);

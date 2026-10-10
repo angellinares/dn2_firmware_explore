@@ -167,6 +167,22 @@ Found on the way: LFO4's page says "COPY PAGE LFO4" but its paste does nothing, 
 
 Not covered: any of this while the sequencer plays (it does not run in the emulator).
 
+## rivvi's file beside the owner's damaged SKETCHPAD (2026-10-10)
+
+`scripts/song_area_compare.py` on the decoded images: the 0xc00 bytes from image `0xc3ee04`, which is 0x200 before the 1.11 song table (`0xc3f004`) and so covers the start of song 1's rows.
+
+| project | non-zero bytes there | extent | `3f ff ff ff` | what broke |
+|---|---|---|---|---|
+| 004 SKETCHPAD OS111 (owner, 2026-09-22) | 809 | +0x007..+0x8f6 | 19 | the field read as song 1's row count: 21,503, the halt on load (`docs/old-project-load.md`) |
+| AM REBECCA (rivvi) | 440 | +0x007..+0x8af | 13 | song 1's rows 02 (tail) to 04, and unused rows after them |
+| project 11 (owner, healthy, song 1 empty) | 606 | +0x002..+0x8f7 | present | nothing: no live field under it |
+
+**It is the same data in the same place.** In all three: 4-byte words, `3f ff ff ff` every 0x30 to 0x90 bytes followed by small numbers (0x19, 0x20, 0x23, 0x43, 0x53, 0x59), and fragments such as `56 41 4c 31` ("VAL1") and `be 00 ba ce`. Songs 2 to 16 are clean in all three. rivvi's row 03 ends in `3f ff ff ff`, so the two rows are part of this run. The earlier reading of row 03 as floats and row 04 as LFO values is withdrawn: they are this leftover data.
+
+**Where it is absent:** in all 54 exports written by 1.10E and in two fresh 1.11 projects, `3f ff ff ff` appears nowhere near song 1. In the used 1.11 projects it appears thousands of times image-wide (SKETCHPAD 3,706; AM REBECCA 7,442), mostly in unused storage.
+
+So the two cases look like one thing: leftover working data lying over the start of song 1's storage, harmful only when song 1 holds something there. Not known: what writes it, and whether plain stock 1.11 does or only a modded unit (all three projects come from units that ran mods).
+
 ## Earlier case
 
 `docs/old-project-load.md`: SKETCHPAD's song 1 stored a row count of 21,503, entered

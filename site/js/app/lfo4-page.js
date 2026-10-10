@@ -6,8 +6,12 @@
 import { $, buildAndOffer, openFirmware, status, wireDrop } from "./shell.js";
 import { replacement } from "../firmware.js";
 import { APPENDED, EDITS, RECORDS, apply, check } from "../mods/lfo4.js";
+import { flagFor } from "../mods/availability.js";
+import { withdrawPage } from "./unavailable.js";
 
 const CONTROLS = ["SPD", "MULT", "FADE", "DEST", "WAVE", "SPH", "MODE", "DEP"];
+
+const unavailable = flagFor("lfo4");
 
 let state = { firmware: null, filename: "firmware.syx" };
 
@@ -42,7 +46,7 @@ async function buildImage() {
   const bytes = await buildAndOffer(
     state.firmware,
     new Map([[3, replacement(state.firmware, 3, content)]]),
-    { filename: state.filename, suffix: "lfo4", note: notes[0] });
+    { filename: state.filename, suffix: "lfo4", note: notes[0], unavailable });
   const rows = $("buildVerdict").querySelectorAll(".pass, .fail");
   const passed = $("buildVerdict").querySelectorAll(".pass").length;
   if (bytes && rows.length) {
@@ -56,13 +60,18 @@ function open(file) {
   state.filename = file.name;
   return openFirmware(file, {
     onReady: ready,
+    unavailable,
     extraFacts: () => [["Will add", "LFO4, a fourth page under [MOD]"]],
   });
 }
 
-wireDrop($("drop"), open);
-$("syx").addEventListener("change", (e) => {
-  if (e.target.files?.[0]) open(e.target.files[0]);
-});
-$("buildBtn").addEventListener("click", buildImage);
-$("resetBtn").addEventListener("click", () => location.reload());
+if (unavailable) {
+  withdrawPage(unavailable);
+} else {
+  wireDrop($("drop"), open);
+  $("syx").addEventListener("change", (e) => {
+    if (e.target.files?.[0]) open(e.target.files[0]);
+  });
+  $("buildBtn").addEventListener("click", buildImage);
+  $("resetBtn").addEventListener("click", () => location.reload());
+}

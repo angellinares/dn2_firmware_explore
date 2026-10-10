@@ -76,9 +76,11 @@ export function status(text, busy = false) {
  * it is a signed image that fully verifies.
  *
  * `extraFacts(firmware)` may return `[[term, value], ...]` for anything the
- * page wants beside the standard four.
+ * page wants beside the standard four. A page whose mod is withdrawn passes its
+ * `mods/availability.js` entry as `unavailable`, and the file is not read.
  */
-export async function openFirmware(file, { onReady, extraFacts = () => [] }) {
+export async function openFirmware(file, { onReady, extraFacts = () => [], unavailable = null }) {
+  if (unavailable) { status(unavailable.title); return null; }
   status("Reading…", true);
   const facts = $("facts");
   const verdict = $("verdict");
@@ -122,10 +124,13 @@ export async function openFirmware(file, { onReady, extraFacts = () => [] }) {
  * download only if every check passes.
  *
  * `suffix` names the output: `dn2_1.11.syx` -> `dn2_1.11_<suffix>.syx`.
+ * A withdrawn mod's page passes its entry as `unavailable`: nothing is built.
  */
 export async function buildAndOffer(firmware, replacements, {
   filename, suffix, into = $("buildVerdict"), button = $("buildBtn"), note = "",
+  unavailable = null,
 }) {
+  if (unavailable) { status(unavailable.title); return null; }
   if (button) button.disabled = true;
   status("Rebuilding…", true);
   // One frame, so the status paints before the main thread is taken by a

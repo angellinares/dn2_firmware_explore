@@ -228,6 +228,19 @@ The size of each record's output follows the stored DEP: large for 6937, small f
 
 **TRIG MODE in the file:** no stored LFO is in ONE or HALF. Track 11's four LFOs are in HOLD; tracks 9, 10 and 12 use TRIG.
 
+## The state is in every 64 KiB of the project, not at one address (2026-10-10)
+
+Step 1 of the hunt (an agent's forensics on rivvi's image, SKETCHPAD OS111 of 2026-09-22, SKETCHPAD-repaired, project 11 and the slot 20 readback; scripts and outputs in the session scratchpad, `step1/`). It corrects three statements above.
+
+- **Where.** LFO state sits at offset +0xed00..+0xf700 (2,560 bytes, 64 records) of every 64 KiB of the decoded image, in all 196 chunks that reach that offset. Song 1 is chunk 0xc3. Checked again here on rivvi's image: 7,243 of 7,442 `3f ff ff ff` fall in that window, in 196 of 196 chunks. The 1.10E exports and fresh 1.11 projects have none. So "one fixed address" and "mostly in unused storage" were wrong: about half of the project's own bytes under each window are overwritten.
+- **The block** in the song chunk is image `0xc3ed00..0xc3f700`, 64 records in every file (not 54 or 57), and a group is LFO1, LFO2, LFO3, LFO4 from the window's first record. LFO4's record follows the track (rivvi: slot 25 only in group 10, slot 67 only in group 11); LFO1 to LFO3's content repeats across groups.
+- **The owner's files match their own LFOs too.** SKETCHPAD OS111: slots 25, 5, 83, 32, 6, 26, 98, 89, each triple the LFO1..3 destinations of one stored sound of G01 (tracks 2, 3, 4), clean on a period of 4, the fourth position holding running phases with no destination. Project 11: slot 67, LFO3 of tracks 9 to 12.
+- **It is written while the project passes.** One record followed through the 196 windows is a time series (SKETCHPAD record 3: 75 distinct phases, steps of about 9 to 10 evaluator updates a chunk). rivvi's "fragments" (`VAL1`, `be 00 ba ce`, `47 00 48 00 ...`) are stored-kit MIDI data of earlier chunks' windows, left in the fields the evaluator does not rewrite.
+- **Reading.** 2,560 bytes and four records a track are lfo4's array (`0x46700000`, `0x46701000`, `0x46702000`). Something that handles the project stream uses a 64 KiB unit that one of those arrays lies inside; 64 KiB is two of the project file's 32,768-byte linked LZ4 blocks. Which routine, which direction (save or send, load or receive) and where the unit starts: not established. `ramcheck.py`'s premise, that stock uses no RAM above its data (`0x466b74d0`), is what step 2 tests.
+- **Dating.** SKETCHPAD was clean in the 2026-09-06 export and affected on 2026-09-22 17:14; the arrays moved above the data in `5f8310c` (2026-09-17). The first fxmod build is 2026-09-22 20:26, after the damage, so fxmod is not needed to explain it.
+- **Still seen on 2026-10-05:** SKETCHPAD-repaired against its readback from slot 20 differs in 354 window bytes over 43 chunks.
+- **Not followed:** four more state blocks off the 64 KiB lattice in rivvi's A02, A03 and A09; address-shaped values in rivvi's settings at image `0xc3e080..0xc3e0f0`; 1,023 changed bytes outside windows in chunk 0x63 of the slot 20 readback.
+
 ## Earlier case
 
 `docs/old-project-load.md`: SKETCHPAD's song 1 stored a row count of 21,503, entered

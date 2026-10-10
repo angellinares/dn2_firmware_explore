@@ -128,6 +128,20 @@ The owner's sharper question: does stock, reading and saving the project, put LF
 
 So stock keeps everything inside the sound: LFO4's settings are lost and a mod-only destination turns into another one, and nothing is put elsewhere. Back on the mods, zero ids are the case lfo4's load already treats as "no LFO4". The DEST case went through stock's own SAVE, not the mods', so the numbers it comes back as may differ for a file the mods saved.
 
+## Slot 25 after a session on the mods and a stock save while playing (DNX, 2026-10-10)
+
+Three images compared: rivvi's file, DNX's first read of slot 25 ("before"), and slot 25 after the owner built and played song 2 on the mod build, saved there, flashed plain stock 1.11 and saved while the sequencer played ("after"). Pattern numbers below are 1-based across the banks (17..32 is bank B).
+
+**Ten empty patterns became copies of pattern 2 (A02).** In "after", patterns 8, 11, 12, 15, 113, 115, 118, 121, 126 and 128 hold pattern 2's whole record (tracks, trig pool, lock records, length 128, tempo 68; 89 trigs) with their own slot index, and their kits are kit 2 byte for byte. All ten were empty or never written in rivvi's file and in "before". Neither earlier image has any two non-empty patterns alike. Which of the three steps did it is not known: the mod session, the mod build's save, or the stock save while playing. This matches rivvi's "cleared patterns kept coming back".
+
+**Song 1's four rows are identical in all three images.** Song 2 holds the owner's four rows, all valid.
+
+**Lit but empty patterns (owner, on stock: B04, B07) are normal for 1.11.** Their step flags have the trig bit set on tracks 6..8 (B04) and 2..3 (B07), mostly past the 16-step length, none with a note. The owner's healthy SKETCHPAD has more of the same (1,950 flagged steps past the track length in 45 patterns, against rivvi's 1,575 in 32). Their kits hold no LFO4 values, so the LFO4 leftover is not what lights them.
+
+**Pattern 70 (E06) lost its version field on the way in.** 45 trigs in rivvi's file; in "before" the version reads `63 63 63 04` for `00 00 00 04`, with 166 track bytes and 5,476 lock-record bytes changed and the trig pool intact. That happened in DNX's write, the instrument's store or the mod build, before any stock save. What writes `0x63` is not known.
+
+**Stock's save zeroes LFO4's ids on the instrument too.** Kit 3, sound with LFO4 values in rivvi's file and in "before", reads zero in "after" (the emulator result above, seen in a real save). The stored-sound layout is confirmed by DNX: sound n at kit + 0x3c + 359 n, each starting `be ef ba ce`.
+
 ## Earlier case
 
 `docs/old-project-load.md`: SKETCHPAD's song 1 stored a row count of 21,503, entered

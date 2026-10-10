@@ -142,6 +142,31 @@ Three images compared: rivvi's file, DNX's first read of slot 25 ("before"), and
 
 **Stock's save zeroes LFO4's ids on the instrument too.** Kit 3, sound with LFO4 values in rivvi's file and in "before", reads zero in "after" (the emulator result above, seen in a real save). The stored-sound layout is confirmed by DNX: sound n at kit + 0x3c + 359 n, each starting `be ef ba ce`.
 
+## Can a paste do it? (emulator, 2026-10-10)
+
+The owner's idea: something on the clipboard pasted in the wrong place, from an LFO page or LFO4's. `scripts/emu_song_paste.py`, stock 1.11 and rivvi's mod set (`out/rivvi/rivvi_combo.syx`), every stage read off the screen as well.
+
+**Into the song editor** (song 1 with two rows, row 02 selected, [FUNC] + [STOP]):
+
+| on the clipboard | stock | rivvi's set |
+|---|---|---|
+| control: row 02 with another length, pasted on row 01 | row 01 changes, "PASTE ON ROW 01" | the same |
+| an LFO page (LFO1, LFO2, LFO3) | song unchanged | song unchanged |
+| LFO4's page | - | song unchanged |
+| a track | song unchanged | song unchanged |
+| a pattern | song unchanged | song unchanged |
+
+**An LFO page pasted everywhere else** (TRIG 1..2, SYN 1..4, FLTR 1..2, AMP, FX, the other LFO pages, a track, a pattern; all sixteen songs read after each):
+
+| copied | result |
+|---|---|
+| LFO1, stock and rivvi's set | no song byte changes anywhere; it pastes onto LFO2 and LFO3 only ("PASTE PAGE LFO2", 2 kit bytes) |
+| LFO4, rivvi's set | no song byte changes anywhere; it pastes nowhere |
+
+Found on the way: LFO4's page says "COPY PAGE LFO4" but its paste does nothing, onto LFO1..3 or elsewhere, and LFO1's page does not paste onto LFO4. Harmless, and a gap in the mod: the fourth page has no working copy and paste.
+
+Not covered: any of this while the sequencer plays (it does not run in the emulator).
+
 ## Earlier case
 
 `docs/old-project-load.md`: SKETCHPAD's song 1 stored a row count of 21,503, entered

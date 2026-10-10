@@ -6,6 +6,10 @@
 import { $, buildAndOffer, openFirmware, status, wireDrop } from "./shell.js";
 import { replacement } from "../firmware.js";
 import { COUNT, DESTINATIONS, apply, check, extents } from "../mods/fxmod.js";
+import { flagFor } from "../mods/availability.js";
+import { withdrawPage } from "./unavailable.js";
+
+const unavailable = flagFor("fxmod");
 
 let state = { firmware: null, filename: "firmware.syx" };
 
@@ -65,20 +69,25 @@ async function buildImage() {
   await buildAndOffer(
     state.firmware,
     new Map([[3, replacement(state.firmware, 3, content)]]),
-    { filename: state.filename, suffix: "fxmod", note: notes[0] });
+    { filename: state.filename, suffix: "fxmod", note: notes[0], unavailable });
 }
 
 function open(file) {
   state.filename = file.name;
   return openFirmware(file, {
     onReady: ready,
+    unavailable,
     extraFacts: () => [["Will open", `${COUNT} FX destinations`]],
   });
 }
 
-wireDrop($("drop"), open);
-$("syx").addEventListener("change", (e) => {
-  if (e.target.files?.[0]) open(e.target.files[0]);
-});
-$("buildBtn").addEventListener("click", buildImage);
-$("resetBtn").addEventListener("click", () => location.reload());
+if (unavailable) {
+  withdrawPage(unavailable);
+} else {
+  wireDrop($("drop"), open);
+  $("syx").addEventListener("change", (e) => {
+    if (e.target.files?.[0]) open(e.target.files[0]);
+  });
+  $("buildBtn").addEventListener("click", buildImage);
+  $("resetBtn").addEventListener("click", () => location.reload());
+}

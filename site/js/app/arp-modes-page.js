@@ -46,7 +46,7 @@ async function buildImage() {
   const bytes = await buildAndOffer(
     state.firmware,
     new Map([[3, replacement(state.firmware, 3, content)]]),
-    { filename: state.filename, suffix: "arpmodes", note: notes[0] });
+    { filename: state.filename, mod: "arpmodes", suffix: "arpmodes", note: notes[0] });
   const rows = $("buildVerdict").querySelectorAll(".pass, .fail");
   const passed = $("buildVerdict").querySelectorAll(".pass").length;
   if (bytes && rows.length) {

@@ -55,7 +55,7 @@ async function buildImage() {
   await buildAndOffer(
     state.firmware,
     new Map([[3, replacement(state.firmware, 3, content)]]),
-    { filename: state.filename, suffix: "destinations",
+    { filename: state.filename, mod: "moddest", suffix: "destinations",
       note: notes[notes.length - 1] });
 }
 

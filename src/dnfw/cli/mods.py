@@ -66,6 +66,8 @@ def configure(parser) -> None:
     cl.add_argument("--write", type=pathlib.Path, nargs="+", default=[], metavar="PAGE",
                     help="fill the generated regions (<!-- dnfw:version ID --> and "
                          "<!-- dnfw:changes ID -->) of these HTML files")
+    cl.add_argument("--js", type=pathlib.Path, metavar="FILE",
+                    help="write each mod's current version as a JS module (site/js/mods/versions.js)")
 
     ex = sub.add_parser("extract", help="write a mod's factory content out")
     ex.add_argument("image", type=pathlib.Path)
@@ -527,6 +529,9 @@ def _changelog(args) -> int:
         if new != text:
             page.write_text(new, encoding="utf-8", newline=chr(10))
             print(f"  rewrote the version and changes regions of {page}")
+    if args.js:
+        args.js.write_text(history.versions_js(), encoding="utf-8", newline=chr(10))
+        print(f"  wrote {args.js}")
     return 0
 
 

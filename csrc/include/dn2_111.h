@@ -363,6 +363,11 @@ typedef unsigned char u8;
 #define DN2_SOUND_CONFIG_CHANGED  0x401DDDEC   /* vtable */
 #define DN2_HOLDER_NOTIFY         16           /* holder vtable byte offset */
 
+/* `Sound::init(sound, index)`: sets a live sound to its defaults, field by
+ * field. `Kit::init` (`0x400e7044`) calls it for each of its 16 sounds, and so
+ * does the clear of a pattern from the pattern list. */
+#define DN2_SOUND_INIT 0x400E7E66
+
 /* libc as the firmware has it. */
 #define DN2_MEMCPY     0x40134490
 #define DN2_MEMSET     0x401344D8

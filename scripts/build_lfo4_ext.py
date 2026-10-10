@@ -47,7 +47,8 @@ SYX = ROOT / "00_Resources/02_Builds/lfo4-ext_DN2_1.11.syx"
 SITES = [("memcpy", 0x40134490, "lfo4_memcpy_stub", "lfo4_memcpy_displaced", 8),
          ("memset", 0x401344D8, "lfo4_memset_stub", "lfo4_memset_displaced", 8),
          ("sound load", 0x400DD282, "lfo4_load_stub", "lfo4_load_displaced", 6),
-         ("sound save", 0x400DD724, "lfo4_save_stub", "lfo4_save_displaced", 8)]
+         ("sound save", 0x400DD724, "lfo4_save_stub", "lfo4_save_displaced", 8),
+         ("sound reset", 0x400E7E66, "lfo4_reset_stub", "lfo4_reset_displaced", 8)]
 
 
 def compile_code() -> cbuild.Linked:

@@ -55,6 +55,25 @@ lfo4_memcpy_displaced:
     movea.l 8(%sp),%a0
     jmp     DN2_MEMCPY + 8
 
+/* A sound set to its defaults has no LFO4. `Sound::init` writes the sound field
+ * by field, so neither stub above sees it, and the entry keyed by the sound's
+ * address stayed: clearing a pattern from the pattern list left LFO4's values
+ * on its tracks, and the save that follows the clear wrote them into the
+ * cleared pattern (owner, 2026-10-10). `%d0`, `%d1`, `%a0` and `%a1` are the
+ * routine's own scratch at its entry. */
+    .globl  lfo4_reset_stub
+lfo4_reset_stub:
+    tst.l   ext_live
+    beq.s   lfo4_reset_displaced    | nothing tracked: nothing to drop
+    move.l  4(%sp),-(%sp)           | the sound
+    jsr     lfo4_on_sound_init
+    addq.l  #4,%sp
+    .globl  lfo4_reset_displaced
+lfo4_reset_displaced:
+    lea     -12(%sp),%sp
+    movem.l %d2-%d4,(%sp)
+    jmp     DN2_SOUND_INIT + 8
+
     .globl  lfo4_memset_stub
 lfo4_memset_stub:
     tst.l   ext_live

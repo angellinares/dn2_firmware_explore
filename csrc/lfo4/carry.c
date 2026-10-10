@@ -115,3 +115,19 @@ void lfo4_on_memset(void *dst, int fill, u32 n)
     ext_clear((u32)dst, n);
     busy = 0;
 }
+
+/* The firmware set this sound to its defaults (`Sound::init`, hooks.S): its
+ * entry goes, as for a fill. */
+u32 lfo4_sound_inits;
+
+void lfo4_on_sound_init(void *sound)
+{
+    if (busy) {
+        lfo4_reentered++;
+        return;
+    }
+    busy = 1;
+    lfo4_sound_inits++;
+    ext_drop((u32)sound);
+    busy = 0;
+}

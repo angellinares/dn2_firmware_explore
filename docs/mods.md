@@ -513,8 +513,8 @@ linked by `scripts/build_lfo4_browser.py`.
 **How C becomes a mod.** The C stays the source. `scripts/gen_lfo4_code.py`
 runs the release build's own composition (`build_lfo4_browser.RELEASE`) and
 records what it changed as data (`src/dnfw/mods/lfo4_code.json`):
-- 209 in-image edits, each with the stock bytes it expects;
-- the 23,732-byte appended area.
+- 212 in-image edits, each with the stock bytes it expects;
+- the 23,816-byte appended area.
 
 It then applies the result to stock and refuses to write unless the output is
 byte-identical to the build. `dnfw mods apply --mod lfo4` on stock 1.11 writes
@@ -523,6 +523,22 @@ byte-identical to the build. `dnfw mods apply --mod lfo4` on stock 1.11 writes
 `lfo4-fast` is the same code with an idle LFO4 costing the frame nothing and
 cheap `memcpy`/`memset` stubs, after the owner bisected a save-while-playing
 stutter to lfo4 (`docs/lfo4-build-plan.md`, "Idle costs nothing").
+
+**A sound set to its defaults loses its LFO4 (2026-10-10).** LFO4's eight values
+live in a table keyed by the live sound's address, and an entry was removed only
+when the firmware filled or copied a whole sound (`memset` / `memcpy`) or loaded
+one with no LFO4 stored. `Sound::init` (`0x400e7e66`) writes a sound field by
+field, so clearing a pattern from the pattern list ([PTN], the pattern's trig +
+clear) left LFO4's settings on its tracks, and the save that follows the clear
+(`0x400dde44` from `0x400308f6`) wrote them into the cleared pattern: they came
+back after SAVE PROJECT and a reload (owner, on the instrument, on rivvi's mod
+set). A fifth hook at `Sound::init`'s entry drops the sound's entry
+(`lfo4_reset_stub`, `lfo4_on_sound_init`).
+`scripts/emu_lfo4_clear.py` plants an entry on the playing kit's first sound and
+runs that clear: with the fix the entry is gone and the stored sound's eight ids
+are zero, an entry in another kit buffer is untouched, and 16 resets are counted;
+on the build before it (the control) the entry survives and the stored ids hold
+the planted values. Build `lfo4-reset1_DN2_1.11.syx`. Not yet on the instrument.
 
 **No stock data ships.** The appended area carries a copy of the parameter
 table, 320 stock records plus ten for LFO4 derived from LFO3's. Those 19,800

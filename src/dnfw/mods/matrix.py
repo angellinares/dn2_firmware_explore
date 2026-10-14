@@ -49,6 +49,25 @@ NOTES: dict[frozenset, str] = {
         "epilogue, 0x4009863e), both built from scripts/build_personalize_toggle.py. With "
         "both, the menu ends ARP OFS IN SCALE, RELOAD CONFIRM, and pressing each flips only "
         "its own byte (0x405cd8af, 0x405cd8ae).",
+    frozenset(("arpscale", "degreetranspose")):
+        "emulator, 2026-10-14, one build with both: scripts/emu_degreetranspose.py's twelve cases "
+        "and ten checks and scripts/emu_arpscale.py's eleven runs pass as with each alone. arpscale "
+        "moves the arp's step (0x4002a390); degreetranspose moves the note the step returns when "
+        "the ISR voices it (0x400269a4), so an arp note should move by its offset, then by the "
+        "track's degrees, both in the track's scale; offsets and degrees together were not run. "
+        "On the instrument, w-winter's Digitone II ran five builds of the pair with an earlier "
+        "degreetranspose, 2026-10-12 and 13 (docs/flashing.md).",
+    frozenset(("degreetranspose", "layermidi")):
+        "not run. layermidi turns a layered copy on a MIDI track into a MIDI record at 0x40026980, "
+        "a few instructions before degreetranspose's note hook (0x400269a4), with the MIDI track in "
+        "the record's +8. The MIDI task's note-on adds that track's transposes, and degreetranspose's "
+        "hook there (0x4012b1b0) reads the degrees of the record's track, so the layered note "
+        "should move by the MIDI track's degrees, as stock moves it by that track's transpose.",
+    frozenset(("degreetranspose", "midiarp")):
+        "not run. midiarp turns each arp step on a MIDI track into a MIDI record with the track in "
+        "its +8, and the MIDI task's note-on adds the track's transposes to it as to any other "
+        "note; degreetranspose's hook there (0x4012b1b0) should then move the step's note by the "
+        "track's degrees, after the arp's offset.",
     frozenset(("arpmodes", "midiarp")):
         "a MIDI track's arp runs the same step, so SHUF and RAND should reach MIDI tracks; "
         "not run.",

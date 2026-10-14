@@ -60,6 +60,7 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "arpplocks": UNPUBLISHED,
     "arpscale": UNPUBLISHED,
     "bootscreen": PUBLISHED,
+    "degreetranspose": UNPUBLISHED,
     "fxmod": PUBLISHED,
     "layermidi": PUBLISHED,
     "lfo4": (

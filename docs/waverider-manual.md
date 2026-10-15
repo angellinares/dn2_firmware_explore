@@ -1,6 +1,6 @@
 # Waverider, alpha
 
-Documentation version 1.1, 2026-10-15. It describes Waverider 0.1.1 (alpha 2).
+Documentation version 1.2, 2026-10-16. It describes Waverider 0.1.2.
 
 Waverider is a sixth synth machine for the Digitone II. A Waverider track plays two wavetable
 oscillators, a sub-oscillator and a noise generator. Its own modulator (MOVE) sweeps each

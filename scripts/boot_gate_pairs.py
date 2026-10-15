@@ -3,8 +3,9 @@
     python scripts/boot_gate_pairs.py out/bus/matrix.json --out out/mod-pairs --with fxmod,lfo4,waverider
 
 Reads `dnfw mods matrix --json`, and for each pair that combines (only pairs with a
-mod in `--with`, if given) builds the pair with `dnfw mods apply`, as a user would,
-then runs digikit's `boot_gate.exe` on it twice: watching the firmware's fault
+mod in `--with`, if given) builds the pair as the matrix does: in the CLI's order (a mod
+marked APPLY_LAST last), with each mod's default inputs (`dnfw.cli.mods._apply_default`:
+a frame as the boot image, the factory samples for transients), then runs digikit's `boot_gate.exe` on it twice: watching the firmware's fault
 reporter `0x4011ea6a` and the second fault path `0x400cf678`. Each pair gets
 `<out>/<a>+<b>/boot.txt`, whose last line is the verdict that
 `dnfw mods matrix --boots` writes into the boots list:
@@ -23,6 +24,7 @@ import json
 import pathlib
 import subprocess
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
@@ -49,25 +51,48 @@ def verdict(results: list[dict]) -> str:
             f"({hits}; {day})")
 
 
+def build_pair(a: str, b: str, syx: pathlib.Path) -> None:
+    """The pair's image, as `dnfw mods matrix` builds it for its boots."""
+    sys.path.insert(0, str(ROOT / "src"))
+    from dnfw.cli import mods as cli
+    from dnfw.cli.files import read_image
+    from dnfw.firmware.build import build, replacement
+    from dnfw.firmware.load import load
+    from dnfw.firmware.verify import verify
+    firmware = load(read_image(STOCK))
+    chosen = sorted((cli.REGISTRY[a], cli.REGISTRY[b]), key=lambda m: getattr(m, "APPLY_LAST", False))
+    payloads: dict[int, bytes] = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        for mod in chosen:
+            payloads.update(cli._apply_default(mod, cli._staged(firmware, payloads), pathlib.Path(tmp)).payloads)
+    out = build(firmware, {sid: replacement(firmware, sid, pay) for sid, pay in payloads.items()})
+    bad = [c.name for c in verify(load(out)).checks if not c.ok]
+    if bad:
+        raise RuntimeError(f"the rebuilt image fails {bad}")
+    syx.write_bytes(out)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("matrix", type=pathlib.Path)
     ap.add_argument("--out", type=pathlib.Path, required=True)
     ap.add_argument("--with", dest="only", default="", help="comma-separated mod ids")
+    ap.add_argument("--pairs", default="", help="only these, comma-separated a+b names")
     args = ap.parse_args()
     only = {m for m in args.only.split(",") if m}
     pairs = [p for p in json.loads(args.matrix.read_text())["pairs"]
-             if p["combines"] and (not only or {p["a"], p["b"]} & only)]
+             if p["combines"] and (not only or {p["a"], p["b"]} & only)
+             and (not args.pairs or f"{p['a']}+{p['b']}" in args.pairs.split(","))]
     failed = 0
     for k, p in enumerate(pairs, 1):
         name = f"{p['a']}+{p['b']}"
         folder = args.out / name
         folder.mkdir(parents=True, exist_ok=True)
         syx = folder / f"{name}_DN2_1.11.syx"
-        built = subprocess.run(["dnfw", "mods", "apply", "--mod", p["a"], "--mod", p["b"], "-o", str(syx),
-                                str(STOCK)], capture_output=True, text=True, cwd=ROOT, timeout=900)
-        if built.returncode or not syx.exists():
-            line = f"FAULT: the pair did not build ({built.stdout.strip().splitlines()[-1:]})"
+        try:
+            build_pair(p["a"], p["b"], syx)
+        except Exception as exc:                  # noqa: BLE001 -- the verdict names it
+            line = f"FAULT: the pair did not build ({exc})"
             results = []
         else:
             results = [gate(syx, w) for w in WATCHES]

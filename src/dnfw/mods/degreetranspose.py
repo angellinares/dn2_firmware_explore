@@ -56,7 +56,7 @@ The code is assembled ahead of time (`scripts/gen_degreetranspose_code.py` ->
    (`0x400e7408`). Two masks in stock's load and save are widened in place
    (`0x400de1ec`, `0x400de28c`);
 3. the routines are added to the platform's area as a `CODE` chunk at
-   `0x467b0000`, which the platform's start-up loader copies there.
+   `0x467b8000`, which the platform's start-up loader copies there.
 """
 
 from __future__ import annotations

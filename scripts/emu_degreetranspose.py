@@ -67,6 +67,11 @@ More checks, on BUILD alone except where stock is named:
   `+0x5ce0`) and +2 degrees on track 1 only: track 1 plays the moved notes, and
   its copies on track 2 play stock's, as stock moves a copy by its own track's
   transpose.
+- `waverider`: STOCK and BUILD each with the waverider mod applied by
+  `dnfw mods apply` (which needs numpy, as Waverider does); track 1 made a
+  Waverider track in MACHINE SEL ([FUNC] + [SYN], WAVERIDER, the fifth machine).
+  With +2 degrees on BUILD, its notes are the control's moved by the rule, and
+  on both the sound's machine type (`+222`) reads 5.
 
 Needs what `scripts/emu_seqplay.py` needs: a `panel_drive` that delivers the forced
 interrupts and takes a literal `--capture` length (digikit #65 and #66; the
@@ -79,6 +84,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import struct
 import subprocess
@@ -122,6 +128,9 @@ MIDI_FLAGS = 0x446163C4 + 4 * 908               # the MIDI task's flags for trac
 MIDI_CHANNEL = 0x4461647A                       # ... and its channel, 0 for channel 1
 MIDI_SEND = 0x4012A7C6                          # (length, bytes): a MIDI message out
 NOTE_ON = 0x90
+SYN = 2                                         # panel code of [SYN]; [FUNC] + [SYN] opens MACHINE SEL
+MACHINE_TYPE, WAVERIDER = 222, 5                # a sound's machine type in RAM; Waverider's
+WAVERIDER_DOWNS = 4                             # MACHINE SEL: FM TONE, FM DRUM, WAVETONE, SWARMER, WAVERIDER
 
 # The small font the transposes are drawn in: its record (the font object 0x44507eb8
 # points at it) holds the advance, the height, then its widths, offsets and bitmaps.
@@ -670,10 +679,41 @@ def check_layered(rig: Rig) -> bool:
                    and [tuple(sorted(chord)) for chord in built] == want)
 
 
+def with_waverider(image: pathlib.Path, out: pathlib.Path) -> pathlib.Path:
+    """IMAGE with the waverider mod applied by `dnfw mods apply`, written to OUT."""
+    cmd = [sys.executable, "-m", "dnfw.cli.main", "mods", "apply", str(image), "--mod", "waverider", "-o", str(out)]
+    done = subprocess.run(cmd, capture_output=True, text=True, timeout=600,
+                          env=os.environ | {"PYTHONPATH": str(ROOT / "src")})
+    if done.returncode:
+        raise SystemExit(f"waverider on {image.name}: {(done.stderr or done.stdout)[-400:]}")
+    return out
+
+
+def check_waverider(rig: Rig) -> bool:
+    """A Waverider track moves by its degrees, as an FM track does: Waverider plays the pitch
+    the note hook moves."""
+    machine_sel = (press_steps((((FUNC,), (SYN,)),)) + [x for _ in range(WAVERIDER_DOWNS)
+                   for x in (f"tap:{sp.DOWN}", "wait:40M")] + [f"tap:{YES}", "wait:200M", f"tap:{sp.NO}", "wait:100M"])
+    images = {"control": with_waverider(rig.stock, rig.frames / "waverider.syx"),
+              "build": with_waverider(rig.build, rig.frames / "build-waverider.syx")}
+    seen = {}
+    for who, image in images.items():
+        lo, first_sound, _ = ea.addresses(image)
+        setup = (machine_sel + scale_pokes(lo, Case((), 0)) + (DEGREES_SET if who == "build" else [])
+                 + [f"peek:{first_sound + MACHINE_TYPE:#x}:1"])
+        notes, peeks = run(image, trig_steps(setup), rig.frames)
+        seen[who] = (notes, peeks[first_sound + MACHINE_TYPE][0][0])
+    (control, control_machine), (built, machine) = seen["control"], seen["build"]
+    want = expected(Case((), 2), control, rig.tables)
+    print(f"\nwaverider: machine types {control_machine} and {machine}\n"
+          f"           control {control}\n           build   {built}\n           want    {want}")
+    return verdict(bool(control) and control_machine == machine == WAVERIDER and built == want)
+
+
 CHECKS = {"pending": check_pending, "alternation": check_alternation, "scope": check_scope,
           "clear": check_clear, "ptn-stock": check_ptn_stock, "reload": check_reload,
           "stock-load": check_stock_load, "midi": check_midi, "midi-live": check_midi_live,
-          "layered": check_layered}
+          "layered": check_layered, "waverider": check_waverider}
 
 
 def main() -> int:

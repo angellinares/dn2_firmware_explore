@@ -1,5 +1,5 @@
 """The degreetranspose mod: it applies to stock 1.11, refuses anything else, writes only
-its hooks and two widened masks in the image, and runs from one platform CODE chunk at 0x467b0000.
+its hooks and two widened masks in the image, and runs from one platform CODE chunk at 0x467b8000.
 
 `scripts/gen_degreetranspose_code.py` composes the SPEC from
 `scripts/build_degreetranspose.compose` and refuses to write it unless replaying it on
@@ -77,7 +77,7 @@ def test_changes_only_the_hooks(stock, applied):
 def test_the_code_is_one_platform_chunk_at_its_address(applied):
     _, chunks = platform.split(applied)
     (code,) = [area.CodeChunk.unpack(d) for cid, d in chunks if cid == area.CODE]
-    assert code.load == degreetranspose.CODE_VA == 0x467B0000
+    assert code.load == degreetranspose.CODE_VA == 0x467B8000
     assert code.image == degreetranspose.BLOB
     assert platform.installed(applied)
 

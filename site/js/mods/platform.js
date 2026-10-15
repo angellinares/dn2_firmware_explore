@@ -7,6 +7,10 @@
  * chunks to one `DNFW` area. A page applies one mod and the user loads that
  * download into the next page, so each mod here *adds* to whatever area the
  * image already carries (`split`, then `join`), exactly as the CLI does.
+ *
+ * The hook bus (`src/dnfw/mods/bus.py`, which carries its design) is here too:
+ * the sites and counts several mods share. `split` puts them back to stock and
+ * `join` writes them again for every mod in the area.
  */
 
 import { CODE } from "./platform-code.js";
@@ -40,6 +44,11 @@ const concat = (parts) => {
 const pad4 = (n) => (4 - (n % 4)) % 4;
 
 export function extents(areaLength = 0) {
+  return [...loaderExtents(areaLength), ...busExtents()];
+}
+
+/** The start-up call, the loader's cave and the appended area. */
+export function loaderExtents(areaLength = 0) {
   const out = [
     { section: SECTION, start: CODE.calls_va - BASE, length: CODE.calls_stock.length / 2,
       what: "start-up calls -> the platform loader", owner: ID },
@@ -115,7 +124,9 @@ export function split(content) {
     throw new ModError("MAIN OS carries appended data but not the platform loader: "
       + "it was built by something else; start from stock 1.11");
   }
-  return [content.slice(0, STOCK_LENGTH), parseArea(content.subarray(STOCK_LENGTH))];
+  const base = content.slice(0, STOCK_LENGTH);
+  const chunks = detach(base, parseArea(content.subarray(STOCK_LENGTH)));
+  return [base, chunks];
 }
 
 /** MAIN OS without an area + chunks -> MAIN OS with the loader and the area. */
@@ -139,7 +150,8 @@ export function join(base, chunks) {
   } else if (toHex(content.subarray(link, link + loader.length)) !== CODE.loader) {
     throw new ModError("the start-up call reaches a loader that is not this platform's");
   }
-  const ordered = [...chunks.filter(([c]) => c !== CODE_ID), ...chunks.filter(([c]) => c === CODE_ID)];
+  const all = attach(content, [...chunks]);
+  const ordered = [...all.filter(([c]) => c !== CODE_ID), ...all.filter(([c]) => c === CODE_ID)];
   const blob = buildArea(ordered);
   checkRuntime(blob);
   return concat([content, blob, new Uint8Array(pad4(blob.length))]);
@@ -190,6 +202,22 @@ export function displaced(chunks) {
   return out;
 }
 
+/** N bytes at VA, from the copy that runs if another mod's hook displaced them. */
+export function read(content, chunks, va, n) {
+  for (const [site, length, copy] of displaced(chunks)) {
+    if (!(site <= va && va + n <= site + length)) continue;
+    const target = copy + (va - site);
+    for (const [cid, data] of chunks) {
+      if (cid !== CODE_ID) continue;
+      const c = unpackCode(data);
+      if (c.load <= target && target + n <= c.load + c.image.length) {
+        return c.image.slice(target - c.load, target - c.load + n);
+      }
+    }
+  }
+  return content.slice(va - BASE, va - BASE + n);
+}
+
 /** Write NEW over STOCK at VA, in CONTENT or in the copy another mod's hook replays. */
 export function write(content, chunks, va, stock, next, what = "") {
   const label = `${h8(va)}${what ? ` (${what})` : ""}`;
@@ -219,4 +247,108 @@ export function write(content, chunks, va, stock, next, what = "") {
       + "mod has changed it, or this is not Digitone II 1.11");
   }
   content.set(next, at);
+}
+
+// ---- the hook bus: dnfw.mods.bus
+
+const EVNT = "EVNT", ADDS = "ADDS";
+export { EVNT, ADDS };
+export const BUS_VA = CODE.bus.load;
+export const busCodeLength = () => CODE.bus.code.length / 2;
+const TABLE_SLOTS = 8;
+const EVENTS = {
+  PSLT: { name: "ev_param_slot", site: 0x400dc02a, stock: "2f027264206f0008", table: 0,
+          entry: "ev_param_slot", what: "param_set_slot_to_id -> the bus's ev_param_slot" },
+};
+const MACHINE_BOUNDS = [[0x400dc15d, 1, 4], [0x400dc19d, 1, 4], [0x400dc333, 1, 4],
+                        [0x400dc359, 1, 4], [0x400dc37f, 1, 4], [0x400dd287, 1, 6]];
+const COUNT_NAMES = { PARM: "parameter records", MACH: "machine types" };
+const beN = (v, width) => Uint8Array.from({ length: width }, (_, i) => (v >>> (8 * (width - 1 - i))) & 0xff);
+
+/** The chunk that subscribes HANDLER (a run-time address) to EVENT. */
+export function subscribe(event, handler, order = 50) {
+  if (!(event in EVENTS)) throw new ModError(`the bus has no event ${event}`);
+  return [EVNT, concat([Uint8Array.from(event, (c) => c.charCodeAt(0)), be32(order), be32(handler)])];
+}
+
+/** The chunk that adds AMOUNT to COUNT. */
+export function contribute(count, amount) {
+  if (!(count in COUNT_NAMES)) throw new ModError(`the bus has no count ${count}`);
+  return [ADDS, concat([Uint8Array.from(count, (c) => c.charCodeAt(0)), be32(amount)])];
+}
+
+const records = (chunks, cid, size) => {
+  const out = [];
+  for (const [c, data] of chunks) {
+    if (c !== cid) continue;
+    for (let at = 0; at < data.length; at += size) out.push(data.subarray(at, at + size));
+  }
+  return out;
+};
+
+/** -> { count: amount }, refusing a count that two mods add to. */
+export function totals(chunks) {
+  const out = {};
+  for (const r of records(chunks, ADDS, 8)) {
+    const count = ascii(r, 0);
+    if (count in out) {
+      throw new ModError(`two mods add ${COUNT_NAMES[count] ?? count}; the platform takes one mod's for now`);
+    }
+    out[count] = u32(r, 4);
+  }
+  return out;
+}
+
+/** -> { event: [handler, ...] } in the order the dispatcher calls them. */
+export function handlers(chunks) {
+  const out = {};
+  for (const r of records(chunks, EVNT, 12)) (out[ascii(r, 0)] ??= []).push([u32(r, 4), u32(r, 8)]);
+  for (const e of Object.keys(out)) out[e] = out[e].sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((s) => s[1]);
+  return out;
+}
+
+const bounds = (count) => (count === "MACH" ? MACHINE_BOUNDS : CODE.counts[count]);
+const hook = (event) => concat([hex("4ef9"), be32(CODE.bus.symbols[EVENTS[event].entry]), hex("4e71")]);
+
+function detach(content, chunks) {
+  for (const [count, amount] of Object.entries(totals(chunks))) {
+    for (const [va, width, value] of bounds(count)) {
+      write(content, chunks, va, beN(value + amount, width), beN(value, width), `the ${COUNT_NAMES[count]} count`);
+    }
+  }
+  for (const event of Object.keys(handlers(chunks))) {
+    write(content, chunks, EVENTS[event].site, hook(event), hex(EVENTS[event].stock), EVENTS[event].name);
+  }
+  return chunks.filter(([c, d]) => !(c === CODE_ID && unpackCode(d).load === BUS_VA));
+}
+
+function attach(content, chunks) {
+  for (const [count, amount] of Object.entries(totals(chunks))) {
+    for (const [va, width, value] of bounds(count)) {
+      write(content, chunks, va, beN(value, width), beN(value + amount, width), `the ${COUNT_NAMES[count]} count`);
+    }
+  }
+  const subs = handlers(chunks);
+  if (Object.keys(subs).length === 0) return chunks;
+  const image = hex(CODE.bus.code);
+  for (const [event, found] of Object.entries(subs)) {
+    if (found.length >= TABLE_SLOTS) {
+      throw new ModError(`${found.length} mods subscribe to ${EVENTS[event].name}; the bus takes ${TABLE_SLOTS - 1}`);
+    }
+    found.forEach((h, k) => image.set(be32(h), EVENTS[event].table + 4 * k));
+    write(content, chunks, EVENTS[event].site, hex(EVENTS[event].stock), hook(event), EVENTS[event].name);
+  }
+  return [...chunks, [CODE_ID, codeChunk(BUS_VA, image)]];
+}
+
+/** The bytes the bus owns: every mod on the platform declares them. */
+export function busExtents() {
+  const out = Object.values(EVENTS).map((e) => ({ section: SECTION, start: e.site - BASE,
+    length: e.stock.length / 2, what: e.what, owner: ID }));
+  for (const count of Object.keys(COUNT_NAMES)) {
+    for (const [va, width] of bounds(count)) {
+      out.push({ section: SECTION, start: va - BASE, length: width, what: `the ${COUNT_NAMES[count]} count`, owner: ID });
+    }
+  }
+  return out;
 }

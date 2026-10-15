@@ -13,6 +13,7 @@
 
 import { CODE } from "./lfowaves-code.js";
 import * as platform from "./platform.js";
+import { tableMoved } from "./paramtable.js";
 
 export const ID = "lfowaves";
 export const NAME = "New LFO waveforms";
@@ -35,7 +36,7 @@ const grouped = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
 const own = (e) => {
   const lo = e.va - BASE, hi = lo + e.new.length / 2, stub = STUB[0] - BASE;
-  return !(platform.extents().some((x) => x.start < hi && lo < x.start + x.length)
+  return !(platform.loaderExtents().some((x) => x.start < hi && lo < x.start + x.length)
            || (stub < hi && lo < stub + STUB[1]));
 };
 const EDITS = CODE.edits.filter(own);
@@ -79,13 +80,14 @@ export function apply(firmware, tables = [null, null, null]) {
   const original = section.unpack();
   if (original === null) throw new ModError("MAIN OS did not depack");
   const [base, others] = platform.split(original);
+  const moved = tableMoved(base, ID);
+  if (moved) throw new ModError(moved);
   for (const e of EDITS) {
     const at = e.va - BASE;
     const have = toHex(base.subarray(at, at + e.stock.length / 2));
     if (have !== e.stock) {
-      const hint = e.va === SHORT_NAME ? "; lfo4 widens this bound: apply lfowaves first, then lfo4"
-        : "; this mod is for unmodified Digitone II 1.11";
-      throw new ModError(`0x${e.va.toString(16).padStart(8, "0")} is not stock (${have.slice(0, 24)}...)${hint}`);
+      throw new ModError(`0x${e.va.toString(16).padStart(8, "0")} is not stock (${have.slice(0, 24)}...); `
+        + "this mod is for unmodified Digitone II 1.11");
     }
   }
 

@@ -43,6 +43,7 @@ import json
 import pathlib
 
 from . import RAM, Extent, ModError, Result, platform
+from ..patch import paramtable
 
 ID = "lfowaves"
 NAME = "New LFO waveforms"
@@ -65,7 +66,7 @@ NOT_RAM = (0x467805F4,)
 def _own(e: dict) -> bool:
     lo, hi = e["va"] - BASE, e["va"] - BASE + len(e["new"]) // 2
     stub_lo = STUB[0] - BASE
-    return not (any(x.start < hi and lo < x.end for x in platform.extents())
+    return not (any(x.start < hi and lo < x.end for x in platform.loader_extents())
                 or (stub_lo < hi and lo < stub_lo + STUB[1]))
 
 
@@ -113,14 +114,20 @@ def apply(firmware, tables: list[bytes | None] | None = None) -> Result:
     if section is None:
         raise ModError("image has no MAIN OS section")
     base, others = platform.split(section.unpack())
+    # Three edits open records in the parameter table, and lfo4 copies that table into
+    # the appended area: applied after lfo4, they would land on a table nothing reads.
+    why = paramtable.moved(base, BASE)
+    if why:
+        raise ModError(f"the parameter table has been moved ({why}); lfo4 does that, and "
+                       "lfowaves edits records in the stock table, which nothing reads once it "
+                       "has moved: apply lfowaves first, then lfo4")
     content = bytearray(base)
     for e in EDITS:
         at = e["va"] - BASE
         have = bytes(content[at:at + len(e["stock"]) // 2]).hex()
         if have != e["stock"]:
-            hint = ("; lfo4 widens this bound: apply lfowaves first, then lfo4"
-                    if e["va"] == SHORT_NAME else "; this mod is for unmodified Digitone II 1.11")
-            raise ModError(f"0x{e['va']:08x} is not stock ({have[:24]}...){hint}")
+            raise ModError(f"0x{e['va']:08x} is not stock ({have[:24]}...); "
+                           "this mod is for unmodified Digitone II 1.11")
 
     blob = bytearray.fromhex(SPEC["blob"])
     for f in SPEC["fills"]:

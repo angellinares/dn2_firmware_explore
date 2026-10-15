@@ -153,6 +153,20 @@ def base_sites(content: bytes, base: int) -> list[Site]:
     return out
 
 
+def moved(content: bytes, base: int) -> str | None:
+    """Why the table is no longer read in place, or None. lfo4 repoints every stock
+    base, so fewer than stock's count means moved; more is a mod's own code that
+    also reads the stock table (fxmod's cave helper holds a 54th `table - 60 + 8`)."""
+    content = _stock(content, base)
+    for bias in BIASES:
+        literal = TABLE - RECORD + bias
+        found = len(_even_occurrences(content, base, literal))
+        if found < EXPECTED_BASES[bias]:
+            return (f"expected {EXPECTED_BASES[bias]} site(s) holding 0x{literal:08x} "
+                    f"(table - {RECORD} + {bias}), found {found}")
+    return None
+
+
 def runtime_literals(content: bytes, base: int) -> list[int]:
     """Every absolute address of a 68-byte entry's field, in the image.
 

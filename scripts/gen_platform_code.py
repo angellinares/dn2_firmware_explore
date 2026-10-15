@@ -9,6 +9,11 @@ the site needs a toolchain to apply a mod:
     src/dnfw/mods/platform_code.json
     site/js/mods/platform-code.js
 
+It also assembles the hook bus's dispatchers (`dnfw.mods.bus.SOURCE`, at
+`bus.BUS_VA`) and finds the parameter count's 53 bounds in the stock image
+(`dnfw.patch.paramtable.bound_sites`), so neither needs a toolchain or a search
+at apply time.
+
 It then checks the result against `lfo4_code.json`: LFO4 was the first mod on
 this loader and passed on the instrument, so the platform must install exactly
 the loader and the start-up call LFO4 installs.
@@ -24,12 +29,29 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from dnfw.patch import area, loader        # noqa: E402
+from dnfw.cli.files import read_image      # noqa: E402
+from dnfw.firmware.load import load        # noqa: E402
+from dnfw.mods import bus                  # noqa: E402
+from dnfw.patch import area, assemble, loader, paramtable  # noqa: E402
 
 OUT_JSON = ROOT / "src/dnfw/mods/platform_code.json"
 OUT_JS = ROOT / "site/js/mods/platform-code.js"
 STOCK_LENGTH = area.AREA_VA - loader.BASE
 DATA_LIMIT = 0x46740000                    # lfowaves' NOIS state starts here
+STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+
+
+def bus_code() -> dict:
+    code = assemble.assemble(bus.SOURCE, base=bus.BUS_VA)
+    entry = 4 * bus.TABLE_SLOTS * len(bus.EVENTS)       # the tables come first
+    if any(code[:entry]) or code[entry:entry + 2] != bytes.fromhex("2f0a"):   # move.l %a2,-(%sp)
+        raise SystemExit("the bus's tables are not where bus.EVENTS says")
+    return {"load": bus.BUS_VA, "code": code.hex(), "symbols": {"ev_param_slot": bus.BUS_VA + entry}}
+
+
+def param_bounds() -> list[list[int]]:
+    stock = load(read_image(STOCK)).container.find(3).unpack()
+    return [[s.va, s.width, s.was] for s in paramtable.bound_sites(stock, loader.BASE)]
 
 
 def generate() -> dict:
@@ -42,6 +64,7 @@ def generate() -> dict:
         "cave_va": loader.CAVE_VA, "cave_cap": loader.CAVE_CAP,
         "link_va": loader.LINK_VA, "loader": linked.image.hex(),
         "area_va": area.AREA_VA, "runtime_va": area.RUNTIME_VA, "data_limit": DATA_LIMIT,
+        "bus": bus_code(), "counts": {"PARM": param_bounds()},
     }
 
 

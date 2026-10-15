@@ -17,6 +17,12 @@
  * `dnfw.patch.lfo4records.build`. So a mod applied earlier that edits the stock
  * table (fxmod, moddest) is carried into the copy, **provided it is applied
  * first**: this one goes last.
+ *
+ * The 53 bounds of the table are the hook bus's parameter count: LFO4 adds its
+ * ten records (`platform.contribute`), the platform writes the bounds, and LFO4
+ * records where its four entry hooks replay their stock bytes
+ * (`platform.displace`), so the platform's machine count reaches the LOAD bound
+ * its hook at 0x400dd282 moved.
  */
 
 import { CODE } from "./lfo4-code.js";
@@ -46,10 +52,16 @@ const put32 = (d, at, v) => {
   d[at] = v >>> 24; d[at + 1] = (v >>> 16) & 0xff; d[at + 2] = (v >>> 8) & 0xff; d[at + 3] = v & 0xff;
 };
 
-/** An edit the platform makes: the start-up call or the loader in its cave. */
+// The entry hooks whose stubs replay the displaced stock bytes unchanged, then jump back.
+const HOOKS = [[0x40134490, 8], [0x401344d8, 8], [0x400dd282, 6], [0x400dd724, 8]];
+// The area beyond the packaged blob: a directory entry and the data of each DISP and the ADDS chunk.
+const AREA_EXTRA = 12 * (HOOKS.length + 1) + 12 * HOOKS.length + 8;
+
+/** An edit the platform makes: the start-up call, the loader in its cave, or a bound of the bus's count. */
 const platformOwned = (e) => {
   const lo = e.va - BASE, hi = lo + e.new.length / 2;
-  return platform.extents().some((x) => x.start < hi && lo < x.start + x.length);
+  return platform.loaderExtents().some((x) => x.start < hi && lo < x.start + x.length)
+    || platform.busExtents().some((x) => x.start <= lo && hi <= x.start + x.length);
 };
 const OWN = CODE.edits.filter((e) => !platformOwned(e));
 
@@ -59,11 +71,34 @@ export const APPENDED = CODE.blob.length / 2;
 export const RECORDS = CODE.table_records;
 
 export function extents() {
+  const hooks = new Set(HOOKS.map(([site]) => site));
   return [
-    ...OWN.map((e) => ({ section: SECTION, start: e.va - BASE,
-                         length: e.new.length / 2, what: "LFO4 edit" })),
-    ...platform.extents(APPENDED),
+    ...OWN.map((e) => ({ section: SECTION, start: e.va - BASE, length: e.new.length / 2,
+                         what: "LFO4 edit", displaced: hooks.has(e.va) })),
+    ...platform.extents(APPENDED + AREA_EXTRA),
   ];
+}
+
+/** A DISP chunk per entry hook: where its stub replays the stock bytes. */
+function displacedCopies(stock, chunks) {
+  return HOOKS.map(([site, n]) => {
+    const replay = new Uint8Array(n + 6);
+    replay.set(stock.subarray(site - BASE, site - BASE + n));
+    replay.set([0x4e, 0xf9, (site + n) >>> 24, ((site + n) >>> 16) & 0xff, ((site + n) >>> 8) & 0xff, (site + n) & 0xff], n);
+    const found = [];
+    for (const [cid, data] of chunks) {
+      if (cid !== platform.CODE) continue;
+      const c = platform.unpackCode(data);
+      for (let at = 0; at + replay.length <= c.image.length; at += 2) {
+        if (replay.every((b, i) => c.image[at + i] === b)) found.push(c.load + at);
+      }
+    }
+    if (found.length !== 1) {
+      throw new ModError(`lfo4_code.json is damaged: the hook at 0x${site.toString(16).padStart(8, "0")} `
+        + `replays its stock bytes ${found.length} times`);
+    }
+    return platform.displace(site, n, found[0]);
+  });
 }
 
 /** `want` values of field +40 inside the range the table uses and claimed by none. */
@@ -121,7 +156,9 @@ export function compose(content) {
     throw new ModError("lfo4_code.json is damaged: the table's place is not blank");
   }
   blob.set(records, at);
-  return platform.join(out, [...others, ...platform.parseArea(blob)]);
+  const chunks = platform.parseArea(blob);
+  return platform.join(out, [...others, ...chunks, ...displacedCopies(base, chunks),
+                             platform.contribute("PARM", CODE.table_records - COUNT)]);
 }
 
 /** Throw unless this image is one the mod applies to; -> MAIN OS. */

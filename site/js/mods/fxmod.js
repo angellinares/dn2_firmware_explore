@@ -18,21 +18,24 @@
  * table, and `lfo4` moves that table into the appended area. Applied after
  * lfo4, those edits would find their stock bytes and land on a copy nothing
  * reads, so an image whose table accessors no longer reach the stock table is
- * refused, with the order that works (`tableInPlace`, the port of
+ * refused, with the order that works (`tableMoved`, the port of
  * `dnfw.patch.paramtable.base_sites`).
+ *
+ * The slot lookup at 0x400dc02a is the platform's hook bus's `ev_param_slot`:
+ * this mod subscribes its handler in the cave, so the image gains the
+ * platform's loader and a small area, and Waverider answers its own slots there
+ * too. A guard on instructions another mod's hook moved is read where they run.
  */
 
 import { CODE } from "./fxmod-code.js";
+import * as platform from "./platform.js";
+import { tableMoved } from "./paramtable.js";
 
 export const ID = "fxmod";
 export const NAME = "LFO modulation of the FX";
 export const SECTION = 3;
 const BASE = 0x40000400;
 
-// dnfw.patch.paramtable: the stock table, and the biased bases its accessors carry.
-const TABLE = 0x401f7fc8, RECORD = 60;
-const STOCK_END = 0x4030b980;
-const EXPECTED_BASES = [[8, 53], [16, 1], [40, 2]];
 
 export class ModError extends Error {}
 
@@ -44,49 +47,28 @@ export const DESTINATIONS = CODE.destinations;
 
 export const COUNT = CODE.destinations.reduce((n, g) => n + g.parameters.length, 0);
 
+// The appended area this mod adds alone: the header, two directory entries, the
+// subscription, and the bus's dispatchers as a CODE chunk.
+const AREA = 12 + 2 * 12 + 12 + 16 + platform.busCodeLength();
+
 export function extents() {
-  return CODE.edits.map((e) => ({ section: SECTION, start: e.va - BASE,
-                                  length: e.new.length / 2, what: e.what }));
+  return [...CODE.edits.map((e) => ({ section: SECTION, start: e.va - BASE,
+                                      length: e.new.length / 2, what: e.what })),
+          ...platform.extents(AREA)];
 }
 
-/**
- * Throw unless every accessor of the parameter table still carries the stock
- * table's biased base: the same count `paramtable.base_sites` asserts.
- */
-export function tableInPlace(content) {
-  const end = Math.max(0, Math.min(content.length, STOCK_END - BASE));
-  for (const [bias, expected] of EXPECTED_BASES) {
-    const literal = (TABLE - RECORD + bias) >>> 0;
-    const want = [literal >>> 24, (literal >>> 16) & 0xff, (literal >>> 8) & 0xff, literal & 0xff];
-    let found = 0;
-    for (let i = 0; i + 4 <= end; i += 2) {
-      if (content[i] === want[0] && content[i + 1] === want[1]
-          && content[i + 2] === want[2] && content[i + 3] === want[3]) found++;
-    }
-    if (found !== expected) {
-      throw new ModError(`the parameter table has been moved (expected ${expected} site(s) holding `
-        + `0x${literal.toString(16).padStart(8, "0")} (table - ${RECORD} + ${bias}), found ${found}); `
-        + "lfo4 does that, and fxmod opens records in the stock table, which nothing reads once it "
-        + "has moved: apply fxmod first, then lfo4");
-    }
-  }
-}
-
-/** Throw unless this image is the one the mod was measured against. */
+/** Throw unless this image is one the mod applies to; -> [MAIN OS without the area, its chunks]. */
 export function check(firmware) {
   const section = firmware.container.find(SECTION);
   if (section === null) throw new ModError("image has no MAIN OS section");
-  const original = section.unpack();
-  if (original === null) throw new ModError("MAIN OS did not depack");
-  // Longer is fine: data appended after the stock end moves no address here.
-  if (original.length < CODE.stock_length) {
-    throw new ModError(`MAIN OS is ${original.length.toLocaleString()} B, shorter than `
-      + `${CODE.stock_length.toLocaleString()}: not Digitone II 1.11`);
-  }
-  tableInPlace(original);
+  const unpacked = section.unpack();
+  if (unpacked === null) throw new ModError("MAIN OS did not depack");
+  const [original, others] = platform.split(unpacked);
+  const moved = tableMoved(original, ID, true);
+  if (moved) throw new ModError(moved);
   const at = (va, n) => toHex(original.subarray(va - BASE, va - BASE + n));
   for (const g of CODE.guards) {
-    if (at(g.va, g.bytes.length / 2) !== g.bytes) {
+    if (toHex(platform.read(original, others, g.va, g.bytes.length / 2)) !== g.bytes) {
       throw new ModError(`0x${g.va.toString(16)} (${g.what}) is not stock; `
         + "this mod is for unmodified Digitone II 1.11");
     }
@@ -97,20 +79,20 @@ export function check(firmware) {
         + "for unmodified Digitone II 1.11, or another mod already wrote there");
     }
   }
-  return original;
+  return [original, others];
 }
 
 /** -> `{ content, notes }`, the new section 3. */
 export function apply(firmware) {
-  const original = check(firmware);
-  const content = original.slice();
-  for (const e of CODE.edits) content.set(hex(e.new), e.va - BASE);
-
+  const [original, others] = check(firmware);
+  const edited = original.slice();
+  for (const e of CODE.edits) edited.set(hex(e.new), e.va - BASE);
+  const content = platform.join(edited, [...others, platform.subscribe(CODE.bus.event, CODE.bus.handler)]);
   return {
     content,
     notes: [`${COUNT} FX destinations appear in the LFO DEST list`,
             "Chorus, Delay and Reverb parameters follow the LFO",
             "the Chorus group reads CHR, not ERR",
-            `${CODE.edits.length} edits in section 3, nothing appended`],
+            `${CODE.edits.length} edits in section 3, the slot lookup on the platform's hook bus`],
   };
 }

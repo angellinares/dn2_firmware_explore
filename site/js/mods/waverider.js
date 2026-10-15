@@ -5,7 +5,9 @@
  * hardware results. Two sections, from `waverider-code.js` (`scripts/gen_waverider_js.py`):
  *
  * - **MAIN OS (3):** check every guard and every edit's stock bytes, write the edits, then
- *   add two CODE chunks to the platform's area (the SYN pages, and the +Drive chunk).
+ *   add two CODE chunks to the platform's area (the SYN pages, and the +Drive chunk), the
+ *   group getter's displaced copy, the slot lookup's handler on the hook bus
+ *   (`ev_param_slot`) and one machine on the bus's machine count.
  * - **The DSP boot stream (7):** only stock 1.11's section 7 is accepted (its sha256), so
  *   the result is fixed: our blocks spliced in before stock's final block, then a few runs
  *   of bytes written over stock code.
@@ -23,6 +25,9 @@ export const DSP_STREAM = 7;
 const BASE = 0x40000400;
 
 export class ModError extends Error {}
+
+// The group getter's hook replays its two stock instructions unchanged.
+const DESTGROUP_SITE = 0x400dbce8, DESTGROUP_DISPLACED = 10;
 
 /** What the page lists under "Writes": the edits, the two CODE chunks and the DSP stream. */
 export const CODE_SUMMARY = `Section 3: ${CODE.edits.length} changes. The platform area: two blocks `
@@ -88,11 +93,14 @@ export async function apply(firmware) {
   const dsp = await section7(stream);
   const main = platform.join(mainOs(original), [...others,
     [platform.CODE, platform.codeChunk(CODE.chunk.load, hex(CODE.chunk.code))],
-    [platform.CODE, platform.codeChunk(CODE.drive.load, hex(CODE.drive.code))]]);
+    [platform.CODE, platform.codeChunk(CODE.drive.load, hex(CODE.drive.code))],
+    platform.displace(DESTGROUP_SITE, DESTGROUP_DISPLACED, CODE.bus.group_displaced),
+    platform.subscribe("PSLT", CODE.bus.slot_handler),
+    platform.contribute("MACH", 1)]);
   return {
     main, dsp,
     notes: [`MACHINE SEL offers ${CODE.names[0].toUpperCase()} after SWARMER`,
-            `${CODE.edits.length} edits in section 3; section 7 `
+            `${CODE.edits.length} edits in section 3, two CODE chunks in the platform's area; section 7 `
               + `${stream.length.toLocaleString("en-US")} -> ${dsp.length.toLocaleString("en-US")} B`],
   };
 }

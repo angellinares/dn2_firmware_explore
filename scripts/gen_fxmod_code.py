@@ -16,6 +16,13 @@ writes what it changed as data. The same pattern as `gen_midiarp_code.py`:
   comparator, the group-name table's neighbours. An edit's own stock bytes can
   be a single byte, which is not enough to identify a build.
 
+The slot lookup goes on the platform's hook bus (`dnfw.mods.bus`): the build's
+hook at `0x400dc02a` is left out, and its code in the cave becomes a handler of
+`ev_param_slot`. Where the build's code replays the three stock instructions
+and jumps back, the handler answers 0 (`moveq #0,%d0 ; rts`): not taken, so the
+bus asks the next handler and then the stock routine. The build's guard on the
+resume point `0x400dc032` goes with the jump, because the bus resumes there.
+
 Nothing derived from Elektron's tables ships: every byte here is either one this
 project wrote (the cave, the hooks, the repointed addresses) or a mask constant
 and a pointer that already exist in the user's own image, and the `stock` fields
@@ -85,6 +92,29 @@ def regions(built: dict) -> list[tuple[int, int, str]]:
     return out
 
 
+SLOT_SITE, SLOT_RESUME = 0x400DC02A, 0x400DC032
+NOT_TAKEN = bytes.fromhex("70004e75")              # moveq #0,%d0 ; rts
+
+
+def on_the_bus(edits: list[dict], anchor: dict, cave_va: int) -> tuple[list[dict], int, int]:
+    """The slot hook as a bus handler: -> (edits without the hook, the handler, the
+    cave's length). The handler is the hook's target; its replay of the displaced
+    stock bytes and its jump back, the cave's last 14 bytes, become NOT_TAKEN."""
+    hook = next(e for e in edits if e["va"] == SLOT_SITE)
+    new = bytes.fromhex(hook["new"])
+    if new[:2] != bytes.fromhex("4ef9") or len(new) != 8:
+        raise SystemExit(f"the slot hook is not a jmp: {hook['new']}")
+    handler = int.from_bytes(new[2:6], "big")
+    cave = next(e for e in edits if e["what"] == "the code cave")
+    body = bytes.fromhex(cave["new"])
+    tail = bytes.fromhex(anchor["slot_hook"][1]) + bytes.fromhex("4ef9") + SLOT_RESUME.to_bytes(4, "big")
+    if not body.endswith(tail) or not cave_va < handler < cave_va + len(body):
+        raise SystemExit("the slot hook's replay is not the cave's tail")
+    body = body[:-len(tail)] + NOT_TAKEN
+    cave["new"], cave["stock"] = body.hex(), cave["stock"][:2 * len(body)]
+    return [e for e in edits if e is not hook], handler, len(body)
+
+
 def main() -> int:
     a = one.ANCHORS[3_192_192]
     a["convert"] = a["convert"] + two.MISSED
@@ -126,19 +156,21 @@ def main() -> int:
 
     if any(int(e["stock"], 16) for e in edits if e["what"] == "the code cave"):
         raise SystemExit("the cave's stock bytes are not all zero -- it is not free")
+    edits, handler, used = on_the_bus(edits, a, cave_address)
 
     code = {
         "os": "Digitone II 1.11",
         "stock_length": n,
         "cave_va": cave_address,
         "cave_used": used,
+        "bus": {"event": "PSLT", "handler": handler},
         "edits": edits,
         # Read, not written. `build_fxbrowser3.CONTROLS` is in here: the three
         # group-name slots and the three records whose short names they share
         # are the whole argument for the `ERR` -> `CHR` longword, and an
         # argument that is not checked is prose.
         "guards": [{"va": va, "bytes": want, "what": why}
-                   for va, want, why in a["controls"]],
+                   for va, want, why in a["controls"] if va != SLOT_RESUME],
         "destinations": [{"group": g, "parameters": p} for g, p in DESTINATIONS],
     }
     OUT_JSON.write_text(json.dumps(code, indent=1) + "\n", newline="\n")

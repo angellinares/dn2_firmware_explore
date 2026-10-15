@@ -20,15 +20,18 @@ group -> short-name table holds the out-of-range fallback in Chorus's slot.
 |---|---|---|
 | 1 | the evaluator's `DEST` bound, 100 -> 127 | so a code above 100 is evaluated at all |
 | 2 | a hook into a code cave | codes 101..127 read the global FX mirror block |
-| 3 | a hook into the same cave | slots 101..124 resolve through the FX set's own table |
+| 3 | a handler in the same cave, on the platform's hook bus | slots 101..124 resolve through the FX set's own table |
 | 4 | the enumeration walk, 0..100 -> 0..124 | so the `DEST` list offers them |
 | 5 | seven `jsr` targets | entry -> code, `+76` for an FX record |
 | 6 | ten records' `+44` | Chorus ships closed under every `want` mask |
 | 7 | one longword | group 16's short name, `ERR` -> `CHR` |
 
-The cave is 128 bytes inside a free run this project has flashed successfully
-before; nothing is appended and no section changes length, so this mod does not
-compete for the appended area or the startup hook.
+The cave is 118 bytes inside a free run this project has flashed successfully
+before. The slot lookup at `0x400dc02a` is shared: Waverider answers its own
+slots there too. So the platform owns that site (`dnfw.mods.bus`), and this mod
+subscribes its handler to the bus's `ev_param_slot`. That puts the platform's
+start-up loader and a small appended area (the subscription and the bus's
+dispatcher) into the image, as for every mod on the platform.
 
 ## What it does not do
 
@@ -47,16 +50,17 @@ The code is assembled ahead of time (`scripts/gen_fxmod_code.py` ->
 `fxmod_code.json`) from `scripts/build_fxbrowser.compose`, so this applies
 exactly the bytes that were gated and flashed:
 
-1. all 26 guards -- whole instructions around each edit, the enumeration loop,
+1. all 25 guards -- whole instructions around each edit, the enumeration loop,
    the sort comparator, and the three group-name slots with the three records
    whose short names they share -- and every edit's own stock bytes are checked;
-   an image that differs anywhere is refused;
+   an image that differs anywhere is refused. A guard on instructions another
+   mod's hook moved is read where they run (`platform.read`);
 2. the parameter table must still be where stock keeps it. Ten of the edits
    open records inside that table, and `lfo4` moves it into the appended area:
    applied after lfo4, those edits would find their stock bytes, apply cleanly
    and land on a copy nothing reads. So an image whose table accessors no
    longer reach the stock table is refused, with the order that works;
-3. the edits are written.
+3. the edits are written, and the handler is subscribed.
 """
 
 from __future__ import annotations
@@ -64,7 +68,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from . import Extent, ModError, Result
+from . import Extent, ModError, Result, bus, platform
 from ..patch import paramtable
 
 ID = "fxmod"
@@ -82,9 +86,14 @@ def destinations() -> list[tuple[str, list[str]]]:
     return [(d["group"], d["parameters"]) for d in SPEC["destinations"]]
 
 
+# The appended area this mod adds alone: the header, two directory entries, the
+# subscription, and the bus's dispatchers as a CODE chunk.
+AREA = 12 + 2 * 12 + 12 + 16 + len(platform.SPEC["bus"]["code"]) // 2
+
+
 def extents(firmware=None) -> list[Extent]:
     return [Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"])
-            for e in SPEC["edits"]]
+            for e in SPEC["edits"]] + platform.extents(AREA)
 
 
 def apply(firmware) -> Result:
@@ -94,12 +103,7 @@ def apply(firmware) -> Result:
     original = section.unpack()
     if original is None:
         raise ModError("MAIN OS did not depack")
-    # Longer is fine: data appended after the stock end (lfowaves, bootscreen)
-    # moves no address this mod writes or reads. The guards identify the build.
-    if len(original) < SPEC["stock_length"]:
-        raise ModError(f"MAIN OS is {len(original):,} B, shorter than "
-                       f"{SPEC['stock_length']:,}: not Digitone II 1.11")
-
+    original, others = platform.split(original)
     try:
         paramtable.base_sites(original, BASE)
     except paramtable.TableError as exc:
@@ -109,8 +113,7 @@ def apply(firmware) -> Result:
 
     for g in SPEC["guards"]:
         want = bytes.fromhex(g["bytes"])
-        at = g["va"] - BASE
-        if original[at:at + len(want)] != want:
+        if platform.read(original, others, g["va"], len(want)) != want:
             raise ModError(f"0x{g['va']:08x} ({g['what']}) is not stock; this mod is "
                            "for unmodified Digitone II 1.11")
     for e in SPEC["edits"]:
@@ -126,9 +129,12 @@ def apply(firmware) -> Result:
         new = bytes.fromhex(e["new"])
         content[e["va"] - BASE:e["va"] - BASE + len(new)] = new
 
+    content = platform.join(bytes(content), others + [
+        bus.subscribe(SPEC["bus"]["event"].encode(), SPEC["bus"]["handler"])])
     count = sum(len(g["parameters"]) for g in SPEC["destinations"])
-    return Result(payloads={SECTION: bytes(content)}, extents=extents(),
+    return Result(payloads={SECTION: content}, extents=extents(),
                   notes=[f"{count} FX destinations appear in the LFO DEST list",
                          "Chorus, Delay and Reverb parameters follow the LFO",
                          "the Chorus group reads CHR, not ERR",
-                         f"{len(SPEC['edits'])} edits in section 3, nothing appended"])
+                         f"{len(SPEC['edits'])} edits in section 3, the slot lookup on the "
+                         "platform's hook bus"])

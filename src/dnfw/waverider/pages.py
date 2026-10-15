@@ -175,7 +175,7 @@ SPRINTF = 0x40000E82              # (buffer, format, ...), as the stock naming r
 
 LABELS_OUT = ("is_wr", "wr_count", "wr_page", "wr_label", "wr_long", "wr_icons", "wr_grid", "wr_grid9",
               "wr_fmt", "wr_vfmt", "wr_range", "wr_turn", "wr_head", "wr_slot_id", "descriptors",
-              "wr_group", "wr_tie", "wr_list_name", "wr_minilabel")
+              "wr_group", "wr_group_displaced", "wr_tie", "wr_list_name", "wr_minilabel")
 GRID = 0x40017428                 # the stock grid: (view, canvas)
 GRID9 = 0x400175E4                # WaveTone's page-3 grid (page id 9): (view, canvas)
 ICON_PAGE = 7                     # the SYN page draw's id for WaveTone's OSC page
@@ -250,14 +250,15 @@ TBL_NAMES = 2 + 128               # the baked tables, then the +Drive pool's 128
 SLOT_RUNS = ((SUBNOISE_SLOT0, SUBNOISE[0], len(SUBNOISE)),) + SHAPE_RUNS   # the sound slots Waverider answers
 
 
-def slot_id_runs() -> str:
-    """`wr_slot_id`'s search: for each run of slots, d0 = record id when the slot is in it, else
-    on to the next run; past the last, to the stock answer (label 9). Ends at label 6 with d0 = id."""
+def slot_id_runs(slot_at: int) -> str:
+    """`wr_slot_id`'s search: for each run of slots, d0 = record id when the slot (at
+    %sp@(SLOT_AT)) is in it, else on to the next run; past the last, to label 9, not taken.
+    Ends at label 6 with d0 = id."""
     lines = []
     for k, (first, record, count) in enumerate(SLOT_RUNS):
         last = k == len(SLOT_RUNS) - 1
         head = f"{k + 3}:  " if k else "    "
-        lines += [f"{head}move.l  %sp@(8),%d0",
+        lines += [f"{head}move.l  %sp@({slot_at}),%d0",
                   f"    subi.l  #{first},%d0",
                   f"    moveq   #{count - 1},%d1",
                   "    cmp.l   %d0,%d1",
@@ -496,7 +497,9 @@ wr_sortkey:
 | -- the group getter 0x400dbce8(entry), from its first instruction by jmp (its first two
 | instructions, 10 bytes, are replaced). On a Waverider track the records its pages hold
 | answer WaveTone's group (1), FM Tone's borrowed ones (group 0) included, so the list shows
-| one SYN group. Otherwise the displaced `move.l %sp@(4),%d0 ; cmpi.l #321,%d0` and on.
+| one SYN group. Otherwise the displaced `move.l %sp@(4),%d0 ; cmpi.l #321,%d0` and on. They
+| are the stock bytes unchanged (wr_group_displaced, recorded with platform.displace), so the
+| platform writes the parameter count's bound here when lfo4 adds its records.
 wr_group:
     bsr.w   is_wr
     tst.l   %d0
@@ -506,6 +509,7 @@ wr_group:
     bmi.s   9f
     moveq   #1,%d0
     rts
+wr_group_displaced:
 9:  move.l  %sp@(4),%d0
     cmpi.l  #321,%d0
     jmp     0x400dbcf2
@@ -767,33 +771,28 @@ head_value: .asciz "%s%s"
     .align 2
 
 | -- param_set_slot_to_id(slot, type, filter) at 0x400dc02a, every per-machine list's
-| source (p-locks, LFO destinations, CC): its first two instructions (`move.l %d2,-(%sp)
-| ; moveq #100,%d1`, 4 bytes) and the next (`movea.l %sp@(8),%a0`, 4) now jsr here and a
-| nop. Slot 50..57 of a Waverider sound: page 3's record, 227 + slot - 50; slots 58..61 and
-| 62..64: page 5's, 208 + slot - 58 and 235 + slot - 62; straight back to the caller. A Waverider sound is type 5 (its own type: the engine's callers), or type
-| 1 on a Waverider track (the UI reports 5 as WaveTone, 1). Anything else: the three
-| displaced instructions, then on after them (the return address, site + 6, is the nop:
-| back through a1, which the stock code loads only after), with the stack as stock's.
+| source (p-locks, LFO destinations, CC): the bus's ev_param_slot handler (dnfw.mods.bus),
+| int f(slot, type, filter), nonzero when taken. Slot 50..57 of a Waverider sound: page 3's
+| record, 227 + slot - 50; slots 58..61 and 62..64: page 5's, 208 + slot - 58 and 235 + slot
+| - 62. A Waverider sound is type 5 (its own type: the engine's callers), or type 1 on a
+| Waverider track (the UI reports 5 as WaveTone, 1). Anything else: 0, and the bus asks the
+| next handler, then the stock routine.
 wr_slot_id:
-{slot_id_runs()}
+{slot_id_runs(4)}
 6:  move.l  %d0,%a0
     moveq   #{NEW_TYPE},%d1
-    cmp.l   %sp@(12),%d1
+    cmp.l   %sp@(8),%d1
     beq.s   2f
     moveq   #1,%d1
-    cmp.l   %sp@(12),%d1
+    cmp.l   %sp@(8),%d1
     bne.s   9f
     bsr.w   is_wr
     tst.l   %d0
     beq.s   9f
 2:  move.l  %a0,%d0
-    addq.l  #4,%sp
     rts
-9:  movea.l %sp@+,%a1
-    move.l  %d2,%sp@-
-    moveq   #100,%d1
-    movea.l %sp@(8),%a0
-    jmp     %a1@
+9:  moveq   #0,%d0
+    rts
 
     .align 2
 fmt_table:

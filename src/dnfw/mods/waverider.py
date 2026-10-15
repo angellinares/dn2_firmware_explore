@@ -30,6 +30,10 @@ Two sections, both from committed data:
 - **Its own SYN pages (Milestone 7):** `dnfw.waverider.pages`, one platform `CODE`
   chunk in RAM (`dnfw.mods.platform`): a Waverider track shows two pages of its own,
   labelled TUNE / POS / TBL where they work and empty where they do not yet.
+- **The hook bus (`dnfw.mods.bus`):** the mod adds one machine to the machine count,
+  so the platform writes the six machine-type bounds; its slot lookup is a handler of
+  `ev_param_slot`; and its group getter hook records the instructions it replays, so
+  lfo4's parameter bound lands in the copy. This is why it combines with fxmod and lfo4.
 
 ## A sound or project saved with a Waverider track
 
@@ -43,7 +47,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from . import RAM, Extent, ModError, Result, platform
+from . import RAM, Extent, ModError, Result, bus, platform
 from ..waverider import dsp
 
 ID = "waverider"
@@ -56,8 +60,13 @@ BASE = 0x40000400
 SPEC = json.loads((pathlib.Path(__file__).with_name("waverider_code.json")).read_text())
 
 
+# The group getter's hook replays its two stock instructions unchanged (pages.wr_group).
+DESTGROUP_SITE, DESTGROUP_DISPLACED = 0x400DBCE8, 10
+
+
 def extents(firmware=None, area_length: int = 0) -> list[Extent]:
-    out = [Extent(MAIN_OS, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in SPEC["edits"]]
+    out = [Extent(MAIN_OS, e["va"] - BASE, len(e["new"]) // 2, e["what"],
+                  displaced=e["va"] == DESTGROUP_SITE) for e in SPEC["edits"]]
     out += platform.extents(area_length)
     size = None
     if firmware is not None:
@@ -90,13 +99,13 @@ def extents(firmware=None, area_length: int = 0) -> list[Extent]:
 NOT_RAM = tuple(range(SPEC["layout"]["wr_spans"] & ~1, SPEC["layout"]["wr_spans_end"], 2))
 
 # Word places that read as an address above BSS and are not one, each disassembled on
-# 2026-10-15; the three label texts read again after SMT1/SMT2 became SLW1/SLW2 moved them 4 bytes
-# (the words read Nois, Fold and Form) (objdump -m m68k:cfv4e over the two CODE chunks). A change to the code moves
+# 2026-10-15 (the three label texts read again after the bus moved them 10 bytes down, and again 4 bytes up
+# when SMT1/SMT2 became SLW1/SLW2: the words read Nois, Fold and Form) (objdump -m m68k:cfv4e over the two CODE chunks). A change to the code moves
 # them, so the check flags the new places again and they are read afresh.
 NOT_RAM += (
-    0x4670AFA8,              # "Noise Colour": the label text "Nois"
-    0x4670AFC6,              # "ave Fold": the label text "Fold"
-    0x4670B13E,              # ".AM.Formant": the label text "Form"
+    0x4670AF9E,              # "Noise Colour": the label text "Nois"
+    0x4670AFBC,              # "ave Fold": the label text "Fold"
+    0x4670B134,              # ".AM.Formant": the label text "Form"
     0x4670B54A,              # notl %d3 ; andl %d3,%d2
     0x4670B7DA,              # addil #0x469fe800,%d0: the pool spans' base 0x46a00000 less two
                              # 3072 B entries, indexed by the table number (2 and up), declared
@@ -157,12 +166,16 @@ def apply(firmware) -> Result:
     chunk, drive = SPEC["chunk"], SPEC["drive"]
     code = platform.area.CodeChunk(chunk["load"], bytes.fromhex(chunk["code"])).pack()
     dcode = platform.area.CodeChunk(drive["load"], bytes.fromhex(drive["code"])).pack()
-    content = platform.join(_main_os(main_os), others + [(platform.area.CODE, code),
-                                                         (platform.area.CODE, dcode)])
+    layout = SPEC["layout"]
+    content = platform.join(_main_os(main_os), others + [
+        (platform.area.CODE, code), (platform.area.CODE, dcode),
+        platform.displace(DESTGROUP_SITE, DESTGROUP_DISPLACED, layout["wr_group_displaced"]),
+        bus.subscribe(b"PSLT", layout["wr_slot_id"]),
+        bus.contribute(b"MACH", 1)])
     area_length = len(content) - platform.STOCK_LENGTH
     return Result(payloads={MAIN_OS: content, DSP_STREAM: section7},
                   extents=extents(firmware, area_length),
                   notes=[f"MACHINE SEL offers {SPEC['names'][0].upper()} after SWARMER "
                          f"(type {SPEC['new_type']}; WaveTone's pages)",
-                         f"{len(SPEC['edits'])} edits in section 3, nothing appended; "
-                         f"section 7 {len(stream):,} -> {len(section7):,} B"])
+                         f"{len(SPEC['edits'])} edits in section 3, two CODE chunks in the "
+                         f"platform's area; section 7 {len(stream):,} -> {len(section7):,} B"])

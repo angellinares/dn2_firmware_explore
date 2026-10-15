@@ -32,6 +32,13 @@ The start-up loader and the appended area are the platform's
 area is already there, so it combines with `lfowaves` and `bootscreen`. The
 JSON still records the loader as LFO4's build installed it;
 `scripts/gen_platform_code.py` checks the platform installs those same bytes.
+
+The 53 bounds of the parameter table are the bus's parameter count
+(`dnfw.mods.bus`): LFO4 adds its ten records to the count, and the platform
+writes each bound, in place or in the copy another mod's hook replays. LFO4
+records the instructions its four entry hooks replay (`platform.displace`), so
+the platform's machine count reaches the stored-sound LOAD bound that LFO4's
+hook at `0x400dd282` moved. In every other byte the image is the gated build.
 """
 
 from __future__ import annotations
@@ -39,7 +46,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from . import Extent, ModError, Result, platform
+from . import Extent, ModError, Result, bus, platform
 from ..patch import lfo4records, paramtable
 
 ID = "lfo4"
@@ -66,10 +73,17 @@ def _spec() -> dict:
     return SPEC
 
 
+# The entry hooks whose stubs replay the displaced instructions unchanged, then jump
+# back (scripts/build_lfo4_ext.py, SITES): memcpy, memset, the sound LOAD and SAVE.
+HOOKS = ((0x40134490, 8), (0x401344D8, 8), (0x400DD282, 6), (0x400DD724, 8))
+
+
 def _platform_owned(e: dict) -> bool:
-    """An edit the platform makes: the start-up call or the loader in its cave."""
+    """An edit the platform makes: the start-up call, the loader in its cave, or a
+    bound of the bus's parameter count."""
     lo, hi = e["va"] - BASE, e["va"] - BASE + len(e["new"]) // 2
-    return any(x.start < hi and lo < x.end for x in platform.extents())
+    return (any(x.start < hi and lo < x.end for x in platform.loader_extents())
+            or any(x.start <= lo and hi <= x.end for x in bus.extents(platform.SPEC)))
 
 
 def _edits() -> list[dict]:
@@ -80,10 +94,17 @@ def _chunks(blob: bytes) -> list[tuple[bytes, bytes]]:
     return platform.area.parse(blob)
 
 
+# What the area carries beyond the packaged blob: a directory entry and the data of
+# each `DISP` chunk (one per hook) and of the `ADDS` chunk.
+AREA_EXTRA = 12 * (len(HOOKS) + 1) + 12 * len(HOOKS) + 8
+
+
 def extents(firmware=None) -> list[Extent]:
     spec = _spec()
-    out = [Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, "LFO4 edit") for e in _edits()]
-    return out + platform.extents(len(spec["blob"]) // 2)
+    hooks = {site for site, _ in HOOKS}
+    out = [Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, "LFO4 edit", displaced=e["va"] in hooks)
+           for e in _edits()]
+    return out + platform.extents(len(spec["blob"]) // 2 + AREA_EXTRA)
 
 
 # The evaluators' three LFO state arrays, moved so each track holds four LFOs
@@ -130,7 +151,25 @@ def compose(content: bytes) -> bytes:
         raise ModError("lfo4_code.json is damaged: the table's place is not blank")
     blob[at:at + len(records)] = records
 
-    return platform.join(bytes(out), others + _chunks(bytes(blob)))
+    chunks = _chunks(bytes(blob))
+    return platform.join(bytes(out), others + chunks + _displaced(content, chunks)
+                         + [bus.contribute(b"PARM", spec["table_records"] - paramtable.COUNT)])
+
+
+def _displaced(stock: bytes, chunks) -> list[tuple[bytes, bytes]]:
+    """A `DISP` chunk per entry hook: where its stub replays the stock bytes."""
+    out = []
+    for site, n in HOOKS:
+        replay = stock[site - BASE:site - BASE + n] + bytes.fromhex("4ef9") + (site + n).to_bytes(4, "big")
+        found = [code.load + at for code in (platform.area.CodeChunk.unpack(d) for c, d in chunks
+                                             if c == platform.area.CODE)
+                 for at in range(0, len(code.image) - len(replay) + 1, 2)
+                 if code.image[at:at + len(replay)] == replay]
+        if len(found) != 1:
+            raise ModError(f"lfo4_code.json is damaged: the hook at 0x{site:08x} replays "
+                           f"its stock bytes {len(found)} times")
+        out.append(platform.displace(site, n, found[0]))
+    return out
 
 
 def apply(firmware) -> Result:

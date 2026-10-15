@@ -49,13 +49,15 @@ def test_installs_the_loader_lfo4_passed_with(stock):
         at = e["va"] - BASE
         image[at:at + len(e["new"]) // 2] = bytes.fromhex(e["new"])
     out = platform.join(stock, [])
-    for x in platform.extents():
+    for x in platform.extents()[:2]:          # the start-up call and the loader's cave
         assert out[x.start:x.end] == image[x.start:x.end], x
 
 
 def test_lfo4_alone_is_the_gated_build(stock):
-    """lfo4 on the platform: its edits, then its own two CODE chunks, as before."""
-    from dnfw.mods import lfo4
+    """lfo4 on the platform: its edits and its own two CODE chunks, as gated. The
+    bus writes its 53 bounds; the area also carries its count and its four hooks'
+    displaced copies, which nothing reads at run time."""
+    from dnfw.mods import bus, lfo4
     spec = lfo4.SPEC
     image = bytearray(stock)
     for e in spec["edits"]:
@@ -64,7 +66,12 @@ def test_lfo4_alone_is_the_gated_build(stock):
     blob = bytearray.fromhex(spec["blob"])
     records = lfo4._table(stock)
     blob[spec["table_offset"]:spec["table_offset"] + len(records)] = records
-    assert lfo4.compose(stock) == bytes(image) + bytes(blob)
+    out = lfo4.compose(stock)
+    assert out[:platform.STOCK_LENGTH] == bytes(image[:platform.STOCK_LENGTH])
+    chunks = area.parse(out[platform.STOCK_LENGTH:])
+    assert [d for c, d in chunks if c == area.CODE] == [d for c, d in area.parse(bytes(blob))]
+    assert [c for c, _ in chunks if c != area.CODE] == [platform.DISP] * 4 + [bus.ADDS]
+    assert bus.totals(chunks) == {b"PARM": 10}
 
 
 def test_split_join_round_trip(stock):
@@ -127,11 +134,20 @@ def test_lfo4_before_lfowaves_is_refused_with_the_order(firmware):
         _apply(firmware, ["lfo4", "lfowaves"])
 
 
+def test_lfowaves_after_fxmod_applies(firmware):
+    """fxmod's cave helper holds a 54th copy of the table's base: not a moved table."""
+    from dnfw.cli.mods import _staged
+    from dnfw.mods import fxmod, lfowaves
+    payloads = dict(fxmod.apply(firmware).payloads)
+    lfowaves.apply(_staged(firmware, payloads))
+
+
 def test_lfo4s_bound_reaches_lfowaves_replay(firmware):
     """getShortName's compare, displaced by lfowaves, carries lfo4's 331."""
     from dnfw.mods import lfowaves
-    _, chunks = platform.split(_apply(firmware, ["lfowaves", "lfo4"]))
-    (_, _, copy), = platform.displaced(chunks)
+    out = _apply(firmware, ["lfowaves", "lfo4"])
+    chunks = area.parse(out[platform.STOCK_LENGTH:])
+    (copy,) = [c for s, _, c in platform.displaced(chunks) if s == lfowaves.SHORT_NAME]
     code = next(area.CodeChunk.unpack(d) for c, d in chunks
                 if c == area.CODE and area.CodeChunk.unpack(d).load == lfowaves.RUNTIME_VA)
     at = copy - code.load

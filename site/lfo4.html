@@ -59,10 +59,12 @@
 
 <section class="changes">
   <h2>Version and changes</h2>
-  <p>This mod is at <strong><!-- dnfw:version lfo4 -->v1.0.1<!-- /dnfw:version --></strong>.
+  <p>This mod is at <strong><!-- dnfw:version lfo4 -->v1.0.2<!-- /dnfw:version --></strong>.
   What changed in each version, newest first.</p>
 <!-- dnfw:changes lfo4 -->
 <dl class="changes">
+  <dt><span class="version">v1.0.2</span> <time datetime="2026-10-15">2026-10-15</time></dt>
+  <dd><ul><li>You can now combine this mod with Waverider, in either order. LFO4 operates as before.</li></ul></dd>
   <dt><span class="version">v1.0.1</span> <time datetime="2026-10-11">2026-10-11</time></dt>
   <dd><ul><li>Projects you save or load with LFO4 no longer have LFO data written into them.</li></ul></dd>
   <dt><span class="version">v1.0.0</span> <time datetime="2026-10-11">2026-10-11</time></dt>
@@ -166,8 +168,9 @@
   <li><strong><a href="arp.html">MIDI Arpeggiator</a></strong>: combines, in either order. No shared bytes.</li>
   <li><strong>Arpeggiator p-locks</strong>: combines, from the command line only: <code>dnfw mods apply firmware.syx --mod arpplocks --mod lfo4</code>.</li>
   <li><strong><a href="transients.html">Transient Swapper</a></strong>: combines. It only writes the DSP image.</li>
-  <li><strong><a href="lfo.html">LFO Waves</a></strong>: combines. Build LFO Waves first. Then load its download here. The SPH-label hook of LFO Waves moved the bound check of the parameter table, and LFO4 widens that bound. So the order matters.</li>
+  <li><strong><a href="lfo.html">LFO Waves</a></strong>: combines. Build LFO Waves first. Then load its download here. LFO Waves edits three records of the parameter table, and LFO4 copies that table. So the order matters, and the LFO Waves page refuses an image this page has built.</li>
   <li><strong><a href="boot.html">Boot Screen</a></strong>: combines, in either order. Both add to the one appended area.</li>
+  <li><strong><a href="waverider.html">Waverider</a></strong>: combines, in either order. The platform writes the bounds both mods widen: the parameter count for LFO4, the machine count for Waverider.</li>
 </ul>
 <div class="note">
   <p><strong>What "combines" means here.</strong> A check makes sure that the bytes of the two

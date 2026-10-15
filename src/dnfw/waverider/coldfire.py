@@ -491,27 +491,26 @@ def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
          f"{SAMPLE_TYPES_LAST} are a section of their own ({SAMPLE_GROUP}), divided off like MIDI",
          GROUP_STOCK)
 
-    # 2. the names
+    # 2. the names. Their bounds (4 -> 5), the attribute rows' and the LOAD's are the
+    # bus's machine count (dnfw.mods.bus): the mod adds one machine, the platform writes them.
     for bound, base, op, col in NAME_SITES:
-        edit(bound, bytes.fromhex("7205"), f"name column {col // 4}: bound 4 -> 5",
-             bytes.fromhex("7204"))
+        _need(content, bound, bytes.fromhex("7204"), f"name column {col // 4}: the bound")
         edit(base + 2, _long(layout["names"] + col), f"name column {col // 4}: the six-row table",
              _long(NAMES_STOCK_VA + col))
         _need(content, base, bytes.fromhex(op), "the name accessor's base instruction")
 
     # 3. the attribute rows
     for bound in ATTR_BOUNDS:
-        edit(bound, bytes.fromhex("7405" if bound == 0x400DC19C else "7205"),
-             "attribute rows: bound 4 -> 5", bytes.fromhex("7404" if bound == 0x400DC19C else "7204"))
+        _need(content, bound, bytes.fromhex("7404" if bound == 0x400DC19C else "7204"),
+              "attribute rows: the bound")
     for site, col in ATTR_BASES:
         _need(content, site, bytes.fromhex("41f9"), "the attribute accessor's lea")
         edit(site + 2, _long(layout["attributes"] + col), "attribute rows: the six-row copy",
              _long(ATTR_STOCK_VA + col))
 
-    # 5. the stored-sound LOAD keeps type 5 (stock turns it into FM Tone)
-    edit(LOAD_BOUND, bytes.fromhex("7407"), "stored-sound LOAD: machine types -1..5 are kept "
-                                            "(stock keeps -1..4; anything else loads as FM Tone)",
-         bytes.fromhex("7406"))
+    # 5. the stored-sound LOAD keeps type 5 (stock turns it into FM Tone): the machine
+    # count's bound, which the platform writes
+    _need(content, LOAD_BOUND, bytes.fromhex("7406"), "stored-sound LOAD: the bound")
 
     # 4. slot_to_id
     edit(SLOT_HOOK, bytes.fromhex("4ef9") + _long(layout["slot_shim"]) + bytes.fromhex("4e71"),
@@ -571,11 +570,11 @@ def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
     edit(TURN_SITE, bytes.fromhex("4eb9") + _long(playout["wr_turn"]) + bytes.fromhex("4e71"),
          "the knob turn's current value: TBL1 and TBL2 read unsigned on a Waverider track, "
          "so a turn from the pool's last tables steps instead of falling to Prim.", TURN_STOCK)
+    # the per-type parameter list (page 3's and page 5's records on a Waverider track) is
+    # wr_slot_id, the bus's ev_param_slot handler: the platform owns the site
+    _need(content, SLOT_ID_SITE, SLOT_ID_STOCK, "param_set_slot_to_id's entry, the bus's site")
     _need(content, SLOT_ID_SITE + 8, bytes.fromhex("4ef9") + _long(layout["slot_shim"]),
           "param_set_slot_to_id's type load, already the type-5 shim's jmp (step 4)")
-    edit(SLOT_ID_SITE, bytes.fromhex("4eb9") + _long(playout["wr_slot_id"]) + bytes.fromhex("4e71"),
-         "the per-type parameter list: page 3's eight records (slots 50..57) on a Waverider "
-         "track, so they take p-locks and LFOs; every other answer stock's", SLOT_ID_STOCK)
     _need(content, HEAD_SITE + 10, bytes.fromhex("2f2a006c4eb9400562e6"), "the header's printf")
     edit(HEAD_SITE, bytes.fromhex("4eb9") + _long(playout["wr_head"]) + bytes.fromhex("4e714e71"),
          "the header: TBL1 and TBL2 on a Waverider track show their value only (the pool "

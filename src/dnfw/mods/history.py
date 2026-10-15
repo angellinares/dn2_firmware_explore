@@ -60,9 +60,17 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "arpplocks": UNPUBLISHED,
     "arpscale": UNPUBLISHED,
     "bootscreen": PUBLISHED,
-    "fxmod": PUBLISHED,
+    "fxmod": (
+        Release("1.0.1", "2026-10-15", (
+            "You can now combine this mod with Waverider, in either order. The FX destinations in "
+            "the DEST list operate as before.",
+        )),
+    ) + PUBLISHED,
     "layermidi": PUBLISHED,
     "lfo4": (
+        Release("1.0.2", "2026-10-15", (
+            "You can now combine this mod with Waverider, in either order. LFO4 operates as before.",
+        )),
         Release("1.0.1", "2026-10-11", (
             "Projects you save or load with LFO4 no longer have LFO data written into them.",
         )),
@@ -81,6 +89,10 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "transients": PUBLISHED,
     "usbprobe": UNPUBLISHED,
     "waverider": (
+        Release("0.1.2", "2026-10-15", (
+            "You can now combine Waverider with LFO modulation of the FX and with the fourth LFO, "
+            "in either order.",
+        )),
         Release("0.1.1", "2026-10-15", (
             "Alpha 2. On page 4, SMT1 and SMT2 are now SLW1 and SLW2 (slew). The header shows Osc1 "
             "POS Slew and Osc2 POS Slew. The slew operates as before, and saved sounds keep their values.",

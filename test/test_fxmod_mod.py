@@ -15,7 +15,7 @@ import pathlib
 import pytest
 
 from dnfw.mods import ModError, check_compatible
-from dnfw.mods import fxmod, lfowaves, moddest
+from dnfw.mods import fxmod, lfowaves, moddest, platform
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
@@ -75,7 +75,18 @@ def test_is_the_image_that_was_gated(applied):
     if not GATED.exists():
         pytest.skip(f"{GATED.relative_to(ROOT)} not present; "
                     "run scripts/build_fxbrowser3.py to regenerate it")
-    assert applied == GATED.read_bytes()
+    gated = GATED.read_bytes()
+    # The hook bus (dnfw.mods.bus) changes four things, and only those: the platform's
+    # loader and its call, the bus's jump at 0x400dc02a in place of the build's, the
+    # handler's last instructions in the cave, and the appended area.
+    cave_end = fxmod.SPEC["cave_va"] - BASE + fxmod.SPEC["cave_used"]
+    bus_regions = [(x.start, x.end) for x in platform.loader_extents()]
+    bus_regions += [(0x400DC02A - BASE, 0x400DC032 - BASE), (cave_end - 4, cave_end + 10)]
+    stray = [i for i in range(len(gated)) if applied[i] != gated[i]
+             and not any(lo <= i < hi for lo, hi in bus_regions)]
+    assert stray == []
+    assert applied[cave_end - 4:cave_end] == bytes.fromhex("70004e75")    # moveq #0,%d0 ; rts
+    assert len(applied) > len(gated) == platform.STOCK_LENGTH
 
 
 def test_names_chorus_and_leaves_its_neighbours(dn2_111, applied):

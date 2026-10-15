@@ -516,6 +516,71 @@ def dec_curve() -> str:
     return p.svg("The noise decay's time constant for each DEC value")
 
 
+# ---------------------------------------------------------------- 6. page 5: FOLD, NPOS, Ring and AM
+
+def _peaks(xs):
+    return [x / live.SHAPE_PEAK for x in xs]
+
+
+def fold_curve() -> str:
+    xs = [live._f32(live.SHAPE_PEAK * (k / 200 - 2)) for k in range(801)]
+    p = Plot((-2, 2), (-1.05, 1.05), "input (1 = one oscillator's peak at LEV 100)", "output",
+             xticks=[-2, -1, 0, 1, 2], yticks=[-1, 0, 1], height=280, legend="below")
+    inside = [x for x in _peaks(xs) if abs(x) <= 1.05]
+    p.line(inside, inside, "s0", "FOLD 0 (off)")
+    for word, cls in ((0x2000, "s1"), (0x4000, "s2"), (0x7F00, "s3")):
+        p.line(_peaks(xs), _peaks(live.fold(xs, word)), cls, f"FOLD {word >> 8}")
+    return p.svg("What FOLD does to each sample")
+
+
+def _voice(shape, blocks=40, osc2=(0x4000, 0x100, 0x4000, 0)):
+    tables = dsp.tables()
+    seq = [(48.0, (0x4000, 0, 0x4000, 0x6400), osc2)] * blocks
+    return live.render_two(tables, seq, shapes=[shape] * blocks)
+
+
+def fold_wave() -> str:
+    n = 48000 / live.note_hz(48.0)                   # C3: one cycle
+    span = int(round(2 * n))
+    p = Plot((0, span / 48), (-1.05, 1.05), "time (ms)", "output (1 = the fold point)",
+             xticks=[0, 2, 4, 6, 8], yticks=[-1, 0, 1], height=260, legend="below")
+    for word, cls in ((0, "s0"), (0x3000, "s1"), (0x7F00, "s3")):
+        ys = _voice((word, 0, 0, 0x4000))[-span:]
+        p.line([k / 48 for k in range(span)], _peaks(ys), cls, f"FOLD {word >> 8}")
+    return p.svg("Prim. at POS 64, C3, folded")
+
+
+def npos_figure() -> str:
+    blocks = 300                                      # 0.2 s
+    p = Plot((0, 200), (0, 15), "time (ms)", "frame", xticks=[0, 50, 100, 150, 200],
+             yticks=[0, 5, 10, 15], height=260, legend="below")
+    for word, cls, smth in ((0x4000, "s1", live.SMTH_OFF), (0x7F00, "s3", live.SMTH_OFF), (0x7F00, "s0", 56)):
+        x, s, ys = live.npos_seeds()[0], 0.0, []
+        for b in range(blocks):
+            off, x = live.npos_offset(x, word)
+            pos = live.position(max(0, 0x3C00 + off))
+            s = live.smooth(s, pos, smth << 8, b == 0)       # SLW as its frame word
+            ys.append(live.trunc(s) / 65536)
+        label = f"NPOS {word >> 8}" + ("" if smth == live.SMTH_OFF else f", SLW {smth}")
+        p.line([b / 1.5 for b in range(blocks)], ys, cls, label)
+    return p.svg("The frame that plays, POS at 64, over 0.2 s")
+
+
+def shaper_figure() -> str:
+    span = 960                                        # 20 ms
+    osc2 = (0x4000, 0, 0x4700, 0x6400)                # Prim. at POS 64, 7 semitones up
+    o1 = _voice((0, 0, 0, 0), osc2=(0x4000, 0, 0x4700, 0))[-span:]
+    both = _voice((0, 0, 0, 0), osc2=osc2)[-span:]
+    ts = [k / 48 for k in range(span)]
+    p = Plot((0, 20), (-2.1, 2.1), "time (ms)", "output (1 = one oscillator's peak)",
+             xticks=[0, 5, 10, 15, 20], yticks=[-2, -1, 0, 1, 2], height=280, legend="below")
+    p.line(ts, _peaks([b - a for a, b in zip(o1, both)]), "s0", "osc 2")
+    p.line(ts, _peaks(o1), "s1", "osc 1")
+    p.line(ts, _peaks(_voice((0, 0, 0x0100, 0x7F00), osc2=osc2)[-span:]), "s2", "Ring, AMT 127")
+    p.line(ts, _peaks(_voice((0, 0, 0x0200, 0x7F00), osc2=osc2)[-span:]), "s3", "AM, AMT 127")
+    return p.svg("Osc 1 and osc 2 a fifth apart, and the shaper")
+
+
 # ---------------------------------------------------------------- the page
 
 def figures(dnx: pathlib.Path | None) -> dict[str, str]:
@@ -538,6 +603,10 @@ def figures(dnx: pathlib.Path | None) -> dict[str, str]:
         "noise": noise_spectra(),
         "colr": colr_spectra(),
         "dec": dec_curve(),
+        "foldcurve": fold_curve(),
+        "foldwave": fold_wave(),
+        "npos": npos_figure(),
+        "shaper": shaper_figure(),
     }
 
 

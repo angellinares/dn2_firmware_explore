@@ -32,6 +32,10 @@ import subprocess
 
 import numpy as np
 
+import sys
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
+from dnfw.waverider import dsp, live  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PANEL = ROOT.parent / "digikit-wt-forced/out/target/release/examples/panel_drive.exe"
 SOUND = 0x4210C0C0                   # track 1's sound: kit 0x4210c08c + 52
@@ -42,6 +46,7 @@ RUNNER_WAV = ROOT / "out/runner_long/keep/long_hold_native_amp_out.wav"
 POS1, TBL1, POS2, TBL2 = 26, 27, 32, 33
 SUB_LEV, SUB_WAVE, NOIS_LEV, NOIS_COL, NOIS_DEC = 50, 52, 54, 56, 57
 FOLD, WARP, FM, NPOS, AMT = 58, 59, 60, 61, 48
+SHAPE_TYPE, LEV2 = 62, 36
 
 
 def put(slot, value):
@@ -60,6 +65,16 @@ def redraw(page_taps=5):
 def to_page(n):
     """from page 1 to page n"""
     return [s for _ in range(n - 1) for s in ("tap:2", "wait:60M")] + ["wait:160M"]
+
+
+def shaped_ring(shape, osc2_lev=0) -> bytes:
+    """The scope's 2,048 samples for a page 5 SHAPE (FOLD, NPOS, TYPE, AMT): the model's held C4
+    (dnfw.waverider.live, which page5.asm matches bit for bit), osc 1 Prim. at POS 40, osc 2 Harm.
+    at POS 30 and level OSC2_LEV, scaled as ring_samples scales the runner's."""
+    seq = [(60.0, (40 << 8, 0, 0x4000, 0x6400), (30 << 8, 0x100, 0x4000, osc2_lev))] * 72
+    x = np.array(live.render_two(dsp.tables(), seq, shapes=[shape] * 72)[-2048:])
+    x = x / max(1e-9, np.abs(x).max()) * 0.8
+    return (np.round(x * 32767).astype(">i2")).tobytes()
 
 
 def ring_samples() -> bytes:
@@ -94,10 +109,14 @@ def clear_modulation(slot, knob):
 
 
 def main() -> int:
+    global RUNNER_WAV
     ap = argparse.ArgumentParser()
     ap.add_argument("build")
     ap.add_argument("--out", default=str(ROOT / "out/wrcaps"))
+    ap.add_argument("--panel-drive", default=str(PANEL))
+    ap.add_argument("--runner-wav", default=str(RUNNER_WAV))
     a = ap.parse_args()
+    RUNNER_WAV = pathlib.Path(a.runner_wav)
     out = pathlib.Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     names = []
@@ -118,9 +137,22 @@ def main() -> int:
     s += redraw() + frame("page1")
     for n in (2, 3, 4, 5):
         s += ["tap:2", "wait:60M"]
-        if n >= 4:
+        if n == 4:
             s += [f"poke:{RING:#x}:{2048:08x}{ring.hex()}", "wait:120M"]
+        if n == 5:                                             # page 5 plays: the scope shows its settings
+            p5 = shaped_ring((0x5800, 0x4800, 0, 0x6000))
+            s += [f"poke:{RING:#x}:{2048:08x}{p5.hex()}", "wait:120M"]
         s += frame(f"page{n}")
+        if n == 5:   # TYPE turned from Off to AM with knob E (push held; 40 counts are two steps), osc 2
+            # on, FOLD and NPOS off: the header names the value, the scope shows the model's AM at AMT 100
+            s += [put(LEV2, 100 << 8), put(FOLD, 0), put(NPOS, 0), put(SHAPE_TYPE, 0), put(AMT, 100 << 8),
+                  f"poke:{RING:#x}:{2048:08x}{shaped_ring((0, 0, 0x0200, 100 << 8), 0x6400).hex()}", "wait:60M"]
+            # a turn without the push first (it changes nothing), then the push held and two steps; the
+            # frame is taken while the push is held, before the header slides back to the project name
+            s += ["turn:5:40", "wait:20M", "press:45", "wait:20M", "turn:5:40", "wait:30M", f"frame:page5_am",
+                  "release:45", "wait:30M"]
+            names.append("page5_am")
+            s += [put(LEV2, 0), put(SHAPE_TYPE, 0), put(AMT, 0x6000)]
     s += ["tap:2", "wait:160M"]                                    # back on page 1
     # modulation on osc 1's POS: none (the control), slow, medium, fast
     # POS at 60 swept +-50 (frames 10 to 110, a saw to a sine), so the two frames drawn at
@@ -136,7 +168,7 @@ def main() -> int:
 
     steps = out / "steps.txt"
     steps.write_text("\n".join(s) + "\n")
-    r = subprocess.run([str(PANEL), a.build, "--out", str(out), "--watch", "0x4011ea6a",
+    r = subprocess.run([a.panel_drive, a.build, "--out", str(out), "--watch", "0x4011ea6a",
                         "--steps", f"@{steps}"], capture_output=True, text=True, timeout=3600)
     report = json.loads(r.stdout.strip().splitlines()[-1])
     (out / "report.json").write_text(json.dumps({k: v for k, v in report.items() if k != "captures"}, indent=1))

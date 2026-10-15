@@ -1,6 +1,6 @@
 # Waverider, alpha
 
-Documentation version 1.2, 2026-10-16. It describes Waverider 0.1.2.
+Documentation version 1.3, 2026-10-16. It describes Waverider 0.2.0 (alpha 3).
 
 Waverider is a sixth synth machine for the Digitone II. A Waverider track plays two wavetable
 oscillators, a sub-oscillator and a noise generator. Its own modulator (MOVE) sweeps each
@@ -101,9 +101,25 @@ The middle of the page shows the sound of the track as a scope.
 
 ## Page 5: Shape
 
-The top row has FOLD, WARP, FM and NPOS. The bottom row has TYPE, AMT, P1 and P2. These controls are
-for sound functions in a future version. **They do not change the sound now.** You can set and
-p-lock them.
+FOLD, NPOS, TYPE and AMT change the sound. WARP, FM, P1 and P2 are for a future version: you can set
+and p-lock them, but they do not change the sound yet.
+
+| Knob | Control | Function |
+|---|---|---|
+| A | FOLD | Folds the wave of the two oscillators back on itself. 0 is off. A higher value gives more folds and a brighter sound |
+| B | WARP | No effect yet |
+| C | FM | No effect yet |
+| D | NPOS | Moves POS by a random amount, 1,500 times a second. 0 is off. At 127, POS moves up to half its range |
+| E | TYPE | The shaper: Off, Ring or AM. Ring multiplies the two oscillators. AM uses osc 2 to change the level of osc 1 |
+| F | AMT | How much of the shaper you hear: 0 is none, 127 is the shaper only |
+| G | P1 | No effect yet |
+| H | P2 | No effect yet |
+
+- **Ring and AM need osc 2.** On page 2, set LEV2 above 0. With osc 2 off, Ring makes the sound
+  quieter and AM halves it.
+- **AMT starts at 64** on a new sound. With TYPE at Off, AMT changes nothing.
+- **FOLD follows the level.** A higher LEV1, LEV2 or TRIM gives more folds.
+- **To slow NPOS down**, turn SLW1 or SLW2 on page 4.
 
 ## The wavetable pool
 
@@ -152,7 +168,7 @@ screen captures of the page and its lists.
 
 - **P-locks:** you can p-lock all the controls on pages 1 to 5. The p-locks stay after a reboot, and
   after SAVE and LOAD.
-- **LFO destinations:** all the controls except TYPE, AMT and P1 on page 5 are in the DEST list of
+- **LFO destinations:** all the controls except TYPE, P1 and P2 on page 5 are in the DEST list of
   the LFO. The controls are in two groups. Each group has the header SYN.
 
 ## Modulation on the page

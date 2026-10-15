@@ -20,7 +20,7 @@ def test_every_region_is_filled():
     import gen_waverider_tech as gen
     text = PAGE.read_text(encoding="utf-8")
     found = {m.group(2): m.group(0) for m in gen.TECH.finditer(text)}
-    assert len(found) == 17
+    assert len(found) == 21                 # 17, and page 5: foldcurve, foldwave, npos, shaper
     assert all(len(block) > 200 for block in found.values()), [k for k, v in found.items() if len(v) <= 200]
 
 

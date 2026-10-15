@@ -42,6 +42,12 @@ Per voice and block, measured in the SHARC runner (`scripts/sharc_waverider_p3_c
 | Noise, WHT | +905 |
 | Noise, PNK with a decay | +2,022 |
 | Sub and noise together | +2,764 (about 6.6 % of a frame on 16 voices) |
+| Page 5: FOLD | +369 |
+| Page 5: Ring | +363 |
+| Page 5: AM | +431 |
+| Page 5: NPOS, with DCLK at 0 | +57 |
+| Page 5: NPOS, with DCLK at 3 ms (DCLK's crossfades of its jumps) | +1,568 |
+| Page 5: AM, FOLD and NPOS together | +2,368 (about 5.7 % of a frame on 16 voices) |
 | FM Tone's whole voice, for comparison | +11,113 |
 
 A table in the pool costs nothing per frame unless a voice plays it; what it costs is

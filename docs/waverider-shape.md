@@ -13,11 +13,32 @@ that proves wrong in testing can still change.
 | FOLD | WARP | FM | NPOS | TYPE | AMT | P1 | P2 |
 
 - **A to D** are live knobs: wave fold, phase warp, FM depth from osc 2 into osc 1, noise into POS.
-- **E to H** are one shaper slot: TYPE picks Off, Ring, AM, Formant or Comb (the list grows
-  without a new record), AMT is its amount, P1 and P2 its two parameters.
+- **E to H** are one shaper slot. TYPE picks Off, Ring or AM. Formant and Comb come later: the list
+  grows without a new record. AMT is the shaper's amount, and P1 and P2 are its two parameters.
 - **The scope** is drawn in the wave's place, as on page 4, so a fold is seen while it turns.
-- **Values** store, p-lock and are LFO destinations like every other Waverider control (they
-  ride stock records, as the sub and noise do). Until a feature is wired they change nothing in the sound.
+- **Values** store and p-lock like every other Waverider control. They ride stock records, as
+  the sub and noise do. All but TYPE, P1 and P2 are LFO destinations.
+
+## What plays (Waverider 0.2.0, 2026-10-16)
+
+FOLD, NPOS, TYPE and AMT change the sound. WARP, FM, P1 and P2 do not, yet. `csrc/waverider/sharc/page5.asm`
+does the work on the DSP, and `dnfw.waverider.live` (`fold`, `shaper`, `npos_offset`) is its model.
+
+| Control | What the DSP does | Where |
+|---|---|---|
+| FOLD | A triangle fold of the two oscillators' mix, at one oscillator's peak (LEV 100, TRIM -11 dB), driven by 1 + 7 FOLD / 127 | after osc 2, before the sub |
+| NPOS | A random POS offset per block: a xorshift32 per voice and oscillator, up to (NPOS / 127)^2 of half the range | before MPOS |
+| TYPE, AMT | Ring (osc 1 x osc 2) or AM (osc 2 sets osc 1's level), mixed in by AMT | after osc 2, before FOLD |
+
+- **Checks:** `scripts/sharc_waverider_shape.py` runs 8 cases in digikit's SHARC runner, and each is bit for bit the
+  model. `test/test_waverider_shape.py` checks the model.
+- **Cost** (`scripts/sharc_waverider_p5_cost.py`, instructions per voice and block): FOLD 369, Ring 363, AM 431,
+  NPOS 57. DCLK's crossfades of NPOS's jumps add 1,510 at DCLK 3 ms.
+- **Defaults, measured 2026-10-16 in the emulator:** when you select Waverider, MACHINE SEL sets sound slots 58
+  to 64 to 0. So every Waverider sound since 0.1.0 has FOLD, NPOS and TYPE at 0. Slot 48 (AMT, the MAST record) keeps
+  0x4000, so AMT reads 64. With TYPE Off, AMT changes nothing.
+- **Not measured yet:** whether the ColdFire adds MAST, and so AMT, to the note. The DSP side does not
+  (`scripts/sharc_waverider_inert.py`). The instrument test turns AMT with TYPE Off and listens for a pitch change.
 
 ## Where the eight records sit
 
@@ -31,9 +52,9 @@ FM Tone's 227 to 234 (slots 50 to 57, page 3). The rest:
 | FM | 210 | 60 | FM Tone |
 | NPOS | 211 | 61 | FM Tone |
 | TYPE | 235 | 62 | FM Tone |
-| AMT | 236 | 63 | FM Tone |
+| P2 | 236 | 63 | FM Tone |
 | P1 | 237 | 64 | FM Tone |
-| P2 | 261 | 48 | WaveTone's master tuning (MAST) |
+| AMT | 261 | 48 | WaveTone's master tuning (MAST) |
 
 Record 262 (FINE, slot 49) stays free for a later control.
 

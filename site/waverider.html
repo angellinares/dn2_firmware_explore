@@ -771,12 +771,14 @@
       <tr><td>FOLD</td><td class="num">369</td><td class="num">0.9 %</td></tr>
       <tr><td>Ring</td><td class="num">363</td><td class="num">0.9 %</td></tr>
       <tr><td>AM</td><td class="num">431</td><td class="num">1.0 %</td></tr>
-      <tr><td>NPOS, DCLK at 0</td><td class="num">57</td><td class="num">0.1 %</td></tr>
-      <tr><td>NPOS, DCLK at 3 ms</td><td class="num">1,568</td><td class="num">3.8 %</td></tr>
-      <tr><td>AM, FOLD and NPOS together</td><td class="num">2,368</td><td class="num">5.7 %</td></tr>
+      <tr><td>NPOS up to 46, or DCLK at 0</td><td class="num">57</td><td class="num">0.1 %</td></tr>
+      <tr><td>NPOS 64 or more, DCLK at 3 ms, both oscillators at POS 64</td><td class="num">5,614</td><td class="num">13.5 %</td></tr>
+      <tr><td>AM, FOLD and NPOS 64 together, both oscillators at POS 64</td><td class="num">6,414</td><td class="num">15.4 %</td></tr>
     </tbody>
   </table></div>
-  <p>Most of NPOS's cost is DCLK's: each crossfade reads the table two times.</p>
+  <p>Most of NPOS's cost is DCLK's. Above NPOS 46, POS can move more than 2 frames between two blocks, and
+  DCLK crossfades the jump. A crossfade reads the table a second time, which costs about as much as one more
+  oscillator (2,822 instructions a block). At NPOS 64 a crossfade runs on each oscillator in almost every block.</p>
 
   <p class="next"><button type="button" data-go="try">Back to Try it</button></p>
 </section>

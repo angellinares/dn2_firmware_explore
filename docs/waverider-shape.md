@@ -33,7 +33,8 @@ does the work on the DSP, and `dnfw.waverider.live` (`fold`, `shaper`, `npos_off
 - **Checks:** `scripts/sharc_waverider_shape.py` runs 8 cases in digikit's SHARC runner, and each is bit for bit the
   model. `test/test_waverider_shape.py` checks the model.
 - **Cost** (`scripts/sharc_waverider_p5_cost.py`, instructions per voice and block): FOLD 369, Ring 363, AM 431,
-  NPOS 57. DCLK's crossfades of NPOS's jumps add 1,510 at DCLK 3 ms.
+  NPOS 57. Above NPOS 46, DCLK crossfades NPOS's jumps. At NPOS 64 with both oscillators at POS 64, that adds
+  5,557: a second table read on each oscillator in almost every block (24 blocks, 2026-10-16).
 - **Defaults, measured 2026-10-16 in the emulator:** when you select Waverider, MACHINE SEL sets sound slots 58
   to 64 to 0. So every Waverider sound since 0.1.0 has FOLD, NPOS and TYPE at 0. Slot 48 (AMT, the MAST record) keeps
   0x4000, so AMT reads 64. With TYPE Off, AMT changes nothing.

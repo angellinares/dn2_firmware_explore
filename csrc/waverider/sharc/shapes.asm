@@ -178,6 +178,6 @@ wr_shape_glide.:
       R1 = TRUNC F0;
 .GLOBAL wr_shape_have.;
 wr_shape_have.:
-      JUMP 0x16ec46;                    // -> wr_mod_have. (reader_m9.asm)
+      JUMP 0x172b00;                    // -> wr_p5_npos. (page5.asm: NPOS, then wr_mod_have in reader_m9.asm)
 .wr_shape..end:
       .type wr_shape.,STT_FUNC;

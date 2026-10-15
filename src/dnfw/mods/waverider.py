@@ -99,13 +99,12 @@ def extents(firmware=None, area_length: int = 0) -> list[Extent]:
 NOT_RAM = tuple(range(SPEC["layout"]["wr_spans"] & ~1, SPEC["layout"]["wr_spans_end"], 2))
 
 # Word places that read as an address above BSS and are not one, each disassembled on
-# 2026-10-15 (the three label texts read again after the bus moved them 10 bytes down, and again 4 bytes up
-# when SMT1/SMT2 became SLW1/SLW2: the words read Nois, Fold and Form) (objdump -m m68k:cfv4e over the two CODE chunks). A change to the code moves
+# 2026-10-16 (the label texts read again after the bus moved them 10 bytes down, 4 bytes up when SMT1/SMT2
+# became SLW1/SLW2, and 8 bytes up when TYPE lost Formant and Comb: the words read Nois and Fold) (objdump -m m68k:cfv4e over the two CODE chunks). A change to the code moves
 # them, so the check flags the new places again and they are read afresh.
 NOT_RAM += (
-    0x4670AF9E,              # "Noise Colour": the label text "Nois"
-    0x4670AFBC,              # "ave Fold": the label text "Fold"
-    0x4670B134,              # ".AM.Formant": the label text "Form"
+    0x4670AF96,              # "Noise Colour": the label text "Nois"
+    0x4670AFB4,              # "ave Fold": the label text "Fold"
     0x4670B54A,              # notl %d3 ; andl %d3,%d2
     0x4670B7DA,              # addil #0x469fe800,%d0: the pool spans' base 0x46a00000 less two
                              # 3072 B entries, indexed by the table number (2 and up), declared

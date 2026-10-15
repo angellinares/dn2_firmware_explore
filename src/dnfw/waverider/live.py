@@ -578,6 +578,68 @@ class NoiseVoice:
         return out
 
 
+# Page 5, the shape (docs/waverider-shape.md): FOLD, NPOS, TYPE and AMT, frame words like the
+# others (sound slots 58, 61, 62 and 48: records 208, 211, 235 and 261). page5.asm runs them.
+SHAPE_SLOTS = (58, 61, 62, 48)          # FOLD, NPOS, TYPE, AMT
+SHAPE_MAX = 0x7F00                       # 127 << 8: the knobs' top
+SHAPE_TYPES = ("Off", "Ring", "AM")     # TYPE's values; more types grow the list
+SHAPE_PEAK = 10 ** (-11 / 20)            # one oscillator's peak at LEV 100 and TRIM -11 dB: the fold point
+FOLD_DRIVE = 7.0                         # FOLD 127 drives the mix 8 times past the fold point
+NPOS_DEPTH = 0x3C00                      # NPOS 127: POS moves up to half its range either way
+
+
+def npos_seeds() -> tuple[int, ...]:
+    """page5.asm's generator per voice and oscillator (2t + osc), seeded at boot: odd, nonzero."""
+    return tuple((0x9E3779B9 * (k + 1)) & 0xFFFFFFFF | 1 for k in range(32))
+
+
+def npos_offset(x: int, word: int) -> tuple[int, int]:
+    """(the POS offset, the generator's next state) for NPOS's frame WORD (0 changes nothing)."""
+    x = xorshift32(x)
+    w = _f32(float(word & 0xFFFF))
+    depth = _f32(_f32(w * w) * _f32(NPOS_DEPTH / SHAPE_MAX ** 2))
+    r = _f32((x - (1 << 32) if x >> 31 else x) * 2.0 ** -31)
+    return trunc(_f32(r * depth)), x
+
+
+def _trunc_by(v: float, scale: int) -> int:
+    """TRUNC Fx BY scale: v x 2^scale toward zero, saturated to an int32."""
+    return max(-(1 << 31), min((1 << 31) - 1, trunc(v * 2.0 ** scale)))
+
+
+def fold(xs: list[float], word: int) -> list[float]:
+    """FOLD's frame WORD on the mix: a triangle fold at +-SHAPE_PEAK of the mix driven by
+    1 + 7 x FOLD/127. In page5.asm's order: u = x g/T + 1 becomes a 32-bit phase (TRUNC BY 24,
+    then << 6: (u + 1)/4 mod 1), its magnitude (ABS, >> 1, FLOAT BY -29) is |w| in 0..2, and
+    y = T |w| - T."""
+    t = _f32(SHAPE_PEAK)
+    g = _f32(_f32(1.0 + _f32(float(word & 0xFFFF) * _f32(FOLD_DRIVE / SHAPE_MAX))) * _f32(1 / SHAPE_PEAK))
+    out = []
+    for x in xs:
+        v = _f32(_f32(x * g) + 1.0)
+        ph = (_trunc_by(v, 24) << 6) & 0xFFFFFFFF
+        s = ph - (1 << 32) if ph >> 31 else ph
+        a = (abs(s) & 0xFFFFFFFF) >> 1
+        out.append(_f32(_f32(_f32(a * 2.0 ** -29) * t) - t))
+    return out
+
+
+def shaper(mix: list[float], osc1: list[float], kind: int, word: int) -> list[float]:
+    """TYPE 1 Ring or 2 AM, mixed in by AMT's frame WORD: o2 = mix - osc1 (as the DSP subtracts),
+    Ring o1 o2 / T, AM o1 (1 + o2 / T) / 2, and y = mix + a (shaped - mix)."""
+    a = _f32(float(word & 0xFFFF) * _f32(1 / SHAPE_MAX))
+    inv = _f32(1 / SHAPE_PEAK)
+    out = []
+    for b, o1 in zip(mix, osc1):
+        o2 = _f32(b - o1)
+        if kind == 1:
+            s = _f32(_f32(o1 * o2) * inv)
+        else:
+            s = _f32(_f32(o1 * _f32(_f32(o2 * inv) + 1.0)) * 0.5)
+        out.append(_f32(b + _f32(a * _f32(s - b))))
+    return out
+
+
 def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
                   precision: str = "float32") -> tuple[list[float], int]:
     """The loop's output for a sequence of blocks, each (note, WAV1, TBL1[, TUN1[, LEV1]])
@@ -598,7 +660,7 @@ def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
 
 
 def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs=None,
-               noises=None) -> list[float]:
+               noises=None, shapes=None, voice: int = 0) -> list[float]:
     """The loop's output with both oscillators (Milestone 9b), each block
     (note, osc1, osc2[, (TRIG, triggered[, PRST[, position, tempo[, DCLK]]])]) with each
     osc (WAV, TBL, TUN, LEV[, RATE, MPOS, MLEV, MOVE[, SYNC[, SMTH]]]), the frame's 16-bit
@@ -623,7 +685,10 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
     table_t = increment_table()
     sub_phase = 0
     noise = NoiseVoice(noise_seeds()[0])
+    npos = list(npos_seeds()[2 * voice:2 * voice + 2])   # NPOS's generators, this voice's
+    osc1: list[float] = []
     for b, blk in enumerate(blocks):
+        shp = shapes[b] if shapes else (0, 0, 0, 0)       # page 5: FOLD, NPOS, TYPE, AMT
         incs = [None, None]
         note, oscs = blk[0], blk[1:3]
         trig_mode, triggered, *rest = blk[3] if len(blk) > 3 else (TRIG_RESTART, False)
@@ -642,6 +707,9 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
                 start = 0 if restarted else mphase[k]
                 mphase[k] = move_step(mphase[k], rate, move, trig_mode, triggered, sync, song, tempo)
                 rnd.step(k, start, mphase[k], move, restarted)
+                if shp[1] & 0xFFFF:             # page 5: NPOS, before MPOS, not below 0
+                    off, npos[k] = npos_offset(npos[k], shp[1])
+                    wav = max(0, (wav & 0xFFFF) + off)
                 wav, lev = move_apply(wav, lev, mpos, mlev,
                                       move_shape(mphase[k], move, tuple(rnd.values(k))))
             if len(osc) > 4 and triggered and (prst & 0xFFFF) >> 8:
@@ -676,10 +744,15 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
                 if fade[k][1] <= 0:
                     fade[k] = None
             if k == 0:
-                mixed = y
+                mixed = osc1 = y
             else:
                 mixed = ([_f32(a + b) for a, b in zip(mixed, y)] if precision == "float32"
                          else [a + b for a, b in zip(mixed, y)])
+        kind = (shp[2] & 0xFFFF) >> 8
+        if kind in (1, 2) and shp[3] & 0xFFFF:  # page 5: TYPE Ring or AM, by AMT
+            mixed = shaper(mixed, osc1, kind, shp[3])
+        if shp[0] & 0xFFFF:                     # page 5: FOLD, on the oscillators' mix
+            mixed = fold(mixed, shp[0])
         sub = subs[b] if subs else None
         if sub and sub[0] & 0xFFFF:
             src = 1 if (sub[3] & 0xFFFF) >> 8 and incs[1] is not None else 0

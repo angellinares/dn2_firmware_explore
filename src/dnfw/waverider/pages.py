@@ -54,6 +54,7 @@ This module is pure: it builds the source; `coldfire.compose` assembles and plac
 
 from __future__ import annotations
 
+from .live import SHAPE_TYPES as LIVE_SHAPE_TYPES
 from .live import (DCLK_DEFAULT, MOVE_SHAPES, SUB_OCTAVES, SUB_WAVES, SYNC_INDEX, SYNC_NOTES,
                    dclk_names, smth_names)
 
@@ -95,7 +96,7 @@ SHAPE_LABELS = dict(zip(SHAPE, ("FOLD", "WARP", "FM", "NPOS", "TYPE", "AMT", "P1
 SHAPE_RUNS = ((58, 208, 4), (62, 235, 3))      # (first sound slot, its record id, how many): 58..61, 62..64
 SHAPE_TYPE = 235
 TRIM_ID = 262                      # WaveTone's FINE (slot 49): the level trim, page 4 place D (docs/waverider-trim.md)
-SHAPE_TYPES = ("Off", "Ring", "AM", "Formant", "Comb")     # more later: the list grows, no slot
+SHAPE_TYPES = LIVE_SHAPE_TYPES           # Off, Ring, AM (page5.asm); more later: the list grows, no slot
 SHAPE_PLAIN = tuple(rid for rid in SHAPE if rid != SHAPE_TYPE)   # 0..127 (wr_rate_fmt row 4)
 
 # record id -> Waverider's label (the records stay WaveTone's: their slots are the

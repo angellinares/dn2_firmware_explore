@@ -11,7 +11,7 @@ anywhere. This writes `src/dnfw/waverider/sharc_code.json` from:
   `pool.json` (a slot past the baked tables, from the load area's pool, at sw 0x16fe00);
   `sync.json` (M10b-2: SYNC, MOVE locked to the tempo, at sw 0x170000), `smooth.json`
   (SMTH, the glide on POS, at sw 0x170300) and `dclk.json` (DCLK, the declick, at sw
-  0x170400);
+  0x170400); `page5.json` (page 5: FOLD, NPOS, the shaper, at sw 0x172b00);
 - `csrc/waverider/sharc/reader_m9.json` and `machine9_live.json` (Milestone 9a: M5's
   reader and loop with osc 1's level as a gain; the M5 sources stay beside them) --
   each (re)written from its `.asm` with selas when `--assemble` (WSL + selache). The
@@ -102,6 +102,7 @@ def main(argv=None) -> int:
             rmip = assemble("reader_mip", dsp.MIP_SW, work)
             rmiph = assemble("reader_miph", dsp.MIP_SW, work)
             rmiph2 = assemble("reader_miph2", dsp.MIP_SW, work)
+            page5 = assemble("page5", dsp.PAGE5_SW, work)
             ejump = one_jump(EMARK_LINE, dsp.CALL_SITE_SW, work)
             jump = one_jump(ENTRY_LINE, dsp.ENTRY_SW, work)
             ijump = one_jump(IDLE_LINE, dsp.IDLE_SITE_SW, work)
@@ -124,6 +125,7 @@ def main(argv=None) -> int:
             rmip = committed("reader_mip")
             rmiph = committed("reader_miph")
             rmiph2 = committed("reader_miph2")
+            page5 = committed("page5")
             ejump = old["emark_jump"]
             if "entry_jump" not in old or "idle_jump" not in old:
                 raise SystemExit("no entry or idle JUMP committed yet: run with --assemble")
@@ -149,7 +151,8 @@ def main(argv=None) -> int:
             "trim": {k: v for k, v in trim.items() if k != "instruction_offsets"},
             "reader_mip": {k: v for k, v in rmip.items() if k != "instruction_offsets"},
             "reader_miph": {k: v for k, v in rmiph.items() if k != "instruction_offsets"},
-            "reader_miph2": {k: v for k, v in rmiph2.items() if k != "instruction_offsets"}}
+            "reader_miph2": {k: v for k, v in rmiph2.items() if k != "instruction_offsets"},
+            "page5": {k: v for k, v in page5.items() if k != "instruction_offsets"}}
     dsp.CODE.write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"wrote {dsp.CODE.relative_to(ROOT)}: reader {len(reader['object_parcels_be']) // 2} B, "
           f"loop {len(loop['object_parcels_be']) // 2} B, entry {len(jump['object_parcels_be']) // 2} B")

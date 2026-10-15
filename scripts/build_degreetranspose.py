@@ -154,8 +154,8 @@ The pending amount lives in the code chunk and is not saved.
 
 ## Code and RAM
 
-One platform `CODE` chunk at `0x467b0000`, in the free run between arpscale's
-code (`0x467a8000`) and arpplocks (`0x467c0000`) (`docs/mod-memory-regions.md`).
+One platform `CODE` chunk at `0x467b8000`, in the free run between lfolength's
+code (`0x467b0000`, 260 B) and arpplocks (`0x467c0000`) (`docs/mod-memory-regions.md`).
 Its pending state lives at the chunk's end.
 """
 
@@ -179,7 +179,7 @@ from dnfw.firmware.load import load
 from dnfw.mods import platform
 from dnfw.patch.assemble import available
 
-CODE_VA = 0x467B0000            # between arpscale's code (0x467a8000) and arpplocks (0x467c0000)
+CODE_VA = 0x467B8000            # between lfolength's code (0x467b0000, 260 B) and arpplocks (0x467c0000)
 MAX_DEGREES = 7                 # every degree of an 8-note scale, up or down; a signed 4-bit field
 
 # Where the amount lives, in the pattern in RAM.

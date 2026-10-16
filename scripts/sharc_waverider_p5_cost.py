@@ -1,10 +1,10 @@
-"""What page 3's sub and noise cost the DSP, in digikit's SHARC runner: instructions.
+"""What page 5 costs the DSP, in digikit's SHARC runner: instructions.
 
-    python scripts/sharc_waverider_p3_cost.py [--digikit DIR] [--blocks 4]
+    python scripts/sharc_waverider_p5_cost.py [--digikit DIR] [--blocks 4]
 
 Track 0 is Waverider (both oscillators on, a note at block 1), tracks 1-15 MIDI. Each
-case differs from the control (page 5 all 0) in one control: FOLD, TYPE Ring or AM with AMT;
-the last has all of them. The difference is per voice, since page5.asm runs once per type-5
+case differs from the control (page 5 all 0) in one control: FOLD, TYPE Ring or AM with AMT,
+WARP, FM; the last has all of them. The difference is per voice, since page5.asm runs once per type-5
 voice and block. The
 16-voice figure multiplies it by 16 (an extrapolation, not a run); a frame is one
 32-sample block, 666,667 cycles at 1 GHz (docs/sharc-load.md). Instructions are
@@ -30,7 +30,7 @@ import sharc_waverider_m5 as g                 # noqa: E402
 from dnfw.waverider import dsp, live          # noqa: E402
 from dnfw import sharcemu  # noqa: E402
 
-FOLD, NPOS, TYPE, AMT = live.SHAPE_SLOTS
+FOLD, NPOS, TYPE, AMT, WARP, FM = live.SHAPE_SLOTS
 FRAME_CYCLES = 666_667
 
 
@@ -54,6 +54,10 @@ def main(argv=None) -> int:
         ("Ring, AMT 64", {TYPE: 0x0100, AMT: 0x4000}),
         ("AM, AMT 64", {TYPE: 0x0200, AMT: 0x4000}),
         ("all: AM and FOLD", {TYPE: 0x0200, AMT: 0x4000, FOLD: 0x4000}),
+        ("WARP 64", {WARP: 0x4000}),
+        ("FM 64", {FM: 0x4000}),
+        ("FM 64 and WARP 64", {FM: 0x4000, WARP: 0x4000}),
+        ("all: AM, FOLD, WARP and FM", {TYPE: 0x0200, AMT: 0x4000, FOLD: 0x4000, WARP: 0x4000, FM: 0x4000}),
     ]
     got = {}
     with tempfile.TemporaryDirectory(dir=g.OUT) as tmp:

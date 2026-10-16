@@ -1,12 +1,12 @@
-"""Waverider's page 5 (page5.asm: FOLD, TYPE Ring / AM with AMT) in digikit's SHARC
-runner, bit for bit.
+"""Waverider's page 5 (page5.asm and phase.asm: FOLD, TYPE Ring / AM with AMT, WARP, FM) in
+digikit's SHARC runner, bit for bit.
 
     python scripts/sharc_waverider_shape.py [--digikit DIR] [--blocks 8] [--seconds 2.5]
 
 From the Milestone 2 post-init snapshot, on the section 7 the mod ships
 (`dnfw.waverider.dsp.section7`), type-5 render blocks as `scripts/sharc_waverider_m5.py`
 runs them (a note at block 1), with page 5's frame words (slots 58 FOLD, 61 NPOS, 62 TYPE,
-48 AMT) set:
+48 AMT, 59 WARP, 60 FM) set:
 
 | case | must hold |
 |---|---|
@@ -18,6 +18,17 @@ runs them (a note at block 1), with page 5's frame words (slots 58 FOLD, 61 NPOS
 | AM, AMT 64, osc 2 on | the same |
 | Ring, AMT 127, osc 2 off | the same: o2 is 0, so the mix is scaled by 1 - a |
 | all four with the sub | Ring and FOLD together, before the sub (NPOS set, no effect) |
+| WARP 64 | the same: osc 1's phase bent |
+| WARP 127, osc 2 on | both oscillators bent |
+| FM 64, osc 2 on | osc 2 plays first and moves osc 1's phase |
+| FM 127 and WARP 64, osc 2 on | both on osc 1, WARP on osc 2 |
+| FM 127, osc 2 off | bit for bit the control: no osc 2, no FM |
+| FM, WARP, AM, FOLD and the sub | everything on page 5 at once |
+| FM and WARP across a POS jump, DCLK on | DCLK's two reads take the same phases |
+
+With DNFW_WAVERIDER_NOMIP=1 the tables load without their mip flag, so phase.asm's copy of opt2's
+reader (a pool table before build3 has its levels) plays them. `--only TEXT` runs the cases whose
+name holds TEXT, and the control.
 
 Writes out/waverider/shape_*.wav (48 kHz, 16-bit mono, LOOPED from the runner's blocks) and
 shape_report.json. Exit 0 when every case passes.
@@ -40,7 +51,7 @@ from dnfw.waverider import dsp, live          # noqa: E402
 from dnfw.waverider import frame as FR        # noqa: E402
 from dnfw import sharcemu  # noqa: E402
 
-FOLD, NPOS, TYPE, AMT = live.SHAPE_SLOTS
+FOLD, NPOS, TYPE, AMT, WARP, FM = live.SHAPE_SLOTS
 SUB = live.SUB_SLOTS[0]
 
 
@@ -52,6 +63,7 @@ def main(argv=None) -> int:
                     default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     ap.add_argument("--blocks", type=int, default=8)
     ap.add_argument("--seconds", type=float, default=2.5)
+    ap.add_argument("--only", action="append", default=[], metavar="TEXT")
     a = ap.parse_args(argv)
 
     dk = g.m1.Digikit(a.digikit)
@@ -72,7 +84,18 @@ def main(argv=None) -> int:
         ("AM, AMT 64, osc 2 on", {**on2, TYPE: 0x0200, AMT: 0x4000}),
         ("Ring, AMT 127, osc 2 off", {g.LEV2: 0, TYPE: 0x0100, AMT: 0x7F00}),
         ("all four with the sub", {**on2, TYPE: 0x0100, AMT: 0x5000, FOLD: 0x3000, NPOS: 0x2000, SUB: 0x6400}),
+        ("WARP 64", {g.LEV2: 0, WARP: 0x4000}),
+        ("WARP 127, osc 2 on", {**on2, WARP: 0x7F00}),
+        ("FM 64, osc 2 on", {**on2, FM: 0x4000}),
+        ("FM 127 and WARP 64, osc 2 on", {**on2, FM: 0x7F00, WARP: 0x4000}),
+        ("FM 127, osc 2 off: no effect", {g.LEV2: 0, FM: 0x7F00}),
+        ("FM, WARP, AM, FOLD and the sub", {**on2, FM: 0x5000, WARP: 0x3000, TYPE: 0x0200, AMT: 0x6000,
+                                            FOLD: 0x2000, SUB: 0x6400}),
+        ("FM and WARP across a POS jump, DCLK on", {**on2, FM: 0x6000, WARP: 0x5000, g.DCLK: live.DCLK_DEFAULT}),
     ]
+    jumps = {"FM and WARP across a POS jump, DCLK on"}
+    if a.only:
+        cases = [c for c in cases if c[0].startswith("control") or any(t in c[0] for t in a.only)]
     checks, report, wavs = {}, {"blocks": a.blocks, "cases": {}}, []
     g.OUT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=g.OUT) as tmp:
@@ -81,8 +104,9 @@ def main(argv=None) -> int:
         for name, words in cases:
             over = {g.WAV1: 0x4000, **words}
 
-            def fb(b, over=over):
-                return g.base_frame(sound, machines, trigger=(b == 1), overrides=over).to_bytes()
+            def fb(b, over=over, jump=name in jumps):
+                o = {**over, g.WAV1: 0x7800} if jump and b >= g.JUMP_AT else over
+                return g.base_frame(sound, machines, trigger=(b == 1), overrides=o).to_bytes()
 
             subs, shapes = [], []
 
@@ -107,7 +131,7 @@ def main(argv=None) -> int:
             plain = live.render_two(tables, seq, g.BLOCK, "float32", subs=per_sub)
             bad = g.mismatches(got, want)
             heard = sum(1 for x, y in zip(want, plain) if x != y)
-            page5 = any(words.get(s, 0) for s in (FOLD, AMT))   # NPOS changes nothing yet
+            page5 = any(words.get(s, 0) for s in (FOLD, AMT, WARP)) or bool(words.get(FM) and words.get(g.LEV2))
             checks[name] = bad == 0 and (heard > 0 if page5 else heard == 0)
             report["cases"][name] = {"mismatches": bad, "samples_page5_changes": heard,
                                      "frame_words": per_shape[-1] if per_shape else None}

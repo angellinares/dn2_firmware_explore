@@ -104,3 +104,9 @@ def test_the_level_follows_the_fastest_phase():
     assert live.phase_sel(1000, (10.0, 0.5)) == 10000
     assert live.phase_sel(1000, None, 1000, live.SHAPE_MAX) == 1000 + round(2 * math.pi * 1000)
 
+
+def test_the_phase_buffers_fit_and_phase_asm_has_its_span():
+    assert dsp.PAGE5_END <= dsp.FMB_DM < dsp.PH_DM < dsp.WARP_TABLE_DM < dsp.PHASE_DM < dsp.REGION[1]
+    assert dsp.PH_DM - dsp.FMB_DM >= 4 * live.PHASE_MAX
+    assert dsp.WARP_TABLE_DM - dsp.PH_DM >= 4 * (live.PHASE_MAX + 1)
+    assert dsp.PHASE_DM - dsp.WARP_TABLE_DM == 8 * 128

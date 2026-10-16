@@ -209,6 +209,12 @@ PAGE5_SW = PAGE5_DM // 2                     # 0x172b00
 PAGE5_COPY_DM = 0x2E5E00                     # osc 1's samples for the shaper, 128 float32
 PAGE5_FLAG_DM = 0x2E6000                     # 1 when osc 2 ran this block (the way to sub.asm)
 PAGE5_END = 0x2E6080
+# WARP and FM (page5.asm writes each sample's phase; phase.asm's readers read it)
+FMB_DM = 0x2E6080                            # osc 2's samples while it plays first under FM, 128 float32
+PH_DM = 0x2E6280                             # each sample's phase, 129 u32 (the last: the phase kept)
+WARP_TABLE_DM = 0x2E6500                     # WARP's (k1, k2), 128 pairs of float32 (live.warp_table)
+PHASE_DM = 0x2E6900                          # phase.asm: the readers on PH
+PHASE_SW = PHASE_DM // 2                     # 0x173480
 FILL_MIN = 32                                # a shorter tail of zeros stays in its payload (a fill block's header is 16 bytes)
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 
@@ -283,7 +289,7 @@ def objects() -> dict[str, bytes]:
             for name in ("reader", "machine5_live", "entry_jump", "idle_load", "idle_jump", "block_count",
                          "entry_mark", "emark_jump", "modulator", "shapes", "load", "pool", "sync",
                          "smooth", "dclk", "sub", "noise", "trim", "reader_mip", "reader_miph", "reader_miph2",
-                         "page5")}
+                         "page5", "phase")}
 
 
 def noise_state() -> bytes:
@@ -368,7 +374,11 @@ def spans() -> list[tuple[str, int, bytes]]:
                 ("build3.asm (wr_build3)", BUILD3_DM, s3["build3"])]
     raw += [("page5.asm (wr_p5_mid, wr_p5_ran, wr_p5_skip)", PAGE5_DM, obj["page5"]),
             ("page 5's copy of osc 1 (zeros)", PAGE5_COPY_DM, bytes(PAGE5_FLAG_DM - PAGE5_COPY_DM)),
-            ("page 5's flag (zero)", PAGE5_FLAG_DM, bytes(PAGE5_END - PAGE5_FLAG_DM))]
+            ("page 5's flag and state (zeros)", PAGE5_FLAG_DM, bytes(PAGE5_END - PAGE5_FLAG_DM)),
+            ("FM's buffer and the phases (zeros)", FMB_DM, bytes(WARP_TABLE_DM - FMB_DM)),
+            ("WARP's (k1, k2), 128 pairs of float32", WARP_TABLE_DM,
+             struct.pack("<256f", *(k for pair in live.warp_table() for k in pair))),
+            ("phase.asm (wr_ph_read)", PHASE_DM, obj["phase"])]
     out = []
     for k, (what, at, payload) in enumerate(raw):
         end = raw[k + 1][1] if k + 1 < len(raw) else REGION[1]

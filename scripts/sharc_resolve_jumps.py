@@ -7,6 +7,7 @@ target named in the comment after it, in one of two forms:
 
     IF NE JUMP 0x16ee14;              // -> wr_t5v_next.
     CALL 0x171c00;                    // -> wr_fft3.
+    CJUMP 0x172c80 (DB);              // -> wr_p5_phase.
     DM(I7, M7) = 0x16ee13;            // return address - 1: wr_t5v_next. - 1
 
 This assembles SOURCE with selas (WSL), reads where each named label lands (LOAD_SW
@@ -28,7 +29,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-JUMP = re.compile(r"((?:JUMP|CALL)\s+)(0x[0-9a-fA-F]+)(;\s*//\s*->\s*)([A-Za-z_][\w]*)\.")
+JUMP = re.compile(r"((?:C?JUMP|CALL)\s+)(0x[0-9a-fA-F]+)((?:\s*\(DB\))?;\s*//\s*->\s*)([A-Za-z_][\w]*)\.")
 RET = re.compile(r"(=\s*)(0x[0-9a-fA-F]+)(;\s*//\s*return address - 1:\s*)([A-Za-z_][\w]*)\.\s*-\s*1")
 
 
@@ -59,7 +60,7 @@ def siblings() -> dict[str, int]:
             "trim": dsp.TRIM_SW,
             "reader_mip": dsp.MIP_SW, "reader_miph": dsp.MIP_SW, "reader_miph2": dsp.MIP_SW,
             "fft3": dsp.FFT3_SW, "spec3": dsp.SPEC3_SW, "mipb3": dsp.MIPB3_SW, "build3": dsp.BUILD3_SW,
-            "page5": dsp.PAGE5_SW}
+            "page5": dsp.PAGE5_SW, "phase": dsp.PHASE_SW}
 
 
 def external(skip: pathlib.Path, work: pathlib.Path) -> dict[str, int]:

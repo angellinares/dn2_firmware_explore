@@ -68,7 +68,7 @@ wr_render5.:
       // (reader_miph2.asm); every caller still enters here. What follows is opt2's reader:
       // reader_miph2.asm jumps back to wr5_plain for a table without the mip flag (a pool
       // table, until stage 3 gives pool tables their levels), so those play as on opt2.
-      JUMP 0x171a00;                    // -> wr_mip. (the mip reader)
+      JUMP 0x173480;                         // -> wr_ph_read. (phase.asm: page 5's WARP and FM, else the mip reader)
 .GLOBAL wr5_plain.;
 wr5_plain.:
       I4 = R4;                          // I4 -> parameter block

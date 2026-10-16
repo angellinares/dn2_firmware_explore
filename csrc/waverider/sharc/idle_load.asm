@@ -171,6 +171,6 @@ wr_prst_zero.:
       DM(1, I4) = R0;
 .GLOBAL wr_prst_back.;
 wr_prst_back.:
-      JUMP 0x16edf3;                    // -> wr_t5v_modded. (machine9_live.asm)
+      JUMP 0x16edf6;                    // -> wr_t5v_modded. (machine9_live.asm)
 .wr_prst..end:
       .type wr_prst.,STT_FUNC;

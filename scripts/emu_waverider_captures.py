@@ -47,6 +47,7 @@ POS1, TBL1, POS2, TBL2 = 26, 27, 32, 33
 SUB_LEV, SUB_WAVE, NOIS_LEV, NOIS_COL, NOIS_DEC = 50, 52, 54, 56, 57
 FOLD, WARP, FM, NPOS, AMT = 58, 59, 60, 61, 48
 SHAPE_TYPE, LEV2 = 62, 36
+WARP_SHOWN, FM_SHOWN = 47, 32           # the values the headers show after the captures' turns (read from the frames)
 
 
 def put(slot, value):
@@ -68,7 +69,7 @@ def to_page(n):
 
 
 def shaped_ring(shape, osc2_lev=0) -> bytes:
-    """The scope's 2,048 samples for a page 5 SHAPE (FOLD, NPOS, TYPE, AMT): the model's held C4
+    """The scope's 2,048 samples for a page 5 SHAPE (FOLD, NPOS, TYPE, AMT, WARP, FM): the model's held C4
     (dnfw.waverider.live, which page5.asm matches bit for bit), osc 1 Prim. at POS 40, osc 2 Harm.
     at POS 30 and level OSC2_LEV, scaled as ring_samples scales the runner's."""
     seq = [(60.0, (40 << 8, 0, 0x4000, 0x6400), (30 << 8, 0x100, 0x4000, osc2_lev))] * 72
@@ -140,7 +141,7 @@ def main() -> int:
         if n == 4:
             s += [f"poke:{RING:#x}:{2048:08x}{ring.hex()}", "wait:120M"]
         if n == 5:                                             # page 5 plays: the scope shows its settings
-            p5 = shaped_ring((0x5800, 0x4800, 0, 0x6000))
+            p5 = shaped_ring((0x5800, 0x4800, 0, 0x6000, 0x3000, 0x2000))
             s += [f"poke:{RING:#x}:{2048:08x}{p5.hex()}", "wait:120M"]
         s += frame(f"page{n}")
         if n == 5:   # TYPE turned from Off to AM with knob E (push held; 40 counts are two steps), osc 2
@@ -152,7 +153,22 @@ def main() -> int:
             s += ["turn:5:40", "wait:20M", "press:45", "wait:20M", "turn:5:40", "wait:30M", f"frame:page5_am",
                   "release:45", "wait:30M"]
             names.append("page5_am")
-            s += [put(LEV2, 0), put(SHAPE_TYPE, 0), put(AMT, 0x6000)]
+            # WARP turned down from 127 with knob B, as TYPE above (a turn, then a turn with the push held,
+            # 20 counts each), osc 2 off and the rest of the page at 0. The scope is the model at the value
+            # the header then shows, WARP_SHOWN
+            s += [put(SHAPE_TYPE, 0), put(LEV2, 0), put(FM, 0), put(WARP, 127 << 8), put(AMT, 0x6000),
+                  f"poke:{RING:#x}:{2048:08x}{shaped_ring((0, 0, 0, 0x6000, WARP_SHOWN << 8, 0)).hex()}", "wait:60M"]
+            s += ["turn:2:-20", "wait:20M", "press:42", "wait:20M", "turn:2:-20", "wait:50M", "frame:page5_warp",
+                  "release:42", "wait:30M"]
+            names.append("page5_warp")
+            # FM turned down from 112 with knob C, osc 2 on at LEV2 100, WARP at 0
+            s += [put(WARP, 0), put(LEV2, 100 << 8), put(FM, 112 << 8),
+                  f"poke:{RING:#x}:{2048:08x}{shaped_ring((0, 0, 0, 0x6000, 0, FM_SHOWN << 8), 0x6400).hex()}",
+                  "wait:60M"]
+            s += ["turn:3:-20", "wait:20M", "press:43", "wait:20M", "turn:3:-20", "wait:50M", "frame:page5_fm",
+                  "release:43", "wait:30M"]
+            names.append("page5_fm")
+            s += [put(LEV2, 0), put(SHAPE_TYPE, 0), put(AMT, 0x6000), put(WARP, 0x3000), put(FM, 0x2000)]
     s += ["tap:2", "wait:160M"]                                    # back on page 1
     # modulation on osc 1's POS: none (the control), slow, medium, fast
     # POS at 60 swept +-50 (frames 10 to 110, a saw to a sine), so the two frames drawn at

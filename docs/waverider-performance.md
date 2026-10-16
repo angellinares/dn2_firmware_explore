@@ -45,6 +45,11 @@ Per voice and block, measured in the SHARC runner (`scripts/sharc_waverider_p3_c
 | Page 5: FOLD | +369 |
 | Page 5: Ring | +363 |
 | Page 5: AM | +431 |
+| Page 5: WARP (both oscillators) | +710 |
+| Page 5: FM | +482 |
+| Page 5: WARP and FM | +1,138 |
+| Page 5: AM, FOLD, WARP and FM together | +1,898 (about 4.6 % of a frame on 16 voices) |
+| Page 5 at 0, against the build before WARP and FM | +87 (WARP's word read once a voice, and a test before each reader call) |
 | One oscillator (osc 2's whole pass) | +2,822 |
 | NPOS (branch `wip/waverider-npos`, not shipped), NPOS 64, both oscillators at POS 64: DCLK's crossfades of its jumps | +5,614 |
 | FM Tone's whole voice, for comparison | +11,113 |

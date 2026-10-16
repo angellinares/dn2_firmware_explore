@@ -19,19 +19,37 @@ that proves wrong in testing can still change.
 - **Values** store and p-lock like every other Waverider control. They ride stock records, as
   the sub and noise do. All but TYPE, P1 and P2 are LFO destinations.
 
-## What plays (Waverider 0.2.0, 2026-10-16)
+## What plays (Waverider 0.3.0, 2026-10-16)
 
-FOLD, TYPE and AMT change the sound. WARP, FM, NPOS, P1 and P2 do not, yet. `csrc/waverider/sharc/page5.asm`
-does the work on the DSP, and `dnfw.waverider.live` (`fold`, `shaper`) is its model.
+FOLD, TYPE, AMT, WARP and FM change the sound. NPOS, P1 and P2 do not, yet. `csrc/waverider/sharc/page5.asm`
+and `csrc/waverider/sharc/phase.asm` do the work on the DSP. `dnfw.waverider.live` (`fold`, `shaper`,
+`warp_phase`, `fm_offsets`, `read_phases`, `phase_sel`) is their model.
 
 | Control | What the DSP does | Where |
 |---|---|---|
 | FOLD | A triangle fold of the two oscillators' mix, at one oscillator's peak (LEV 100, TRIM -11 dB), driven by 1 + 7 FOLD / 127 | after osc 2, before the sub |
 | TYPE, AMT | Ring (osc 1 x osc 2) or AM (osc 2 sets osc 1's level), mixed in by AMT | after osc 2, before FOLD |
+| WARP | Each oscillator reads its wave at a bent phase: two lines that meet where the wave's middle is read, the first with slope 1 + 9 WARP / 127 | before each reader call |
+| FM | Osc 2 plays first. Its samples move osc 1's phase by o2 x FM / 127 / T cycles (one cycle at FM 127 and LEV2 100) | before osc 1's reader call |
 
-- **Checks:** `scripts/sharc_waverider_shape.py` runs 8 cases in digikit's SHARC runner, and each is bit for bit the
+- **How WARP and FM reach the reader:** `wr_p5_phase` writes each sample's phase to a buffer (PH). Copies of
+  the two readers in phase.asm read PH in place of the running phase. The phase that the reader keeps for the
+  next block does not change. DCLK's two reads of a crossfade take the same PH.
+- **The mip level** under WARP and FM: the reader selects it for the fastest phase, (inc + 2 pi FM / 127 x
+  inc2) x k1. The aim is that a warp's steep part and FM's peaks alias about as much as a plain note. We did
+  not measure the aliasing.
+- **FM's order:** osc 2 plays into its own buffer (FMB), then osc 1, then FMB is added. The mix is o1 + o2 as
+  before. MOVE's random shapes then step osc 2 before osc 1 in a block. When both oscillators wrap in one
+  block, the two random values change places.
+- **WARP and FM at 0** skip their code: the reader is the reader of 0.2.0 and the voice is bit for bit the
+  same.
+- **Checks:** `scripts/sharc_waverider_shape.py` runs 15 cases in digikit's SHARC runner, and each is bit for bit the
   model. `test/test_waverider_shape.py` checks the model.
-- **Cost** (`scripts/sharc_waverider_p5_cost.py`, instructions per voice and block): FOLD 369, Ring 363, AM 431.
+- **Cost** (`scripts/sharc_waverider_p5_cost.py`, instructions per voice and block): FOLD 369, Ring 363, AM 431,
+  WARP 710, FM 482, WARP and FM 1,138. All of AM, FOLD, WARP and FM: 1,898, about 4.6 % of a block on 16 voices.
+  With page 5 at 0 the voice costs 87 more than in 0.2.0: the read of WARP's word and the tests before each reader call.
+- **Plain tables:** with DNFW_WAVERIDER_NOMIP=1, the WARP and FM cases also pass bit for bit. That run plays
+  phase.asm's copy of the plain reader, which a pool table uses before build3 has its levels.
 - **NPOS is out, for now** (owner, 2026-10-16: the load must stay near 70 % and the factory machines' load).
   Branch `wip/waverider-npos` has it: a random POS offset per block, before MPOS. Above NPOS 46, DCLK crossfades
   its jumps. At NPOS 64 with both oscillators at POS 64, that adds 5,557: a second table read on each oscillator
@@ -73,7 +91,9 @@ to 61 the ids 208 to 211 and 62 to 64 the ids 235 to 237 (read in the emulator, 
 
 - **Defaults of an old sound.** A sound created before this page holds FM Tone's stock values
   in slots 58 to 61 (0x4000, read from the live frame), so FOLD, WARP, FM and NPOS read 64 on
-  it. A feature wired to them must not read 64 as "on", or must re-default them.
+  it. A feature wired to them must not read 64 as "on", or must re-default them. FOLD, WARP and FM
+  play at 64 on such a sound. The manual tells the user to set them to 0. A new Waverider sound has
+  them at 0 (MACHINE SEL, measured above).
 - **The labels** are fixed text. A label that follows TYPE needs a knob label that follows a
   value, which has not been shown to be possible.
 - **Changing TYPE under a held note** must crossfade, or it clicks.

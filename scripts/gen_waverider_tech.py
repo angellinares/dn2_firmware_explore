@@ -516,7 +516,7 @@ def dec_curve() -> str:
     return p.svg("The noise decay's time constant for each DEC value")
 
 
-# ---------------------------------------------------------------- 6. page 5: FOLD, NPOS, Ring and AM
+# ---------------------------------------------------------------- 6. page 5: FOLD, Ring and AM, WARP, FM
 
 def _peaks(xs):
     return [x / live.SHAPE_PEAK for x in xs]
@@ -543,7 +543,7 @@ def fold_wave() -> str:
     n = 48000 / live.note_hz(48.0)                   # C3: one cycle
     span = int(round(2 * n))
     p = Plot((0, span / 48), (-1.05, 1.05), "time (ms)", "output (1 = the fold point)",
-             xticks=[0, 2, 4, 6, 8], yticks=[-1, 0, 1], height=260, legend="below")
+             xticks=[0, 5, 10, 15], yticks=[-1, 0, 1], height=260, legend="below")
     for word, cls in ((0, "s0"), (0x3000, "s1"), (0x7F00, "s3")):
         ys = _voice((word, 0, 0, 0x4000))[-span:]
         p.line([k / 48 for k in range(span)], _peaks(ys), cls, f"FOLD {word >> 8}")
@@ -563,6 +563,48 @@ def shaper_figure() -> str:
     p.line(ts, _peaks(_voice((0, 0, 0x0100, 0x7F00), osc2=osc2)[-span:]), "s2", "Ring, AMT 127")
     p.line(ts, _peaks(_voice((0, 0, 0x0200, 0x7F00), osc2=osc2)[-span:]), "s3", "AM, AMT 127")
     return p.svg("Osc 1 and osc 2 a fifth apart, and the shaper")
+
+
+def warp_curve() -> str:
+    xs = [k / 400 for k in range(401)]
+    p = Plot((0, 1), (0, 1), "the oscillator's phase (one cycle)", "where it reads the wave",
+             xticks=[0, 0.25, 0.5, 0.75, 1], yticks=[0, 0.5, 1], height=280, legend="below")
+    for v, cls in ((0, "s0"), (32, "s1"), (64, "s2"), (127, "s3")):
+        k = live.warp_table()[v]
+        ys = [x if not v else live.warp_phase(min(int(x * 2 ** 32), 2 ** 32 - 1), *k) / 2 ** 32 for x in xs]
+        p.line(xs, ys, cls, f"WARP {v}" + (" (off)" if not v else ""))
+    return p.svg("What WARP does to the phase")
+
+
+ROWS = (2.4, 0.0, -2.4)                             # one row per value: a wave each, apart
+
+
+def warp_wave() -> str:
+    n = 48000 / live.note_hz(48.0)                   # C3: one cycle
+    span = int(round(2 * n))
+    values = ((0, "s0"), (16, "s1"), (127, "s3"))
+    p = Plot((0, span / 48), (-3.6, 3.6), "time (ms)", "WARP (a row each)", xticks=[0, 5, 10, 15],
+             yticks=list(ROWS), yfmt=lambda v: str(values[ROWS.index(v)][0]), height=300, legend="below")
+    for (v, cls), row in zip(values, ROWS):
+        ys = _voice((0, 0, 0, 0x4000, v << 8, 0))[-span:]
+        p.line([k / 48 for k in range(span)], [row + y for y in _peaks(ys)], cls, f"WARP {v}")
+    return p.svg("Prim. at POS 64, C3, warped")
+
+
+def fm_wave() -> str:
+    n = 48000 / live.note_hz(48.0)
+    span = int(round(2 * n))
+    osc2 = (0x4000, 0, 0x4000, 0x6400)                # Prim. at POS 64, the same pitch, LEV2 100
+    o2 = [b - a for a, b in zip(_voice((0, 0, 0, 0x4000, 0, 0), osc2=(0x4000, 0, 0x4000, 0)),
+                                _voice((0, 0, 0, 0x4000, 0, 0), osc2=osc2))]
+    values = ((0, "s0"), (32, "s1"), (127, "s3"))
+    p = Plot((0, span / 48), (-3.6, 3.6), "time (ms)", "FM (a row each)", xticks=[0, 5, 10, 15],
+             yticks=list(ROWS), yfmt=lambda v: str(values[ROWS.index(v)][0]), height=300, legend="below")
+    for (v, cls), row in zip(values, ROWS):
+        mix = _voice((0, 0, 0, 0x4000, 0, v << 8), osc2=osc2)
+        o1 = [m - b for m, b in zip(mix, o2)][-span:]  # osc 2 is the same at every FM: osc 1 alone
+        p.line([k / 48 for k in range(span)], [row + y for y in _peaks(o1)], cls, f"FM {v}")
+    return p.svg("Osc 1 under FM from osc 2, at the same pitch")
 
 
 # ---------------------------------------------------------------- the page
@@ -590,6 +632,9 @@ def figures(dnx: pathlib.Path | None) -> dict[str, str]:
         "foldcurve": fold_curve(),
         "foldwave": fold_wave(),
         "shaper": shaper_figure(),
+        "warpcurve": warp_curve(),
+        "warpwave": warp_wave(),
+        "fmwave": fm_wave(),
     }
 
 

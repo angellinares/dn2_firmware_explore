@@ -365,8 +365,8 @@ def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
     code_spans = [x for x in sp if "asm (" in x[0]]
     s3 = dsp.stage3_objects() if dsp.STAGE3 else {}
     # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm, sync/smooth/dclk.asm (M10b-2),
-    # trim.asm, sub/noise.asm (page 3), the mip reader, stage 3's fft3, spec3, mipb3 and build3, and page5.asm
-    assert len(code_spans) == 17 + len(s3)
+    # trim.asm, sub/noise.asm (page 3), the mip reader, stage 3's fft3, spec3, mipb3 and build3, page5.asm and phase.asm
+    assert len(code_spans) == 18 + len(s3)
     for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["idle_load"],
                                                      obj["block_count"], obj["entry_mark"], obj["modulator"],
                                                      obj["shapes"], obj["load"], obj["pool"], obj["sync"], obj["trim"],
@@ -595,7 +595,7 @@ def test_prst_moved_to_the_idle_span_and_returns_into_the_loop():
     rbe, roffs, rsrc = _code("reader_m9")
     jump = rsrc.index(f"JUMP {prst_sw:#x};")
     assert rbe[roffs[jump]:roffs[jump] + 6].hex() == f"063e00{prst_sw:06x}"
-    assert be[offs[-1]:offs[-1] + 6].hex() == "063e0016edf3"   # -> wr_t5v_modded
+    assert be[offs[-1]:offs[-1] + 6].hex() == "063e0016edf6"   # -> wr_t5v_modded (page 5: machine9_live.asm's JUMP to wr_p5_voice before it)
     assert dsp.IDLE_DM + len(be) + 64 <= dsp.COUNT_DM
     assert dsp.READER_DM + len(rbe) + 64 <= dsp.LOOP_DM
 

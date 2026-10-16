@@ -108,10 +108,12 @@ def size_bytes(frames: int = 16, oversample: int = OVERSAMPLE) -> int:
 
 
 def render(levels: list[list[list[int]]], phase: int, inc: int, pos: int, count: int,
-           precision: str = "ideal", interp: str = "linear") -> tuple[list[float], int]:
-    """`dnfw.waverider.render.render` on the level this block's increment plays."""
+           precision: str = "ideal", interp: str = "linear", phases=None, sel=None) -> tuple[list[float], int]:
+    """`dnfw.waverider.render.render` on the level this block's increment plays (SEL in its
+    place when given: page 5's WARP and FM choose the level by their fastest increment)."""
     from . import render as reader          # noqa: PLC0415
-    return reader.render(levels[level_for(inc)], phase, inc, pos, count, precision, interp)
+    return reader.render(levels[level_for(inc if sel is None else sel)], phase, inc, pos, count, precision,
+                         interp, phases)
 
 
 # Between samples: the reader a build ships, "linear" (reader_mip.asm), "hermite"
@@ -195,15 +197,17 @@ def level_records(frames: int = 16, oversample: int = OVERSAMPLE) -> bytes:
     return out
 
 
-def read(table, phase: int, inc: int, pos: int, count: int, precision: str = "ideal"):
+def read(table, phase: int, inc: int, pos: int, count: int, precision: str = "ideal",
+         phases=None, sel=None):
     """What the shipped reader plays for TABLE: its levels for a MipTable, level 0
-    otherwise, between samples by INTERP."""
+    otherwise, between samples by INTERP. PHASES and SEL: page 5's WARP and FM (each
+    sample's phase, and the increment that chooses the level)."""
     from . import render as reader  # noqa: PLC0415
     from . import table3  # noqa: PLC0415
     if isinstance(table, table3.Table3):
-        return table3.read(table, phase, inc, pos, count, precision)
+        return table3.read(table, phase, inc, pos, count, precision, phases, sel)
     if isinstance(table, MipTable):
-        return render(table.levels, phase, inc, pos, count, precision, INTERP)
+        return render(table.levels, phase, inc, pos, count, precision, INTERP, phases, sel)
     # a plain table: hermite2 hands it to opt2's linear reader (reader_m9.asm's wr5_plain)
     return reader.render(table, phase, inc, pos, count, precision,
-                         "linear" if INTERP == "hermite2" else INTERP)
+                         "linear" if INTERP == "hermite2" else INTERP, phases)

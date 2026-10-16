@@ -96,8 +96,13 @@ def hermite(ym: float, y0: float, y1: float, y2: float, hfr: float, r) -> float:
 
 
 def render(table: list[list[int]], phase: int, inc: int, pos: int, count: int,
-           precision: str = "ideal", interp: str = "linear") -> tuple[list[float], int]:
+           precision: str = "ideal", interp: str = "linear",
+           phases: list[int] | None = None) -> tuple[list[float], int]:
     """-> (`count` samples, the phase after them).
+
+    PHASES (page 5's WARP and FM, `dnfw.waverider.live.read_phases`): the u32 phase each
+    sample is read at, in place of the running phase. The phase after them is still
+    phase + count x inc.
 
     `phase`, `inc` are u32 (see the module docstring); `pos` is Q16. INTERP is between
     samples: "linear" (the DSP's today), "hermite" (`hermite` on each frame, then the frames
@@ -124,7 +129,10 @@ def render(table: list[list[int]], phase: int, inc: int, pos: int, count: int,
     ff = (pos & 0xFFFF) / POS_ONE           # exact in float32 too
     row0, row1 = table[f0], table[f1]
     out = []
-    for _ in range(count):
+    run = phase
+    for n in range(count):
+        if phases is not None:
+            phase = phases[n]
         k0 = phase >> shift
         k1 = (k0 + 1) % points
         # exact at 512 points (23 bits); a mip level's wider fraction is rounded to float32,
@@ -148,11 +156,11 @@ def render(table: list[list[int]], phase: int, inc: int, pos: int, count: int,
                 sa, sb = row0[k] / FULL_SCALE, row1[k] / FULL_SCALE
                 taps.append(r(sa + r(ff * r(sb - sa))))
             out.append(hermite(*taps, hfr, r))
-            phase = (phase + inc) & 0xFFFFFFFF
+            run = phase = (run + inc) & 0xFFFFFFFF
             continue
         out.append(r(a + r(ff * r(b - a))))
-        phase = (phase + inc) & 0xFFFFFFFF
-    return out, phase
+        run = phase = (run + inc) & 0xFFFFFFFF
+    return out, run
 
 
 def render_blocks(table: list[list[int]], inc: int, positions: list[int], block: int,

@@ -59,3 +59,48 @@ def test_type_offers_only_what_plays_and_page5_fits_its_span():
     assert pages.RANGES[pages.SHAPE_TYPE] == (0, 2 << 8, 0)
     assert dsp.PAGE5_DM >= dsp.BUILD3_END and dsp.PAGE5_END <= dsp.REGION[1]
     assert len(dsp.objects()["page5"]) <= dsp.PAGE5_COPY_DM - dsp.PAGE5_DM - 64
+
+
+BLOCKS = [(60.0, (0x4000, 0, 0x4000, 0x6400), (0x4000, 0x100, 0x4000, 0x6400))] * 3
+SOLO = [(60.0, (0x4000, 0, 0x4000, 0x6400), (0x4000, 0x100, 0x4000, 0))] * 3
+
+
+def test_warp_and_fm_at_0_and_fm_without_osc_2_render_as_before():
+    tables = dsp.tables()
+    assert live.render_two(tables, BLOCKS, shapes=[(0, 0, 0, 0x4000, 0x00FF, 0)] * 3) == live.render_two(tables, BLOCKS)
+    assert live.render_two(tables, SOLO, shapes=[(0, 0, 0, 0x4000, 0, 0x7F00)] * 3) == live.render_two(tables, SOLO)
+
+
+def test_warp_and_fm_change_the_sound():
+    tables = dsp.tables()
+    plain = live.render_two(tables, BLOCKS)
+    for shape in ((0, 0, 0, 0x4000, 0x4000, 0), (0, 0, 0, 0x4000, 0, 0x4000)):
+        assert live.render_two(tables, BLOCKS, shapes=[shape] * 3) != plain
+
+
+def test_the_warp_table_starts_flat_and_its_lines_meet_at_the_waves_middle():
+    tab = live.warp_table()
+    assert len(tab) == 128 and tab[0] == (1.0, 1.0) and tab[127][0] == live.WARP_K1_TOP
+    for v in (1, 64, 127):
+        k1, k2 = tab[v]
+        d = 0.5 / k1                                  # where the first line reaches the middle
+        assert abs(live.warp_phase(int(d * 2 ** 32), k1, k2) / 2 ** 32 - 0.5) < 1e-6
+        ys = [live.warp_phase(p << 24, k1, k2) for p in range(256)]
+        assert ys[0] == 0 and all(a <= b for a, b in zip(ys, ys[1:]))
+
+
+def test_read_phases_without_warp_or_fm_is_the_running_phase():
+    assert live.read_phases(0xFFFFFFF0, 0x10, 3) == [0xFFFFFFF0, 0, 0x10]
+    assert live.read_phases(0, 0x100, 2, offsets=[0x80000000, 0x10]) == [0x80000000, 0x110]
+
+
+def test_fm_offsets_are_one_cycle_at_the_peak_and_full_depth():
+    off = live.fm_offsets([T, -T], live.SHAPE_MAX)
+    assert all(min(o, 2 ** 32 - o) < 2 ** 12 for o in off)   # +-1 cycle is 0 mod 1
+
+
+def test_the_level_follows_the_fastest_phase():
+    assert live.phase_sel(1000) == 1000
+    assert live.phase_sel(1000, (10.0, 0.5)) == 10000
+    assert live.phase_sel(1000, None, 1000, live.SHAPE_MAX) == 1000 + round(2 * math.pi * 1000)
+

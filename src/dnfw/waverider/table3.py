@@ -196,9 +196,11 @@ def level_for(inc: int, points: int) -> int:
     return G.levels(points) - 1
 
 
-def read(table: Table3, phase: int, inc: int, pos: int, count: int, precision: str = "ideal"):
+def read(table: Table3, phase: int, inc: int, pos: int, count: int, precision: str = "ideal",
+         phases=None, sel=None):
     """What reader_miph2.asm plays for TABLE: POS (0 .. 15 frames, Q16) scaled to its
-    frames, the level by its thresholds, hermite2 between the samples."""
+    frames, the level by its thresholds (by SEL when given: page 5's WARP and FM), hermite2
+    between the samples, at PHASES when given."""
     from . import render as reader  # noqa: PLC0415
-    return reader.render(table.levels[level_for(inc, table.points)], phase, inc,
-                         position(pos, table.frames), count, precision, "hermite2")
+    return reader.render(table.levels[level_for(inc if sel is None else sel, table.points)], phase, inc,
+                         position(pos, table.frames), count, precision, "hermite2", phases)

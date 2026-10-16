@@ -46,9 +46,7 @@ Per voice and block, measured in the SHARC runner (`scripts/sharc_waverider_p3_c
 | Page 5: Ring | +363 |
 | Page 5: AM | +431 |
 | One oscillator (osc 2's whole pass) | +2,822 |
-| Page 5: NPOS up to 46, or with DCLK at 0 | +57 |
-| Page 5: NPOS 64 or more, DCLK at 3 ms, both oscillators at POS 64 (a DCLK crossfade on each, almost every block) | +5,614 |
-| Page 5: AM, FOLD and NPOS 64 together, both oscillators at POS 64 | +6,414 (about 15.4 % of a frame on 16 voices) |
+| NPOS (branch `wip/waverider-npos`, not shipped), NPOS 64, both oscillators at POS 64: DCLK's crossfades of its jumps | +5,614 |
 | FM Tone's whole voice, for comparison | +11,113 |
 
 A table in the pool costs nothing per frame unless a voice plays it; what it costs is

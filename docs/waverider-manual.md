@@ -101,7 +101,7 @@ The middle of the page shows the sound of the track as a scope.
 
 ## Page 5: Shape
 
-FOLD, NPOS, TYPE and AMT change the sound. WARP, FM, P1 and P2 are for a future version: you can set
+FOLD, TYPE and AMT change the sound. WARP, FM, NPOS, P1 and P2 are for a future version: you can set
 and p-lock them, but they do not change the sound yet.
 
 | Knob | Control | Function |
@@ -109,7 +109,7 @@ and p-lock them, but they do not change the sound yet.
 | A | FOLD | Folds the wave of the two oscillators back on itself. 0 is off. A higher value gives more folds and a brighter sound |
 | B | WARP | No effect yet |
 | C | FM | No effect yet |
-| D | NPOS | Moves POS by a random amount, 1,500 times a second. 0 is off. At 127, POS moves up to half its range |
+| D | NPOS | No effect yet |
 | E | TYPE | The shaper: Off, Ring or AM. Ring multiplies the two oscillators. AM uses osc 2 to change the level of osc 1 |
 | F | AMT | How much of the shaper you hear: 0 is none, 127 is the shaper only |
 | G | P1 | No effect yet |
@@ -119,7 +119,6 @@ and p-lock them, but they do not change the sound yet.
   quieter and AM halves it.
 - **AMT starts at 64** on a new sound. With TYPE at Off, AMT changes nothing.
 - **FOLD follows the level.** A higher LEV1, LEV2 or TRIM gives more folds.
-- **To slow NPOS down**, turn SLW1 or SLW2 on page 4.
 
 ## The wavetable pool
 

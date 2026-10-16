@@ -90,8 +90,8 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "usbprobe": UNPUBLISHED,
     "waverider": (
         Release("0.2.0", "2026-10-16", (
-            "Page 5 plays: FOLD folds the oscillators' wave, NPOS moves POS at random, and TYPE Ring or AM "
-            "mixes osc 1 with osc 2 by AMT. WARP, FM, P1 and P2 do not change the sound yet.",
+            "Page 5 plays: FOLD folds the oscillators' wave, and TYPE Ring or AM mixes osc 1 with osc 2 "
+            "by AMT. WARP, FM, NPOS, P1 and P2 do not change the sound yet.",
             "TYPE offers Off, Ring and AM. A sound with page 5 at 0 sounds as before.",
         )),
         Release("0.1.2", "2026-10-15", (

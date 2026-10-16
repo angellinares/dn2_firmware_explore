@@ -1,4 +1,4 @@
-"""Waverider's page 5 (page5.asm: FOLD, NPOS, TYPE Ring / AM with AMT) in digikit's SHARC
+"""Waverider's page 5 (page5.asm: FOLD, TYPE Ring / AM with AMT) in digikit's SHARC
 runner, bit for bit.
 
     python scripts/sharc_waverider_shape.py [--digikit DIR] [--blocks 8] [--seconds 2.5]
@@ -13,11 +13,11 @@ runs them (a note at block 1), with page 5's frame words (slots 58 FOLD, 61 NPOS
 | all 0 (the control) | the track buffer is `live.render_two`'s without page 5, bit for bit |
 | FOLD 64 | bit for bit `live.render_two` with page 5, and the fold changes samples |
 | FOLD 127, osc 2 on | the same |
-| NPOS 100 | the same (the voice's own generator) |
+| NPOS 100 | bit for bit the control: NPOS changes nothing yet |
 | Ring, AMT 127, osc 2 on | the same |
 | AM, AMT 64, osc 2 on | the same |
 | Ring, AMT 127, osc 2 off | the same: o2 is 0, so the mix is scaled by 1 - a |
-| all four with the sub | Ring, FOLD and NPOS together, before the sub |
+| all four with the sub | Ring and FOLD together, before the sub (NPOS set, no effect) |
 
 Writes out/waverider/shape_*.wav (48 kHz, 16-bit mono, LOOPED from the runner's blocks) and
 shape_report.json. Exit 0 when every case passes.
@@ -67,7 +67,7 @@ def main(argv=None) -> int:
         ("control: all 0", {g.LEV2: 0}),
         ("FOLD 64", {g.LEV2: 0, FOLD: 0x4000}),
         ("FOLD 127, osc 2 on", {**on2, FOLD: 0x7F00}),
-        ("NPOS 100", {g.LEV2: 0, NPOS: 0x6400}),
+        ("NPOS 100: no effect yet", {g.LEV2: 0, NPOS: 0x6400}),
         ("Ring, AMT 127, osc 2 on", {**on2, TYPE: 0x0100, AMT: 0x7F00}),
         ("AM, AMT 64, osc 2 on", {**on2, TYPE: 0x0200, AMT: 0x4000}),
         ("Ring, AMT 127, osc 2 off", {g.LEV2: 0, TYPE: 0x0100, AMT: 0x7F00}),
@@ -84,16 +84,13 @@ def main(argv=None) -> int:
             def fb(b, over=over):
                 return g.base_frame(sound, machines, trigger=(b == 1), overrides=over).to_bytes()
 
-            subs, shapes, voices = [], [], []
+            subs, shapes = [], []
 
             def at_loop(r):
                 subs.append(tuple(g.frame_word(r.state, FR.slot_offset(0, s)) for s in live.SUB_SLOTS))
                 shapes.append(tuple(g.frame_word(r.state, FR.slot_offset(0, s)) for s in live.SHAPE_SLOTS))
 
-            def at_npos(r):
-                voices.append(16 - (g.m2.word(r.state, 0x2DDE80) or 0))
-
-            run = g.run_blocks(init, fb, a.blocks, extra_hooks={dsp.COUNT_SW: at_loop, dsp.PAGE5_SW: at_npos})
+            run = g.run_blocks(init, fb, a.blocks, extra_hooks={dsp.COUNT_SW: at_loop})
             if not run["ok"]:
                 checks[name] = False
                 report["cases"][name] = {"halt": run.get("halt")}
@@ -106,15 +103,13 @@ def main(argv=None) -> int:
                    for i in run["t5_inputs"] if 0 in i]
             n = len(seq)
             per_sub, per_shape = (subs[-n:] or None), (shapes[-n:] or None)
-            t = voices[0] if voices else 0
-            want = live.render_two(tables, seq, g.BLOCK, "float32", subs=per_sub, shapes=per_shape, voice=t)
+            want = live.render_two(tables, seq, g.BLOCK, "float32", subs=per_sub, shapes=per_shape)
             plain = live.render_two(tables, seq, g.BLOCK, "float32", subs=per_sub)
             bad = g.mismatches(got, want)
             heard = sum(1 for x, y in zip(want, plain) if x != y)
-            page5 = any(words.get(s, 0) for s in (FOLD, NPOS, AMT))
+            page5 = any(words.get(s, 0) for s in (FOLD, AMT))   # NPOS changes nothing yet
             checks[name] = bad == 0 and (heard > 0 if page5 else heard == 0)
-            report["cases"][name] = {"mismatches": bad, "samples_page5_changes": heard, "voice": t,
-                                     "voices_seen": sorted(set(voices)),
+            report["cases"][name] = {"mismatches": bad, "samples_page5_changes": heard,
                                      "frame_words": per_shape[-1] if per_shape else None}
             tag = name.split(":")[0].replace(",", "").replace(" ", "_").lower()
             g.wav(f"shape_{tag}.wav", got, a.seconds, wavs, f"the runner: {name}, note 60")

@@ -550,22 +550,6 @@ def fold_wave() -> str:
     return p.svg("Prim. at POS 64, C3, folded")
 
 
-def npos_figure() -> str:
-    blocks = 300                                      # 0.2 s
-    p = Plot((0, 200), (0, 15), "time (ms)", "frame", xticks=[0, 50, 100, 150, 200],
-             yticks=[0, 5, 10, 15], height=260, legend="below")
-    for word, cls, smth in ((0x4000, "s1", live.SMTH_OFF), (0x7F00, "s3", live.SMTH_OFF), (0x7F00, "s0", 56)):
-        x, s, ys = live.npos_seeds()[0], 0.0, []
-        for b in range(blocks):
-            off, x = live.npos_offset(x, word)
-            pos = live.position(max(0, 0x3C00 + off))
-            s = live.smooth(s, pos, smth << 8, b == 0)       # SLW as its frame word
-            ys.append(live.trunc(s) / 65536)
-        label = f"NPOS {word >> 8}" + ("" if smth == live.SMTH_OFF else f", SLW {smth}")
-        p.line([b / 1.5 for b in range(blocks)], ys, cls, label)
-    return p.svg("The frame that plays, POS at 64, over 0.2 s")
-
-
 def shaper_figure() -> str:
     span = 960                                        # 20 ms
     osc2 = (0x4000, 0, 0x4700, 0x6400)                # Prim. at POS 64, 7 semitones up
@@ -605,7 +589,6 @@ def figures(dnx: pathlib.Path | None) -> dict[str, str]:
         "dec": dec_curve(),
         "foldcurve": fold_curve(),
         "foldwave": fold_wave(),
-        "npos": npos_figure(),
         "shaper": shaper_figure(),
     }
 

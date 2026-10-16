@@ -21,20 +21,21 @@ that proves wrong in testing can still change.
 
 ## What plays (Waverider 0.2.0, 2026-10-16)
 
-FOLD, NPOS, TYPE and AMT change the sound. WARP, FM, P1 and P2 do not, yet. `csrc/waverider/sharc/page5.asm`
-does the work on the DSP, and `dnfw.waverider.live` (`fold`, `shaper`, `npos_offset`) is its model.
+FOLD, TYPE and AMT change the sound. WARP, FM, NPOS, P1 and P2 do not, yet. `csrc/waverider/sharc/page5.asm`
+does the work on the DSP, and `dnfw.waverider.live` (`fold`, `shaper`) is its model.
 
 | Control | What the DSP does | Where |
 |---|---|---|
 | FOLD | A triangle fold of the two oscillators' mix, at one oscillator's peak (LEV 100, TRIM -11 dB), driven by 1 + 7 FOLD / 127 | after osc 2, before the sub |
-| NPOS | A random POS offset per block: a xorshift32 per voice and oscillator, up to (NPOS / 127)^2 of half the range | before MPOS |
 | TYPE, AMT | Ring (osc 1 x osc 2) or AM (osc 2 sets osc 1's level), mixed in by AMT | after osc 2, before FOLD |
 
 - **Checks:** `scripts/sharc_waverider_shape.py` runs 8 cases in digikit's SHARC runner, and each is bit for bit the
   model. `test/test_waverider_shape.py` checks the model.
-- **Cost** (`scripts/sharc_waverider_p5_cost.py`, instructions per voice and block): FOLD 369, Ring 363, AM 431,
-  NPOS 57. Above NPOS 46, DCLK crossfades NPOS's jumps. At NPOS 64 with both oscillators at POS 64, that adds
-  5,557: a second table read on each oscillator in almost every block (24 blocks, 2026-10-16).
+- **Cost** (`scripts/sharc_waverider_p5_cost.py`, instructions per voice and block): FOLD 369, Ring 363, AM 431.
+- **NPOS is out, for now** (owner, 2026-10-16: the load must stay near 70 % and the factory machines' load).
+  Branch `wip/waverider-npos` has it: a random POS offset per block, before MPOS. Above NPOS 46, DCLK crossfades
+  its jumps. At NPOS 64 with both oscillators at POS 64, that adds 5,557: a second table read on each oscillator
+  in almost every block (24 blocks, 2026-10-16). It comes back once its load is balanced.
 - **Defaults, measured 2026-10-16 in the emulator:** when you select Waverider, MACHINE SEL sets sound slots 58
   to 64 to 0. So every Waverider sound since 0.1.0 has FOLD, NPOS and TYPE at 0. Slot 48 (AMT, the MAST record) keeps
   0x4000, so AMT reads 64. With TYPE Off, AMT changes nothing.

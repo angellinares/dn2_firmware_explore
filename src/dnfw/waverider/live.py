@@ -578,28 +578,14 @@ class NoiseVoice:
         return out
 
 
-# Page 5, the shape (docs/waverider-shape.md): FOLD, NPOS, TYPE and AMT, frame words like the
-# others (sound slots 58, 61, 62 and 48: records 208, 211, 235 and 261). page5.asm runs them.
+# Page 5, the shape (docs/waverider-shape.md): FOLD, TYPE and AMT, frame words like the others
+# (sound slots 58, 62 and 48: records 208, 235 and 261). page5.asm runs them. NPOS (slot 61) is
+# kept in the tuple and changes nothing yet (branch wip/waverider-npos has it, owner 2026-10-16).
 SHAPE_SLOTS = (58, 61, 62, 48)          # FOLD, NPOS, TYPE, AMT
 SHAPE_MAX = 0x7F00                       # 127 << 8: the knobs' top
 SHAPE_TYPES = ("Off", "Ring", "AM")     # TYPE's values; more types grow the list
 SHAPE_PEAK = 10 ** (-11 / 20)            # one oscillator's peak at LEV 100 and TRIM -11 dB: the fold point
 FOLD_DRIVE = 7.0                         # FOLD 127 drives the mix 8 times past the fold point
-NPOS_DEPTH = 0x3C00                      # NPOS 127: POS moves up to half its range either way
-
-
-def npos_seeds() -> tuple[int, ...]:
-    """page5.asm's generator per voice and oscillator (2t + osc), seeded at boot: odd, nonzero."""
-    return tuple((0x9E3779B9 * (k + 1)) & 0xFFFFFFFF | 1 for k in range(32))
-
-
-def npos_offset(x: int, word: int) -> tuple[int, int]:
-    """(the POS offset, the generator's next state) for NPOS's frame WORD (0 changes nothing)."""
-    x = xorshift32(x)
-    w = _f32(float(word & 0xFFFF))
-    depth = _f32(_f32(w * w) * _f32(NPOS_DEPTH / SHAPE_MAX ** 2))
-    r = _f32((x - (1 << 32) if x >> 31 else x) * 2.0 ** -31)
-    return trunc(_f32(r * depth)), x
 
 
 def _trunc_by(v: float, scale: int) -> int:
@@ -660,7 +646,7 @@ def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
 
 
 def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs=None,
-               noises=None, shapes=None, voice: int = 0) -> list[float]:
+               noises=None, shapes=None) -> list[float]:
     """The loop's output with both oscillators (Milestone 9b), each block
     (note, osc1, osc2[, (TRIG, triggered[, PRST[, position, tempo[, DCLK]]])]) with each
     osc (WAV, TBL, TUN, LEV[, RATE, MPOS, MLEV, MOVE[, SYNC[, SMTH]]]), the frame's 16-bit
@@ -685,10 +671,9 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
     table_t = increment_table()
     sub_phase = 0
     noise = NoiseVoice(noise_seeds()[0])
-    npos = list(npos_seeds()[2 * voice:2 * voice + 2])   # NPOS's generators, this voice's
     osc1: list[float] = []
     for b, blk in enumerate(blocks):
-        shp = shapes[b] if shapes else (0, 0, 0, 0)       # page 5: FOLD, NPOS, TYPE, AMT
+        shp = shapes[b] if shapes else (0, 0, 0, 0)       # page 5: FOLD, NPOS (no effect yet), TYPE, AMT
         incs = [None, None]
         note, oscs = blk[0], blk[1:3]
         trig_mode, triggered, *rest = blk[3] if len(blk) > 3 else (TRIG_RESTART, False)
@@ -707,9 +692,6 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
                 start = 0 if restarted else mphase[k]
                 mphase[k] = move_step(mphase[k], rate, move, trig_mode, triggered, sync, song, tempo)
                 rnd.step(k, start, mphase[k], move, restarted)
-                if shp[1] & 0xFFFF:             # page 5: NPOS, before MPOS, not below 0
-                    off, npos[k] = npos_offset(npos[k], shp[1])
-                    wav = max(0, (wav & 0xFFFF) + off)
                 wav, lev = move_apply(wav, lev, mpos, mlev,
                                       move_shape(mphase[k], move, tuple(rnd.values(k))))
             if len(osc) > 4 and triggered and (prst & 0xFFFF) >> 8:

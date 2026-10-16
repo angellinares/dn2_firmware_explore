@@ -1,4 +1,4 @@
-"""Page 5's model (dnfw.waverider.live: fold, shaper, npos_offset), which page5.asm matches bit
+"""Page 5's model (dnfw.waverider.live: fold, shaper), which page5.asm matches bit
 for bit in the SHARC runner (scripts/sharc_waverider_shape.py), and its place in the image."""
 import math
 
@@ -32,14 +32,10 @@ def test_fold_below_the_fold_point_is_the_drive_alone():
     assert max(abs(y - x * drive) for x, y in zip(xs, live.fold(xs, 0x0100))) < 1e-6
 
 
-def test_npos_spans_half_the_range_at_the_top_and_nothing_at_0():
-    x, offs = live.npos_seeds()[0], []
-    for _ in range(4000):
-        off, x = live.npos_offset(x, live.SHAPE_MAX)
-        offs.append(off)
-    assert -live.NPOS_DEPTH <= min(offs) < -0.9 * live.NPOS_DEPTH
-    assert 0.9 * live.NPOS_DEPTH < max(offs) <= live.NPOS_DEPTH
-    assert all(s & 1 and s for s in live.npos_seeds()) and len(set(live.npos_seeds())) == 32
+def test_npos_changes_nothing_yet():
+    tables = dsp.tables()
+    blocks = [(60.0, (0x4000, 0, 0x4000, 0x6400), (0x4000, 0x100, 0x4000, 0x6400))] * 3
+    assert live.render_two(tables, blocks, shapes=[(0, 0x7F00, 0, 0x4000)] * 3) == live.render_two(tables, blocks)
 
 
 def test_the_shaper_with_osc_2_silent_scales_the_mix_by_one_less_the_amount():

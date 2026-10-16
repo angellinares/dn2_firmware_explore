@@ -3,9 +3,9 @@
     python scripts/sharc_waverider_p3_cost.py [--digikit DIR] [--blocks 4]
 
 Track 0 is Waverider (both oscillators on, a note at block 1), tracks 1-15 MIDI. Each
-case differs from the control (page 5 all 0) in one control: FOLD, NPOS, TYPE Ring or AM
-with AMT; the last has all of them. The difference is per voice, since page5.asm runs once
-per type-5 voice and block (NPOS once per oscillator). The
+case differs from the control (page 5 all 0) in one control: FOLD, TYPE Ring or AM with AMT;
+the last has all of them. The difference is per voice, since page5.asm runs once per type-5
+voice and block. The
 16-voice figure multiplies it by 16 (an extrapolation, not a run); a frame is one
 32-sample block, 666,667 cycles at 1 GHz (docs/sharc-load.md). Instructions are
 not cycles: our code runs from L1, where the two are close, but the instrument's
@@ -51,12 +51,9 @@ def main(argv=None) -> int:
     cases = [
         ("control: page 5 all 0", {}),
         ("FOLD 64", {FOLD: 0x4000}),
-        ("NPOS 64", {NPOS: 0x4000}),
-        ("control, DCLK 0", {live.DCLK_SLOT: 0}),
-        ("NPOS 64, DCLK 0", {NPOS: 0x4000, live.DCLK_SLOT: 0}),
         ("Ring, AMT 64", {TYPE: 0x0100, AMT: 0x4000}),
         ("AM, AMT 64", {TYPE: 0x0200, AMT: 0x4000}),
-        ("all: AM, FOLD, NPOS", {TYPE: 0x0200, AMT: 0x4000, FOLD: 0x4000, NPOS: 0x4000}),
+        ("all: AM and FOLD", {TYPE: 0x0200, AMT: 0x4000, FOLD: 0x4000}),
     ]
     got = {}
     with tempfile.TemporaryDirectory(dir=g.OUT) as tmp:

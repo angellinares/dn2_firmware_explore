@@ -203,13 +203,12 @@ MIPB3_SW = MIPB3_DM // 2                     # 0x172400
 BUILD3_DM = 0x2E4B00                         # build3.asm, the idle loop's back edge jumps here
 BUILD3_SW = BUILD3_DM // 2                   # 0x172580
 BUILD3_END = 0x2E5600
-# Page 5, the shape (page5.asm): FOLD, NPOS, and TYPE Ring / AM with AMT, after build3
+# Page 5, the shape (page5.asm): FOLD, and TYPE Ring / AM with AMT, after build3
 PAGE5_DM = 0x2E5600                          # page5.asm
 PAGE5_SW = PAGE5_DM // 2                     # 0x172b00
 PAGE5_COPY_DM = 0x2E5E00                     # osc 1's samples for the shaper, 128 float32
-PAGE5_RNG_DM = 0x2E6000                      # NPOS's generators, 32 u32 (live.npos_seeds)
-PAGE5_FLAG_DM = 0x2E6080                     # 1 when osc 2 ran this block (the way to sub.asm)
-PAGE5_END = 0x2E6100
+PAGE5_FLAG_DM = 0x2E6000                     # 1 when osc 2 ran this block (the way to sub.asm)
+PAGE5_END = 0x2E6080
 FILL_MIN = 32                                # a shorter tail of zeros stays in its payload (a fill block's header is 16 bytes)
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 
@@ -367,9 +366,8 @@ def spans() -> list[tuple[str, int, bytes]]:
                 ("spec3.asm (wr_spec3_split, wr_spec3_join)", SPEC3_DM, s3["spec3"]),
                 ("mipb3.asm (wr_mipb3_in, wr_mipb3_out)", MIPB3_DM, s3["mipb3"]),
                 ("build3.asm (wr_build3)", BUILD3_DM, s3["build3"])]
-    raw += [("page5.asm (wr_p5_npos, wr_p5_mid, wr_p5_ran, wr_p5_skip)", PAGE5_DM, obj["page5"]),
-            ("page 5's copy of osc 1 (zeros)", PAGE5_COPY_DM, bytes(PAGE5_RNG_DM - PAGE5_COPY_DM)),
-            ("NPOS's generators (seeded)", PAGE5_RNG_DM, struct.pack("<32I", *live.npos_seeds())),
+    raw += [("page5.asm (wr_p5_mid, wr_p5_ran, wr_p5_skip)", PAGE5_DM, obj["page5"]),
+            ("page 5's copy of osc 1 (zeros)", PAGE5_COPY_DM, bytes(PAGE5_FLAG_DM - PAGE5_COPY_DM)),
             ("page 5's flag (zero)", PAGE5_FLAG_DM, bytes(PAGE5_END - PAGE5_FLAG_DM))]
     out = []
     for k, (what, at, payload) in enumerate(raw):

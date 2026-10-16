@@ -225,7 +225,7 @@ wr_t5v_halves.:
       IF NE JUMP 0x16edf0;              // -> wr_t5v_lev_on.
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
-      IF NE JUMP 0x172bfa;              // -> wr_p5_skip. (page 5: the shaper and FOLD, page5.asm, then the sub)
+      IF NE JUMP 0x172b92;              // -> wr_p5_skip. (page 5: the shaper and FOLD, page5.asm, then the sub)
 .GLOBAL wr_t5v_lev_on.;
 wr_t5v_lev_on.:
       // M10a: MOVE, the modulator (modulator.asm, sw 0x16f700), which offsets R4 (POS)
@@ -341,14 +341,14 @@ wr_t5v_tuned.:
 wr_t5v_osc_next.:
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
-      IF NE JUMP 0x172bf2;              // -> wr_p5_ran. (osc 2 done: page 5, page5.asm, then the sub)
+      IF NE JUMP 0x172b8a;              // -> wr_p5_ran. (osc 2 done: page 5, page5.asm, then the sub)
       R0 = 1;
       DM(0x2de6c4) = R0;                // osc 2: add
       R0 = 0x900;
       DM(0x2dde90) = R0;
       R0 = 12;
       DM(0x2dde94) = R0;
-      JUMP 0x172b68;                    // -> wr_p5_mid. (page5.asm keeps osc 1 for the shaper, then wr_t5v_osc)
+      JUMP 0x172b00;                    // -> wr_p5_mid. (page5.asm keeps osc 1 for the shaper, then wr_t5v_osc)
 
 .GLOBAL wr_t5v_next.;
 wr_t5v_next.:

@@ -1,24 +1,18 @@
-// page5.asm -- Waverider page 5, the shape (docs/waverider-shape.md): FOLD, NPOS, and the
-// shaper's TYPE (Ring, AM) with AMT.
+// page5.asm -- Waverider page 5, the shape (docs/waverider-shape.md): FOLD, and the shaper's
+// TYPE (Ring, AM) with AMT. (NPOS, noise into POS, waits on branch wip/waverider-npos: its
+// DCLK crossfades cost a second table read on each oscillator, owner 2026-10-16.)
 //
 // Our own code, assembled with selache's `selas` (GPL-3.0, used as a tool and never
 // linked in), run offline in digikit's SHARC executor inside the DN2 1.11 image and checked
-// bit for bit against dnfw.waverider.live (fold, shaper, npos_offset; scripts/sharc_waverider_shape.py).
+// bit for bit against dnfw.waverider.live (fold, shaper; scripts/sharc_waverider_shape.py).
 //
-// The four controls are frame words like the others, at 0x25c48c + 146t:
-//   FOLD  sound slot 58, offset 284    NPOS  slot 61, offset 290
+// The three controls are frame words like the others, at 0x25c48c + 146t:
+//   FOLD  sound slot 58, offset 284
 //   TYPE  slot 62, offset 292 (>> 8: 0 Off, 1 Ring, 2 AM; others Off)    AMT  slot 48, offset 264
 // Each at 0 (every sound's default since page 5) skips its code, so the voice is
 // bit-identical to the one before page 5.
 //
-// Three ways in, each by a JUMP another source sends here instead of where it went:
-//
-// wr_p5_npos (shapes.asm's way back to wr_mod_have, once per voice and oscillator, every
-//   block): NPOS. A xorshift32 per voice and oscillator (DM 0x2e6000 + 4 (2t + osc),
-//   seeded by the image, live.npos_seeds) steps once; r = x as a signed int x 2^-31, and
-//   POS += trunc(r x w^2 x f32(0x3c00 / 0x7f00^2)), w = the NPOS word, not below 0. MPOS
-//   and the loop's min(POS, 0x7800) follow, as for any POS. Registers as shapes.asm keeps
-//   them: in R4 = POS, R9 = t; clobbers R0, R2, R7, R8, R10, R12, I0 (the modulator's own).
+// Two ways in, each by a JUMP another source sends here instead of where it went:
 //
 // wr_p5_mid (machine9_live.asm's JUMP to wr_t5v_osc once osc 1 is done): with TYPE 1 or 2
 //   and AMT above 0, osc 1's samples are copied to DM 0x2e5e00 (128 floats), for the
@@ -40,73 +34,16 @@
 //
 // DM (byte addresses, after build3.asm):
 //   0x2e5e00  osc 1's copy, 128 float32
-//   0x2e6000  NPOS's generators, 32 u32 (seeded)
-//   0x2e6080  1 when osc 2 ran this block (which way to sub.asm)
+//   0x2e6000  1 when osc 2 ran this block (which way to sub.asm)
 //
 // PLACEMENT IS FIXED at PM sw 0x172b00 (DM 0x2e5600): the absolute jumps below are written
 // for it by scripts/sharc_resolve_jumps.py.
 
 .SECTION/PM seg_pmco;
 
-.GLOBAL wr_p5_npos.;
-wr_p5_npos.:
-      // NPOS: 0x25c48c + 290 + 146t (R9 = t)
-      R10 = LSHIFT R9 BY 7;
-      R12 = LSHIFT R9 BY 4;
-      R10 = R10 + R12;
-      R12 = LSHIFT R9 BY 1;
-      R10 = R10 + R12;                  // 146t
-      R12 = 0x25c5ae;                   // 0x25c48c + 290
-      R0 = R12 + R10;
-      R2 = -4;
-      R2 = R0 AND R2;
-      I0 = R2;
-      R2 = DM(0, I0);
-      R7 = 2;
-      R7 = R0 AND R7;
-      R7 = LSHIFT R7 BY 3;              // 16 for the high half
-      R12 = R12 - R12;
-      R7 = R12 - R7;
-      R2 = LSHIFT R2 BY R7;
-      R12 = 0xffff;
-      R2 = R2 AND R12;                  // the NPOS word
-      IF EQ JUMP 0x16ec46;              // -> wr_mod_have. (reader_m9.asm: no NPOS)
-      // the generator: 0x2e6000 + 4 (2t + osc)
-      R0 = LSHIFT R9 BY 1;
-      R12 = DM(0x2de6c4);
-      R0 = R12 + R0;
-      R0 = LSHIFT R0 BY 2;
-      R12 = 0x2e6000;
-      R0 = R12 + R0;
-      I0 = R0;
-      R8 = DM(0, I0);
-      R0 = LSHIFT R8 BY 13;
-      R8 = R8 XOR R0;
-      R0 = LSHIFT R8 BY -17;
-      R8 = R8 XOR R0;
-      R0 = LSHIFT R8 BY 5;
-      R8 = R8 XOR R0;
-      DM(0, I0) = R8;
-      // depth = w^2 x f32(0x3c00 / 0x7f00^2), r = x x 2^-31
-      R12 = R12 - R12;
-      F2 = FLOAT R2 BY R12;
-      F2 = F2 * F2;
-      R12 = 0x3773cb5e;                 // f32(0x3c00 / 0x7f00^2)
-      F2 = F2 * F12;
-      R12 = -31;
-      F8 = FLOAT R8 BY R12;
-      F2 = F8 * F2;
-      R0 = TRUNC F2;
-      R12 = PASS R0;
-      R4 = R12 + R4;                    // POS + the offset
-      R4 = PASS R4;
-      IF GE JUMP 0x16ec46;              // -> wr_mod_have.
-      R4 = R4 - R4;                     // not below 0
-      JUMP 0x16ec46;                    // -> wr_mod_have.
-
 .GLOBAL wr_p5_mid.;
 wr_p5_mid.:
-      CALL 0x172b91;                    // -> wr_p5_shaper_on.
+      CALL 0x172b29;                    // -> wr_p5_shaper_on.
       R0 = PASS R0;
       IF EQ JUMP 0x16ed83;              // -> wr_t5v_osc. (no shaper: nothing to keep)
       // osc 1's samples, two a pass (the block is even: 32)
@@ -168,12 +105,12 @@ wr_p5_shaper_on.:
       R1 = LSHIFT R1 BY R3;
       R12 = 0xffff;
       R1 = R1 AND R12;                  // AMT
-      IF EQ JUMP 0x172bee;              // -> wr_p5_off.
+      IF EQ JUMP 0x172b86;              // -> wr_p5_off.
       R12 = 1;
       R12 = R0 - R12;
       R3 = 1;
       COMPU(R12, R3);
-      IF LE JUMP 0x172bef;              // -> wr_p5_on. (TYPE - 1 in 0..1)
+      IF LE JUMP 0x172b87;              // -> wr_p5_on. (TYPE - 1 in 0..1)
 .GLOBAL wr_p5_off.;
 wr_p5_off.:
       R0 = R0 - R0;
@@ -184,16 +121,16 @@ wr_p5_on.:
 .GLOBAL wr_p5_ran.;
 wr_p5_ran.:
       R0 = 1;
-      DM(0x2e6080) = R0;
-      JUMP 0x172bfe;                    // -> wr_p5_post.
+      DM(0x2e6000) = R0;
+      JUMP 0x172b96;                    // -> wr_p5_post.
 .GLOBAL wr_p5_skip.;
 wr_p5_skip.:
       R0 = R0 - R0;
-      DM(0x2e6080) = R0;
+      DM(0x2e6000) = R0;
 
 .GLOBAL wr_p5_post.;
 wr_p5_post.:
-      CALL 0x172b91;                    // -> wr_p5_shaper_on.
+      CALL 0x172b29;                    // -> wr_p5_shaper_on.
       R12 = DM(0x2dde88);
       I0 = R12;                         // the track buffer, read
       I2 = R12;                         // and written
@@ -207,10 +144,10 @@ wr_p5_post.:
       R12 = 0x38010204;                 // f32(1 / 0x7f00)
       F9 = F9 * F12;                    // a
       R0 = PASS R0;
-      IF EQ JUMP 0x172c78;              // -> wr_p5_fold.
+      IF EQ JUMP 0x172c10;              // -> wr_p5_fold.
       R12 = 1;
       COMPU(R0, R12);
-      IF NE JUMP 0x172c47;              // -> wr_p5_am.
+      IF NE JUMP 0x172bdf;              // -> wr_p5_am.
       // Ring
       LCNTR = R13, DO wr_p5_ring_end. UNTIL LCE;
 .NOCOMPRESS;
@@ -226,12 +163,12 @@ wr_p5_post.:
 wr_p5_ring_end.:
       DM(I2, M6) = F2;
 .COMPRESS;
-      JUMP 0x172c78;                    // -> wr_p5_fold.
+      JUMP 0x172c10;                    // -> wr_p5_fold.
 .GLOBAL wr_p5_am.;
 wr_p5_am.:
       R12 = 2;
       COMPU(R0, R12);
-      IF NE JUMP 0x172c78;              // -> wr_p5_fold.
+      IF NE JUMP 0x172c10;              // -> wr_p5_fold.
       R10 = 0x3f800000;                 // 1.0
       R11 = 0x3f000000;                 // 0.5
       LCNTR = R13, DO wr_p5_am_end. UNTIL LCE;
@@ -276,7 +213,7 @@ wr_p5_fold.:
       R0 = LSHIFT R0 BY R3;
       R12 = 0xffff;
       R0 = R0 AND R12;                  // FOLD
-      IF EQ JUMP 0x172cf2;              // -> wr_p5_out.
+      IF EQ JUMP 0x172c8a;              // -> wr_p5_out.
       // g / T = (1 + FOLD x f32(7 / 0x7f00)) x f32(1 / T)
       R12 = R12 - R12;
       F1 = FLOAT R0 BY R12;
@@ -313,9 +250,9 @@ wr_p5_fold_end.:
 
 .GLOBAL wr_p5_out.;
 wr_p5_out.:
-      R0 = DM(0x2e6080);
+      R0 = DM(0x2e6000);
       R0 = PASS R0;
       IF NE JUMP 0x171000;              // -> wr_sub_ran. (sub.asm)
       JUMP 0x171008;                    // -> wr_sub_skip. (sub.asm)
 .wr_p5..end:
-      .type wr_p5_npos.,STT_FUNC;
+      .type wr_p5_mid.,STT_FUNC;

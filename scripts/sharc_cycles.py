@@ -63,6 +63,8 @@ def _cases(live):
         ("osc2+noise", {**on2, nois: 0x6400, typ: 0x0100, colr: 0x4000, dec: 0x2800}, True),
         ("osc2+sub+noise", {**on2, sub: 0x6400, nois: 0x6400, typ: 0x0100, colr: 0x4000, dec: 0x2800},
          True),
+        ("formant", {"LEV2": 0, live.SHAPE_SLOTS[2]: live.TYPE_FORMANT << 8, live.SHAPE_SLOTS[3]: 0x4000}, True),
+        ("osc2+formant", {**on2, live.SHAPE_SLOTS[2]: live.TYPE_FORMANT << 8, live.SHAPE_SLOTS[3]: 0x4000}, True),
     ]
 
 
@@ -93,6 +95,9 @@ def estimate(a) -> int:
             label = syx.name.split("_DN2_")[0]
             img = g.Image(dk, section7_of(syx))
             init = g.init_on(snap, m2mach, img)
+            # IIR0's DMASTAT reads ACDONE: the runner has no IIR0, and the core's work is the same
+            # whenever the filter finishes (formant.asm polls once a voice; scripts/sharc_formant_voice.py)
+            init.state.mmrs[0x310C4004] = g.fx.Const(0x40)
             report = {"build": syx.name, "section7_sha256": img.sha, "blocks": a.blocks, "cases": {}}
             for name, words, note in cases:
                 over = {g.WAV1: 0x4000, **{(g.LEV2 if k == "LEV2" else k): v for k, v in words.items()}}

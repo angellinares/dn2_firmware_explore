@@ -606,9 +606,8 @@ class NoiseVoice:
 # it, owner 2026-10-16).
 SHAPE_SLOTS = (58, 61, 62, 48, 59, 60, 64, 63)  # FOLD, NPOS, TYPE, AMT, WARP, FM, P1, P2
 SHAPE_MAX = 0x7F00                       # 127 << 8: the knobs' top
-SHAPE_TYPES = ("Off", "Ring", "AM")     # TYPE's values; more types grow the list
-TYPE_FORMANT = 3                          # dnfw.waverider.formant on IIR0, one voice late (formant.asm): in the
-                                          # model now; TYPE offers it once the DSP runs it
+SHAPE_TYPES = ("Off", "Ring", "AM", "Formant")   # TYPE's values; more types grow the list
+TYPE_FORMANT = 3                          # dnfw.waverider.formant on IIR0, one voice late (formant.asm)
 SHAPE_PEAK = 10 ** (-11 / 20)            # one oscillator's peak at LEV 100 and TRIM -11 dB: the fold point
 FOLD_DRIVE = 7.0                         # FOLD 127 drives the mix 8 times past the fold point
 

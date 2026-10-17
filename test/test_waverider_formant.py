@@ -76,3 +76,13 @@ def test_the_level_keeps_a_saw_at_110_hz_within_3_db_across_the_vowels():
         g = F.level(float(p))
         rms.append(10 * math.log10(sum(v * v for v in y) / len(y)) + 20 * math.log10(g))
     assert max(rms) - min(rms) < 3.0, rms
+
+
+def test_the_glide_takes_a_jump_in_steps_and_a_note_at_once():
+    p, seen = 0.0, []
+    for _ in range(40):
+        p = F.glide(p, 4.0, False)
+        seen.append(p)
+    assert seen[0] == F.GLIDE_STEP and seen[31] == 4.0 and all(b - a <= F.GLIDE_STEP + 1e-12 for a, b in zip([0.0] + seen, seen))
+    assert F.glide(1.0, 3.5, True) == 3.5 and F.glide(None, 2.0, False) == 2.0
+    assert F.glide(3.0, 2.95, False) == 2.95

@@ -215,6 +215,13 @@ PH_DM = 0x2E6280                             # each sample's phase, 129 u32 (the
 WARP_TABLE_DM = 0x2E6500                     # WARP's (k1, k2), 128 pairs of float32 (live.warp_table)
 PHASE_DM = 0x2E6900                          # phase.asm: the readers on PH
 PHASE_SW = PHASE_DM // 2                     # 0x173480
+# Page 5's Formant (formant.asm): the coefficients each block; IIR0 runs the cascade
+FORMANT_DM = 0x2E7000                        # formant.asm
+FORMANT_SW = FORMANT_DM // 2                 # 0x173800
+FORMANT_VOWELS_AT = 0x8070A000               # DDR, core only: the vowel pairs, 4 x 20 float32
+FORMANT_SHIFTS_AT = 0x8070A200               # P1's ratios, 128 float32
+FORMANT_LEVELS_AT = 0x8070A400               # the level table, 33 x 9 float32
+FORMANT_DDR_END = 0x8070B000
 FILL_MIN = 32                                # a shorter tail of zeros stays in its payload (a fill block's header is 16 bytes)
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 

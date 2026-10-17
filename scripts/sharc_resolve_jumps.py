@@ -60,7 +60,7 @@ def siblings() -> dict[str, int]:
             "trim": dsp.TRIM_SW,
             "reader_mip": dsp.MIP_SW, "reader_miph": dsp.MIP_SW, "reader_miph2": dsp.MIP_SW,
             "fft3": dsp.FFT3_SW, "spec3": dsp.SPEC3_SW, "mipb3": dsp.MIPB3_SW, "build3": dsp.BUILD3_SW,
-            "page5": dsp.PAGE5_SW, "phase": dsp.PHASE_SW}
+            "page5": dsp.PAGE5_SW, "phase": dsp.PHASE_SW, "formant": dsp.FORMANT_SW}
 
 
 def external(skip: pathlib.Path, work: pathlib.Path) -> dict[str, int]:

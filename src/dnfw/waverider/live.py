@@ -607,7 +607,7 @@ class NoiseVoice:
 SHAPE_SLOTS = (58, 61, 62, 48, 59, 60, 64, 63)  # FOLD, NPOS, TYPE, AMT, WARP, FM, P1, P2
 SHAPE_MAX = 0x7F00                       # 127 << 8: the knobs' top
 SHAPE_TYPES = ("Off", "Ring", "AM")     # TYPE's values; more types grow the list
-TYPE_FORMANT = 3                          # dnfw.waverider.formant, layout A on IIR0 (owner, 2026-10-17): in the
+TYPE_FORMANT = 3                          # dnfw.waverider.formant on IIR0, one voice late (formant.asm): in the
                                           # model now; TYPE offers it once the DSP runs it
 SHAPE_PEAK = 10 ** (-11 / 20)            # one oscillator's peak at LEV 100 and TRIM -11 dB: the fold point
 FOLD_DRIVE = 7.0                         # FOLD 127 drives the mix 8 times past the fold point
@@ -763,7 +763,6 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
     trimmed = [0.0, 0.0]                        # each oscillator's last factor: zeros at boot
     osc1: list[float] = []
     vox = formant.Voice()                       # TYPE Formant: the cascade's states and vowel glide
-    late: list[float] | None = None             # layout A: the voice's last block, out one block late
     for b, blk in enumerate(blocks):
         shp = (tuple(shapes[b]) + (0,) * 8)[:8] if shapes else (0,) * 8   # page 5: FOLD, NPOS (no effect yet), TYPE, AMT, WARP, FM, P1, P2
         incs = [None, None]
@@ -839,8 +838,10 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
             mixed = shaper(mixed, osc1, kind, shp[3])
         if shp[0] & 0xFFFF:                     # page 5: FOLD, on the oscillators' mix
             mixed = fold(mixed, shp[0])
+        wet = None
         if kind == TYPE_FORMANT:                # page 5: the Formant, after FOLD: AMT the vowel, P1 the shift, P2 the dry part
-            mixed = vox.block(mixed, shp[3], shp[6], shp[7], triggered)
+            wet, d, e = vox.filter(mixed, shp[3], shp[6], shp[7], triggered)
+            mixed = [_f32(d * m) for m in mixed]
         sub = subs[b] if subs else None
         if sub and sub[0] & 0xFFFF:
             src = 1 if (sub[3] & 0xFFFF) >> 8 and incs[1] is not None else 0
@@ -850,10 +851,8 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
             ys = noise.render(noises[b], triggered, block, factor)
             if ys is not None:
                 mixed = [_f32(a + v) for a, v in zip(mixed, ys)]
-        if kind == TYPE_FORMANT:                # layout A: IIR0 runs after the last voice, so the
-            mixed, late = (late or [0.0] * len(mixed)), mixed   # whole voice comes out a block late
-        else:
-            late = None
+        if wet is not None:                     # IIR0's output, mixed in after the sub and the noise (at the
+            mixed = [_f32(_f32(e * w) + r) for w, r in zip(wet, mixed)]   # next voice's FOLD or the loop's end)
         out += mixed
     return out
 

@@ -131,12 +131,24 @@ def _shape(typ=3, vowel=0, shift=0, dry=0):
     return (0, 0, typ << 8, vowel, 0, 0, shift, dry)          # AMT, P1, P2
 
 
-def test_formant_fully_dry_is_the_plain_sound_one_block_late():
+def test_formant_fully_dry_is_the_plain_sound_on_time():
     from dnfw.waverider import dsp, live
     t, blk = dsp.tables(), _blocks()
     plain = live.render_two(t, blk, 32)
     got = live.render_two(t, blk, 32, shapes=[_shape(dry=0x7F00)] * len(blk))
-    assert got[:32] == [0.0] * 32 and got[32:] == plain[:-32]
+    assert got == plain
+
+
+def test_formant_fully_wet_keeps_the_sub_out_of_the_filter():
+    from dnfw.waverider import dsp, live
+    t, blk = dsp.tables(), _blocks()
+    sub = [(0x6400, 0, 0, 0)] * len(blk)
+    with_sub = live.render_two(t, blk, 32, subs=sub, shapes=[_shape()] * len(blk))
+    without = live.render_two(t, blk, 32, shapes=[_shape()] * len(blk))
+    alone = live.render_two(t, blk, 32, subs=sub, shapes=[_shape(typ=0)] * len(blk))
+    plain = live.render_two(t, blk, 32, shapes=[_shape(typ=0)] * len(blk))
+    for k in range(len(blk) * 32):                    # the sub adds as it does without the Formant
+        assert abs((with_sub[k] - without[k]) - (alone[k] - plain[k])) < 1e-5
 
 
 def test_a_new_sounds_formant_filters_and_amt_moves_the_vowel_p1_the_shift():
@@ -146,7 +158,7 @@ def test_a_new_sounds_formant_filters_and_amt_moves_the_vowel_p1_the_shift():
     a = live.render_two(t, blk, 32, shapes=[_shape()] * len(blk))            # every knob at 0: A, no shift, wet
     u = live.render_two(t, blk, 32, shapes=[_shape(vowel=0x7F00)] * len(blk))
     up = live.render_two(t, blk, 32, shapes=[_shape(shift=0x7F00)] * len(blk))
-    assert a[32:] != plain[:-32] and a != u and a != up
+    assert a != plain and a != u and a != up
 
 
 def test_the_other_types_ignore_p1_and_p2_and_take_six_words():

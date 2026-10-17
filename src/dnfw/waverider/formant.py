@@ -281,10 +281,17 @@ class Voice:
         self.states = [[0.0, 0.0] for _ in range(len(VOWELS))]
         self.position = None
 
-    def block(self, mix: list[float], vowel_word: int, shift_word: int, dry_word: int, note_on: bool) -> list[float]:
-        """One block: AMT's VOWEL_WORD, P1's SHIFT_WORD, P2's DRY_WORD."""
+    def filter(self, mix: list[float], vowel_word: int, shift_word: int, dry_word: int,
+               note_on: bool) -> tuple[list[float], float, float]:
+        """One block: AMT's VOWEL_WORD, P1's SHIFT_WORD, P2's DRY_WORD. -> (the cascade's output,
+        d, e = 1 - d). The voice is then e x wet + R, R the dry part d x mix with the sub and the
+        noise added (live.render_two), as formant.asm mixes IIR0's output in."""
         self.position = glide(self.position, position_of(vowel_word), note_on)
         wet = run(mix, leveled(self.position, p1_of(shift_word)), self.states)
         d = dry_of(dry_word)
-        e = _f32(1.0 - d)
+        return wet, d, _f32(1.0 - d)
+
+    def block(self, mix: list[float], vowel_word: int, shift_word: int, dry_word: int, note_on: bool) -> list[float]:
+        """`filter`, mixed: e x wet + d x mix (a voice without the sub and the noise)."""
+        wet, d, e = self.filter(mix, vowel_word, shift_word, dry_word, note_on)
         return [_f32(_f32(e * w) + _f32(d * m)) for m, w in zip(mix, wet)]

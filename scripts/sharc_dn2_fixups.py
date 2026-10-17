@@ -105,6 +105,7 @@ from __future__ import annotations
 import collections
 import dataclasses
 import math
+import os
 import struct
 import sys
 
@@ -116,9 +117,16 @@ Const = _signed = None
 
 
 def bind(tools_dir: str) -> None:
-    """Import digikit's runner from TOOLS_DIR (a checkout's tools/)."""
+    """Import digikit's runner from TOOLS_DIR (a checkout's tools/, or its tools/sharc_dev/ in
+    the layout digikit's main has used since 2026-10)."""
     global sr, st, fm, seq, ACCESS_WIDTHS, UREG_CODES, _dm_read, _dm_write, _simd_active
     global Const, _signed, TYPE4B_OWN_WIDTHS
+    dev = os.path.join(tools_dir, "sharc_dev")
+    if not os.path.exists(os.path.join(tools_dir, "sharc_run.py")) and os.path.exists(os.path.join(dev, "sharc_run.py")):
+        tools_dir = dev
+        root = os.path.dirname(os.path.dirname(dev))
+        if root not in sys.path:
+            sys.path.insert(0, root)                # it imports itself as tools.sharc_dev
     if tools_dir not in sys.path:
         sys.path.insert(0, tools_dir)
     import sharc_run as _sr  # noqa: PLC0415

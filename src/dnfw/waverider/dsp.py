@@ -53,7 +53,7 @@ import pathlib
 import struct
 
 from ..image import bootstream, sharc_object
-from . import harmonics, live, mip, reduce, table3, testtable
+from . import formant, harmonics, live, mip, reduce, table3, testtable
 from . import render as reference
 
 STOCK_SHA256 = "336e340aa0cdcd34e314cfa44849f709a3134f6bd4cd57dfc7e15702c83115e2"
@@ -63,9 +63,10 @@ CODE = pathlib.Path(__file__).with_name("sharc_code.json")
 # L1 block 1's free tail (DM byte addresses). Block 1 is 0x2c0000..0x2f0000; the
 # stock stream's last byte in it is 0x2dd52c, and the startup enables the DM cache,
 # which is carved from the top of block 1 (16 KB at size code 0, the size the
-# startup writes; see docs/waverider-dsp-silence.md). REGION ends 36 KB below the
-# block's top, so it stays clear of a 16 KB or a 32 KB DM cache.
-REGION = (0x2DD600, 0x2E7000)
+# startup writes; see docs/waverider-dsp-silence.md). REGION ends 32 KB below the
+# block's top, so it stays clear of a 16 KB or a 32 KB DM cache (it ended at 0x2e7000, 36 KB
+# below, until the Formant's buffers took the 4 KB above, 2026-10-17).
+REGION = (0x2DD600, 0x2E8000)
 STOCK_BLOCK1_END = 0x2DD52C
 DM_CACHE_32K = 0x2E8000                      # the lowest byte a 32 KB DM cache would own
 CODE_SPAN = 0x400                            # each code object is padded to this
@@ -218,9 +219,14 @@ PHASE_SW = PHASE_DM // 2                     # 0x173480
 # Page 5's Formant (formant.asm): the coefficients each block; IIR0 runs the cascade
 FORMANT_DM = 0x2E7000                        # formant.asm
 FORMANT_SW = FORMANT_DM // 2                 # 0x173800
+FORMANT_COEF_DM = 0x2E7660                   # the voices' IIR0 coefficients, 16 x 5 x 7 words
+FORMANT_IO_DM = 0x2E7F20                     # the block IIR0 filters in place, 32 float32
+FORMANT_TCB_DM = 0x2E7FA0                    # IIR0's TCB, 13 words (legacy)
+FORMANT_FLIGHT_DM = 0x2E7FD4                 # the voice in flight: track, e, N, coefficients
 FORMANT_VOWELS_AT = 0x8070A000               # DDR, core only: the vowel pairs, 4 x 20 float32
 FORMANT_SHIFTS_AT = 0x8070A200               # P1's ratios, 128 float32
 FORMANT_LEVELS_AT = 0x8070A400               # the level table, 33 x 9 float32
+FORMANT_VOICES_AT = 0x8070AC00               # the voices' glide state, 16 x 2 words
 FORMANT_DDR_END = 0x8070B000
 FILL_MIN = 32                                # a shorter tail of zeros stays in its payload (a fill block's header is 16 bytes)
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
@@ -296,7 +302,36 @@ def objects() -> dict[str, bytes]:
             for name in ("reader", "machine5_live", "entry_jump", "idle_load", "idle_jump", "block_count",
                          "entry_mark", "emark_jump", "modulator", "shapes", "load", "pool", "sync",
                          "smooth", "dclk", "sub", "noise", "trim", "reader_mip", "reader_miph", "reader_miph2",
-                         "page5", "phase")}
+                         "page5", "phase", "formant")}
+
+
+def iir_word(dm: int) -> int:
+    """A DM byte address in L1 as IIR0 takes it: the system address >> 2."""
+    return (LOAD_ALIAS + dm) >> 2
+
+
+def formant_tcb() -> bytes:
+    """IIR0's legacy TCB for formant.asm (accelprobe's layout, read on silicon): one channel, so
+    CHNPTR points at itself; linear buffers (length 0, modifier 1); IN and OUT both on IO;
+    COEFIDX, OUTIDX, INIDX and CTL2 are written again before each start."""
+    io = iir_word(FORMANT_IO_DM)
+    words = [iir_word(FORMANT_TCB_DM) + 12, 0, 1, iir_word(FORMANT_COEF_DM), io, 0, 1, io, io, 0, 1, io,
+             4 | (31 << 14)]
+    return struct.pack("<13I", *words)
+
+
+def formant_tables() -> list[tuple[str, int, bytes]]:
+    """formant.asm's DDR data: the vowel pairs (for i = 0..3: Fa, dF, BWa, dBW, five each),
+    SHIFTS, the level table and the voices' glide state (zeros)."""
+    pairs = []
+    for i in range(len(formant.VOWELS) - 1):
+        (_, fa, ba), (_, fb, bb) = formant.VOWELS[i], formant.VOWELS[i + 1]
+        pairs += list(fa) + [y - x for x, y in zip(fa, fb)] + list(ba) + [y - x for x, y in zip(ba, bb)]
+    levels = [v for row in formant.levels() for v in row]
+    return [("the Formant's vowel pairs, 80 float32", FORMANT_VOWELS_AT, struct.pack(f"<{len(pairs)}f", *pairs)),
+            ("the Formant's P1 ratios, 128 float32", FORMANT_SHIFTS_AT, struct.pack("<128f", *formant.SHIFTS)),
+            ("the Formant's level table, 33 x 9 float32", FORMANT_LEVELS_AT, struct.pack(f"<{len(levels)}f", *levels)),
+            ("the Formant's glide state (zeros)", FORMANT_VOICES_AT, bytes(FORMANT_DDR_END - FORMANT_VOICES_AT))]
 
 
 def noise_state() -> bytes:
@@ -385,7 +420,11 @@ def spans() -> list[tuple[str, int, bytes]]:
             ("FM's buffer and the phases (zeros)", FMB_DM, bytes(WARP_TABLE_DM - FMB_DM)),
             ("WARP's (k1, k2), 128 pairs of float32", WARP_TABLE_DM,
              struct.pack("<256f", *(k for pair in live.warp_table() for k in pair))),
-            ("phase.asm (wr_ph_read)", PHASE_DM, obj["phase"])]
+            ("phase.asm (wr_ph_read)", PHASE_DM, obj["phase"]),
+            ("formant.asm (wr_fm_post, wr_fm_coef, wr_fm_end)", FORMANT_DM, obj["formant"]),
+            ("the Formant's IIR0 coefficients (zeros)", FORMANT_COEF_DM, bytes(FORMANT_IO_DM - FORMANT_COEF_DM)),
+            ("the Formant's IO block (zeros)", FORMANT_IO_DM, bytes(FORMANT_TCB_DM - FORMANT_IO_DM)),
+            ("the Formant's TCB, then nothing in flight", FORMANT_TCB_DM, formant_tcb())]
     out = []
     for k, (what, at, payload) in enumerate(raw):
         end = raw[k + 1][1] if k + 1 < len(raw) else REGION[1]
@@ -406,6 +445,7 @@ def spans() -> list[tuple[str, int, bytes]]:
                 ("build3's position scales, S per F (table3.scales)", SCALES_AT, table3.scales()),
                 ("fft3's twiddles at N 4096, cos", TWR_AT, wr.astype("<f4").tobytes()),
                 ("fft3's twiddles at N 4096, -sin", TWI_AT, wi.astype("<f4").tobytes())]
+    out += [(what, at, payload) for what, at, payload in formant_tables()]
     out.append(("pool directory (zeros: no table loaded yet)", POOL_DIR, bytes(POOL_ZEROS)))
     return out
 

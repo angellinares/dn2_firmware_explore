@@ -365,14 +365,16 @@ def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
     code_spans = [x for x in sp if "asm (" in x[0]]
     s3 = dsp.stage3_objects() if dsp.STAGE3 else {}
     # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm, sync/smooth/dclk.asm (M10b-2),
-    # trim.asm, sub/noise.asm (page 3), the mip reader, stage 3's fft3, spec3, mipb3 and build3, page5.asm and phase.asm
-    assert len(code_spans) == 18 + len(s3)
+    # trim.asm, sub/noise.asm (page 3), the mip reader, stage 3's fft3, spec3, mipb3 and build3, page5.asm, phase.asm
+    # and formant.asm
+    assert len(code_spans) == 19 + len(s3)
     for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["idle_load"],
                                                      obj["block_count"], obj["entry_mark"], obj["modulator"],
                                                      obj["shapes"], obj["load"], obj["pool"], obj["sync"], obj["trim"],
                                                      obj["smooth"], obj["dclk"], obj["sub"], obj["noise"],
                                                      obj[{"hermite": "reader_miph", "hermite2": "reader_miph2"}.get(mip.INTERP, "reader_mip")],
-                                                     *(s3[k] for k in ("fft3", "spec3", "mipb3", "build3") if k in s3))):
+                                                     *(s3[k] for k in ("fft3", "spec3", "mipb3", "build3") if k in s3),
+                                                     obj["page5"], obj["phase"], obj["formant"])):
         assert payload[:len(code)] == code
         assert len(payload) - len(code) >= 64 and not any(payload[len(code):]), what
 

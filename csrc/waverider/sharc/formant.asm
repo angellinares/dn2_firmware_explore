@@ -5,6 +5,15 @@
 // linked in), run offline in digikit's SHARC engine inside the DN2 1.11 image and checked
 // bit for bit against dnfw.waverider.formant (scripts/sharc_formant_check.py).
 //
+// The voice runs on IIR0 one voice late (live.render_two's order): page5.asm's way to the sub
+// comes to wr_fm_post after FOLD. It first collects the voice IIR0 is filtering (wr_fm_collect:
+// wait for ACDONE, then track = e x IO + track, where the sub and the noise have added in).
+// Then, for TYPE 3 (Formant) and a block of 32 or less, it computes this voice's cascade
+// (wr_fm_coef), copies the block to IO, scales the track by d (P2's dry part), and starts
+// IIR0 (legacy, one channel, Save State) on IO in place. The sub, the noise and the next
+// voice run while IIR0 works. machine9_live.asm's way out of the loop comes to wr_fm_end,
+// which collects the last voice. Clobbers R0-R15, I0-I2; I3, I4 and I5 are not touched.
+//
 // wr_fm_coef: one voice's cascade for this block, in formant.leveled's float32 order.
 //   In:  R4 = AMT's word (the vowel), R5 = P1's word (the shift), R6 = 1 on a note, else 0,
 //        I1 = the voice's state (word 0 the glided position, float32; word 1: 1 once set),
@@ -26,12 +35,22 @@
 //     l0 = L[j][k] + (L[j+1][k] - L[j][k]) fp, l1 the same in column k + 1,
 //     level = l0 + (l1 - l0) fs;  the first biquad's A0 = A0 x level
 //
+// L1 (byte addresses; IIR0 reads them at 0x28000000 + the address, as word addresses):
+//   0x2e7660  the voices' IIR0 coefficients, 16 x 5 biquads x 7 words (140 bytes a voice)
+//   0x2e7f20  IO: the block IIR0 filters in place, 32 float32
+//   0x2e7fa0  the TCB, 13 words (legacy: CHNPTR, COEF LEN MOD IDX, OUT BASE LEN MOD IDX,
+//             IN BASE LEN MOD IDX, CTL2); a run writes its indexes back, so each start
+//             writes them again
+//   0x2e7fd4  in flight: the voice's track buffer (0: none), e, N, its coefficients, P2
+// IIR0's registers at 0x310c4000: CTL1 + 0, DMASTAT + 4, CHNPTR + 0x70.
+//
 // DDR (byte addresses; only the core reads them, through the DM bus):
+//   0x8070ac00  the voices' glide state, 16 x 2 words (the position, 1 once set)
 //   0x8070a000  the vowel pairs: for i = 0..3, 20 float32: Fa[5], dF[5], BWa[5], dBW[5]
 //   0x8070a200  SHIFTS, 128 float32 (2^(v / 127))
 //   0x8070a400  the level table, 33 rows x 9 columns, float32 (formant_levels.json)
 //
-// Every instruction is 48 bits (.NOCOMPRESS): a 16-bit short compute with bits 11..7 zero,
+// wr_fm_coef is all 48 bits (.NOCOMPRESS): a 16-bit short compute with bits 11..7 zero,
 // such as R2 = R2 + R3 (0xc023), has the bit pattern of a 32-bit Type 2b too, and digikit's
 // executor read 0xc023 0xc026 as one 32-bit instruction (2026-10-17).
 //
@@ -208,6 +227,178 @@ wr_fm_k_end.:
       R3 = DM(-35, I2);                 // the first biquad's A0
       F3 = F3 * F2;
       DM(-35, I2) = R3;
+      RTS;
+
+// page5.asm's way to the sub (wr_p5_out) comes here. From here on selas may use the 16- and
+// 32-bit forms, except that every Rn = Rn op Rm here has n of 8 or more: a 16-bit short compute
+// with n under 8 and op ADD has bits 11..7 zero, Type 2b's pattern too (see wr_fm_coef). The
+// float steps stay 48 bits.
+.COMPRESS;
+.GLOBAL wr_fm_post.;
+wr_fm_post.:
+      CALL 0x173ab8;                    // -> wr_fm_collect.
+      CALL 0x172caf;                    // -> wr_p5_t146. (R9 = t, R10 = 146t; wr_p5_word keeps both)
+      R12 = 0x25c5b0;                   // 0x25c48c + 292: TYPE
+      R2 = R12 + R10;
+      CALL 0x172cc4;                    // -> wr_p5_word.
+      R0 = LSHIFT R0 BY -8;
+      R1 = 3;
+      COMP(R0, R1);
+      IF NE JUMP 0x173aa8;              // -> wr_fm_out. (not the Formant)
+      R13 = DM(0x2dde24);               // N
+      R1 = 32;
+      COMP(R13, R1);
+      IF GT JUMP 0x173aa8;              // -> wr_fm_out. (longer than IO)
+      R12 = 0x25c5b2;                   // 0x25c48c + 294: P2
+      R2 = R12 + R10;
+      CALL 0x172cc4;                    // -> wr_p5_word.
+      DM(0x2e7fe4) = R0;                // P2, for after the coefficients
+      R12 = 0x25c5b4;                   // 0x25c48c + 296: P1
+      R2 = R12 + R10;
+      CALL 0x172cc4;                    // -> wr_p5_word.
+      R5 = PASS R0;
+      R12 = 0x25c594;                   // 0x25c48c + 264: AMT
+      R2 = R12 + R10;
+      CALL 0x172cc4;                    // -> wr_p5_word.
+      R4 = PASS R0;
+      // a note on this voice: the frame's note mask (offset 34), bit t, as noise.asm reads it
+      R0 = DM(0x25c4ac);
+      R0 = LSHIFT R0 BY -16;
+      R11 = R11 - R11;
+      R11 = R11 - R9;
+      R0 = LSHIFT R0 BY R11;            // >> t
+      R1 = 1;
+      R6 = R0 AND R1;
+      // the voice's glide state and coefficients
+      R8 = LSHIFT R9 BY 3;
+      R12 = 0x8070ac00;
+      R8 = R8 + R12;
+      I1 = R8;
+      R8 = LSHIFT R9 BY 7;
+      R11 = LSHIFT R9 BY 3;
+      R8 = R8 + R11;
+      R11 = LSHIFT R9 BY 2;
+      R8 = R8 + R11;                    // 140 t
+      R12 = 0x2e7660;
+      R8 = R8 + R12;
+      I2 = R8;
+      DM(0x2e7fe0) = R8;                // the coefficients, for the TCB
+      CALL 0x173800;                    // -> wr_fm_coef.
+      // d and e from P2
+      R0 = DM(0x2e7fe4);
+      R12 = R12 - R12;
+.NOCOMPRESS;
+      F1 = FLOAT R0 BY R12;
+      R12 = 0x38010204;                 // f32(1 / 0x7f00)
+      F1 = F1 * F12;
+      R12 = 0x3f800000;                 // 1.0
+      F1 = MIN(F1, F12);                // d
+      F2 = F12 - F1;                    // e
+.COMPRESS;
+      // IO = the block; the track = d x the block
+      R13 = DM(0x2dde24);               // N
+      R12 = DM(0x2dde88);
+      I0 = R12;
+      I2 = R12;
+      DM(0x2e7fd4) = R12;               // in flight: this voice's track
+      DM(0x2e7fd8) = R2;                // e
+      DM(0x2e7fdc) = R13;               // N
+      R12 = 0x2e7f20;
+      I1 = R12;
+      LCNTR = R13, DO wr_fm_in_end. UNTIL LCE;
+.NOCOMPRESS;
+      R3 = DM(I0, M6);
+      DM(I1, M6) = R3;
+      F3 = F1 * F3;
+.GLOBAL wr_fm_in_end.;
+wr_fm_in_end.:
+      DM(I2, M6) = R3;
+.COMPRESS;
+      // the TCB: COEFIDX, OUTIDX, INIDX and CTL2 again (word addresses: 0x28000000 + DM, >> 2)
+      R12 = 0x28000000;
+      R8 = DM(0x2e7fe0);
+      R8 = R8 + R12;
+      R8 = LSHIFT R8 BY -2;
+      DM(0x2e7fac) = R8;                // COEFIDX (TCB + 3)
+      R3 = 0x0a0b9fc8;                  // (0x28000000 + 0x2e7f20) >> 2: IO
+      DM(0x2e7fbc) = R3;                // OUTIDX (TCB + 7)
+      DM(0x2e7fcc) = R3;                // INIDX (TCB + 11)
+      R8 = -1;
+      R8 = R8 + R13;
+      R8 = LSHIFT R8 BY 14;             // (N - 1) << 14
+      R12 = 4;                          // five biquads
+      R8 = R8 OR R12;
+      DM(0x2e7fd0) = R8;                // CTL2 (TCB + 12)
+      // start: CTL1 = 0, read DMASTAT, CHNPTR = TCB + 12, CTL1 = EN | DMAEN | SS
+      R12 = 0x310c4000;
+      I0 = R12;
+      R12 = R12 - R12;
+      DM(0, I0) = R12;
+      R2 = DM(1, I0);
+      R2 = 0x0a0b9ff4;                  // (0x28000000 + 0x2e7fa0) >> 2, + 12
+      DM(28, I0) = R2;                  // CHNPTR (+ 0x70)
+      R2 = 0x501;                       // EN | DMAEN | SS
+      DM(0, I0) = R2;
+.GLOBAL wr_fm_out.;
+wr_fm_out.:
+      R0 = DM(0x2e6000);                // 1 when osc 2 ran: which way to the sub, as page5.asm went
+      R0 = PASS R0;
+      IF NE JUMP 0x171000;              // -> wr_sub_ran. (sub.asm)
+      JUMP 0x171008;                    // -> wr_sub_skip. (sub.asm)
+
+// machine9_live.asm's way out of the loop comes here: the last voice in flight.
+.GLOBAL wr_fm_end.;
+wr_fm_end.:
+      CALL 0x173ab8;                    // -> wr_fm_collect.
+      JUMP 0x16ebe6;                    // -> wr_t5v_exit.
+
+// The voice in flight, if any: wait for IIR0's ACDONE (at most 100,000 reads; past that the
+// dry part, the sub and the noise stay as they are), CTL1 = 0, then track = e x IO + track.
+// Clobbers R0-R3, R8, R11-R13, I0-I2.
+.GLOBAL wr_fm_collect.;
+wr_fm_collect.:
+      R0 = DM(0x2e7fd4);
+      R0 = PASS R0;
+      IF EQ JUMP 0x173b01;              // -> wr_fm_none.
+      R12 = 0x310c4004;                 // DMASTAT
+      I0 = R12;
+      R3 = 0x40;                        // ACDONE
+      R8 = 100000;
+      R13 = -1;
+.GLOBAL wr_fm_poll.;
+wr_fm_poll.:
+      R2 = DM(0, I0);
+      R11 = R2 AND R3;
+      IF NE JUMP 0x173ad9;              // -> wr_fm_done.
+      R8 = R8 + R13;
+      IF GT JUMP 0x173acb;              // -> wr_fm_poll.
+      JUMP 0x173afd;                    // -> wr_fm_clear. (never finished)
+.GLOBAL wr_fm_done.;
+wr_fm_done.:
+      R12 = R12 - R12;
+      DM(-1, I0) = R12;                 // CTL1 = 0
+      I1 = R0;                          // the track, read
+      I2 = R0;                          // and written
+      R12 = 0x2e7f20;
+      I0 = R12;                         // IO: IIR0's output
+      R1 = DM(0x2e7fd8);                // e
+      R13 = DM(0x2e7fdc);               // N
+      LCNTR = R13, DO wr_fm_mix_end. UNTIL LCE;
+.NOCOMPRESS;
+      R2 = DM(I0, M6);
+      R3 = DM(I1, M6);
+      F2 = F1 * F2;
+      F2 = F2 + F3;
+.GLOBAL wr_fm_mix_end.;
+wr_fm_mix_end.:
+      DM(I2, M6) = R2;
+.COMPRESS;
+.GLOBAL wr_fm_clear.;
+wr_fm_clear.:
+      R12 = R12 - R12;
+      DM(0x2e7fd4) = R12;               // nothing in flight
+.GLOBAL wr_fm_none.;
+wr_fm_none.:
       RTS;
 .wr_fm..end:
       .type wr_fm_coef.,STT_FUNC;

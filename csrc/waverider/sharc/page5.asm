@@ -39,7 +39,8 @@
 //   shaper after osc 2. Clobbers R0-R3, R9-R12, I0, I1.
 //
 // wr_p5_ran / wr_p5_skip (machine9_live.asm's two ways to the sub, osc 2 run or skipped):
-//   the shaper, then FOLD, on the track buffer, then on to sub.asm by the same way in.
+//   the shaper, then FOLD, on the track buffer, then formant.asm's wr_fm_post (TYPE Formant),
+//   which goes on to sub.asm by the same way in.
 //     Ring  y = b + a (o1 o2 / T - b)          AM  y = b + a (o1 (o2 / T + 1) 0.5 - b)
 //     with b the buffer, o1 the copy, o2 = b - o1, a = AMT / 0x7f00, T = f32(10^(-11/20)).
 //     FOLD  g = (1 + FOLD x f32(7 / 0x7f00)) x f32(1 / T); v = x g + 1; the phase
@@ -289,7 +290,9 @@ wr_p5_fold_end.:
 
 .GLOBAL wr_p5_out.;
 wr_p5_out.:
-      R0 = DM(0x2e6000);
+      // the Formant (formant.asm) takes the way to the sub from here; the three after it are
+      // the way it was, kept so nothing after them moves (they no longer run)
+      JUMP 0x1739cb;                    // -> wr_fm_post.
       R0 = PASS R0;
       IF NE JUMP 0x171000;              // -> wr_sub_ran. (sub.asm)
       JUMP 0x171008;                    // -> wr_sub_skip. (sub.asm)

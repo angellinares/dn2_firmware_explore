@@ -100,12 +100,13 @@ NOT_RAM = tuple(range(SPEC["layout"]["wr_spans"] & ~1, SPEC["layout"]["wr_spans_
 
 # Word places that read as an address above BSS and are not one, each disassembled on
 # 2026-10-16 (the label texts read again after the bus moved them 10 bytes down, 4 bytes up when SMT1/SMT2
-# became SLW1/SLW2, 8 bytes up when TYPE lost Formant and Comb, and 40 bytes down in 0.3.1 when SLW1/SLW2 got their own
-# range entries: the words read Nois and Fold) (objdump -m m68k:cfv4e over the two CODE chunks). A change to the code moves
+# became SLW1/SLW2, 8 bytes up when TYPE lost Formant and Comb, 40 bytes down in 0.3.1 when SLW1/SLW2 got their own
+# range entries, and 4 bytes down when TYPE gained Formant, 2026-10-17: the words read Nois, Fold and Form) (objdump -m m68k:cfv4e over the two CODE chunks). A change to the code moves
 # them, so the check flags the new places again and they are read afresh.
 NOT_RAM += (
-    0x4670AFBE,              # "Noise Colour": the label text "Nois"
-    0x4670AFDC,              # "ave Fold": the label text "Fold"
+    0x4670AFC2,              # "Noise Colour": the label text "Nois"
+    0x4670AFE0,              # "ave Fold": the label text "Fold"
+    0x4670B158,              # "Formant", TYPE's fourth value: the text "Form"
     0x4670B54A,              # notl %d3 ; andl %d3,%d2
     0x4670B7DA,              # addil #0x469fe800,%d0: the pool spans' base 0x46a00000 less two
                              # 3072 B entries, indexed by the table number (2 and up), declared

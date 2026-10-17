@@ -51,7 +51,7 @@ def test_a_sound_at_page_5s_defaults_renders_as_before():
     blocks = [(60.0, (0x4000, 0, 0x4000, 0x6400), (0x4000, 0x100, 0x4000, 0x6400))] * 3
     plain = live.render_two(tables, blocks)
     assert live.render_two(tables, blocks, shapes=[(0, 0, 0, 0x4000)] * 3) == plain
-    assert live.render_two(tables, blocks, shapes=[(0, 0, 0x0300, 0x7F00)] * 3) == plain   # TYPE 3: Off
+    assert live.render_two(tables, blocks, shapes=[(0, 0, 0x0400, 0x7F00)] * 3) == plain   # TYPE 4, past the list: Off (3 is Formant)
 
 
 def test_type_offers_only_what_plays_and_page5_fits_its_span():

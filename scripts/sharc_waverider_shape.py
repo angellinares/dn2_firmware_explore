@@ -51,7 +51,7 @@ from dnfw.waverider import dsp, live          # noqa: E402
 from dnfw.waverider import frame as FR        # noqa: E402
 from dnfw import sharcemu  # noqa: E402
 
-FOLD, NPOS, TYPE, AMT, WARP, FM = live.SHAPE_SLOTS
+FOLD, NPOS, TYPE, AMT, WARP, FM = live.SHAPE_SLOTS[:6]
 SUB = live.SUB_SLOTS[0]
 
 

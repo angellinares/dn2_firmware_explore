@@ -86,3 +86,46 @@ def test_the_glide_takes_a_jump_in_steps_and_a_note_at_once():
     assert seen[0] == F.GLIDE_STEP and seen[31] == 4.0 and all(b - a <= F.GLIDE_STEP + 1e-12 for a, b in zip([0.0] + seen, seen))
     assert F.glide(1.0, 3.5, True) == 3.5 and F.glide(None, 2.0, False) == 2.0
     assert F.glide(3.0, 2.95, False) == 2.95
+
+
+# The Formant type in the render (live.render_two, TYPE 3), layout A's block of delay
+
+def _blocks(n=12):
+    from dnfw.waverider import live
+    osc1 = (0, 0, 0x4000, 0x6400, 0x3200, live.MPOS_NONE, 0, 0, 0, 0)
+    return [(45.0, osc1, (0, 0, 0x4000, 0), (0, b == 1, live.PRST_OFF, 0, 0, 0)) for b in range(n)]
+
+
+def _shape(typ=3, vowel=0, shift=0, dry=0):
+    return (0, 0, typ << 8, vowel, 0, 0, shift, dry)          # AMT, P1, P2
+
+
+def test_formant_fully_dry_is_the_plain_sound_one_block_late():
+    from dnfw.waverider import dsp, live
+    t, blk = dsp.tables(), _blocks()
+    plain = live.render_two(t, blk, 32)
+    got = live.render_two(t, blk, 32, shapes=[_shape(dry=0x7F00)] * len(blk))
+    assert got[:32] == [0.0] * 32 and got[32:] == plain[:-32]
+
+
+def test_a_new_sounds_formant_filters_and_amt_moves_the_vowel_p1_the_shift():
+    from dnfw.waverider import dsp, live
+    t, blk = dsp.tables(), _blocks()
+    plain = live.render_two(t, blk, 32)
+    a = live.render_two(t, blk, 32, shapes=[_shape()] * len(blk))            # every knob at 0: A, no shift, wet
+    u = live.render_two(t, blk, 32, shapes=[_shape(vowel=0x7F00)] * len(blk))
+    up = live.render_two(t, blk, 32, shapes=[_shape(shift=0x7F00)] * len(blk))
+    assert a[32:] != plain[:-32] and a != u and a != up
+
+
+def test_the_other_types_ignore_p1_and_p2_and_take_six_words():
+    from dnfw.waverider import dsp, live
+    t, blk = dsp.tables(), _blocks()
+    ring6 = live.render_two(t, blk, 32, shapes=[(0, 0, 1 << 8, 0x4000, 0, 0)] * len(blk))
+    ring8 = live.render_two(t, blk, 32, shapes=[(0, 0, 1 << 8, 0x4000, 0, 0, 0x7F00, 0x7F00)] * len(blk))
+    assert ring6 == ring8
+
+
+def test_the_knobs_map_to_the_vowel_and_the_shift():
+    assert F.position_of(0) == 0.0 and F.position_of(0x7F00) == 4.0
+    assert F.shift_of(0) == 1.0 and abs(F.shift_of(0x7F00) - 2.0) < 1e-12

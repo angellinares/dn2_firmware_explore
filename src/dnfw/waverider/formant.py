@@ -125,3 +125,48 @@ def run(x: list[float], biquads, states: list[list[float]]) -> list[float]:
             v = y
         out.append(v)
     return out
+
+
+# The Formant type on page 5 (owner, 2026-10-17: AMT is the vowel, so an LFO can sweep it; layout
+# A on IIR0). The knobs' frame words (0..127 << 8):
+#   AMT (slot 48): the vowel, 0..127 -> position 0..4 (A..U); the only LFO destination of the row
+#   P1  (slot 64): the shift, 0..127 -> a ratio 2^(P1 / 127), 1.0 (the table's bass voice, a new
+#                  sound's 0) to 2.0 (an octave up)
+#   P2  (slot 63): the dry part, y = (1 - d) wet + d dry, d = P2 / 127: a new sound's 0 is fully
+#                  filtered, so TYPE Formant is heard at once. This form is exact at both ends
+#                  (0: the filtered sound, 127: the dry sound, bit for bit); wet + d (dry - wet)
+#                  is not exact at 127.
+KNOB_MAX = 0x7F00
+
+
+def position_of(vowel_word: int) -> float:
+    return 4.0 * (vowel_word & 0xFFFF) / KNOB_MAX
+
+
+def shift_of(shift_word: int) -> float:
+    return 2.0 ** ((shift_word & 0xFFFF) / KNOB_MAX)
+
+
+def leveled(position: float, shift: float) -> list[tuple[float, ...]]:
+    """The cascade with `level` folded into the first biquad's A0, as the DSP stores it: the gain
+    costs no multiply."""
+    bq = cascade(position, shift)
+    a0, a1, b1, a2, b2 = bq[0]
+    bq[0] = (_f32(a0 * level(position, shift)), a1, b1, a2, b2)
+    return bq
+
+
+class Voice:
+    """One voice's Formant: the biquads' states (Save State), the glided vowel position."""
+
+    def __init__(self):
+        self.states = [[0.0, 0.0] for _ in range(len(VOWELS))]
+        self.position = None
+
+    def block(self, mix: list[float], vowel_word: int, shift_word: int, dry_word: int, note_on: bool) -> list[float]:
+        """One block: AMT's VOWEL_WORD, P1's SHIFT_WORD, P2's DRY_WORD."""
+        self.position = glide(self.position, position_of(vowel_word), note_on)
+        wet = run(mix, leveled(self.position, shift_of(shift_word)), self.states)
+        d = _f32((dry_word & 0xFFFF) / KNOB_MAX)
+        e = _f32(1.0 - d)
+        return [_f32(_f32(e * w) + _f32(d * m)) for m, w in zip(mix, wet)]

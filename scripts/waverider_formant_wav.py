@@ -14,7 +14,8 @@ samples), as the DSP would change them.
 - parallel: five band-passes (constant 0 dB peak), each times the table's level, added.
 
 Writes dry.wav, cascade.wav and parallel.wav, and cascade_level.wav and parallel_level.wav with a
-gain for each vowel (blended as the formants are) so that every vowel is as loud as the loudest. The two forms are scaled by one factor each so
+gain for each vowel (blended as the formants are) so that every vowel is as loud as the loudest, and cascade_model.wav: dnfw.waverider.formant's
+float32 cascade in IIR0's order with its level gain (equal power for white noise), what the DSP will compute. The two forms are scaled by one factor each so
 that their overall RMS is the same; the vowels keep their levels relative to each other. Prints
 each vowel's RMS in each form.
 """
@@ -31,7 +32,7 @@ import wave
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from dnfw.waverider import dsp, live  # noqa: E402
+from dnfw.waverider import dsp, formant, live  # noqa: E402
 
 RATE, BLOCK = 48000, 32
 # vowel: (F1..F5 Hz, BW1..BW5 Hz, level dB of F1..F5), bass voice
@@ -115,6 +116,18 @@ def render(x: list[float], form: str, level: dict[str, float] | None = None) -> 
     return out
 
 
+def render_model(x: list[float]) -> list[float]:
+    """The cascade as dnfw.waverider.formant builds and runs it (float32, IIR0's order, its level
+    gain): the position follows the same timeline, A=0 .. U=4, the coefficients once a block."""
+    out, states = [], [[0.0, 0.0] for _ in range(5)]
+    for start in range(0, len(x), BLOCK):
+        t = start / RATE
+        pos = min(int(t / 0.7), 4) if t < 3.5 else min((t - 3.5) / 2.0, 1.0) * 4
+        g = formant.level(pos)
+        out += [formant._f32(g * v) for v in formant.run(x[start:start + BLOCK], formant.cascade(pos), states)]
+    return out
+
+
 def rms_db(x: list[float]) -> float:
     return 10 * math.log10(max(sum(v * v for v in x) / max(len(x), 1), 1e-20))
 
@@ -142,6 +155,7 @@ def main() -> int:
         rms = {v: rms_db(y[int((i * 0.7 + 0.2) * RATE):int((i + 1) * 0.7 * RATE)]) for i, v in enumerate(ORDER)}
         top = max(rms.values())
         forms[f + "_level"] = render(x, f, {v: 10 ** ((top - r) / 20) for v, r in rms.items()})
+    forms["cascade_model"] = render_model(x)          # what the DSP will compute
     target = rms_db(x) - 6
     peak = 0.0
     scales = {}

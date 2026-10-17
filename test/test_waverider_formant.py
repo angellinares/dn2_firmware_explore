@@ -33,11 +33,42 @@ def test_a_raised_shift_stops_below_nyquist():
 
 
 def test_the_level_makes_every_vowel_as_loud_as_a():
-    ref = F.power_gain(F.cascade(0.0))
+    ref = F.power_gain(F.cascade_exact(0.0))
     for p in (0.0, 1.0, 2.0, 2.5, 3.0, 4.0):
         for shift in (0.8, 1.0, 1.3):
-            g = F.level(p, shift)
-            assert abs(F.power_gain(F.cascade(p, shift)) * g * g / ref - 1.0) < 1e-5
+            g = F.level_exact(p, shift)
+            assert abs(F.power_gain(F.cascade_exact(p, shift)) * g * g / ref - 1.0) < 1e-5
+
+
+def _db(bq, f):
+    z = complex(math.cos(2 * math.pi * f / F.RATE), math.sin(2 * math.pi * f / F.RATE))
+    h = 1
+    for a0, _, b1, _, b2 in bq:
+        h *= a0 / (1 - b1 / z - b2 / z / z)
+    return 20 * math.log10(abs(h))
+
+
+def test_the_dsp_forms_stay_within_0_002_db_of_the_exact_cascade():
+    for i in range(0, 129, 4):
+        for v in range(0, 128, 9):
+            p, shift = i / 32, F.SHIFTS[v]
+            exact, dsp = F.cascade_exact(p, shift), F.cascade(p, shift)
+            for e, d in zip(exact, dsp):
+                assert abs(e[2] - d[2]) < 3e-7 and abs(e[4] - d[4]) < 3e-7
+            for f in list(F.formants_exact(p, shift)[0]) + [100, 5000, 12000]:
+                assert abs(_db(exact, f) - _db(dsp, f)) < 0.002
+
+
+def test_the_level_table_is_level_exact_at_its_points_and_within_0_07_db_between():
+    tab = F.levels()
+    assert len(tab) == F.LEVEL_ROWS and all(len(r) == F.LEVEL_COLUMNS for r in tab)
+    for j, k in ((0, 0), (8, 1), (17, 4), (32, 8)):
+        assert tab[j][k] == F.level_exact(j / 8, 2.0 ** (16 * k / 127))
+        if k < 8:
+            assert F.level_at(j / 8, 16 * k) == tab[j][k]
+    for p, v in ((0.06, 3), (1.3, 50), (2.44, 77), (3.9, 127), (2.0625, 120)):
+        g, ref = F.level_at(p, v), F.level_exact(p, F.SHIFTS[v])
+        assert abs(20 * math.log10(g / ref)) < 0.07, (p, v)
 
 
 def test_run_is_the_cascade_and_keeps_its_states_across_blocks():
@@ -73,7 +104,7 @@ def test_the_level_keeps_a_saw_at_110_hz_within_3_db_across_the_vowels():
     for p in range(5):
         bq = F.cascade(float(p))
         y = F.run(saw, bq, [[0.0, 0.0] for _ in bq])[4000:]
-        g = F.level(float(p))
+        g = F.level_exact(float(p))
         rms.append(10 * math.log10(sum(v * v for v in y) / len(y)) + 20 * math.log10(g))
     assert max(rms) - min(rms) < 3.0, rms
 
@@ -127,5 +158,12 @@ def test_the_other_types_ignore_p1_and_p2_and_take_six_words():
 
 
 def test_the_knobs_map_to_the_vowel_and_the_shift():
-    assert F.position_of(0) == 0.0 and F.position_of(0x7F00) == 4.0
-    assert F.shift_of(0) == 1.0 and abs(F.shift_of(0x7F00) - 2.0) < 1e-12
+    assert F.position_of(0) == 0.0 and F.position_of(0x7F00) == 4.0 and F.position_of(0xFFFF) == 4.0
+    assert F.shift_of(0) == 1.0 and F.shift_of(0x7F00) == 2.0 and F.shift_of(0x7F80) == 2.0
+    assert F.dry_of(0) == 0.0 and F.dry_of(0x7F00) == 1.0
+
+
+def test_the_dsp_forms_are_float32_at_every_step():
+    for v in (F.exp_neg(0.004), F.cos_poly(1.3), *F.leveled(2.3, 40)[0], F.level_at(1.7, 99)):
+        assert F._f32(v) == v
+    assert F.glide(1.0, 3.0, False) == 1.125 and F._f32(F.glide(0.1, 3.0, False)) == F.glide(0.1, 3.0, False)

@@ -1,12 +1,19 @@
 """The Formant type's filter, in the model: five resonators in cascade, as IIR0 will run them.
 
     cascade(position, shift) -> five biquads in IIR0's stored order (A0, A1, B1, A2, B2), float32
-    level(position, shift)   -> the gain that makes every vowel as loud as A at no shift
+    level_at(position, p1)   -> the gain that makes every vowel as loud as A at no shift (P1 0..127)
+    leveled(position, p1)    -> the cascade with that gain in the first A0, as the DSP stores it
     run(x, biquads, states)  -> one block through the cascade, in IIR0's float order (float32)
 
 The owner chose the cascade form and the Formant type as IIR0's first job (2026-10-17,
-docs/waverider-formant.md). Which knobs feed `position`, `shift` and the mix is still open, so
-this module takes the three as numbers.
+docs/waverider-formant.md).
+
+Every step the DSP repeats each block is written in the DSP's float32 order, so the DSP can
+match it bit for bit: the blend between vowels, exp and cos as short polynomials (`exp_neg`,
+`cos_poly`), and the level from a table of 33 x 9 points (`level_at`). The exact forms stay
+as the reference (`formants_exact`, `resonator_exact`, `level_exact`): the coefficients differ
+from them by at most 2.4e-7 (0.0011 dB in the response) and the level by at most 0.066 dB
+(2026-10-17; test/test_waverider_formant.py holds both bounds).
 
 - `position` 0..4 runs through the vowels A, E, I, O, U, with a linear blend of each
   formant's frequency and bandwidth between two neighbours.
@@ -19,7 +26,9 @@ this module takes the three as numbers.
 
 from __future__ import annotations
 
+import json
 import math
+import pathlib
 import struct
 
 RATE = 48000
@@ -42,8 +51,8 @@ def _f32(x: float) -> float:
     return struct.unpack("<f", struct.pack("<f", x))[0]
 
 
-def formants(position: float, shift: float = 1.0) -> tuple[tuple[float, ...], tuple[float, ...]]:
-    """(F1..F5, BW1..BW5) at POSITION (0..4, A..U) with every frequency times SHIFT."""
+def formants_exact(position: float, shift: float = 1.0) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """(F1..F5, BW1..BW5) at POSITION (0..4, A..U) with every frequency times SHIFT, float64."""
     p = min(max(position, 0.0), len(VOWELS) - 1.0)
     i = min(int(p), len(VOWELS) - 2)
     f = p - i
@@ -53,7 +62,23 @@ def formants(position: float, shift: float = 1.0) -> tuple[tuple[float, ...], tu
     return freqs, bws
 
 
-def resonator(freq: float, bw: float) -> tuple[float, float, float, float, float]:
+GUARD_HZ = _f32(NYQUIST_GUARD * RATE)
+
+
+def formants(position: float, shift: float = 1.0) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """`formants_exact` in the DSP's float32 order: f = p - i, F = (Fa + (Fb - Fa) f) x shift,
+    then MIN with the guard; BW = BWa + (BWb - BWa) f. Whole positions give the table's values."""
+    p = _f32(min(max(position, 0.0), len(VOWELS) - 1.0))
+    i = min(int(p), len(VOWELS) - 2)
+    f = _f32(p - i)
+    (_, fa, ba), (_, fb, bb) = VOWELS[i], VOWELS[i + 1]
+    sh = _f32(shift)
+    freqs = tuple(min(_f32(_f32(x + _f32((y - x) * f)) * sh), GUARD_HZ) for x, y in zip(fa, fb))
+    bws = tuple(_f32(x + _f32((y - x) * f)) for x, y in zip(ba, bb))
+    return freqs, bws
+
+
+def resonator_exact(freq: float, bw: float) -> tuple[float, float, float, float, float]:
     """One formant as an IIR0 biquad, float32: (A0, A1, B1, A2, B2). A0 comes from B and C as
     they are stored, so the gain at 0 Hz is 1 to float32's precision (a low formant's A0 is about
     0.003, and rounding the three apart left it 1.3e-5 off)."""
@@ -62,9 +87,48 @@ def resonator(freq: float, bw: float) -> tuple[float, float, float, float, float
     return (_f32(1 - b - c), 0.0, b, 0.0, c)
 
 
+def exp_neg(x: float) -> float:
+    """exp(-x) for 0 <= x <= 0.009 (a bandwidth up to 130 Hz): 1 - x + x^2/2 - x^3/6, Horner,
+    float32. The next term is under 3e-10, below float32's step at 1."""
+    r = _f32(-1 / 6)
+    r = _f32(_f32(r * x) + 0.5)
+    r = _f32(_f32(r * x) - 1.0)
+    return _f32(_f32(r * x) + 1.0)
+
+
+COS_TERMS = tuple(_f32((-1) ** k / math.factorial(2 * k)) for k in range(9))   # cos's Taylor terms to w^16
+
+
+def cos_poly(w: float) -> float:
+    """cos(w) for 0 <= w <= 0.9 pi (a formant up to the guard), Horner in w^2, float32."""
+    u = _f32(w * w)
+    c = COS_TERMS[-1]
+    for k in COS_TERMS[-2::-1]:
+        c = _f32(_f32(c * u) + k)
+    return c
+
+
+PI_RATE = _f32(math.pi / RATE)
+TWO_PI_RATE = _f32(2 * math.pi / RATE)
+
+
+def resonator(freq: float, bw: float) -> tuple[float, float, float, float, float]:
+    """`resonator_exact` as the DSP computes it: r = exp_neg(BW pi / RATE), C = -r r,
+    B = (r + r) cos_poly(F 2 pi / RATE), A0 = (1 - B) - C."""
+    r = exp_neg(_f32(bw * PI_RATE))
+    c = _f32(-_f32(r * r))
+    b = _f32(_f32(r + r) * cos_poly(_f32(freq * TWO_PI_RATE)))
+    return (_f32(_f32(1.0 - b) - c), 0.0, b, 0.0, c)
+
+
 def cascade(position: float, shift: float = 1.0) -> list[tuple[float, ...]]:
     freqs, bws = formants(position, shift)
     return [resonator(f, b) for f, b in zip(freqs, bws)]
+
+
+def cascade_exact(position: float, shift: float = 1.0) -> list[tuple[float, ...]]:
+    freqs, bws = formants_exact(position, shift)
+    return [resonator_exact(f, b) for f, b in zip(freqs, bws)]
 
 
 def power_gain(biquads, n: int = 8192, tilt: float = LEVEL_TILT) -> float:
@@ -87,13 +151,51 @@ def power_gain(biquads, n: int = 8192, tilt: float = LEVEL_TILT) -> float:
 _REFERENCE = None
 
 
-def level(position: float, shift: float = 1.0) -> float:
+def level_exact(position: float, shift: float = 1.0) -> float:
     """The gain, float32, that gives the cascade at POSITION and SHIFT the power gain of A at no
     shift (for LEVEL_TILT's source), so a sweep through the vowels keeps about one loudness."""
     global _REFERENCE
     if _REFERENCE is None:
-        _REFERENCE = power_gain(cascade(0.0))
-    return _f32(math.sqrt(_REFERENCE / power_gain(cascade(position, shift))))
+        _REFERENCE = power_gain(cascade_exact(0.0))
+    return _f32(math.sqrt(_REFERENCE / power_gain(cascade_exact(position, shift))))
+
+
+# The level as the DSP finds it: `level_exact` at positions 0, 1/8 .. 4 (33 rows) and P1 0, 16 .. 128
+# (9 columns; 128 is past the knob, for the last interval), bilinear between them. The table is
+# data, formant_levels.json (float32 bit patterns), made by `level_table`
+# (scripts/waverider_formant_levels.py).
+LEVEL_PER_POSITION = 8
+LEVEL_P1_STEP = 16
+LEVEL_ROWS, LEVEL_COLUMNS = 4 * LEVEL_PER_POSITION + 1, 128 // LEVEL_P1_STEP + 1
+LEVELS_FILE = pathlib.Path(__file__).with_name("formant_levels.json")
+_LEVELS = None
+
+
+def level_table() -> list[list[float]]:
+    """`level_exact` at the grid's points, [row: position][column: P1], float32 (about 10 s)."""
+    return [[level_exact(j / LEVEL_PER_POSITION, 2.0 ** (k * LEVEL_P1_STEP / 127)) for k in range(LEVEL_COLUMNS)]
+            for j in range(LEVEL_ROWS)]
+
+
+def levels() -> list[list[float]]:
+    global _LEVELS
+    if _LEVELS is None:
+        bits = json.loads(LEVELS_FILE.read_text(encoding="utf-8"))["levels"]
+        _LEVELS = [[struct.unpack("<f", struct.pack("<I", int(w, 16)))[0] for w in row] for row in bits]
+    return _LEVELS
+
+
+def level_at(position: float, v: int) -> float:
+    """The level at POSITION (0..4) and P1 V (0..127), bilinear on `levels`, float32 in the
+    DSP's order: along the position in two columns, then between the columns."""
+    tab = levels()
+    pj = _f32(position * LEVEL_PER_POSITION)
+    j = min(int(pj), LEVEL_ROWS - 2)
+    fp = _f32(pj - j)
+    k, fs = v // LEVEL_P1_STEP, _f32((v % LEVEL_P1_STEP) * _f32(1 / LEVEL_P1_STEP))
+    l0 = _f32(tab[j][k] + _f32(_f32(tab[j + 1][k] - tab[j][k]) * fp))
+    l1 = _f32(tab[j][k + 1] + _f32(_f32(tab[j + 1][k + 1] - tab[j][k + 1]) * fp))
+    return _f32(l0 + _f32(_f32(l1 - l0) * fs))
 
 
 # The vowel's glide: a p-lock or a fast LFO can move the position by up to 4 (A to U) between two
@@ -109,7 +211,7 @@ def glide(last: float | None, target: float, note_on: bool) -> float:
     """This block's position, from LAST (None before the first block) toward TARGET."""
     if last is None or note_on:
         return target
-    return min(max(target, last - GLIDE_STEP), last + GLIDE_STEP)
+    return min(max(target, _f32(last - GLIDE_STEP)), _f32(last + GLIDE_STEP))
 
 
 def run(x: list[float], biquads, states: list[list[float]]) -> list[float]:
@@ -139,20 +241,36 @@ def run(x: list[float], biquads, states: list[list[float]]) -> list[float]:
 KNOB_MAX = 0x7F00
 
 
+POSITION_K = _f32(4.0 / KNOB_MAX)
+DRY_K = _f32(1.0 / KNOB_MAX)
+SHIFTS = tuple(_f32(2.0 ** (v / 127)) for v in range(128))   # P1's ratio, a table on the DSP
+
+
 def position_of(vowel_word: int) -> float:
-    return 4.0 * (vowel_word & 0xFFFF) / KNOB_MAX
+    """AMT's word as a position, 0..4: FLOAT x f32(4 / 0x7f00), MIN 4 (an LFO past the top)."""
+    return min(_f32((vowel_word & 0xFFFF) * POSITION_K), 4.0)
+
+
+def p1_of(shift_word: int) -> int:
+    """P1's knob value, 0..127 (P1 is no LFO destination: its word is whole steps)."""
+    return min((shift_word & 0xFFFF) >> 8, 127)
 
 
 def shift_of(shift_word: int) -> float:
-    return 2.0 ** ((shift_word & 0xFFFF) / KNOB_MAX)
+    return SHIFTS[p1_of(shift_word)]
 
 
-def leveled(position: float, shift: float) -> list[tuple[float, ...]]:
-    """The cascade with `level` folded into the first biquad's A0, as the DSP stores it: the gain
-    costs no multiply."""
-    bq = cascade(position, shift)
+def dry_of(dry_word: int) -> float:
+    """P2's word as the dry part, 0..1: FLOAT x f32(1 / 0x7f00) (1.0 exactly at 127)."""
+    return min(_f32((dry_word & 0xFFFF) * DRY_K), 1.0)
+
+
+def leveled(position: float, v: int) -> list[tuple[float, ...]]:
+    """The cascade at POSITION and P1 V with `level_at` folded into the first biquad's A0, as
+    the DSP stores it: the gain costs no multiply."""
+    bq = cascade(position, SHIFTS[v])
     a0, a1, b1, a2, b2 = bq[0]
-    bq[0] = (_f32(a0 * level(position, shift)), a1, b1, a2, b2)
+    bq[0] = (_f32(a0 * level_at(position, v)), a1, b1, a2, b2)
     return bq
 
 
@@ -166,7 +284,7 @@ class Voice:
     def block(self, mix: list[float], vowel_word: int, shift_word: int, dry_word: int, note_on: bool) -> list[float]:
         """One block: AMT's VOWEL_WORD, P1's SHIFT_WORD, P2's DRY_WORD."""
         self.position = glide(self.position, position_of(vowel_word), note_on)
-        wet = run(mix, leveled(self.position, shift_of(shift_word)), self.states)
-        d = _f32((dry_word & 0xFFFF) / KNOB_MAX)
+        wet = run(mix, leveled(self.position, p1_of(shift_word)), self.states)
+        d = dry_of(dry_word)
         e = _f32(1.0 - d)
         return [_f32(_f32(e * w) + _f32(d * m)) for m, w in zip(mix, wet)]

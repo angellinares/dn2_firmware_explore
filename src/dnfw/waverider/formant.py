@@ -96,6 +96,22 @@ def level(position: float, shift: float = 1.0) -> float:
     return _f32(math.sqrt(_REFERENCE / power_gain(cascade(position, shift))))
 
 
+# The vowel's glide: a p-lock or a fast LFO can move the position by up to 4 (A to U) between two
+# blocks. With `level`, the loudness changes by under 2 dB either way. An instant jump from I to O
+# leaves one waveform step 2.1 times the sound's 99th-percentile step (Prim. at 110 Hz); with the
+# glide it is 0.7 times, as for the other jumps. The position moves toward the knob's by at most
+# GLIDE_STEP a block, so A to U takes 32 blocks (21 ms). A note on the voice takes the knob's
+# position at once, as TRIM's slew does (live.trim_slew).
+GLIDE_STEP = 0.125
+
+
+def glide(last: float | None, target: float, note_on: bool) -> float:
+    """This block's position, from LAST (None before the first block) toward TARGET."""
+    if last is None or note_on:
+        return target
+    return min(max(target, last - GLIDE_STEP), last + GLIDE_STEP)
+
+
 def run(x: list[float], biquads, states: list[list[float]]) -> list[float]:
     """X (one block) through the cascade in IIR0's float order; STATES holds [s1, s2] per biquad
     (IIR0's stored words 5 and 6) and is updated in place, as Save State keeps them."""

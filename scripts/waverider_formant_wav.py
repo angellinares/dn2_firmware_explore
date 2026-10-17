@@ -128,6 +128,17 @@ def render_model(x: list[float]) -> list[float]:
     return out
 
 
+def render_jump(x: list[float], use_glide: bool) -> list[float]:
+    """A p-lock-like jump: A for 0.5 s, then I at once (block-aligned), with or without the glide."""
+    out, states, pos = [], [[0.0, 0.0] for _ in range(5)], None
+    for start in range(0, len(x), BLOCK):
+        target = 0.0 if start / RATE < 0.5 else 2.0
+        pos = formant.glide(pos, target, start == 0) if use_glide else target
+        g = formant.level(pos)
+        out += [formant._f32(g * v) for v in formant.run(x[start:start + BLOCK], formant.cascade(pos), states)]
+    return out
+
+
 def rms_db(x: list[float]) -> float:
     return 10 * math.log10(max(sum(v * v for v in x) / max(len(x), 1), 1e-20))
 
@@ -156,6 +167,7 @@ def main() -> int:
         top = max(rms.values())
         forms[f + "_level"] = render(x, f, {v: 10 ** ((top - r) / 20) for v, r in rms.items()})
     forms["cascade_model"] = render_model(x)          # what the DSP will compute
+    jumps = {"jump_no_glide": render_jump(x[:RATE], False), "jump_glide": render_jump(x[:RATE], True)}
     target = rms_db(x) - 6
     peak = 0.0
     scales = {}
@@ -166,6 +178,14 @@ def main() -> int:
     write(a.out / "dry.wav", x, 0.5 / max(abs(v) for v in x))
     for f, y in forms.items():
         write(a.out / f"{f}.wav", y, scales[f] * trim)
+    for name, y in jumps.items():                      # one scale for both, so they compare
+        write(a.out / f"{name}.wav", y, 0.5 / max(max(abs(v) for v in z) for z in jumps.values()))
+        at = int(0.5 * RATE)
+        steps = [abs(y[i + 1] - y[i]) for i in range(len(y) - 1)]
+        ref = sorted(steps)[int(0.99 * len(steps))]
+        blocks = [rms_db(y[k:k + BLOCK]) for k in range(at - 4 * BLOCK, at + 40 * BLOCK, BLOCK)]
+        print(f"  {name:14} at the jump: the largest step {max(steps[at - 64:at + 64]) / ref:.1f}x the 99th percentile, "
+              f"the largest block-to-block level change {max(abs(b - a) for a, b in zip(blocks, blocks[1:])):.1f} dB")
     print(f"wrote dry, cascade, parallel, cascade_level and parallel_level to {a.out}; each 5.5 s: A E I O U (0.7 s each), then A..U")
     for f, y in forms.items():
         cells = []

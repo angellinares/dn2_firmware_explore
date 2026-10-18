@@ -170,6 +170,7 @@ RANGES.update({227: (0, 0x7F00, 0), 231: (0, 0x7F00, 0), 233: (0, 0x7F00, 0x4000
 RANGES.update({rid: (0, 0x7F00, 0) for rid in SHAPE_PLAIN})   # the shape's knobs: 0..127, off at 0
 RANGES[TRIM_ID] = (0, 0x7F00, 0x4000)   # TRIM: -15..0 dB, -11 dB at the stock default (live.trim_table)
 RANGES.update({rid: (0, 0x7F00, 0) for rid in (255, 258)})   # SLW1, SLW2: Off at 0 since 0.3.1 (live.smth_table)
+SHORT_LISTS = tuple(sorted(set(VALUE_NAMES) | {249}))   # TYPE, OCT, WAVE, SRC, noise TYPE, MOVE1/2, TRIG, PRST, SYN1/2
 FORMAT_S = 0x40219C2D             # "%s", the stock naming routines' format
 HEAD_FORMAT = 0x40216CEE          # "%s=%s", the header's name and value (used once, at 0x40067820)
 RECORD_TABLE = 0x401F7F94         # record id N at + 60 N (the naming routine at + 0x34)
@@ -178,7 +179,8 @@ SPRINTF = 0x40000E82              # (buffer, format, ...), as the stock naming r
 LABELS_OUT = ("is_wr", "wr_count", "wr_page", "wr_label", "wr_long", "wr_icons", "wr_grid", "wr_grid9",
               "wr_fmt", "wr_vfmt", "wr_range", "wr_turn", "wr_head", "wr_slot_id", "descriptors",
               "wr_group", "wr_group_displaced", "wr_tie", "wr_list_name", "wr_minilabel",
-              "wr_cc_id", "wr_nrpn_id", "wr_set", "wr_out_nrpn", "wr_out_cc", "wr_out_lsb")
+              "wr_cc_id", "wr_nrpn_id", "wr_set", "wr_out_nrpn", "wr_out_cc", "wr_out_lsb",
+              "wr_knob_desc")
 GRID = 0x40017428                 # the stock grid: (view, canvas)
 GRID9 = 0x400175E4                # WaveTone's page-3 grid (page id 9): (view, canvas)
 ICON_PAGE = 7                     # the SYN page draw's id for WaveTone's OSC page
@@ -274,6 +276,15 @@ MIDI_NRPN_BASES = (128 + 73, 128 + 81, 128 + 89, 128 + 97, 128 + 112)
 SET_CTX = 0x46A60000              # after the pool's display spans (drive.SPANS + SPANS_BYTES)
 SET_WR, SET_OTHER = 0x57520005, 0x5752FFFF
 SETTER, SETTER_SLOT = 0x40038E88, 0x401DB830
+# Knob travel (owner, 2026-10-17: "short selection params need a generous range"). The SYN page's
+# encoder handler (0x400674d6) asks 0x400c2418(id) for the record's knob descriptor (0x4243325c +
+# 68 id), which sets how far a turn moves the value. Measured in the emulator, 40 turns of 10
+# counts: stock's ALGO (a short list, record 200) moved 15 single steps; A Env Attack (0..127,
+# record 212) and Waverider's TYPE (FM Tone's KSA, record 235) took 37 moves of 3. On a
+# Waverider track, the short lists use ALGO's descriptor, so they turn as stock's own short
+# lists do, with the knob pushed too.
+KNOB_DESC_SITE, KNOB_DESC = 0x40067574, 0x400C2418
+SHORT_LIST_LIKE = 200             # FM Tone's ALGO: the stock short list whose travel they copy
 MIDI_NRPN_BASES = (128 + 73, 128 + 81, 128 + 89, 128 + 97, 128 + 112)
 
 
@@ -313,6 +324,7 @@ def source(page_draw: int, tbl_range: int, tbl_fmt: int, rate_fmt: int) -> str:
     table = "\n".join(f"    .long {rid}, lab_{rid}" for rid in LABELS)
     strings = "\n".join(f'lab_{rid}: .asciz "{name}"' for rid, name in LABELS.items())
     mini_table = "\n".join(f"    .long {rid}, mini_{rid}" for rid in MINI_LABELS)
+    short_table = "\n".join(f"    .long {rid}" for rid in SHORT_LISTS)
     midi_table = "\n".join(f"    .long {rid}, {nrpn}, {cc}" for rid, nrpn, cc in midi_rows())
     mini_strings = "\n".join(f'mini_{rid}: .asciz "{name}"' for rid, name in MINI_LABELS.items())
     long_table = "\n".join(f"    .long {60 * rid}, long_{rid}" for rid in LONG_NAMES)
@@ -833,6 +845,31 @@ wr_slot_id:
     rts
 9:  moveq   #0,%d0
     rts
+
+| -- the SYN page's encoder handler asks 0x400c2418(id) for the knob descriptor: its jsr (at
+| 0x40067574) comes here. On a Waverider track, a short list (short_lists) gets FM Tone's ALGO
+| descriptor, so a turn moves it as far as stock moves its own short lists. Anything else, the
+| record's own. d0, d1, a0 and a1 are free, as in the stock getter.
+wr_knob_desc:
+    bsr.w   is_wr
+    tst.l   %d0
+    beq.s   9f
+    move.l  %sp@(4),%d1
+    lea     short_lists,%a0
+1:  move.l  %a0@+,%d0
+    beq.s   9f
+    cmp.l   %d0,%d1
+    bne.s   1b
+    pea     {SHORT_LIST_LIKE}
+    jsr     {KNOB_DESC:#010x}
+    addq.l  #4,%sp
+    rts
+9:  jmp     {KNOB_DESC:#010x}
+
+    .align 2
+short_lists:
+{short_table}
+    .long   0
 
 | -- d0 = the machine type of the track object in a2: its vtable +116, which reads the
 | track's sound byte +0xDE (0x40036462), so 5 on a Waverider track. d1, a0, a1 are lost.

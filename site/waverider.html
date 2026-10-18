@@ -211,7 +211,7 @@
 
 <!-- ================================================================= The manual -->
 <section id="manual" role="tabpanel" aria-labelledby="tab-manual" hidden>
-  <p class="small">Documentation version 1.7, 2026-10-18. It describes Waverider 0.3.2 (alpha 5).</p>
+  <p class="small">Documentation version 1.8, 2026-10-18. It describes Waverider 0.3.3 (alpha 5).</p>
   <h2>Select Waverider</h2>
   <p>WAVERIDER is in MACHINE SEL, after SWARMER. A Waverider track has five SYN pages. The
   header shows Waverider (1/5) to Waverider (5/5).</p>
@@ -511,10 +511,12 @@
 
   <section class="changes">
   <h2>Version and changes</h2>
-  <p>The version of Waverider is <strong><!-- dnfw:version waverider -->v0.3.2<!-- /dnfw:version --></strong> (alpha).
+  <p>The version of Waverider is <strong><!-- dnfw:version waverider -->v0.3.3<!-- /dnfw:version --></strong> (alpha).
   The list shows the changes in each version, with the newest first.</p>
 <!-- dnfw:changes waverider -->
 <dl class="changes">
+  <dt><span class="version">v0.3.3</span> <time datetime="2026-10-18">2026-10-18</time></dt>
+  <dd><ul><li>The short lists turn as the other machines&#x27; short lists do: a step needs a longer turn. That covers TYPE on page 5, OCT, WAVE, SRC and the noise TYPE on page 3, MOVE1, MOVE2, TRIG, PRST, SYN1 and SYN2.</li></ul></dd>
   <dt><span class="version">v0.3.2</span> <time datetime="2026-10-18">2026-10-18</time></dt>
   <dd><ul><li>Every knob on Waverider&#x27;s five pages now answers MIDI CC and NRPN. Pages 1 to 4 use the numbers each knob place has on the other machines: CC 40 to 77 and NRPN 1:73 to 1:104. Page 5 uses CC 12, 15, 35, 36, 37, 83, 93 and 119, and NRPN 1:112 to 1:119.</li><li>When you turn a Waverider knob with MIDI out on, the knob sends the same number.</li><li>A CC or NRPN sent to a track that is not on the screen now keeps that track&#x27;s own limits.</li></ul></dd>
   <dt><span class="version">v0.3.1</span> <time datetime="2026-10-17">2026-10-17</time></dt>
@@ -556,7 +558,7 @@
 </section>
 
 <section id="tech" role="tabpanel" aria-labelledby="tab-tech" hidden>
-  <p class="small">Documentation version 1.7, 2026-10-18. It describes Waverider 0.3.2 (alpha 5).</p>
+  <p class="small">Documentation version 1.8, 2026-10-18. It describes Waverider 0.3.3 (alpha 5).</p>
   <h2>Technical</h2>
   <p>This tab is for people who make wavetables, and for people who want to know how Waverider makes its
   sound. A script computes every figure and every table on this tab from the code that runs on the

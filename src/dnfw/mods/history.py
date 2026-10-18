@@ -89,6 +89,11 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "transients": PUBLISHED,
     "usbprobe": UNPUBLISHED,
     "waverider": (
+        Release("0.3.3", "2026-10-18", (
+            "The short lists turn as the other machines' short lists do: a step needs a longer turn. "
+            "That covers TYPE on page 5, OCT, WAVE, SRC and the noise TYPE on page 3, MOVE1, MOVE2, "
+            "TRIG, PRST, SYN1 and SYN2.",
+        )),
         Release("0.3.2", "2026-10-18", (
             "Every knob on Waverider's five pages now answers MIDI CC and NRPN. Pages 1 to 4 use the "
             "numbers each knob place has on the other machines: CC 40 to 77 and NRPN 1:73 to 1:104. "

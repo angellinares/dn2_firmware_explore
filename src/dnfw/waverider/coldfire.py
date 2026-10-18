@@ -585,7 +585,12 @@ def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
         _need(content, site - 2, bytes.fromhex("2f02"), f"the parameter send pushes the id ({what})")
         edit(site, bytes.fromhex("4eb9") + _long(playout[entry]),
              f"the parameter send's {what}: a Waverider track's knob place (pages 1..4 as "
-             "stock's knob numbers, page 5 NRPN 1:112..119)", bytes.fromhex(stock_hex))
+             "stock's knob numbers, page 5 CC 12, 15, 35..37, 83, 93, 119 and NRPN 1:112..119)",
+             bytes.fromhex(stock_hex))
+    _need(content, pages.KNOB_DESC_SITE - 2, bytes.fromhex("2f02"), "the encoder handler pushes the id")
+    edit(pages.KNOB_DESC_SITE, bytes.fromhex("4eb9") + _long(playout["wr_knob_desc"]),
+         "the SYN page encoder's knob descriptor: Waverider's short lists turn as stock's ALGO "
+         "does", bytes.fromhex("4eb9") + _long(pages.KNOB_DESC))
     # MIDI in is the bus's ev_param_cc and ev_param_nrpn (wr_cc_id, wr_nrpn_id): the
     # platform owns the lookups' entries
     # the per-type parameter list (page 3's and page 5's records on a Waverider track) is

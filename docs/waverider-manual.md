@@ -121,8 +121,8 @@ p-lock it, but it does not change the sound yet.
 - **Formant filters the oscillators only.** The sub-oscillator and the noise are added after the
   filter. Only AMT can take an LFO, so an LFO on AMT sweeps the vowels.
 - **FOLD follows the level.** A higher LEV1, LEV2 or TRIM gives more folds.
-- **FM needs osc 2.** On page 2, set LEV2 above 0. A higher LEV2 gives more FM. With osc 2 off, FM
-  changes nothing.
+- **FM and LEV2 are separate.** FM sets how much osc 2 changes osc 1. LEV2 on page 2 sets only how
+  loud osc 2 is. With LEV2 at 0 you hear osc 1 alone, changed by FM.
 - **FM and DETN:** the interval between the two oscillators sets the overtones. DETN at 0, +12, +19 or
   +24 semitones gives a harmonic sound. Most other values give a metallic sound.
 - **WARP and FM change where the oscillator reads its wave.** They do not change POS or the table.

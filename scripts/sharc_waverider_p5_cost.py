@@ -83,7 +83,8 @@ def main(argv=None) -> int:
         print(f"  {name:36s} {n}  +{per_block}/block/voice"
               + ("" if per_block is None else f"  x16 = {100 * 16 * per_block / FRAME_CYCLES:.1f} % of a frame"))
     g.OUT.mkdir(parents=True, exist_ok=True)
-    (g.OUT / "p5_cost.json").write_text(json.dumps(report, indent=1) + "\n")
+    report["note"] = a.note
+    (g.OUT / a.out).write_text(json.dumps(report, indent=1) + "\n")
     return 0 if all(v is not None for v in got.values()) else 1
 
 

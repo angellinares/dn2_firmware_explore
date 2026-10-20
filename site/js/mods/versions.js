@@ -15,5 +15,5 @@ export const VERSIONS = {
   songguard: "0.1.0",
   transients: "1.0.0",
   usbprobe: "0.1.0",
-  waverider: "0.3.5",
+  waverider: "0.3.6",
 };

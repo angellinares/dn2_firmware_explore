@@ -68,10 +68,30 @@ BLOCKS = [(60.0, (0x4000, 0, 0x4000, 0x6400), (0x4000, 0x100, 0x4000, 0x6400))] 
 SOLO = [(60.0, (0x4000, 0, 0x4000, 0x6400), (0x4000, 0x100, 0x4000, 0))] * 3
 
 
-def test_warp_and_fm_at_0_and_fm_without_osc_2_render_as_before():
+def test_warp_and_fm_at_0_render_as_before():
     tables = dsp.tables()
     assert live.render_two(tables, BLOCKS, shapes=[(0, 0, 0, 0x4000, 0x00FF, 0)] * 3) == live.render_two(tables, BLOCKS)
-    assert live.render_two(tables, SOLO, shapes=[(0, 0, 0, 0x4000, 0, 0x7F00)] * 3) == live.render_two(tables, SOLO)
+
+
+def test_fm_plays_at_lev2_0_and_its_depth_does_not_follow_lev2():
+    """0.3.6: FM alone sets the depth, LEV2 only how loud osc 2 is. At LEV2 0 the sound is pure FM; at LEV2
+    50 and 100 osc 1 is modulated the same, so the mix minus pure FM is osc 2 alone, at half and full level
+    (once the mix ratio's glide has settled: from the second block)."""
+    tables = dsp.tables()
+    fm = [(0, 0, 0, 0x4000, 0, 0x7F00)] * 8
+
+    def at(lev2):
+        o1, o2 = BLOCKS[0][1], (*BLOCKS[0][2][:3], lev2)
+        return live.render_two(tables, [(BLOCKS[0][0], o1, o2)] * 8, shapes=fm)
+
+    pure, half, full = at(0), at(0x3200), at(0x6400)
+    plain = live.render_two(tables, [(BLOCKS[0][0], BLOCKS[0][1], (*BLOCKS[0][2][:3], 0))] * 8)
+    assert pure != plain
+    tail = slice(4 * 32, 8 * 32)
+    d_half = [h - p for h, p in zip(half[tail], pure[tail])]
+    d_full = [f - p for f, p in zip(full[tail], pure[tail])]
+    assert max(abs(f) for f in d_full) > 0.05
+    assert max(abs(2 * h - f) for h, f in zip(d_half, d_full)) < 1e-4
 
 
 def test_warp_and_fm_change_the_sound():

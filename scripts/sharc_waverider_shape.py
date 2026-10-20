@@ -22,7 +22,9 @@ runs them (a note at block 1), with page 5's frame words (slots 58 FOLD, 61 NPOS
 | WARP 127, osc 2 on | both oscillators bent |
 | FM 64, osc 2 on | osc 2 plays first and moves osc 1's phase |
 | FM 127 and WARP 64, osc 2 on | both on osc 1, WARP on osc 2 |
-| FM 127, osc 2 off | bit for bit the control: no osc 2, no FM |
+| FM 127, LEV2 0 | bit for bit the model, and FM changes samples: pure FM (0.3.6) |
+| FM 127, LEV2 50 | the same: FM at full depth, osc 2 at half level |
+| FM 127 across a LEV2 jump, 100 to 0 | the same: the mix ratio glides |
 | FM, WARP, AM, FOLD and the sub | everything on page 5 at once |
 | FM and WARP across a POS jump, DCLK on | DCLK's two reads take the same phases |
 | WARP 127 at G4 and C6, FM 127 at C6, both at C7 | the same, and taming changes samples |
@@ -92,7 +94,9 @@ def main(argv=None) -> int:
         ("WARP 127, osc 2 on", {**on2, WARP: 0x7F00}),
         ("FM 64, osc 2 on", {**on2, FM: 0x4000}),
         ("FM 127 and WARP 64, osc 2 on", {**on2, FM: 0x7F00, WARP: 0x4000}),
-        ("FM 127, osc 2 off: no effect", {g.LEV2: 0, FM: 0x7F00}),
+        ("FM 127, LEV2 0: pure FM", {g.LEV2: 0, FM: 0x7F00}),
+        ("FM 127, LEV2 50", {g.LEV2: 0x3200, FM: 0x7F00}),
+        ("FM 127 across a LEV2 jump, 100 to 0", {g.LEV2: 0x6400, FM: 0x7F00}),
         ("FM, WARP, AM, FOLD and the sub", {**on2, FM: 0x5000, WARP: 0x3000, TYPE: 0x0200, AMT: 0x6000,
                                             FOLD: 0x2000, SUB: 0x6400}),
         ("FM and WARP across a POS jump, DCLK on", {**on2, FM: 0x6000, WARP: 0x5000, g.DCLK: live.DCLK_DEFAULT}),
@@ -102,6 +106,7 @@ def main(argv=None) -> int:
         ("tamed: FM 127 and WARP 127 at C7, osc 2 on", {**on2, FM: 0x7F00, WARP: 0x7F00}, 96),
     ]
     jumps = {"FM and WARP across a POS jump, DCLK on"}
+    lev_jumps = {"FM 127 across a LEV2 jump, 100 to 0"}
     if a.only:
         cases = [c for c in cases if c[0].startswith("control") or any(t in c[0] for t in a.only)]
     checks, report, wavs = {}, {"blocks": a.blocks, "cases": {}}, []
@@ -113,8 +118,9 @@ def main(argv=None) -> int:
             over = {g.WAV1: 0x4000, **words}
             note = nt[0] if nt else 60
 
-            def fb(b, over=over, jump=name in jumps, note=note):
+            def fb(b, over=over, jump=name in jumps, lj=name in lev_jumps, note=note):
                 o = {**over, g.WAV1: 0x7800} if jump and b >= g.JUMP_AT else over
+                o = {**o, g.LEV2: 0} if lj and b >= g.JUMP_AT else o
                 return g.base_frame(sound, machines, trigger=(b == 1), overrides=o, note=note << 8).to_bytes()
 
             subs, shapes = [], []
@@ -141,7 +147,7 @@ def main(argv=None) -> int:
             plain = live.render_two(tables, seq, g.BLOCK, "float32", subs=per_sub)
             bad = g.mismatches(got, want)
             heard = sum(1 for x, y in zip(want, plain) if x != y)
-            page5 = any(words.get(s, 0) for s in (FOLD, AMT, WARP)) or bool(words.get(FM) and words.get(g.LEV2))
+            page5 = any(words.get(s, 0) for s in (FOLD, AMT, WARP, FM))     # 0.3.6: FM plays at LEV2 0 too
             checks[name] = bad == 0 and (heard > 0 if page5 else heard == 0)
             report["cases"][name] = {"mismatches": bad, "samples_page5_changes": heard,
                                      "frame_words": per_shape[-1] if per_shape else None}

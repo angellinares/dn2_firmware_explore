@@ -92,6 +92,6 @@ wr_smooth_set.:
       DM(0, I0) = R1;
       R4 = TRUNC F1;
       DM(3, I4) = R4;                   // the reader block's pos
-      JUMP 0x16ee26;                    // -> wr_t5v_smoothed.
+      JUMP 0x16ee2f;                    // -> wr_t5v_smoothed.
 .wr_smooth..end:
       .type wr_smooth.,STT_FUNC;

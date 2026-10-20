@@ -27,6 +27,16 @@
 //   (R5 > 0): h = 1 + FM x 2 pi / 0x7f00 (DM 0x2e6010), f from max(inc, inc2), c to t c.
 //   Clobbers R1, R2, R4, I0.
 //
+// wr_ph_gain: wr_p5_phase calls it first, every reader call. For osc 2 under FM (FM state 1, page5.asm),
+//   osc 2's own gain (DM 0x2de6c0) times f32(1 / G) becomes the mix ratio's target (DM 0x2e6028), and the
+//   reader's gain becomes G = live.fm_gain(), LEV 100 at the default TRIM: FM alone sets the depth (0.3.6).
+//   Clobbers R0, R1.
+//
+// wr_ph_fmmix / wr_ph_fmgo: page5.asm's wr_p5_fm_mix jumps to wr_ph_fmgo while r glides (a settled r,
+//   within 2^-17 of its target, takes page5.asm's loops: one multiply, or nothing at LEV2 0). For each sample,
+//   r += (target - r) / 32, b = o1 + r FMB, with osc 1 copied for the shaper when R0 is not 0; r kept per
+//   voice at DM 0x2e6040 + 4t. Then wr_p5_post. Clobbers R0-R3, R8-R13, I0-I2.
+//
 // PLACEMENT IS FIXED at PM sw 0x173480 (DM 0x2e6900): the absolute jumps below are written
 // for it by scripts/sharc_resolve_jumps.py.
 
@@ -341,7 +351,7 @@ wr_ph_tame.:
       R4 = -32;
       F1 = FLOAT R11 BY R4;             // f = inc / 2^32
       F1 = F1 * F6;                     // f h, h = k1
-      CALL 0x17373e;                         // -> wr_ph_tame_t.
+      CALL 0x1737c4;                         // -> wr_ph_tame_t.
       COMP(F2, F3);
       IF GE JUMP 0x17371b;                   // -> wr_ph_tame_fm. (t = 1: WARP as it is)
       R4 = R4 - R4;
@@ -380,10 +390,80 @@ wr_ph_tame_fm.:
       R2 = DM(0x2e6010);                // FM x 2 pi / 0x7f00
       F2 = F2 + F3;                     // h
       F1 = F1 * F2;
-      CALL 0x17373e;                         // -> wr_ph_tame_t.
+      CALL 0x1737c4;                         // -> wr_ph_tame_t.
       F12 = F12 * F2;                   // t c
       R4 = R4 - R4;                     // (wr_p5_phase's next compute is single-operand: not a float result before it)
       RTS;
+
+.GLOBAL wr_ph_gain.;
+wr_ph_gain.:
+      R0 = DM(0x2e6004);
+      R1 = 1;
+      COMP(R0, R1);
+      IF NE RTS;                        // (not osc 2 under FM)
+      R0 = DM(0x2de6c0);                // osc 2's own gain, LEV2 x TRIM
+      R1 = 0x406314a0;                  // f32(1 / G)
+      F0 = F0 * F1;
+      DM(0x2e6028) = R0;                // the mix ratio's target
+      R0 = 0x3e904d1c;                  // G: LEV 100 at the default TRIM
+      DM(0x2de6c0) = R0;
+      RTS;
+
+.GLOBAL wr_ph_fmmix.;
+wr_ph_fmmix.:
+      R12 = LSHIFT R9 BY 2;
+      R11 = 0x2e6040;                   // each voice's r
+      R11 = R11 + R12;
+      I1 = R11;
+      R8 = DM(0, I1);                   // r, as this voice left it
+      R9 = DM(0x2e6028);                // the target
+.GLOBAL wr_ph_fmgo.;
+wr_ph_fmgo.:                            // page5.asm's wr_p5_fm_mix comes here while r glides (R0, R8, R9, R11 set)
+      R10 = 0x3d000000;                 // 1/32
+      R12 = DM(0x2dde88);
+      I0 = R12;                         // the track buffer: o1, then the mix
+      R12 = 0x2e6080;
+      I1 = R12;                         // FMB
+      R12 = 0x2e5e00;
+      I2 = R12;                         // osc 1's copy
+      R13 = DM(0x2dde24);
+      R0 = PASS R0;
+      IF EQ JUMP 0x1737a2;                   // -> wr_ph_fmadd.
+      LCNTR = R13, DO wr_ph_fmc_end. UNTIL LCE;
+.NOCOMPRESS;
+      R1 = DM(0, I0);
+      R2 = DM(I1, M6);
+      DM(I2, M6) = R1;
+      F3 = F9 - F8;
+      F3 = F3 * F10;
+      F8 = F8 + F3;                     // r
+      F2 = F2 * F8;
+      F1 = F1 + F2;
+.GLOBAL wr_ph_fmc_end.;
+wr_ph_fmc_end.:
+      DM(I0, M6) = F1;
+.COMPRESS;
+      JUMP 0x1737bd;                         // -> wr_ph_fmkeep.
+.GLOBAL wr_ph_fmadd.;
+wr_ph_fmadd.:
+      LCNTR = R13, DO wr_ph_fma_end. UNTIL LCE;
+.NOCOMPRESS;
+      R1 = DM(0, I0);
+      R2 = DM(I1, M6);
+      F3 = F9 - F8;
+      F3 = F3 * F10;
+      F8 = F8 + F3;
+      F2 = F2 * F8;
+      F1 = F1 + F2;
+.GLOBAL wr_ph_fma_end.;
+wr_ph_fma_end.:
+      DM(I0, M6) = F1;
+.COMPRESS;
+.GLOBAL wr_ph_fmkeep.;
+wr_ph_fmkeep.:
+      I1 = R11;
+      DM(0, I1) = R8;                   // r, for this voice's next block
+      JUMP 0x172bb1;                    // -> wr_p5_post.
 
 // F1 = f h -> F2 = t = clamp(A - B f h, 0, 1)^3 (TAME_ORDER 8: A = f32(8/7), B = f32(16/7)). Clobbers R1, R4.
 .GLOBAL wr_ph_tame_t.;

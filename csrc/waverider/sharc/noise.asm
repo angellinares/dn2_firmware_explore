@@ -94,7 +94,7 @@ wr_noise_halves.:
 .GLOBAL wr_noise_held.;
 wr_noise_held.:
       R6 = PASS R6;
-      IF EQ JUMP 0x16eeaa;              // -> wr_t5v_next. (NOIS 0: nothing)
+      IF EQ JUMP 0x16eeb3;              // -> wr_t5v_next. (NOIS 0: nothing)
 
       // the gain, NOIS / 100, as the sub's
       R12 = R12 - R12;
@@ -228,6 +228,6 @@ wr_noise_done.:
       DM(0, I1) = R11;                  // x, lp, env for the next block
       DM(5, I1) = R4;
       DM(6, I1) = R5;
-      JUMP 0x16eeaa;                    // -> wr_t5v_next.
+      JUMP 0x16eeb3;                    // -> wr_t5v_next.
 .wr_noise..end:
       .type wr_noise.,STT_FUNC;

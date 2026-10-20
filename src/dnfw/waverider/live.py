@@ -660,6 +660,13 @@ WARP_K1_TOP = 10.0
 # at FM 127 and LEV2 100 (osc 2's peak T), one whole cycle each way. Osc 2 then plays first.
 FM_SCALE = 1 / (SHAPE_MAX * SHAPE_PEAK)  # cycles per unit of o2, per FM word
 FM_SEL = 2 * math.pi / SHAPE_MAX              # the level's increment: + 2 pi FM/127 x osc 2's
+# 0.3.6 (a user, relayed by the owner 2026-10-20: "modulator level and fm amount as 2 totally
+# independent parameters"): under FM, osc 2 plays into FMB at a fixed gain, LEV 100 at the default
+# TRIM, so FM alone sets the depth, and it plays even at LEV2 0. Its own gain, LEV2 x TRIM (and
+# MOVE's), becomes the ratio it is mixed in at, r, which glides toward it by 1/32 a sample (about
+# 3 ms) so a LEV2 step does not click: y = o1 + r x FMB (phase.asm's wr_ph_fmmix).
+FM_GLIDE = _f32(1 / 32)
+FM_SETTLED = 2.0 ** -34    # (target - r)^2 below this, r takes the target: the mix is then one multiply, or none at 0
 PHASE_MAX = 128                           # longer blocks play without WARP and FM (the buffer's size)
 
 
@@ -708,6 +715,16 @@ def fm_offsets(o2: list[float], word: int, t: float = 1.0) -> list[int]:
 TAME_ORDER = 8.0
 TAME_A = _f32(0.5 / (0.5 - 0.5 / TAME_ORDER))
 TAME_B = _f32(1 / (0.5 - 0.5 / TAME_ORDER))
+
+
+def fm_gain() -> float:
+    """Osc 2's gain into FMB under FM (0.3.6): LEV 100 at the default TRIM, as the loop forms it."""
+    return gain(0x6400)
+
+
+def fm_inv_g() -> float:
+    """f32(1 / fm_gain()): osc 2's own gain times this is its mix ratio."""
+    return _f32(1.0 / fm_gain())
 
 
 def tame(inc: int, h: float) -> float:
@@ -808,13 +825,15 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
     trimmed = [0.0, 0.0]                        # each oscillator's last factor: zeros at boot
     osc1: list[float] = []
     vox = formant.Voice()                       # TYPE Formant: the cascade's states and vowel glide
+    fm_r = 0.0                                  # 0.3.6: osc 2's mix ratio under FM, 0 at boot as the DSP's
+    fm_target = 0.0
     for b, blk in enumerate(blocks):
         shp = (tuple(shapes[b]) + (0,) * 8)[:8] if shapes else (0,) * 8   # page 5: FOLD, NPOS (no effect yet), TYPE, AMT, WARP, FM, P1, P2
         incs = [None, None]
         note, oscs = blk[0], blk[1:3]
         wv = warp_value(shp[4]) if block <= PHASE_MAX else 0
         bend = warp_table()[wv] if wv else None
-        fm = shp[5] & 0xFFFF if block <= PHASE_MAX and oscs[1][3] & 0xFFFF else 0
+        fm = shp[5] & 0xFFFF if block <= PHASE_MAX else 0          # 0.3.6: also at LEV2 0
         ys: list = [None, None]
         trig_mode, triggered, *rest = blk[3] if len(blk) > 3 else (TRIG_RESTART, False)
         prst = rest[0] if rest else PRST_OFF
@@ -824,7 +843,7 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
         for k in ((1, 0) if fm else (0, 1)):    # FM: osc 2 plays first, into its own buffer
             osc = oscs[k]
             wav, tbl, tun, lev = osc[:4]
-            if k and not lev & 0xFFFF:
+            if k and not lev & 0xFFFF and not fm:
                 continue
             if len(osc) > 4:                    # M10a: RATE, MPOS, MLEV, MOVE
                 rate, mpos, mlev, move = osc[4:8]
@@ -842,6 +861,9 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
             target = trim_factor(trims[b] if trims else TRIM_DEFAULT_WORD)
             factor = trimmed[k] = trim_slew(trimmed[k], target, triggered)
             g = gain(lev, factor=factor)
+            if k and fm:                        # 0.3.6: FMB at the fixed gain, osc 2's own as the mix ratio
+                fm_target = _f32(g * fm_inv_g())
+                g = fm_gain()
             pos = position(wav)
             if len(osc) > 9:                    # M10b-2: SMTH, the glide on POS
                 smoothed[k] = smooth(smoothed[k], pos, osc[9], triggered)
@@ -875,7 +897,19 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
                     fade[k] = None
             ys[k] = y
         mixed = osc1 = ys[0]
-        if ys[1] is not None:
+        if ys[1] is not None and fm:           # 0.3.6: o1 + r FMB, r gliding to osc 2's own gain
+            d = _f32(fm_target - fm_r)
+            if _f32(d * d) < FM_SETTLED:        # settled (page5.asm): r is the target, one multiply or none
+                fm_r = fm_target
+                if fm_r != 0.0:
+                    mixed = [_f32(o1 + _f32(o2 * fm_r)) for o1, o2 in zip(mixed, ys[1])]
+            else:
+                out_mix = []
+                for o1, o2 in zip(mixed, ys[1]):
+                    fm_r = _f32(fm_r + _f32(_f32(fm_target - fm_r) * FM_GLIDE))
+                    out_mix.append(_f32(o1 + _f32(o2 * fm_r)))
+                mixed = out_mix
+        elif ys[1] is not None:
             mixed = ([_f32(a + b) for a, b in zip(mixed, ys[1])] if precision == "float32"
                      else [a + b for a, b in zip(mixed, ys[1])])
         kind = (shp[2] & 0xFFFF) >> 8

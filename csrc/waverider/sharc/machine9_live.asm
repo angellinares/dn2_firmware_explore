@@ -143,11 +143,11 @@ wr_t5v_loop.:
       R3 = DM(I5, M6);                  // this track's buffer; I5 -> next
       R4 = 5;
       COMP(R2, R4);
-      IF NE JUMP 0x16eeaa;              // -> wr_t5v_next.
+      IF NE JUMP 0x16eeb3;              // -> wr_t5v_next.
       R4 = DM(0x2de600);                // the baked directory's magic
       R2 = 0x57525431;
       COMP(R4, R2);
-      IF NE JUMP 0x16eeaa;              // -> wr_t5v_next. (no directory: render nothing)
+      IF NE JUMP 0x16eeb3;              // -> wr_t5v_next. (no directory: render nothing)
       DM(0x2dde88) = R3;                // M9b: the buffer, for both oscillators
       R0 = R0 - R0;
       DM(0x2de6c4) = R0;                // osc 1: replace
@@ -225,7 +225,11 @@ wr_t5v_halves.:
       R14 = R14 AND R6;                 // LEV1, the sound's value, 0..0x7f00
       // M9b: osc 2 at level 0 is not run (osc 1 always is: it writes the buffer)
       R14 = PASS R14;
-      IF NE JUMP 0x16edf3;              // -> wr_t5v_lev_on.
+      IF NE JUMP 0x16edfc;              // -> wr_t5v_lev_on.
+      R0 = DM(0x2e6004);                // page 5's FM state: 1 is osc 2 playing first for FM, which runs at LEV2 0 too (0.3.6)
+      R1 = 1;
+      COMP(R0, R1);
+      IF EQ JUMP 0x16edfc;              // -> wr_t5v_lev_on.
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
       IF NE JUMP 0x172ba4;              // -> wr_p5_skip. (page 5: the shaper and FOLD, page5.asm, then the sub)
@@ -248,7 +252,7 @@ wr_t5v_modded.:
       R1 = LSHIFT R5 BY -8;
       R2 = DM(0x2de604);                // the directory's count
       COMPU(R1, R2);
-      IF LT JUMP 0x16ee0e;                   // -> wr_t5v_slot_ok.
+      IF LT JUMP 0x16ee17;                   // -> wr_t5v_slot_ok.
       JUMP 0x16fe00;                    // -> wr_pool. (past the baked tables: the load area's pool)
 .GLOBAL wr_t5v_slot_ok.;
 wr_t5v_slot_ok.:
@@ -282,10 +286,10 @@ wr_t5v_smoothed.:
       R12 = 0xff;
       R2 = R2 AND R12;                  // the exponent field
       COMP(R2, R12);
-      IF EQ JUMP 0x16ee43;                   // -> wr_t5v_note0.
+      IF EQ JUMP 0x16ee4c;                   // -> wr_t5v_note0.
       R8 = PASS R8;
-      IF LT JUMP 0x16ee43;                   // -> wr_t5v_note0.
-      JUMP 0x16ee44;                         // -> wr_t5v_note_ok.
+      IF LT JUMP 0x16ee4c;                   // -> wr_t5v_note0.
+      JUMP 0x16ee4d;                         // -> wr_t5v_note_ok.
 .GLOBAL wr_t5v_note0.;
 wr_t5v_note0.:
       R8 = R8 - R8;                     // +0.0
@@ -306,8 +310,8 @@ wr_t5v_note_ok.:
       DM(0x2dde98) = R13;
       F8 = F8 + F13;                    // note + TUN1 (osc 2: + TUN2 + TUN1)
       R8 = PASS R8;
-      IF LT JUMP 0x16ee5b;                   // -> wr_t5v_tune_low.
-      JUMP 0x16ee5c;                         // -> wr_t5v_tuned.
+      IF LT JUMP 0x16ee64;                   // -> wr_t5v_tune_low.
+      JUMP 0x16ee65;                         // -> wr_t5v_tuned.
 .GLOBAL wr_t5v_tune_low.;
 wr_t5v_tune_low.:
       R8 = R8 - R8;                     // below note 0 -> +0.0
@@ -336,9 +340,9 @@ wr_t5v_tuned.:
       R3 = DM(0x2dde88);
       DM(5, I4) = R3;                   // out: the track buffer
       R4 = DM(0x2dde84);                // wr_render5's argument: the reader block
-      CJUMP 0x172dd2 (DB);                   // -> wr_p5_phase. (page 5's WARP and FM, page5.asm, then wr_dclk_pre (M10b-2) and wr_render5(R4 = reader block))
+      CJUMP 0x172de0 (DB);                   // -> wr_p5_phase. (page 5's WARP and FM, page5.asm, then wr_dclk_pre (M10b-2) and wr_render5(R4 = reader block))
       DM(I7, M7) = R2;
-      DM(I7, M7) = 0x16ee90;            // return address - 1: wr_t5v_osc_next. - 1
+      DM(I7, M7) = 0x16ee99;            // return address - 1: wr_t5v_osc_next. - 1
 
 .GLOBAL wr_t5v_osc_next.;
 wr_t5v_osc_next.:

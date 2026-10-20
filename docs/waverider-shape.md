@@ -59,9 +59,24 @@ and `csrc/waverider/sharc/phase.asm` do the work on the DSP. `dnfw.waverider.liv
   - Cost: +75 instructions per voice and block with all of page 5 on at C4 (no taming), +115 at C7.
   - Checks: the shape gate's four tamed cases (G4, C6, C7) and `scripts/sharc_waverider_tame_voices.py`
     (WARP and FM 127 at C6 on all 16 voice slots) are bit for bit the model, and taming changes the samples.
+- **FM and LEV2 (Waverider 0.3.6, a user via the owner, 2026-10-20: "modulator level and fm amount as 2 totally
+  independent parameters"):** under FM, osc 2 plays into FMB at a fixed gain G, LEV 100 at the default TRIM
+  (`wr_ph_gain`), so FM alone sets the depth, and osc 2 plays at LEV2 0 too. Osc 2's own gain (LEV2, TRIM and
+  MOVE) over G is the ratio r it is mixed in at: b = o1 + r FMB (`wr_ph_fmmix`). r glides toward it by 1/32 a
+  sample (about 3 ms), per voice at DM 0x2e6040, so a LEV2 step does not click. DCLK sees G as osc 2's gain while
+  FM is on, so it fades table and POS jumps as before, and LEV2 changes go through r.
+  - Three mixes, chosen once a block: while r glides, the loop above (4 instructions a sample more than a plain
+    add); once r is within 2^-17 of its target, it takes the target and the mix is one multiply and an add
+    (page5.asm); at LEV2 0, osc 2 is not added at all.
+  - Cost (`scripts/sharc_waverider_p5_cost.py`, FM 64 at LEV2 100, per voice and block): +517 once r has settled
+    (blocks 16 to 40; 0.3.5: +482), +609 while it glides (about 12 blocks after a LEV2 change). FM above 0 at LEV2 0
+    runs osc 2's whole pass, about 2,800 instructions, in a case that was silent before.
+  - The shaper (Ring, AM) still takes o2 from the mix, so it follows LEV2.
+  - Checks: the shape gate's FM 127 cases at LEV2 0, at LEV2 50 and across a LEV2 jump from 100 to 0, bit for
+    bit; `test_fm_plays_at_lev2_0_and_its_depth_does_not_follow_lev2` in the model.
 - **WARP and FM at 0** skip their code: the reader is the reader of 0.2.0 and the voice is bit for bit the
   same.
-- **Checks:** `scripts/sharc_waverider_shape.py` runs 19 cases in digikit's SHARC runner, and each is bit for bit the
+- **Checks:** `scripts/sharc_waverider_shape.py` runs 21 cases in digikit's SHARC runner, and each is bit for bit the
   model. `test/test_waverider_shape.py` checks the model.
 - **Cost** (`scripts/sharc_waverider_p5_cost.py`, instructions per voice and block): FOLD 369, Ring 363, AM 431,
   WARP 710, FM 482, WARP and FM 1,138. All of AM, FOLD, WARP and FM: 1,898, about 4.6 % of a block on 16 voices.

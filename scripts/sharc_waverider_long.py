@@ -23,6 +23,11 @@ controls check that a change to the DSP code sounds the same while parameters mo
 | osc2 | osc 2 on, off a third of the time, its POS and its detune (up to 12 semitones) moving, MOVE on its POS |
 | warpfm | both oscillators, WARP rises from 0 to 127 while FM falls from 127 to 0 |
 | retrig | both oscillators, a note every 30 blocks and a retrigger 3 blocks later, POS jumping with DCLK on |
+| warp127 | both oscillators at the same pitch, WARP 127 held (taming, 0.3.5, acts from about D#4) |
+| fm127 | both oscillators at the same pitch, FM 127 held (taming acts from about G#4) |
+| fm_lev2 | FM 127 held, LEV2 100, then 50, then 0, a third of the render each (0.3.6: the FM stays, osc 2 fades) |
+
+A note other than 60 goes into the file names: long_CASE_nNOTE_native_*.
 
 Every block's machine output is compared bit for bit with `live.render_two` fed the
 inputs the DSP unpacked, whichever engine ran. Writes out/waverider/long_CASE_machine.wav (the oscillator's
@@ -83,6 +88,10 @@ CASES = {
                            g.MPOS2: 0x6400, g.MOVE2: 0, g.RATE2: 0x5000}, None, b == 0, None),
     "warpfm": lambda b, n: ({**ON2, g.WAV1: 0x3000, g.WAV2: 0x5000, g.TUN2: g.TUN1_ZERO + 7 * 256,
                              WARP: ramp(b, n, 0, 0x7F00), FM: ramp(b, n, 0x7F00, 0)}, None, b == 0, None),
+    "warp127": lambda b, n: ({**ON2, g.WAV1: 0, g.WAV2: 0, WARP: 0x7F00}, None, b == 0, None),
+    "fm127": lambda b, n: ({**ON2, g.WAV1: 0, g.WAV2: 0, FM: 0x7F00}, None, b == 0, None),
+    "fm_lev2": lambda b, n: ({**ON2, g.WAV1: 0, g.WAV2: 0, FM: 0x7F00,
+                              g.LEV2: (0x6400, 0x3200, 0)[min(3 * b // n, 2)]}, None, b == 0, None),
     "retrig": lambda b, n: ({**ON2, g.WAV1: 0x7000 if b // 30 % 2 else 0x1000, g.DCLK: live.DCLK_DEFAULT,
                              g.TUN2: g.TUN1_ZERO + 3 * 256}, NOTES[b // 30 % 5] << 8,
                             b % 30 in (0, 3), None),
@@ -116,7 +125,7 @@ def main(argv=None) -> int:
     case = CASES[a.case]
     g.OUT.mkdir(parents=True, exist_ok=True)
     what = f"Waverider, table 0, note {a.note}, case {a.case}"
-    tag = f"{a.case}_native" if a.native else a.case
+    tag = a.case + ("" if a.note == 60 else f"_n{a.note}") + ("_native" if a.native else "")
     engine = "the runner (native engine)" if a.native else "the runner"
     machine, amp, seq, report = [], [], [], {"case": a.case, "note": a.note, "blocks": a.blocks}
     subs, shapes, trims = [], [], []

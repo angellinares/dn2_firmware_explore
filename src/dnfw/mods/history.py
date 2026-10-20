@@ -95,6 +95,12 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "transients": PUBLISHED,
     "usbprobe": UNPUBLISHED,
     "waverider": (
+        Release("0.3.6", "2026-10-20", (
+            "FM on [page 5](#page-5) and LEV2 on page 2 are now separate. FM alone sets how much osc 2 "
+            "changes osc 1, and LEV2 sets only how loud osc 2 is. With LEV2 at 0 you hear osc 1 alone, changed "
+            "by FM.",
+            "A sound saved with FM above 0 and LEV2 below 100 now has more FM. Set FM again on it.",
+        )),
         Release("0.3.5", "2026-10-19", (
             "WARP and FM on [page 5](#page-5) get softer on high notes, so they add fewer harsh tones there. "
             "At 127, WARP starts to get softer at about D#4 and FM at about G#4. Lower notes sound as before.",

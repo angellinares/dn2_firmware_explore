@@ -597,7 +597,7 @@ def test_prst_moved_to_the_idle_span_and_returns_into_the_loop():
     rbe, roffs, rsrc = _code("reader_m9")
     jump = rsrc.index(f"JUMP {prst_sw:#x};")
     assert rbe[roffs[jump]:roffs[jump] + 6].hex() == f"063e00{prst_sw:06x}"
-    assert be[offs[-1]:offs[-1] + 6].hex() == "063e0016edf6"   # -> wr_t5v_modded (page 5: machine9_live.asm's JUMP to wr_p5_voice before it)
+    assert be[offs[-1]:offs[-1] + 6].hex() == "063e0016edff"   # -> wr_t5v_modded (0.3.6: machine9_live.asm's FM-state test before it)
     assert dsp.IDLE_DM + len(be) + 64 <= dsp.COUNT_DM
     assert dsp.READER_DM + len(rbe) + 64 <= dsp.LOOP_DM
 

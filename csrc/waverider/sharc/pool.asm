@@ -41,10 +41,10 @@ wr_pool.:
       R2 = DM(0, I1);                   // BUILT[j]
       R2 = PASS R2;
       IF EQ JUMP 0x16fe1c;              // -> wr_pool_none.
-      JUMP 0x16ee1a;                    // -> wr_t5v_pooled.
+      JUMP 0x16ee23;                    // -> wr_t5v_pooled.
 
 .GLOBAL wr_pool_none.;
 wr_pool_none.:
       R1 = R1 - R1;                     // slot 0
-      JUMP 0x16ee0e;                    // -> wr_t5v_slot_ok.
+      JUMP 0x16ee17;                    // -> wr_t5v_slot_ok.
 .wr_pool..end:

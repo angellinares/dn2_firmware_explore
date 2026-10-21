@@ -22,9 +22,8 @@
 //   0x2e2c00  the decay factor per DEC 0..127, float32 (live.noise_decay_table)
 //   0x2e2e00  16 voices x 32 bytes: x, pink b0 b1 b2, brown, lp, env, one spare
 //             (the image seeds x, live.noise_seeds; the rest zeros)
-//   0x2e3000  samples left (the loop counts in software)
 //
-// Only forms the firmware itself uses, as sub.asm. Clobbers R0-R15, I1, I2; I3 and I5
+// The forms sub.asm uses: each TYPE is a DO loop. Clobbers R0-R15, I1, I2; I3 and I5
 // (the loop's pointers) are not touched.
 //
 // PLACEMENT IS FIXED at PM sw 0x171300 (DM byte 0x2e2600): the absolute jumps below are
@@ -132,13 +131,67 @@ wr_noise_held.:
       R2 = DM(0x2dde88);                // the track buffer
       I2 = R2;
       R0 = DM(0x2dde24);                // the dispatch's R9: the block size
-      DM(0x2e3000) = R0;
       R10 = PASS R0;                    // opt1 O2: the count in R10, which the loop doesn't use
-      IF EQ JUMP 0x17143f;              // -> wr_noise_done. (count 0: nothing)
+      IF EQ JUMP 0x171542;              // -> wr_noise_done. (count 0: nothing)
       R15 = -31;                        // w's scale, 2^-31
 
-.GLOBAL wr_noise_loop.;
-wr_noise_loop.:
+      // Load plan #3 (2026-10-21): each TYPE is a hardware loop (LCNTR = R10, the count) with no
+      // branch in it (until then up to three a sample: TYPE's compare chain, DEC Inf and the back
+      // edge). At DEC Inf (R14 = 0) a loop runs with env and its factor at 1.0: y x 1.0 and 1.0 x 1.0
+      // are exact, so the output is the same bit for bit, and the envelope as it was is put back
+      // after the loop (R9). Each value takes the same operations as before.
+      R9 = PASS R5;                     // the envelope as it was
+      R14 = PASS R14;
+      IF NE JUMP 0x1713b7;              // -> wr_noise_type.
+      R5 = 0x3f800000;                  // 1.0
+      R8 = 0x3f800000;
+.GLOBAL wr_noise_type.;
+wr_noise_type.:
+      R7 = PASS R7;
+      IF EQ JUMP 0x17140f;              // -> wr_noise_wht.
+      R12 = 1;
+      COMP(R7, R12);
+      IF EQ JUMP 0x17144e;              // -> wr_noise_pink.
+      R12 = 2;
+      COMP(R7, R12);
+      IF EQ JUMP 0x1714e7;              // -> wr_noise_brown.
+
+// DIG: +-0.5 by x's top bit, as x's sign bit on 0.5's pattern (0x3f000000 or 0xbf000000)
+.GLOBAL wr_noise_dig.;
+wr_noise_dig.:
+      LCNTR = R10, DO wr_noise_dig_last. UNTIL LCE;
+      R0 = LSHIFT R11 BY 13;
+      R11 = R11 XOR R0;
+      R0 = LSHIFT R11 BY -17;
+      R11 = R11 XOR R0;
+      R0 = LSHIFT R11 BY 5;
+      R11 = R11 XOR R0;
+      R1 = LSHIFT R11 BY -31;
+      R1 = LSHIFT R1 BY 31;
+      R12 = 0x3f000000;                 // +0.5
+      R1 = R1 OR R12;
+.NOCOMPRESS;                            // a hardware loop's last 11 instructions are 48-bit (PRM 4-42)
+      R3 = DM(0, I2);                   // what the oscillators and the sub wrote
+      F2 = F1 - F4;
+      R12 = 0x3e000000;                 // 0.125
+      F2 = F2 * F12;
+      F4 = F4 + F2;                     // lp
+      F2 = F13 * F4;
+      F1 = F1 - F2;                     // n - c x lp
+      F1 = F1 * F5;                     // x env (1.0 at DEC Inf)
+      F5 = F5 * F8;                     // env x its factor (1.0 x 1.0 at DEC Inf)
+      F1 = F6 * F1;                     // gain x y
+      F1 = F3 + F1;
+.GLOBAL wr_noise_dig_last.;
+wr_noise_dig_last.:
+      DM(I2, M6) = F1;
+.COMPRESS;
+      JUMP 0x17153e;                    // -> wr_noise_end.
+
+// WHT: n = w
+.GLOBAL wr_noise_wht.;
+wr_noise_wht.:
+      LCNTR = R10, DO wr_noise_wht_last. UNTIL LCE;
       R0 = LSHIFT R11 BY 13;
       R11 = R11 XOR R0;
       R0 = LSHIFT R11 BY -17;
@@ -146,22 +199,36 @@ wr_noise_loop.:
       R0 = LSHIFT R11 BY 5;
       R11 = R11 XOR R0;
       F1 = FLOAT R11 BY R15;            // w, -1 .. 1 (opt1 O3: into F1, not F0: anomaly 20000072)
-      R0 = PASS R1;                     // w in R0 too, as before; WHT: n = w
-      R7 = PASS R7;
-      IF EQ JUMP 0x171424;              // -> wr_noise_tilt.
-      R12 = 1;
-      COMP(R7, R12);
-      IF EQ JUMP 0x1713db;              // -> wr_noise_pink.
-      R12 = 2;
-      COMP(R7, R12);
-      IF EQ JUMP 0x171415;              // -> wr_noise_brown.
-      R1 = 0x3f000000;                  // DIG: +0.5
-      R2 = PASS R11;
-      IF GE JUMP 0x171424;              // -> wr_noise_tilt.
-      R1 = -0x41000000;                 // -0.5, 0xbf000000 (written signed, as selmap reads it)
-      JUMP 0x171424;                    // -> wr_noise_tilt.
+.NOCOMPRESS;                            // a hardware loop's last 11 instructions are 48-bit (PRM 4-42)
+      R3 = DM(0, I2);                   // what the oscillators and the sub wrote
+      F2 = F1 - F4;
+      R12 = 0x3e000000;                 // 0.125
+      F2 = F2 * F12;
+      F4 = F4 + F2;                     // lp
+      F2 = F13 * F4;
+      F1 = F1 - F2;                     // n - c x lp
+      F1 = F1 * F5;                     // x env (1.0 at DEC Inf)
+      F5 = F5 * F8;                     // env x its factor (1.0 x 1.0 at DEC Inf)
+      F1 = F6 * F1;                     // gain x y
+      F1 = F3 + F1;
+.GLOBAL wr_noise_wht_last.;
+wr_noise_wht_last.:
+      DM(I2, M6) = F1;
+.COMPRESS;
+      JUMP 0x17153e;                    // -> wr_noise_end.
+
+// PNK: P. Kellet's economy filters
 .GLOBAL wr_noise_pink.;
 wr_noise_pink.:
+      LCNTR = R10, DO wr_noise_pink_last. UNTIL LCE;
+      R0 = LSHIFT R11 BY 13;
+      R11 = R11 XOR R0;
+      R0 = LSHIFT R11 BY -17;
+      R11 = R11 XOR R0;
+      R0 = LSHIFT R11 BY 5;
+      R11 = R11 XOR R0;
+      F1 = FLOAT R11 BY R15;            // w, -1 .. 1 (opt1 O3: into F1, not F0: anomaly 20000072)
+      R0 = PASS R1;                     // w in R0 too, as before
       R2 = DM(1, I1);
       R12 = 0x3f7f65fe;                 // 0.99765
       F2 = F2 * F12;
@@ -191,9 +258,36 @@ wr_noise_pink.:
       F1 = F1 + F3;
       R12 = 0x3e800000;                 // 0.25
       F1 = F1 * F12;
-      JUMP 0x171424;                    // -> wr_noise_tilt.
+.NOCOMPRESS;                            // a hardware loop's last 11 instructions are 48-bit (PRM 4-42)
+      R3 = DM(0, I2);                   // what the oscillators and the sub wrote
+      F2 = F1 - F4;
+      R12 = 0x3e000000;                 // 0.125
+      F2 = F2 * F12;
+      F4 = F4 + F2;                     // lp
+      F2 = F13 * F4;
+      F1 = F1 - F2;                     // n - c x lp
+      F1 = F1 * F5;                     // x env (1.0 at DEC Inf)
+      F5 = F5 * F8;                     // env x its factor (1.0 x 1.0 at DEC Inf)
+      F1 = F6 * F1;                     // gain x y
+      F1 = F3 + F1;
+.GLOBAL wr_noise_pink_last.;
+wr_noise_pink_last.:
+      DM(I2, M6) = F1;
+.COMPRESS;
+      JUMP 0x17153e;                    // -> wr_noise_end.
+
+// BRN: a leaky integrator
 .GLOBAL wr_noise_brown.;
 wr_noise_brown.:
+      LCNTR = R10, DO wr_noise_brown_last. UNTIL LCE;
+      R0 = LSHIFT R11 BY 13;
+      R11 = R11 XOR R0;
+      R0 = LSHIFT R11 BY -17;
+      R11 = R11 XOR R0;
+      R0 = LSHIFT R11 BY 5;
+      R11 = R11 XOR R0;
+      F1 = FLOAT R11 BY R15;            // w, -1 .. 1 (opt1 O3: into F1, not F0: anomaly 20000072)
+      R0 = PASS R1;                     // w in R0 too, as before
       R2 = DM(4, I1);
       R12 = 0x3f7ae148;                 // 0.98
       F2 = F2 * F12;
@@ -202,26 +296,27 @@ wr_noise_brown.:
       F2 = F2 + F3;
       DM(4, I1) = R2;
       R1 = PASS R2;
-.GLOBAL wr_noise_tilt.;
-wr_noise_tilt.:
+.NOCOMPRESS;                            // a hardware loop's last 11 instructions are 48-bit (PRM 4-42)
+      R3 = DM(0, I2);                   // what the oscillators and the sub wrote
       F2 = F1 - F4;
       R12 = 0x3e000000;                 // 0.125
       F2 = F2 * F12;
       F4 = F4 + F2;                     // lp
       F2 = F13 * F4;
       F1 = F1 - F2;                     // n - c x lp
-      R14 = PASS R14;
-      IF EQ JUMP 0x171434;              // -> wr_noise_have. (DEC Inf)
-      F1 = F1 * F5;
-      F5 = F5 * F8;
-.GLOBAL wr_noise_have.;
-wr_noise_have.:
+      F1 = F1 * F5;                     // x env (1.0 at DEC Inf)
+      F5 = F5 * F8;                     // env x its factor (1.0 x 1.0 at DEC Inf)
       F1 = F6 * F1;                     // gain x y
-      R2 = DM(0, I2);                   // what the oscillators and the sub wrote
-      F1 = F2 + F1;
+      F1 = F3 + F1;
+.GLOBAL wr_noise_brown_last.;
+wr_noise_brown_last.:
       DM(I2, M6) = F1;
-      R10 = R10 - 1;                    // samples left (opt1 O2: in a register)
-      IF NE JUMP 0x1713af;              // -> wr_noise_loop.
+.COMPRESS;
+
+.GLOBAL wr_noise_end.;
+wr_noise_end.:
+      R14 = PASS R14;
+      IF EQ R5 = PASS R9;               // DEC Inf: the envelope as it was
 
 .GLOBAL wr_noise_done.;
 wr_noise_done.:

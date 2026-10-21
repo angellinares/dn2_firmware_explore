@@ -62,6 +62,21 @@ DNX. The manual is `docs/waverider-manual.md`, and the measurements are in
 `docs/waverider-performance.md`. Sounds that you save may not load the same way in a later
 version. On the command line, use `dnfw mods apply ... --mod waverider`.
 
+## Design tools
+
+These pages are on the site. They do not change firmware.
+
+| Tool | What it does |
+|---|---|
+| [LFO Shape Bench](https://angellinares.github.io/dn2_firmware_explore/bench.html) | Draws every LFO shape on a copy of the 128 x 64 screen, and makes wavetables for `lfowaves` |
+| [Glyph Editor](https://angellinares.github.io/dn2_firmware_explore/glyph-editor.html) | Draws the 16 x 16 glyphs that the site shows beside each mod |
+| [Glyph Animator](https://angellinares.github.io/dn2_firmware_explore/glyph-animator.html) | Draws a glyph as frames that a knob picks from. Morphs one frame into another, and saves a GIF or the firmware's frame format |
+
+On the site, **Save** downloads the file. To edit the files of your own copy, open
+`site/glyph-editor.html` or `site/glyph-animator.html` in Chrome or Edge. Press
+**Open glyphs.js** or **Open file**, and pick `site/js/mods/glyphs.js` or
+`site/js/mods/glyph-anims.js`. **Save** then writes the file in place.
+
 ## Installation
 
 You need Python 3.11 or later. There are no dependencies.

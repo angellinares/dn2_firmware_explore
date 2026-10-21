@@ -101,6 +101,8 @@ TABLES_AT = (0x80600000, 0x80600000 + MIP_TABLE_BYTES)
 # plays them as it plays a pool table: level 0, today's reader on the same table
 NOMIP = os.environ.get("DNFW_WAVERIDER_NOMIP", "") == "1"
 TABLES_DM = tuple(a | (0 if NOMIP else MIP_FLAG) for a in TABLES_AT)
+# DNFW_WAVERIDER_LOADMAP=1: the loadmap diagnostic, cycle marks at every stage (dnfw.waverider.loadmap)
+LOADMAP = os.environ.get("DNFW_WAVERIDER_LOADMAP", "") == "1"
 
 IDLE_DM = 0x2DEA00                           # idle_load.asm, in the gap before table 0
 IDLE_SW = IDLE_DM // 2                       # 0x16f500
@@ -651,4 +653,8 @@ def section7(stock: bytes) -> bytes:
     if not walked.complete or walked.stopped_at != len(result):
         raise DspError(f"the result does not walk as a boot stream ({walked.reason})")
     check_upload_size(result)
+    if LOADMAP:
+        from . import loadmap        # noqa: PLC0415  (the diagnostic build only)
+        result = loadmap.apply(result)
+        check_upload_size(result)
     return result

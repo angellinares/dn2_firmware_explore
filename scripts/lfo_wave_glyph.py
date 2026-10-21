@@ -49,7 +49,26 @@ width, step count -- and for SPH to be renamed on the new waveforms.
   new waveform's label. (Stock RND gets `SLEW` differently -- a separate record,
   80, sharing SPH's slot.)
 - **One tile, not four:** `0x40115b5e` clamps the variant to the set's last
-  element. A new waveform's glyph does not mirror for negative SPD or DEP.
+  element. [WRONG in v8 — corrected] so v8's glyph of a new waveform never
+  mirrored for a negative SPD or DEP, and the factory ones do (owner, 2026-10-21).
+
+## v9: the tile mirrors as the factory ones do
+
+The stock widget picks the variant from the two signs, read in the emulator
+(`0x4010ddac..0x4010ddca`, SPD in `%fp@(-24)` and DEP in `%d6`, 0..127 with 64
+as zero):
+
+| SPD | DEP | variant | the stock tile |
+|---|---|---|---|
+| >= 0 | >= 0 | 0 | as drawn |
+| < 0 | >= 0 | 1 | mirrored left to right |
+| >= 0 | < 0 | 2 | upside down |
+| < 0 | < 0 | 3 | both |
+
+The stock EXP and RMP tiles are exact mirrors of variant 0 (the emulator dump of
+the sets at `0x44507b68`). The render hook reads the same two signs and draws the
+one tile that way: columns stored from the last back when SPD < 0, the level
+counted from the bottom when DEP < 0. The tile still follows SPH on every draw.
 """
 
 from __future__ import annotations
@@ -80,6 +99,9 @@ SET_STOCK = bytes.fromhex("068644507b68")            # addi.l #0x44507b68,%d6
 SHORT_NAME = 0x400372DA
 SHORT_NAME_STOCK = bytes.fromhex("202f00080c8000000141")    # move.l sp@(8),d0; cmpi.l #321,d0
 SHORT_NAME_RESUME = 0x400372E4
+# lfo4's ten records follow the 321 stock ones in LFO3's order (95..104), so its SPH
+# is 327 and its WAVE 325. Without lfo4 no page asks for 327.
+LFO4_SPH = 327
 
 LABELS = ("glyph_flag", "glyph_set", "short_name")
 
@@ -128,7 +150,8 @@ def source(sets_va: int, fn_table: int, count: int, label_table: int,
         ])
     return f"""
 | ---- [MOD] glyph: render the new waveform's tile from its own generator ----
-| Reached by jsr at 0x4010dd58 with %d5 = WAVE (clamped), %d2 = SPH 0..127.
+| Reached by jsr at 0x4010dd58 with %d5 = WAVE (clamped), %d2 = SPH 0..127,
+| %d6 = DEP 0..127 and %fp@(-24) = SPD 0..127 (64 is zero), as stock clamped them.
 glyph_flag:
     cmpi.l  #{FIRST_NEW},%d5
     bcc.s   10f
@@ -137,7 +160,15 @@ glyph_flag:
     rts
 10: lea     %sp@(-28),%sp
     moveml  %d3-%d7/%a2-%a3,%sp@
-    move.l  %d2,%d7                 | SPH
+    move.l  %d2,%d7                 | SPH, and two flags above it:
+    moveq   #63,%d0
+    cmp.l   %fp@(-24),%d0
+    blt.s   15f
+    bset    #16,%d7                 | SPD < 0: mirrored left to right
+15: cmp.l   %d6,%d0
+    blt.s   16f
+    bset    #17,%d7                 | DEP < 0: upside down
+16:
     move.l  %d5,%d0
     subq.l  #{FIRST_NEW},%d0
     move.l  %d0,%d1
@@ -146,6 +177,10 @@ glyph_flag:
     sub.l   %d1,%d0                 | 112 * new index
     movea.l #{TILE_RAM:#010x},%a2
     adda.l  %d0,%a2                 | this waveform's tile
+    btst    #16,%d7
+    beq.s   17f
+    lea     %a2@(112),%a2           | mirrored: fill from the last column back
+17:
     movea.l #{fn_table:#010x},%a3
     movea.l %a3@(0,%d5:l:4),%a3     | its generator
     moveq   #0,%d4                  | x
@@ -154,8 +189,9 @@ glyph_flag:
     move.l  #0x09249249,%d1         | 2^32 / 28
     mulsl   %d1,%d0                 | phase
     move.l  %d0,%sp@-
-    move.l  #{NOISE_GLYPH_KEY << 8},%d1
-    or.l    %d7,%d1                 | key above SPH, as the call hooks pass it
+    moveq   #0x7f,%d1
+    and.l   %d7,%d1                 | SPH without the flags
+    ori.l   #{NOISE_GLYPH_KEY << 8},%d1 | key above SPH, as the call hooks pass it
     jsr     %a3@
     addq.l  #4,%sp
     eori.l  #0x80000000,%d0         | 0 at the bottom, 2^32 - 1 at the top
@@ -168,6 +204,10 @@ glyph_flag:
     lsr.l   %d1,%d0                 | 0..14 from the bottom
     moveq   #14,%d1
     sub.l   %d0,%d1                 | y, 0 at the top
+    btst    #17,%d7
+    beq.s   18f
+    move.l  %d0,%d1                 | upside down: y counts from the bottom
+18:
     tst.l   %d6
     bpl.s   12f
     move.l  %d1,%d6                 | first column joins itself
@@ -186,7 +226,12 @@ glyph_flag:
     addq.l  #1,%d2
     cmp.l   %d3,%d2
     ble.s   14b
+    btst    #16,%d7
+    bne.s   19f
     move.l  %d0,%a2@+
+    bra.s   20f
+19: move.l  %d0,%a2@-
+20:
     move.l  %d1,%d6                 | previous y
     addq.l  #1,%d4
     moveq   #{W},%d0
@@ -218,6 +263,8 @@ short_name:
     cmpi.l  #91,%d0
     beq.s   20f
     cmpi.l  #101,%d0
+    beq.s   20f
+    cmpi.l  #{LFO4_SPH},%d0          | LFO4's SPH, when lfo4 is installed
     beq.s   20f
 29: move.l  %sp@(8),%d0             | the displaced instructions
     cmpi.l  #321,%d0

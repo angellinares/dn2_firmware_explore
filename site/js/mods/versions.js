@@ -8,7 +8,7 @@ export const VERSIONS = {
   layermidi: "1.0.0",
   lfo4: "1.0.2",
   lfolength: "1.0.1",
-  lfowaves: "1.0.0",
+  lfowaves: "1.0.1",
   midiarp: "1.0.0",
   moddest: "1.0.0",
   reloadconfirm: "1.0.0",

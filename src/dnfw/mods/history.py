@@ -87,7 +87,14 @@ HISTORY: dict[str, tuple[Release, ...]] = {
             "RAM. The LFOs operate as before.",
         )),
     ) + PUBLISHED,
-    "lfowaves": PUBLISHED,
+    "lfowaves": (
+        Release("1.0.1", "2026-10-21", (
+            "On the MOD page, the glyph of a new waveform now mirrors left to right when SPD is "
+            "negative, and turns upside down when DEP is negative, as the factory waveforms do.",
+            "With LFO4 installed, SPH on the LFO4 page now shows its new name on the new "
+            "waveforms, for example POS on WTB1.",
+        )),
+    ) + PUBLISHED,
     "midiarp": PUBLISHED,
     "moddest": PUBLISHED,
     "reloadconfirm": PUBLISHED,

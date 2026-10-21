@@ -32,6 +32,7 @@ ORDERS = [
     ["reloadconfirm"], ["waverider"],
     ["fxmod", "waverider"], ["waverider", "fxmod"], ["lfo4", "waverider"], ["waverider", "lfo4"],
     ["waverider", "lfolength"], ["fxmod", "waverider", "lfo4"],
+    ["lfowaves"], ["lfowaves", "lfo4"], ["lfowaves", "fxmod", "lfo4", "waverider"],
 ]
 NAME = "-".join
 

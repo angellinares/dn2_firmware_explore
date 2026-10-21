@@ -7,6 +7,7 @@
 export const SITE_COMMIT = "local";
 export const SITE_BUILD = `web-${SITE_COMMIT}`;
 
-if (typeof document !== "undefined") {
+// node: no document, or a harness stub without querySelectorAll
+if (typeof document !== "undefined" && typeof document.querySelectorAll === "function") {
   for (const el of document.querySelectorAll("[data-site-build]")) el.textContent = SITE_BUILD;
 }

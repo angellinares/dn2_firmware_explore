@@ -153,24 +153,25 @@ with the Rust boot gate (`scripts/boot_gate_pairs.py`).
 ## The table
 
 <!-- dnfw:matrix -->
-| | `arpmodes` | `arpplocks` | `arpscale` | `bootscreen` | `fxmod` | `layermidi` | `lfo4` | `lfolength` | `lfowaves` | `midiarp` | `moddest` | `reloadconfirm` | `songguard` | `transients` | `usbprobe` | `waverider` |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `arpmodes` | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| `arpplocks` | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| `arpscale` | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| `bootscreen` | yes | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| `fxmod` | yes | yes | yes | yes | - | yes | order | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| `layermidi` | yes | yes | yes | yes | yes | - | yes | yes | yes | **NO** | yes | yes | yes | yes | yes | yes |
-| `lfo4` | yes | yes | yes | yes | order | yes | - | yes | order | yes | order | yes | yes | yes | yes | yes |
-| `lfolength` | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes |
-| `lfowaves` | yes | yes | yes | yes | yes | yes | order | yes | - | yes | yes | yes | yes | yes | yes | yes |
-| `midiarp` | yes | yes | yes | yes | yes | **NO** | yes | yes | yes | - | yes | yes | yes | yes | yes | yes |
-| `moddest` | yes | yes | yes | yes | yes | yes | order | yes | yes | yes | - | yes | yes | yes | yes | yes |
-| `reloadconfirm` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | yes |
-| `songguard` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes |
-| `transients` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | **NO** |
-| `usbprobe` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes |
-| `waverider` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | **NO** | yes | - |
+| | `arpmodes` | `arpplocks` | `arpscale` | `bootscreen` | `degreetranspose` | `fxmod` | `layermidi` | `lfo4` | `lfolength` | `lfowaves` | `midiarp` | `moddest` | `reloadconfirm` | `songguard` | `transients` | `usbprobe` | `waverider` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `arpmodes` | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `arpplocks` | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `arpscale` | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `bootscreen` | yes | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `degreetranspose` | yes | yes | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `fxmod` | yes | yes | yes | yes | yes | - | yes | order | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `layermidi` | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | **NO** | yes | yes | yes | yes | yes | yes |
+| `lfo4` | yes | yes | yes | yes | yes | order | yes | - | yes | order | yes | order | yes | yes | yes | yes | yes |
+| `lfolength` | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes |
+| `lfowaves` | yes | yes | yes | yes | yes | yes | yes | order | yes | - | yes | yes | yes | yes | yes | yes | yes |
+| `midiarp` | yes | yes | yes | yes | yes | yes | **NO** | yes | yes | yes | - | yes | yes | yes | yes | yes | yes |
+| `moddest` | yes | yes | yes | yes | yes | yes | yes | order | yes | yes | yes | - | yes | yes | yes | yes | yes |
+| `reloadconfirm` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | yes |
+| `songguard` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes |
+| `transients` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | **NO** |
+| `usbprobe` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes |
+| `waverider` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | **NO** | yes | - |
 
 - **arpmodes + arpplocks: yes**: disjoint bytes. *Note:* emulator, 2026-09-26: arpplocks' MODE lock takes its ceiling from setMode's clamp (0x4004bf01), which arpmodes widens to 6. Turning MODE with every step held locks DOWN CYCL SHUF RAND RAND RAND with both, and DOWN CYCL CYCL ... with arpplocks alone (scripts/emu_arp_modes.py). A locked SHUF or RAND playing from a trig was not run.
 - **arpmodes + arpscale: yes**: disjoint bytes. *Note:* emulator, 2026-10-13, one build with arpscale, arpmodes and reloadconfirm: four of scripts/emu_arpscale.py's runs pass as with arpscale alone (C major and a per-track Pentatonic Minor from a trig, the toggle off equal to stock, C major held live). arpmodes enters the arp step's tail at 0x4002a376, before arpscale's hook at 0x4002a390, so SHUF and RAND offsets should move by degrees too; not run.

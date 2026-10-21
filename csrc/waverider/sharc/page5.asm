@@ -425,7 +425,7 @@ wr_p5_fm_mix.:
       F3 = F3 * F3;
       R12 = 0x2e800000;                 // 2^-34: settled when |target - r| < 2^-17
       COMP(F3, F12);
-      IF GE JUMP 0x173768;                   // -> wr_ph_fmgo. (phase.asm: r glides, b = o1 + r FMB)
+      IF GE JUMP 0x173765;                   // -> wr_ph_fmgo. (phase.asm: r glides, b = o1 + r FMB)
       R8 = PASS R9;                     // settled: r = the target (and the flags for its test below: loads keep them)
       R12 = DM(0x2dde88);
       I0 = R12;                         // the track buffer: o1, then the mix
@@ -466,7 +466,7 @@ wr_p5_fm_keep.:
 // machine9_live.asm's CJUMP to the reader comes here: PH for WARP and FM, then wr_dclk_pre.
 .GLOBAL wr_p5_phase.;
 wr_p5_phase.:
-      CALL 0x17373e;                         // -> wr_ph_gain. (phase.asm: osc 2 under FM at the fixed gain)
+      CALL 0x17373b;                         // -> wr_ph_gain. (phase.asm: osc 2 under FM at the fixed gain)
       R0 = R0 - R0;
       DM(0x2e6014) = R0;                // the reader's own phase, unless PH is written below
       R5 = DM(0x2e6004);
@@ -504,7 +504,7 @@ wr_p5_ph_fm.:
       R15 = 31;
       R10 = 24;
       R12 = DM(0x2e600c);               // c
-      CALL 0x1736e7;                         // -> wr_ph_tame. (phase.asm: taming, k1, k2 and c)
+      CALL 0x1736e4;                         // -> wr_ph_tame. (phase.asm: taming, k1, k2 and c)
       R5 = PASS R5;
       IF EQ JUMP 0x172e84;                   // -> wr_p5_ph_warp.
       R0 = PASS R0;

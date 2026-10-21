@@ -65,6 +65,10 @@ def _cases(live):
          True),
         ("formant", {"LEV2": 0, live.SHAPE_SLOTS[2]: live.TYPE_FORMANT << 8, live.SHAPE_SLOTS[3]: 0x4000}, True),
         ("osc2+formant", {**on2, live.SHAPE_SLOTS[2]: live.TYPE_FORMANT << 8, live.SHAPE_SLOTS[3]: 0x4000}, True),
+        # WARP and FM at 64: phase.asm's readers (strategy #1 of the load plan)
+        ("osc2+warp", {**on2, live.SHAPE_SLOTS[4]: 0x4000}, True),
+        ("osc2+fm", {**on2, live.SHAPE_SLOTS[5]: 0x4000}, True),
+        ("osc2+warp+fm", {**on2, live.SHAPE_SLOTS[4]: 0x4000, live.SHAPE_SLOTS[5]: 0x4000}, True),
     ]
 
 

@@ -62,7 +62,7 @@ wr_ph_miph2.:
       R13 = R13 - R13;
       R1 = 1;
       R2 = R8 AND R1;
-      IF EQ JUMP 0x1735ff;                   // -> wr_ph_plain. (no flag: opt2's reader; R4 is untouched)
+      IF EQ JUMP 0x1735fc;                   // -> wr_ph_plain. (no flag: opt2's reader; R4 is untouched)
       R8 = R8 - R1;                     // the table's header (dnfw.waverider.table3)
       I1 = R8;
       R14 = DM(1, I1);                  // S, the position's scale (float32)
@@ -132,7 +132,7 @@ wr_ph_level.:
       R11 = PASS R7;                    // row b
       R8 = -15;                         // int16 -> float full scale, 2^-15
       R12 = PASS R12;
-      IF EQ JUMP 0x1735f7;                   // -> wr_ph_done. (count 0: write nothing)
+      IF EQ JUMP 0x1735f4;                   // -> wr_ph_done. (count 0: write nothing)
       R0 = PASS R12;                    // the count, for LCNTR
       R12 = PASS R6;                    // row a
       DM(0x2e601c) = I3;
@@ -143,14 +143,17 @@ wr_ph_level.:
 
 .GLOBAL wr_ph_loop.;
 wr_ph_loop.:
-      R0 = R9 AND R14;
-      F10 = FLOAT R0 BY R15;            // hfr, half the sample fraction (exact)
+      // Load plan #1 (2026-10-21): reader_miph2.asm's steps 1a and 1b, and PH read early. Every value
+      // takes the same operations as before, so the output is the same bit for bit
       R0 = LSHIFT R9 BY R13;            // i
       R0 = LSHIFT R0 BY 1;              // tap i-1's byte offset in a guarded row
       R1 = R12 + R0;                    // row a, tap i-1
       R0 = R11 + R0;                    // row b, tap i-1
       I0 = R1;
       I1 = R0;
+      R0 = R9 AND R14;                  // between the I0/I1 moves and their first use (step 1a)
+      F10 = FLOAT R0 BY R15;            // hfr, half the sample fraction (exact)
+      R9 = DM(I3, M6);                  // the next sample's phase (PH[N] after the last): R9's last use is above
       R4 = DM(I0, M6) (SWSE);           // a[i-1]
       R5 = DM(I0, M6) (SWSE);           // a[i]
       R6 = DM(I0, M6) (SWSE);           // a[i+1]
@@ -169,58 +172,54 @@ wr_ph_loop.:
       F3 = FLOAT R3 BY R8;
       R8 = DM(0x2e3204);                // ff
 
-      // the taps between the frames: t = a + ff * (b - a)
+      // the taps between the frames: t = a + ff * (b - a), as three groups (step 1a)
       F0 = F0 - F4;
-      F0 = F8 * F0;
-      F4 = F4 + F0;                     // ym
       F1 = F1 - F5;
-      F1 = F8 * F1;
-      F5 = F5 + F1;                     // y0
       F2 = F2 - F6;
-      F2 = F8 * F2;
-      F6 = F6 + F2;                     // y1
       F3 = F3 - F7;
+      F0 = F8 * F0;
+      F1 = F8 * F1;
+      F2 = F8 * F2;
       F3 = F8 * F3;
+      F4 = F4 + F0;                     // ym
+      F5 = F5 + F1;                     // y0
+      F6 = F6 + F2;                     // y1
       F7 = F7 + F3;                     // y2
-      R8 = -15;
 
-      // one Catmull-Rom on the blend, render.hermite's order
+      // one Catmull-Rom on the blend, render.hermite's order for each value, the independent
+      // terms interleaved (step 1a); F8 is scratch here and takes -15 back before the end
       F0 = F5 - F6;                     // t = y0 - y1
-      F1 = F0 + F0;
-      F0 = F1 + F0;                     // 3t
       F1 = F7 - F4;                     // y2 - ym
-      F0 = F0 + F1;                     // c3
-      F1 = F6 - F4;                     // c1 = y1 - ym
       F2 = F4 - F5;                     // a = ym - y0
-      F2 = F2 + F2;
-      F6 = F6 - F5;                     // b = y1 - y0
-      F6 = F6 + F6;
-      F6 = F6 + F6;
-      F2 = F2 + F6;
+      F3 = F6 - F5;                     // b = y1 - y0
+      F8 = F0 + F0;                     // 2t
+      F2 = F2 + F2;                     // 2a
+      F3 = F3 + F3;                     // 2b
       F7 = F7 - F5;                     // d = y2 - y0
-      F2 = F2 - F7;                     // c2
+      F0 = F8 + F0;                     // 3t
+      F3 = F3 + F3;                     // 4b
+      F6 = F6 - F4;                     // c1 = y1 - ym
+      F0 = F0 + F1;                     // c3
+      F2 = F2 + F3;                     // 2a + 4b
       F4 = F10 + F10;                   // fr
-      F0 = F0 * F4;
-      F0 = F0 + F2;
-      F0 = F0 * F4;
-      F0 = F0 + F1;
+      F2 = F2 - F7;                     // c2
+      R8 = -15;                         // int16 -> float full scale again, for the next sample
 .NOCOMPRESS;                            // a hardware loop's last 11 instructions are 48-bit (PRM 4-42)
+      F0 = F0 * F4;
+      R1 = DM(0x2de6c0);                // the gain, LEV / 100 (F1 is free after c3)
+      F0 = F0 + F2;
+      R3 = DM(0x2de6c4);                // osc 2 adds into the buffer osc 1 wrote (DM 0x2de6c4 = 1)
+      F0 = F0 * F4;
+      R2 = DM(0, I2);                   // what osc 1 wrote: harmless for osc 1, whose R2 is not used
+      F0 = F0 + F6;                     // + c1
       F0 = F0 * F10;
       F0 = F0 + F5;                     // y
-      R1 = DM(0x2de6c0);                // the gain, LEV / 100
       F0 = F1 * F0;                     // y * gain
-      // osc 2 adds into the buffer osc 1 wrote (DM 0x2de6c4 = 1)
-      R1 = DM(0x2de6c4);
-      R1 = PASS R1;
-      IF EQ JUMP 0x1735eb;                   // -> wr_ph_store.
-      R2 = DM(0, I2);                   // what osc 1 wrote
-      F0 = F0 + F2;
-.GLOBAL wr_ph_store.;
-wr_ph_store.:
-      DM(I2, M6) = F0;
+      R3 = PASS R3;
+      IF NE F0 = F0 + F2;               // step 1b: a conditional add in place of a branch round it
 .GLOBAL wr_ph_last.;
 wr_ph_last.:
-      R9 = DM(I3, M6);                  // the next sample's phase (PH[N] after the last)
+      DM(I2, M6) = F0;
 .COMPRESS;
       I3 = DM(0x2e601c);
       R0 = R0 - R0;
@@ -271,7 +270,7 @@ wr_ph_plain.:
       R15 = -23;                        // sample fraction scale, 2^-23
       R8 = -15;                         // int16 -> float full scale, 2^-15
       R12 = PASS R12;
-      IF EQ JUMP 0x1735f7;                   // -> wr_ph_done. (count 0: write nothing)
+      IF EQ JUMP 0x1735f4;                   // -> wr_ph_done. (count 0: write nothing)
       R0 = PASS R12;                    // the count, for LCNTR
       R12 = -16;
       DM(0x2e601c) = I3;
@@ -327,7 +326,7 @@ wr_ph_ploop.:
       F4 = F0 * F4;                     // y * gain
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
-      IF EQ JUMP 0x1736d8;                   // -> wr_ph_pstore.
+      IF EQ JUMP 0x1736d5;                   // -> wr_ph_pstore.
       R1 = DM(0, I2);                   // what osc 1 wrote
       F4 = F4 + F1;
 .GLOBAL wr_ph_pstore.;
@@ -340,20 +339,20 @@ wr_ph_plast.:
       I3 = DM(0x2e601c);
       R0 = R0 - R0;
       DM(4, I4) = R0;                   // 0: the count word as the software loop left it
-      JUMP 0x1735f7;                         // -> wr_ph_done.
+      JUMP 0x1735f4;                         // -> wr_ph_done.
 
 .GLOBAL wr_ph_tame.;
 wr_ph_tame.:
       R4 = R4 - R4;
       COMP(R0, R4);
-      IF EQ JUMP 0x17371b;                   // -> wr_ph_tame_fm. (no WARP)
+      IF EQ JUMP 0x173718;                   // -> wr_ph_tame_fm. (no WARP)
       DM(0x2e6024) = R6;                // the untamed k1, for the level (wr_p5_sel_warp)
       R4 = -32;
       F1 = FLOAT R11 BY R4;             // f = inc / 2^32
       F1 = F1 * F6;                     // f h, h = k1
-      CALL 0x1737c4;                         // -> wr_ph_tame_t.
+      CALL 0x1737c1;                         // -> wr_ph_tame_t.
       COMP(F2, F3);
-      IF GE JUMP 0x17371b;                   // -> wr_ph_tame_fm. (t = 1: WARP as it is)
+      IF GE JUMP 0x173718;                   // -> wr_ph_tame_fm. (t = 1: WARP as it is)
       R4 = R4 - R4;
       F1 = FLOAT R0 BY R4;              // v
       F1 = F1 * F2;                     // x = v t
@@ -390,7 +389,7 @@ wr_ph_tame_fm.:
       R2 = DM(0x2e6010);                // FM x 2 pi / 0x7f00
       F2 = F2 + F3;                     // h
       F1 = F1 * F2;
-      CALL 0x1737c4;                         // -> wr_ph_tame_t.
+      CALL 0x1737c1;                         // -> wr_ph_tame_t.
       F12 = F12 * F2;                   // t c
       R4 = R4 - R4;                     // (wr_p5_phase's next compute is single-operand: not a float result before it)
       RTS;
@@ -428,7 +427,7 @@ wr_ph_fmgo.:                            // page5.asm's wr_p5_fm_mix comes here w
       I2 = R12;                         // osc 1's copy
       R13 = DM(0x2dde24);
       R0 = PASS R0;
-      IF EQ JUMP 0x1737a2;                   // -> wr_ph_fmadd.
+      IF EQ JUMP 0x17379f;                   // -> wr_ph_fmadd.
       LCNTR = R13, DO wr_ph_fmc_end. UNTIL LCE;
 .NOCOMPRESS;
       R1 = DM(0, I0);
@@ -443,7 +442,7 @@ wr_ph_fmgo.:                            // page5.asm's wr_p5_fm_mix comes here w
 wr_ph_fmc_end.:
       DM(I0, M6) = F1;
 .COMPRESS;
-      JUMP 0x1737bd;                         // -> wr_ph_fmkeep.
+      JUMP 0x1737ba;                         // -> wr_ph_fmkeep.
 .GLOBAL wr_ph_fmadd.;
 wr_ph_fmadd.:
       LCNTR = R13, DO wr_ph_fma_end. UNTIL LCE;

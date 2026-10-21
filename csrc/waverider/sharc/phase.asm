@@ -119,18 +119,22 @@ wr_ph_level.:
       DM(6, I4) = R6;
       DM(7, I4) = R7;
 
-      // Frame fraction ff = (pos & 0xffff) * 2^-16, exact in float32, kept in DM 0x2e3204
+      // Frame fraction ff = (pos & 0xffff) * 2^-16, exact in float32
       R3 = 0xffff;
       R3 = R11 AND R3;
       R2 = -16;
       F3 = FLOAT R3 BY R2;
-      DM(0x2e3204) = R3;
+      // #2: ff stays in R8 for the loop, and DM 0x2e3204 holds the gain x 2^-15 (the taps' full scale)
+      R1 = DM(0x2de6c0);                // the gain, LEV / 100
+      R2 = 0x38000000;                  // 2^-15
+      F1 = F1 * F2;
+      DM(0x2e3204) = R1;
 
       R13 = DM(5, I1);                  // the sample index's shift: i = phase >> (32 - b)
       R14 = DM(4, I1);                  // sample fraction mask
       R15 = DM(6, I1);                  // half the sample fraction's scale
       R11 = PASS R7;                    // row b
-      R8 = -15;                         // int16 -> float full scale, 2^-15
+      R8 = PASS R3;                     // ff, for the whole loop (#2)
       R12 = PASS R12;
       IF EQ JUMP 0x1735f4;                   // -> wr_ph_done. (count 0: write nothing)
       R0 = PASS R12;                    // the count, for LCNTR
@@ -162,15 +166,17 @@ wr_ph_loop.:
       R1 = DM(I1, M6) (SWSE);           // b[i]
       R2 = DM(I1, M6) (SWSE);           // b[i+1]
       R3 = DM(I1, M6) (SWSE);           // b[i+2]
-      F4 = FLOAT R4 BY R8;
-      F5 = FLOAT R5 BY R8;
-      F6 = FLOAT R6 BY R8;
-      F7 = FLOAT R7 BY R8;
-      F0 = FLOAT R0 BY R8;
-      F1 = FLOAT R1 BY R8;
-      F2 = FLOAT R2 BY R8;
-      F3 = FLOAT R3 BY R8;
-      R8 = DM(0x2e3204);                // ff
+      // the taps as integers in float (#2: the 2^-15 full scale is in the gain, which is exact: every
+      // operation below is linear, and a power of two scales a float without rounding); F0 last, so the
+      // next instruction is a two-operand compute (anomaly 20000072)
+      F4 = FLOAT R4;
+      F5 = FLOAT R5;
+      F6 = FLOAT R6;
+      F7 = FLOAT R7;
+      F1 = FLOAT R1;
+      F2 = FLOAT R2;
+      F3 = FLOAT R3;
+      F0 = FLOAT R0;
 
       // the taps between the frames: t = a + ff * (b - a), as three groups (step 1a)
       F0 = F0 - F4;
@@ -189,24 +195,23 @@ wr_ph_loop.:
       // one Catmull-Rom on the blend, render.hermite's order for each value, the independent
       // terms interleaved (step 1a); F8 is scratch here and takes -15 back before the end
       F0 = F5 - F6;                     // t = y0 - y1
-      F1 = F7 - F4;                     // y2 - ym
       F2 = F4 - F5;                     // a = ym - y0
       F3 = F6 - F5;                     // b = y1 - y0
-      F8 = F0 + F0;                     // 2t
+      F1 = F0 + F0;                     // 2t (F1 is scratch: F8 holds ff for the whole loop, #2)
       F2 = F2 + F2;                     // 2a
       F3 = F3 + F3;                     // 2b
+      F0 = F1 + F0;                     // 3t
+      F1 = F7 - F4;                     // y2 - ym
       F7 = F7 - F5;                     // d = y2 - y0
-      F0 = F8 + F0;                     // 3t
       F3 = F3 + F3;                     // 4b
       F6 = F6 - F4;                     // c1 = y1 - ym
       F0 = F0 + F1;                     // c3
       F2 = F2 + F3;                     // 2a + 4b
       F4 = F10 + F10;                   // fr
       F2 = F2 - F7;                     // c2
-      R8 = -15;                         // int16 -> float full scale again, for the next sample
 .NOCOMPRESS;                            // a hardware loop's last 11 instructions are 48-bit (PRM 4-42)
       F0 = F0 * F4;
-      R1 = DM(0x2de6c0);                // the gain, LEV / 100 (F1 is free after c3)
+      R1 = DM(0x2e3204);                // the gain x 2^-15 (F1 is free after c3)
       F0 = F0 + F2;
       R3 = DM(0x2de6c4);                // osc 2 adds into the buffer osc 1 wrote (DM 0x2de6c4 = 1)
       F0 = F0 * F4;

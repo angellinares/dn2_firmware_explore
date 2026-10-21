@@ -14,7 +14,7 @@ from dnfw.cli.mods import REGISTRY
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SITE = ROOT / "site"
 HARNESS = ROOT / "scripts" / "js_glyphs_check.mjs"
-UNSHOWN = {"songguard", "usbprobe"}       # no card and no page of their own yet
+UNSHOWN = {"degreetranspose", "songguard", "usbprobe"}   # no card and no page of their own yet
 
 
 def glyphs():

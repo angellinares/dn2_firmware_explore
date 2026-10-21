@@ -1,0 +1,804 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glyph Animator</title>
+<!--
+  Draw animated 1-bit glyphs: a list of frames that a knob value picks from.
+
+  Open this file in Chrome or Edge. Press "Open file" and pick
+  site/js/mods/glyph-anims.js, or start a new animation. "Save" writes the file
+  in place; other browsers get a download. The firmware format (columns of
+  32-bit big-endian words, top row in the most significant bit) goes out as a
+  .bin file or hex text, and comes back in the same way. The still glyphs of
+  site/js/mods/glyphs.js and the animations of site/js/mods/glyph-anims.js load as
+  the page loads over http; from disk, press "Open glyphs.js" and "Open file". glyph-animator.html#from=ID&px=HEX starts from one of them
+  (the still editor's "Send to animator").
+  tools/glyph_animator.html forwards here, for links to the old place.
+  The model is js/glyph-tools/glyph_anim_core.js;
+  the tool bar, the selection and the fills are shared with the still editor
+  (glyph_tools.js, glyph_fills_panel.js, css/glyph-tools.css).
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/glyph-tools.css">
+<style>
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 24rem); gap: 1.4rem; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .strip { display: flex; gap: .4rem; overflow-x: auto; padding-bottom: .4rem; }
+  .strip button { flex: none; display: grid; justify-items: center; gap: .15rem; padding: .3rem;
+                  font-size: .7rem; font-family: ui-monospace, Consolas, monospace; }
+  .strip button.on { outline: 2px solid var(--accent); }
+  .strip button[aria-selected="true"] { background: var(--off); border-color: var(--accent); }
+  .chips { display: grid; gap: .6rem; }
+  .chip { padding: 8px; border-radius: 6px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; overflow: hidden; }
+  .chip.light { background: #f6f5f2; }
+  .chip.dark { background: #0c0d0f; }
+  #knob { width: 100%; }
+  #readout { font-family: ui-monospace, Consolas, monospace; font-size: .9rem; }
+  textarea { width: 100%; height: 7rem; font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+             background: var(--panel); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; }
+  #curve { display: block; border: 1px solid var(--rule); border-radius: 4px; background: var(--off); }
+  .morph-preview { display: flex; gap: .4rem; overflow-x: auto; padding-bottom: .3rem; min-height: 1rem; }
+  .morph-preview figure { margin: 0; display: grid; justify-items: center; gap: .1rem;
+                          font-size: .7rem; font-family: ui-monospace, Consolas, monospace; color: var(--ink-soft); }
+  textarea.rows { height: 12rem; white-space: pre; overflow: auto; line-height: 1.15; }
+  .frame-head { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: baseline; justify-content: space-between; }
+  .frame-head h2 { margin: 0 0 .5rem; font-size: 1rem; }
+</style>
+
+<p class="eyebrow"><a href="index.html">Digitone II Mods</a> / glyph animator</p>
+<h1>Glyph Animator</h1>
+<p class="muted">Draw a glyph as a list of frames. The knob picks the frame, as on the unit.
+  For still glyphs, use the <a href="glyph-editor.html">Glyph Editor</a>.</p>
+
+<div class="bar">
+  <button id="open" class="primary">Open file</button>
+  <button id="save" disabled>Save</button>
+  <span id="status" class="muted">Open site/js/mods/glyph-anims.js, or make a new animation.</span>
+</div>
+
+<details class="card" open>
+  <summary>Animation</summary>
+  <div class="bar">
+    <select id="pick" aria-label="Animation"></select>
+    <button id="del-anim">Delete</button>
+  </div>
+  <div class="bar">
+    <input id="new-name" type="text" placeholder="name" size="10" aria-label="Name of the new animation">
+    <select id="preset" aria-label="Frame size">
+      <option value="17x17">17 x 17</option><option value="19x17">19 x 17</option>
+      <option value="11x11">11 x 11</option><option value="128x64">128 x 64</option>
+      <option value="custom">Other size</option>
+    </select>
+    <label>W <input id="new-w" type="number" min="1" max="128" value="17"></label>
+    <label>H <input id="new-h" type="number" min="1" max="64" value="17"></label>
+    <label>Frames <input id="new-n" type="number" min="1" max="128" value="13"></label>
+    <button id="create">New</button>
+  </div>
+</details>
+
+<details class="card" open>
+  <summary>Still glyphs</summary>
+  <div class="bar">
+    <button id="still-open">Open glyphs.js</button>
+    <span id="still-status" class="muted">Reading site/js/mods/glyphs.js.</span>
+  </div>
+  <div class="strip" id="still"></div>
+  <div class="bar">
+    <button id="still-new" disabled>New animation from it</button>
+    <button id="still-insert" disabled>Insert after this frame</button>
+    <button id="still-replace" disabled>Replace this frame</button>
+  </div>
+  <p class="muted">Pick a still glyph, then use it as frame 1 of a new animation, or as a frame
+    of this one. A glyph of a different size goes at the top left. It is not scaled.</p>
+</details>
+
+<div id="work" hidden>
+<div class="layout">
+  <div>
+    <section class="card">
+      <div class="frame-head">
+        <h2 id="frame-title">Frame</h2>
+        <label><input id="onion" type="checkbox" checked> Onion skin</label>
+      </div>
+      <div id="toolbar"></div>
+      <div id="context"></div>
+      <div class="surface-box"><canvas id="paint" class="surface"></canvas></div>
+      <div class="bar">
+        <button data-op="up">Up</button><button data-op="down">Down</button>
+        <button data-op="left">Left</button><button data-op="right">Right</button>
+        <button data-op="flipx">Mirror</button><button data-op="flipy">Flip</button>
+        <button data-op="invert">Invert</button><button data-op="clear">Clear</button>
+        <button id="undo">Undo</button>
+      </div>
+      <p class="muted">Pick a tool in the bar, or press its key. Press ? for all the shortcuts.
+        Onion skin shows the previous frame faintly.</p>
+    </section>
+
+    <section class="card">
+      <h2>Frames</h2>
+      <div class="strip" id="strip" role="listbox" aria-label="Frames" aria-multiselectable="true"></div>
+      <div class="bar">
+        <button id="f-add">Add</button><button id="f-dup">Duplicate</button>
+        <button id="f-del">Delete</button><button id="f-left">Move left</button>
+        <button id="f-right">Move right</button><button id="f-prev">Copy previous</button>
+      </div>
+      <p class="muted" id="range-note">Shift-click picks a range of frames. Ctrl-click adds or removes one frame.
+        A fill then goes on every frame you picked.</p>
+    </section>
+
+    <details class="card" open>
+      <summary>Morph</summary>
+      <div class="bar">
+        <label>From frame <input id="mo-a" type="number" min="1" value="1"></label>
+        <label>to frame <input id="mo-b" type="number" min="1" value="2"></label>
+        <label>In-betweens <input id="mo-n" type="number" min="1" max="126" value="4"></label>
+      </div>
+      <div class="bar">
+        <select id="mo-method" aria-label="Morph">
+          <option value="dissolve">Dissolve</option><option value="move">Move</option>
+        </select>
+        <select id="mo-ease" aria-label="Easing">
+          <option value="linear">Linear</option>
+          <option value="quad-in">Quadratic in</option><option value="quad-out">Quadratic out</option>
+          <option value="quad-inout">Quadratic in-out</option>
+          <option value="cubic-in">Cubic in</option><option value="cubic-out">Cubic out</option>
+          <option value="cubic-inout">Cubic in-out</option>
+          <option value="sine-in">Sine in</option><option value="sine-out">Sine out</option>
+          <option value="sine-inout">Sine in-out</option>
+        </select>
+        <select id="mo-spread" aria-label="Pixel order">
+          <option value="ordered">Ordered pixels</option><option value="seeded">Seeded pixels</option>
+        </select>
+        <label>Seed <input id="mo-seed" type="number" min="1" value="1"></label>
+        <canvas id="curve" width="96" height="64" role="img" aria-label="Easing curve"></canvas>
+      </div>
+      <div class="morph-preview" id="mo-preview"></div>
+      <div class="bar"><button id="mo-insert" class="primary">Insert</button></div>
+      <p class="muted">Morph makes the frames from one key frame to another. Insert puts them
+        between the two key frames, in place of the frames that are there now. Dissolve flips
+        each pixel that differs at its own point, so the same settings always give the same
+        frames. Move slides each lit pixel toward the nearest lit pixel of the other frame.
+        The curve shows how fast the change goes, and the dots are the new frames.</p>
+    </details>
+
+    <details class="card" open>
+      <summary>Fills</summary>
+      <div id="fills"></div>
+    </details>
+  </div>
+
+  <div>
+    <section class="card">
+      <h2>Knob</h2>
+      <input id="knob" type="range" min="0" max="127" value="0" aria-label="Knob value">
+      <div class="bar">
+        <span id="readout"></span>
+        <select id="range" aria-label="Range">
+          <option value="0x7f00">range 0x7f00</option><option value="0x8000">range 0x8000</option>
+        </select>
+      </div>
+      <div class="chips">
+        <div class="chip light" id="pv-light"></div>
+        <div class="chip dark" id="pv-dark"></div>
+      </div>
+      <div class="bar">
+        <button id="play">Play</button>
+        <label>Speed <input id="fps" type="number" min="1" max="60" value="12"> frames/s</label>
+      </div>
+      <p class="muted">The knob shows the frame the unit picks: round(value x (frames - 1) / range).
+        Play shows the frames in order.</p>
+    </section>
+
+    <details class="card" open>
+      <summary>Animated GIF</summary>
+      <div class="bar">
+        <select id="gif-scale" aria-label="Scale">
+          <option value="1">1x</option><option value="2">2x</option><option value="3" selected>3x</option>
+          <option value="4">4x</option><option value="8">8x</option>
+        </select>
+        <select id="gif-theme" aria-label="Colours">
+          <option value="light">Light colours</option><option value="dark">Dark colours</option>
+        </select>
+        <button id="gif-save">Save GIF</button>
+      </div>
+      <p class="muted">The GIF plays the frames in order at the speed above, and loops.</p>
+    </details>
+
+    <details class="card">
+      <summary>Firmware format</summary>
+      <div class="bar">
+        <button id="bin-out">Download .bin</button><button id="hex-out">Show hex</button>
+        <button id="bin-in">Import .bin</button><button id="hex-in">Import hex</button>
+      </div>
+      <textarea id="hex" spellcheck="false" aria-label="Hex words"></textarea>
+      <p class="muted">Each frame is its columns, left to right. Each column is one 32-bit
+        big-endian word, with the top row in the most significant bit. A frame taller than
+        32 rows uses more words per column. Import uses the size of this animation.</p>
+      <div class="bar">
+        <button id="json-out">Download JSON</button><button id="json-in">Import JSON</button>
+      </div>
+    </details>
+  </div>
+</div>
+
+  <details class="card" open>
+    <summary>Rows</summary>
+    <textarea id="rows" class="rows" spellcheck="false" aria-label="Rows of the frame"></textarea>
+    <div class="bar">
+      <button id="rows-apply">Apply to this frame</button>
+      <button id="rows-add">Add as new frames</button>
+      <button id="copy-frame">Copy frame</button>
+      <button id="copy-all">Copy all frames</button>
+    </div>
+    <p class="muted">The box shows this frame: <code>#</code> is lit and <code>.</code> is dark.
+      Paste rows, for example from the Glyph Editor, and apply them. Rows that are smaller go at
+      the top left. Rows that are larger are cut to the frame size. To add several frames, paste
+      blocks of rows with a blank line between them.</p>
+  </details>
+</div>
+
+<footer class="site-foot">
+  <p>Part of <a href="https://github.com/angellinares/dn2_firmware_explore">dn2_firmware_explore</a>,
+  AGPL-3.0-or-later. Not affiliated with or endorsed by Elektron.
+  Nothing here touches firmware. The glyphs are original art.</p>
+</footer>
+
+<script src="js/glyph-tools/glyph_anim_core.js"></script>
+<script src="js/glyph-tools/glyph_icons.js"></script>
+<script src="js/glyph-tools/glyph_tools.js"></script>
+<script src="js/glyph-tools/glyph_fills_panel.js"></script>
+<script>
+const G = GlyphAnim;
+const $ = (id) => document.getElementById(id);
+let handle = null, anims = {}, savedText = "", name = null, cur = 0, undo = [], timer = null;
+
+const status = (t) => { $("status").textContent = t; };
+const anim = () => anims[name];
+const frames = () => anim().frames;
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+function serialiseAll() { return G.serialise(anims); }
+
+function remember() {
+  ed.drop();
+  undo.push(JSON.stringify({ frames: frames(), cur }));
+  if (undo.length > 200) undo.shift();
+}
+
+function changed() {
+  $("save").disabled = serialiseAll() === savedText;
+  drawAll();
+}
+
+/* ---- drawing ---- */
+
+function drawFrame(canvas, frame, scale, ink, bg) {
+  const h = frame.length, w = frame[0].length;
+  canvas.width = w * scale; canvas.height = h * scale;
+  const c = canvas.getContext("2d");
+  c.fillStyle = bg; c.fillRect(0, 0, canvas.width, canvas.height);
+  c.fillStyle = ink;
+  frame.forEach((row, y) => { for (let x = 0; x < w; x++) if (row[x] === "#") c.fillRect(x * scale, y * scale, scale, scale); });
+}
+
+/** The drawing surface (glyph_tools.js) draws the frame, the grid and the selection. */
+function drawPaint() {
+  const a = anim(), f = frames()[cur];
+  ed.render();
+  $("frame-title").textContent = `Frame ${cur + 1} of ${frames().length} (${a.width} x ${a.height})`;
+  if (document.activeElement !== $("rows")) $("rows").value = f.join("\n");
+  $("rows").style.height = `${Math.min(a.height, 32) * 1.15 + 1.5}em`;
+}
+
+function drawStrip() {
+  const a = anim();
+  const scale = Math.max(1, Math.min(3, Math.floor(48 / Math.max(a.width, a.height))));
+  $("strip").replaceChildren(...frames().map((f, i) => {
+    const b = document.createElement("button");
+    const cv = document.createElement("canvas");
+    cv.className = "px";
+    drawFrame(cv, f, scale, css("--ink"), css("--off"));
+    b.append(cv, String(i + 1));
+    if (i === cur) b.className = "on";
+    b.setAttribute("role", "option");
+    b.setAttribute("aria-selected", String(picked.size > 1 && picked.has(i)));
+    b.setAttribute("aria-label", `Frame ${i + 1}`);
+    b.dataset.frame = i;
+    b.onclick = (e) => pickFrame(i, e);
+    return b;
+  }));
+  // Bring the current frame into the strip's view, sideways only: the page itself does not move.
+  const strip = $("strip"), on = strip.children[cur];
+  if (on) {
+    const s = strip.getBoundingClientRect(), r = on.getBoundingClientRect();
+    if (r.left < s.left) strip.scrollLeft += r.left - s.left;
+    else if (r.right > s.right) strip.scrollLeft += r.right - s.right;
+  }
+}
+
+function knobIndex() { return G.knobFrame(+$("knob").value, frames().length, G.RANGES[$("range").value]); }
+
+function drawPreview(index = knobIndex()) {
+  const f = frames()[index];
+  for (const [id, ink, bg] of [["pv-light", "#16181c", "#f6f5f2"], ["pv-dark", "#e8e6e1", "#0c0d0f"]]) {
+    $(id).replaceChildren(...[1, 2, 3].map((s) => {
+      const cv = document.createElement("canvas");
+      cv.className = "px";
+      drawFrame(cv, f, s, ink, bg);
+      return cv;
+    }));
+  }
+  $("readout").textContent = `knob ${$("knob").value}: frame ${knobIndex() + 1} of ${frames().length}`;
+}
+
+function drawAll() {
+  if (!name) { $("work").hidden = true; return; }
+  $("work").hidden = false;
+  cur = Math.min(cur, frames().length - 1);
+  picked = new Set([...picked].filter((i) => i < frames().length));
+  if (!picked.size) picked.add(cur);
+  drawPaint(); drawStrip(); drawMorph();
+  fills.refresh();
+  if (!timer) drawPreview();
+}
+
+function drawPick() {
+  $("pick").replaceChildren(...Object.keys(anims).map((n) => new Option(`${n} (${anims[n].width} x ${anims[n].height}, ${anims[n].frames.length} frames)`, n)));
+  if (name) $("pick").value = name;
+}
+
+/* ---- drawing, the selection and the fills: shared with the still editor ---- */
+
+const ed = GlyphTools.surface({
+  canvas: $("paint"), toolbar: $("toolbar"), context: $("context"), max: 24,
+  frame: () => (name ? frames()[cur] : null),
+  set: (rows) => { frames()[cur] = rows; changed(); },
+  begin: () => remember(),
+  unbegin: () => undo.pop(),
+  end: () => changed(),
+  undo: () => undoOnce(),
+  onion: () => ($("onion").checked && cur > 0 ? frames()[cur - 1] : null),
+  selected: () => name && fills.refresh(),
+});
+function thumb(canvas, rows) {
+  const s = Math.max(1, Math.min(3, Math.floor(48 / Math.max(rows[0].length, rows.length))));
+  drawFrame(canvas, rows, s, css("--ink"), css("--off"));
+}
+/** The frames a fill goes on: the picked range, or the frame shown. */
+const fillTargets = () => (picked.size > 1 ? [...picked].sort((p, q) => p - q) : [cur]);
+const fills = GlyphFills.panel($("fills"), {
+  targets: () => (name ? fillTargets().map((i) => frames()[i]) : [G.blank(1, 1)]),
+  mask: () => ed.mask,
+  apply: (out) => {
+    const idx = fillTargets();
+    editFrames((fs) => { idx.forEach((i, k) => { fs[i] = out[k]; }); }, { keepPick: true });
+    status(`Filled ${idx.length} frame${idx.length === 1 ? "" : "s"}${ed.mask ? ", inside the selection" : ""}.`);
+  },
+  thumb,
+});
+
+/* ---- the frame range: click, Shift-click a range, Ctrl-click one more or one less ---- */
+let picked = new Set([0]), anchor = 0;
+function pickFrame(i, e = {}) {
+  ed.drop();
+  if (e.shiftKey) {
+    picked = new Set();
+    for (let k = Math.min(anchor, i); k <= Math.max(anchor, i); k++) picked.add(k);
+  } else if (e.ctrlKey || e.metaKey) {
+    if (picked.has(i) && picked.size > 1) picked.delete(i); else picked.add(i);
+    anchor = i;
+  } else { picked = new Set([i]); anchor = i; }
+  cur = i;
+  drawAll();
+  const n = picked.size;
+  $("range-note").textContent = n > 1 ? `${n} frames picked: a fill goes on each of them.`
+    : "Shift-click picks a range of frames. Ctrl-click adds or removes one frame. A fill then goes on every frame you picked.";
+}
+
+document.querySelectorAll("[data-op]").forEach((b) => b.addEventListener("click", () => {
+  remember();
+  frames()[cur] = G.OPS[b.dataset.op](frames()[cur]);
+  changed();
+}));
+function undoOnce() {
+  ed.drop();
+  if (!undo.length) return;
+  const s = JSON.parse(undo.pop());
+  anim().frames = s.frames; cur = s.cur;
+  changed();
+}
+$("undo").onclick = undoOnce;
+$("onion").onchange = drawPaint;
+
+/* ---- frames ---- */
+
+/** One undo step over the frames. Adding, deleting or moving frames forgets the picked range. */
+function editFrames(fn, { keepPick = false } = {}) {
+  remember();
+  fn(frames());
+  if (!keepPick) { picked = new Set([cur]); anchor = cur; }
+  changed();
+}
+$("f-add").onclick = () => {
+  if (frames().length >= G.LIMITS.frames) return status(`At most ${G.LIMITS.frames} frames.`);
+  editFrames((fs) => { fs.splice(cur + 1, 0, G.blank(anim().width, anim().height)); cur++; });
+};
+$("f-dup").onclick = () => {
+  if (frames().length >= G.LIMITS.frames) return status(`At most ${G.LIMITS.frames} frames.`);
+  editFrames((fs) => { fs.splice(cur + 1, 0, fs[cur].slice()); cur++; });
+};
+$("f-del").onclick = () => {
+  if (frames().length <= 1) return status("An animation needs one frame at least.");
+  editFrames((fs) => { fs.splice(cur, 1); cur = Math.max(0, cur - 1); });
+};
+$("f-left").onclick = () => cur > 0 && editFrames((fs) => { [fs[cur - 1], fs[cur]] = [fs[cur], fs[cur - 1]]; cur--; });
+$("f-right").onclick = () => cur < frames().length - 1 && editFrames((fs) => { [fs[cur + 1], fs[cur]] = [fs[cur], fs[cur + 1]]; cur++; });
+$("f-prev").onclick = () => cur > 0 && editFrames((fs) => { fs[cur] = fs[cur - 1].slice(); });
+
+/* ---- morph ---- */
+
+function morphSettings() {
+  return {
+    a: +$("mo-a").value - 1, b: +$("mo-b").value - 1, count: +$("mo-n").value,
+    method: $("mo-method").value, ease: $("mo-ease").value, spread: $("mo-spread").value,
+    seed: Math.max(1, +$("mo-seed").value || 1),
+  };
+}
+function morphProblem(s) {
+  const n = frames().length;
+  if (!(s.a >= 0 && s.b < n && s.b > s.a)) return `Give two key frames from 1 to ${n}, the second after the first.`;
+  if (!(s.count >= 1)) return "Give one in-between frame or more.";
+  if (n - (s.b - s.a - 1) + s.count > G.LIMITS.frames) return `At most ${G.LIMITS.frames} frames.`;
+  return null;
+}
+function drawCurve(s) {
+  const cv = $("curve"), c = cv.getContext("2d"), W = cv.width, H = cv.height, m = 6;
+  const px = (t) => m + t * (W - 2 * m), py = (v) => H - m - v * (H - 2 * m);
+  c.clearRect(0, 0, W, H);
+  c.strokeStyle = css("--rule"); c.lineWidth = 1;
+  c.strokeRect(px(0) + .5, py(1) + .5, W - 2 * m, H - 2 * m);
+  c.strokeStyle = css("--ink"); c.beginPath();
+  for (let i = 0; i <= 48; i++) { const t = i / 48; c.lineTo(px(t), py(G.EASE[s.ease](t))); }
+  c.stroke();
+  c.fillStyle = css("--accent");
+  for (let i = 1; i <= s.count; i++) {
+    const t = i / (s.count + 1);
+    c.fillRect(Math.round(px(t)) - 1.5, Math.round(py(G.EASE[s.ease](t))) - 1.5, 3, 3);
+  }
+}
+function drawMorph() {
+  if (!name) return;
+  const s = morphSettings(), problem = morphProblem(s);
+  drawCurve(s);
+  $("mo-insert").disabled = !!problem;
+  if (problem) {
+    const p = document.createElement("p");
+    p.className = "muted"; p.textContent = problem;
+    $("mo-preview").replaceChildren(p);
+    return;
+  }
+  const a = anim(), A = frames()[s.a], B = frames()[s.b];
+  const scale = Math.max(1, Math.min(3, Math.floor(48 / Math.max(a.width, a.height))));
+  const list = [["A", A], ...G.morph(A, B, s.count, s).map((f, i) => [String(i + 1), f]), ["B", B]];
+  $("mo-preview").replaceChildren(...list.map(([label, f]) => {
+    const fig = document.createElement("figure"), cv = document.createElement("canvas"), cap = document.createElement("figcaption");
+    cv.className = "px";
+    drawFrame(cv, f, scale, css("--ink"), css("--off"));
+    cap.textContent = label;
+    fig.append(cv, cap);
+    return fig;
+  }));
+}
+for (const id of ["mo-a", "mo-b", "mo-n", "mo-method", "mo-ease", "mo-spread", "mo-seed"]) $(id).addEventListener("input", drawMorph);
+$("mo-insert").onclick = () => {
+  const s = morphSettings(), problem = morphProblem(s);
+  if (problem) return status(problem);
+  const replaced = s.b - s.a - 1;
+  editFrames(() => { anim().frames = G.tween(frames(), s.a, s.b, s); });
+  $("mo-b").value = s.a + s.count + 2;
+  status(`Inserted ${s.count} frame${s.count === 1 ? "" : "s"} between frames ${s.a + 1} and ${s.a + s.count + 2}` +
+    (replaced ? `, in place of ${replaced}.` : "."));
+  drawMorph();
+};
+
+/* ---- rows as text ---- */
+
+function readBlocks() {
+  const r = G.parseBlocks($("rows").value);
+  if (r.error) status(r.error);
+  return r.blocks ?? null;
+}
+const trimNote = (n) => n ? ` Some rows were larger than ${anim().width} x ${anim().height} and were cut.` : "";
+
+$("rows-apply").onclick = () => {
+  const blocks = readBlocks();
+  if (!blocks) return;
+  const { frame, trimmed } = G.fitRows(blocks[0], anim().width, anim().height);
+  editFrames((fs) => { fs[cur] = frame; });
+  status(`Frame ${cur + 1} is now the rows from the box.${trimNote(trimmed)}` +
+    (blocks.length > 1 ? " Only the first block was used: use Add as new frames for the others." : ""));
+  $("rows").value = frame.join("\n");
+};
+$("rows-add").onclick = () => {
+  const blocks = readBlocks();
+  if (!blocks) return;
+  if (frames().length + blocks.length > G.LIMITS.frames) return status(`At most ${G.LIMITS.frames} frames.`);
+  let cut = false;
+  editFrames((fs) => {
+    const add = blocks.map((b) => { const r = G.fitRows(b, anim().width, anim().height); cut ||= r.trimmed; return r.frame; });
+    fs.splice(cur + 1, 0, ...add);
+    cur += add.length;
+  });
+  status(`Added ${blocks.length} frame${blocks.length === 1 ? "" : "s"} after the frame you were on.${trimNote(cut)}`);
+};
+
+async function copyText(text, what) {
+  try { await navigator.clipboard.writeText(text); status(`Copied ${what}.`); }
+  catch {
+    $("rows").value = text; $("rows").select();
+    status(document.execCommand("copy") ? `Copied ${what}.` : `Select the box and copy ${what} by hand.`);
+  }
+}
+$("copy-frame").onclick = () => copyText(frames()[cur].join("\n"), `frame ${cur + 1}`);
+$("copy-all").onclick = () => copyText(G.framesText(frames()), `all ${frames().length} frames`);
+
+/* ---- knob and playback ---- */
+
+$("knob").oninput = () => drawPreview();
+$("range").onchange = () => drawPreview();
+$("play").onclick = () => {
+  if (timer) { clearInterval(timer); timer = null; $("play").textContent = "Play"; drawPreview(); return; }
+  let i = 0;
+  $("play").textContent = "Stop";
+  const tick = () => { drawPreview(i); i = (i + 1) % frames().length; };
+  tick();
+  timer = setInterval(tick, 1000 / Math.max(1, Math.min(60, +$("fps").value || 12)));
+};
+
+/* ---- animations ---- */
+
+$("preset").onchange = () => {
+  const v = $("preset").value;
+  if (v !== "custom") { const [w, h] = v.split("x"); $("new-w").value = w; $("new-h").value = h; }
+};
+$("create").onclick = () => {
+  const n = $("new-name").value.trim(), w = +$("new-w").value, h = +$("new-h").value, count = +$("new-n").value;
+  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(n)) return status("Give a name of letters, digits and _.");
+  if (anims[n]) return status(`There is already an animation called ${n}.`);
+  if (!(w >= 1 && w <= G.LIMITS.width && h >= 1 && h <= G.LIMITS.height)) return status("The size is 1 to 128 wide and 1 to 64 high.");
+  if (!(count >= 1 && count <= G.LIMITS.frames)) return status("The frame count is 1 to 128.");
+  anims[n] = { width: w, height: h, frames: Array.from({ length: count }, () => G.blank(w, h)) };
+  select(n);
+  changed();
+};
+$("del-anim").onclick = () => {
+  if (!name || !confirm(`Delete the animation ${name}?`)) return;
+  delete anims[name];
+  select(Object.keys(anims)[0] ?? null);
+  changed();
+};
+$("pick").onchange = () => select($("pick").value);
+
+function select(n) {
+  ed.drop();
+  name = n && anims[n] ? n : null; cur = 0; undo = []; picked = new Set([0]); anchor = 0;
+  if (timer) $("play").click();
+  drawPick(); drawAll(); drawStill();
+}
+
+/* ---- files ---- */
+
+function loadText(text, label = "the file") {
+  anims = text.trim().startsWith("{") ? G.fromJSON(text) : G.parse(text);
+  savedText = text.trim().startsWith("{") ? "" : text;
+  const n = Object.keys(anims).length;
+  status(n ? `${n} animation${n === 1 ? "" : "s"} loaded from ${label}.` : `No animations in ${label}.`);
+  select(Object.keys(anims)[0] ?? null);
+  changed();
+}
+
+function download(data, filename, type) {
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([data], { type })), download: filename });
+  a.click();
+}
+
+function pickFile(accept) {
+  return new Promise((done) => {
+    const input = Object.assign(document.createElement("input"), { type: "file", accept });
+    input.onchange = () => done(input.files[0]);
+    input.click();
+  });
+}
+
+$("open").onclick = async () => {
+  try {
+    if (window.showOpenFilePicker) {
+      [handle] = await showOpenFilePicker({ types: [{ description: "Animations", accept: { "text/javascript": [".js"], "application/json": [".json"] } }] });
+      loadText(await (await handle.getFile()).text(), handle.name);
+    } else {
+      const f = await pickFile(".js,.json");
+      loadText(await f.text(), f.name);
+    }
+  } catch (e) { if (e.name !== "AbortError") status(e.message); }
+};
+
+$("save").onclick = async () => {
+  const text = serialiseAll();
+  if (handle && handle.name.endsWith(".js")) {
+    const w = await handle.createWritable();
+    await w.write(text); await w.close();
+    status(`Saved ${handle.name} at ${new Date().toLocaleTimeString()}.`);
+  } else {
+    download(text, "glyph-anims.js", "text/javascript");
+    status("Downloaded glyph-anims.js. Put it in site/js/mods/.");
+  }
+  savedText = text;
+  changed();
+};
+
+$("bin-out").onclick = () => {
+  const a = anim();
+  download(G.encode(a.frames, a.width, a.height), `${name}_${a.width}x${a.height}_${a.frames.length}.bin`, "application/octet-stream");
+};
+$("hex-out").onclick = () => { const a = anim(); $("hex").value = G.toHex(G.encode(a.frames, a.width, a.height), a.width, a.height); };
+
+function importFrames(bytes) {
+  const a = anim();
+  const fs = G.decode(bytes, a.width, a.height);
+  if (fs.length > G.LIMITS.frames) throw new Error(`${fs.length} frames is more than ${G.LIMITS.frames}`);
+  remember();
+  a.frames = fs; cur = 0;
+  status(`Imported ${fs.length} frames of ${a.width} x ${a.height}.`);
+  changed();
+}
+$("bin-in").onclick = async () => {
+  const f = await pickFile(".bin");
+  try { importFrames(new Uint8Array(await f.arrayBuffer())); } catch (e) { status(e.message); }
+};
+$("hex-in").onclick = () => { try { importFrames(G.fromHex($("hex").value)); } catch (e) { status(e.message); } };
+
+$("json-out").onclick = () => download(JSON.stringify(anims, null, 1), "glyph-anims.json", "application/json");
+$("json-in").onclick = async () => {
+  const f = await pickFile(".json");
+  try {
+    const more = G.fromJSON(await f.text());
+    Object.assign(anims, more);
+    select(Object.keys(more)[0] ?? name);
+    changed();
+    status(`Imported ${Object.keys(more).length} animations from ${f.name}.`);
+  } catch (e) { status(e.message); }
+};
+
+/* ---- animated GIF ---- */
+
+function gifBytes() {
+  const a = anim();
+  return G.gif(a.frames, a.width, a.height, { scale: +$("gif-scale").value, theme: $("gif-theme").value,
+    delay: G.gifDelay(+$("fps").value || 12) });
+}
+$("gif-save").onclick = async () => {
+  const bytes = gifBytes(), file = `${name}_${$("gif-scale").value}x_${$("gif-theme").value}.gif`;
+  try {
+    if (window.showSaveFilePicker) {
+      const h = await showSaveFilePicker({ suggestedName: file, types: [{ description: "GIF", accept: { "image/gif": [".gif"] } }] });
+      const w = await h.createWritable();
+      await w.write(bytes); await w.close();
+      status(`Saved ${h.name}: ${frames().length} frames.`);
+    } else {
+      download(bytes, file, "image/gif");
+      status(`Downloaded ${file}.`);
+    }
+  } catch (e) { if (e.name !== "AbortError") status(e.message); }
+};
+
+/* ---- the still glyphs ---- */
+
+let still = {}, stillId = null;
+
+function setStill(text, label) {
+  still = G.parseStill(text);
+  const n = Object.keys(still).length;
+  $("still-status").textContent = n ? `${n} still glyphs from ${label}.` : `No still glyphs in ${label}.`;
+  if (!still[stillId]) stillId = null;
+  drawStill();
+}
+
+function drawStill() {
+  $("still").replaceChildren(...Object.entries(still).map(([id, rows]) => {
+    const b = document.createElement("button");
+    const cv = document.createElement("canvas");
+    cv.className = "px";
+    drawFrame(cv, rows, 2, css("--ink"), css("--off"));
+    b.append(cv, id);
+    b.dataset.id = id;
+    if (id === stillId) b.className = "on";
+    b.onclick = () => { stillId = id; drawStill(); };
+    return b;
+  }));
+  $("still-new").disabled = !stillId;
+  $("still-insert").disabled = $("still-replace").disabled = !stillId || !name;
+}
+
+function uniqueName(base) {
+  let n = base.replace(/[^A-Za-z0-9_]/g, "_"), i = 2;
+  if (!/^[A-Za-z]/.test(n)) n = "g" + n;
+  const root = n;
+  while (anims[n]) n = `${root}_${i++}`;
+  return n;
+}
+
+function newFromGlyph(id, rows) {
+  const n = uniqueName(id);
+  anims[n] = { width: rows[0].length, height: rows.length, frames: [rows.slice()] };
+  select(n);
+  changed();
+  status(`New animation ${n}: frame 1 is the ${id} glyph, ${rows[0].length} x ${rows.length}.`);
+}
+
+/** The picked glyph at the size of this animation, and a note when the sizes differ. */
+function fitted() {
+  const rows = still[stillId], a = anim();
+  const same = rows.length === a.height && rows[0].length === a.width;
+  const note = same ? "" : ` The glyph is ${rows[0].length} x ${rows.length} and this animation is ` +
+    `${a.width} x ${a.height}, so it is at the top left and not scaled.`;
+  return [G.resize(rows, a.width, a.height), note];
+}
+
+$("still-new").onclick = () => stillId && newFromGlyph(stillId, still[stillId]);
+$("still-insert").onclick = () => {
+  if (frames().length >= G.LIMITS.frames) return status(`At most ${G.LIMITS.frames} frames.`);
+  const [f, note] = fitted();
+  editFrames((fs) => { fs.splice(cur + 1, 0, f); cur++; });
+  status(`Inserted ${stillId} as frame ${cur + 1}.${note}`);
+};
+$("still-replace").onclick = () => {
+  const [f, note] = fitted();
+  editFrames((fs) => { fs[cur] = f; });
+  status(`Frame ${cur + 1} is now ${stillId}.${note}`);
+};
+$("still-open").onclick = async () => {
+  try {
+    if (window.showOpenFilePicker) {
+      const [h] = await showOpenFilePicker({ types: [{ description: "glyphs.js", accept: { "text/javascript": [".js"] } }] });
+      setStill(await (await h.getFile()).text(), h.name);
+    } else {
+      const f = await pickFile(".js");
+      setStill(await f.text(), f.name);
+    }
+  } catch (e) { if (e.name !== "AbortError") $("still-status").textContent = e.message; }
+};
+
+/** glyph-animator.html#from=ID&px=HEX: the still editor sends a glyph, with its pixels. */
+function fromHash() {
+  const q = new URLSearchParams(location.hash.slice(1));
+  const id = q.get("from");
+  if (!id) return;
+  const rows = (q.get("px") && G.hexToRows(q.get("px"), 16)) || still[id];
+  if (!rows) return status(`The glyph ${id} is not in glyphs.js. Open the file to load it.`);
+  stillId = still[id] ? id : stillId;
+  newFromGlyph(id, rows);
+  drawStill();
+  history.replaceState(null, "", location.pathname + location.search);
+}
+addEventListener("hashchange", fromHash);
+
+async function start() {
+  try {
+    const r = await fetch("js/mods/glyphs.js", { cache: "no-store" });
+    if (!r.ok) throw new Error(r.statusText);
+    setStill(await r.text(), "site/js/mods/glyphs.js");
+  } catch {
+    $("still-status").textContent = "Open glyphs.js to see the still glyphs.";
+  }
+  try {
+    const r = await fetch("js/mods/glyph-anims.js", { cache: "no-store" });
+    if (r.ok && !Object.keys(anims).length) loadText(await r.text(), "the site");
+  } catch { /* from disk: press Open file */ }
+  fromHash();
+}
+
+drawPick();
+const ready = start();
+</script>

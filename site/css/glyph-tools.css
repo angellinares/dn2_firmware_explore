@@ -1,4 +1,4 @@
-/* The look that tools/glyph_editor.html and tools/glyph_animator.html share: the site's
+/* The look that site/glyph-editor.html and site/glyph-animator.html share: the site's
  * tokens, cards, the tool bar, the context bar and the shortcut help. */
 
 :root {
@@ -82,3 +82,9 @@ details.card > summary::-webkit-details-marker { display: none; }
 .fill-form, .fill-range .bar { display: flex; flex-wrap: wrap; gap: .45rem; align-items: center; }
 .fill-preview { display: flex; gap: .4rem; overflow-x: auto; padding: .5rem 0; }
 .fill-note { margin: .3rem 0 0; }
+
+/* The site's eyebrow (the way back to the index) and footer. */
+.eyebrow { font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace; font-size: .72rem; letter-spacing: .14em;
+           text-transform: uppercase; color: var(--accent); margin: 0 0 .6rem; }
+.site-foot { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--rule); color: var(--ink-soft); font-size: .85rem; }
+.site-foot p { margin: 0; max-width: 42rem; }

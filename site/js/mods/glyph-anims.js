@@ -1,5 +1,5 @@
 /**
- * Animated 1-bit glyphs, by name. Written by tools/glyph_animator.html.
+ * Animated 1-bit glyphs, by name. Written by site/glyph-animator.html.
  *
  * Each animation has a frame size and a list of frames. A frame is `height`
  * rows of `width` characters, `#` lit and `.` dark. A knob value picks a

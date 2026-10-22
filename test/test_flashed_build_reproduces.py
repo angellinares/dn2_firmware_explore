@@ -1,7 +1,7 @@
 """Today's mods rebuild the last build that passed on the instrument.
 
-fmdepth2 (fxmod, Waverider 0.3.6, usbprobe and lfo4) passed its device test on 2026-10-20 and is
-on the owner's unit. `dnfw mods apply` of the same mods must give the same image. The one allowed
+batcha1 (fxmod, Waverider 0.3.6 with load plan batch A, usbprobe and lfo4) passed its device test
+on 2026-10-22 (load and soak) and is on the owner's unit. Before it, fmdepth2 (2026-10-20). `dnfw mods apply` of the same mods must give the same image. The one allowed
 difference is the /modinfo record's build part (commit, image id, hash). When a later build
 passes on the instrument, it replaces FLASHED here.
 
@@ -17,9 +17,9 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-FLASHED = ROOT / "00_Resources/02_Builds/fmdepth2-fxmod-lfo4-waverider-usbprobe_DN2_1.11.syx"
+FLASHED = ROOT / "00_Resources/02_Builds/batcha1-fxmod-lfo4-waverider-usbprobe_DN2_1.11.syx"
 MODS = ["fxmod", "waverider", "usbprobe", "lfo4"]
-PROBE_TAG = "fmdepth2-fxmod"
+PROBE_TAG = "batcha1-fxmod"
 
 
 def _sections(path: pathlib.Path) -> dict[int, bytes]:

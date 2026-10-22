@@ -7,7 +7,7 @@ A mark stub is `CALL wr_lm_mark; JUMP <the original target>` (csrc/waverider/sha
 has the mechanism). The build retargets chosen jumps and calls to the stubs: stock's calls on
 the frame's path, the splice and entry-mark JUMPs we already patch, and every jump into a
 Waverider stage. Segment k runs from mark k to the next mark, so the 31 records split the frame
-by stage; reply word 2 carries them out (tools/dn2loadmap.py).
+by stage; reply word 2 carries them out, one half a block (tools/dn2loadmap.py).
 
 The plan (which bytes change, and what they were) is computed by `scripts/build_loadmap.py
 --assemble` on the Waverider stream of that moment and committed in loadmap_code.json, with that
@@ -38,8 +38,8 @@ RECORDS_END = 0x2DFC00                  # pool.asm
 SNAP_AT = 0x80780000                    # DDR: the window's copy, header + 2 words a segment
 MAGIC = 0x4C4D0000
 WINDOW_BLOCKS = 4096
-PUBLISH_EVERY = 16                      # blocks a half stays in reply word 2
-REPLY_WORD2 = (0x2C49D8, 0x2C59D8)
+SNAP_EVERY = 32 * WINDOW_BLOCKS         # every 32nd window goes to SNAP, which then stays 87 s
+REPLY_WORD2 = (0x2C49D8, 0x2C59D8)      # one half of SNAP a block, the next half each block
 
 # (name, what the segment from this mark holds), in stub order. Stubs 0-2 and 22-30 are on
 # stock's path, 3 is the mark's own cost, 4 the publisher, 5-21 Waverider's voice loop.
@@ -141,11 +141,8 @@ def apply(section7: bytes) -> bytes:
 # -- reading it back (tools/dn2loadmap.py) --------------------------------------------------
 
 FRAME_CYCLES = 666_667                  # a block at 1 GHz, 1,500 blocks a second
-PAGE_WORDS = 24
-PAGE_DATA = 22
-PAGES = 3
-ROWS_AT = 0x1C + 0x54 + 0x44            # page word 0 in the reply record (row 1, entry 11)
-ROWS_SPAN = 0x54 * (PAGE_WORDS // 2 - 1) + 8
+WORD2_AT = 0x08                         # reply word 2 in the ColdFire's copy of the record
+VALID, SEQ_MASK = 0x8000, 0x3F
 
 
 def unswap(v: int) -> int:
@@ -153,31 +150,21 @@ def unswap(v: int) -> int:
     return (v & 0xFFFF) << 16 | v >> 16
 
 
-def page_words(record: bytes) -> list[int]:
-    """The 24 page words from ROWS_SPAN bytes read at the record copy + ROWS_AT (big-endian)."""
-    out = []
-    for j in range(PAGE_WORDS):
-        at = 0x54 * (j // 2) + 4 * (j % 2)
-        out.append(unswap(int.from_bytes(record[at:at + 4], "big")))
-    return out
-
-
-def decode_page(words: list[int]) -> tuple[int, int, list[int]] | None:
-    """-> (SEQ & 0xff, p, its 22 SNAP words), or None: no loadmap tag, or a torn read."""
-    w0 = words[0]
-    if w0 >> 16 != MAGIC >> 16 or (w0 & 0xFF) >= PAGES:
+def decode_half(word: int) -> tuple[int, int, int] | None:
+    """Reply word 2 as the ColdFire reads it -> (SEQ & 0x3f, half index, half), or None."""
+    tag, half = word >> 16, word & 0xFFFF
+    if tag & 0xC000 != VALID or (tag & 0xFF) >= HALVES:
         return None
-    x = 0
-    for w in words[:PAGE_WORDS - 1]:
-        x ^= w
-    if x != words[PAGE_WORDS - 1]:
-        return None
-    return (w0 >> 8) & 0xFF, w0 & 0xFF, words[1:PAGE_WORDS - 1]
+    return (tag >> 8) & SEQ_MASK, tag & 0xFF, half
 
 
-def snapshot(pages: dict[int, list[int]]) -> dict:
-    """Pages 0-2 of one window -> its segments: (name, cycles, passes) each, per window."""
-    snap = [w for p in range(PAGES) for w in pages[p]]
+def words_from_halves(halves: dict[int, int]) -> list[int]:
+    """Every half of one SNAP (index -> half) -> its 3 + 2N words."""
+    return [halves[2 * j] | halves[2 * j + 1] << 16 for j in range(HALVES // 2)]
+
+
+def snapshot(snap: list[int]) -> dict:
+    """SNAP's words -> its window's segments: (name, cycles, passes) each, per window."""
     if snap[0] != MAGIC | N:
         raise LoadmapError(f"SNAP's header is {snap[0]:#x}, not {MAGIC | N:#x}: another layout")
     blocks = snap[1]

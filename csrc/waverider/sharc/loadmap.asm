@@ -23,35 +23,32 @@
 // L1 does not matter. The PC stack holds the stub's return for the mark's duration.
 //
 // wr_lm_pub runs once a block, between marks 4 and 5 (in the dispatch's splice, after
-// block_count.asm). Every 4,096 blocks it copies the records to SNAP in DDR and zeroes
-// them. Every block it writes a 24-word PAGE of SNAP into the reply record of both reply
-// pages, two words in each of slot rows 1 to 12, at +0x44 and +0x48 of the row (row r at
-// record byte 0x1c + 0x54 r): entries 11 and 12, which no stock DSP code writes. The
-// layout is digikit's diagnostic block (core/dsp-link, docs/findings/31 and 45); the
-// engine clears the whole record every block before the per-block routine, so the page
-// is written every block. Whether the ColdFire leaves those bytes alone on a DN2 unit is
-// checked on the instrument before this build is flashed.
+// block_count.asm). Every 4,096 blocks (a window) it zeroes the records. Every 32nd window
+// (131,072 blocks, 87 s) it first copies them to SNAP in DDR, so SNAP holds one window and
+// stays the same for 87 s. Every block it writes one half of SNAP to reply word 2 of both
+// reply pages, in place of block_count.asm's count, the next half each block:
 //
-//   page word 0   0x4c4d0000 | (SEQ & 0xff) << 8 | p     (p = 0, 1, 2)
-//   words 1-22    SNAP words 22p .. 22p + 21
-//   word 23       the XOR of words 0-22 (a page read across two frames fails it)
+//   the ColdFire reads TAG << 16 | HALF   (halves swapped as reply word 0)
+//   TAG = 0x8000 | (SEQ & 0x3f) << 8 | i  (i = 0 .. 129, the half: word i >> 1, high if odd)
 //
-// The page changes every 8 blocks; the next one is built in DDR (SNAP + 0x200) when it
-// changes. tools/dn2loadmap.py reads the 24 words with the USB probe.
+// Until the first SNAP (SEQ 0) it writes 0. tools/dn2loadmap.py reads the word with the USB
+// probe until it holds every half of one SEQ, each seen twice with the same value.
+// (Until 2026-10-22 the pages went to entries 11 and 12 of slot rows 1-12. On a DN2 those
+// bytes are samples 1-12 of the effects buses, channels 22-25: the unit's row check failed.)
 //
 // SNAP (DDR 0x80780000, inside Waverider's DDR region and above everything it loads):
 //   +0  0x4c4d0000 | N (N = 31 marks)   +4  blocks a window (4,096)   +8  SEQ
-//   +12 + 8k  segment k's cycles, then its passes;  +0x104  0 (page 2's last word)
+//   +12 + 8k  segment k's cycles, then its passes
 //
 // PLACEMENT IS FIXED: this code loads at PM sw 0x16fe40 (L1 block 1, byte 0x2dfc80).
 //
 // DM (byte addresses, L1 block 1, zero at boot):
 //   0x2dfa40 .. 0x2dfa4c  the mark's saves: R8, R9, R10, I1
 //   0x2dfa50  LAST: EMUCLK at the previous mark      0x2dfa54  CUR: the running record, 12k
-//   0x2dfa58  BLOCKS     0x2dfa5c  the next page, 0..2     0x2dfa60  SEQ
-//   0x2dfa64 .. 0x2dfa7c  the publisher's saves: R8, R9, R10, R11, I1, I0, R12
+//   0x2dfa58  BLOCKS     0x2dfa5c  PUBI: the next half, 0..129     0x2dfa60  SEQ
+//   0x2dfa64 .. 0x2dfa78  the publisher's saves: R8, R9, R10, R11, I1, I0
 //   0x2dfa80 + 12k  segment k's record: cycles, passes, a spare word (31 records)
-//   0x2c4a84 + 0x54 r and + 4: page word 2r and 2r + 1;  0x2c5a84 + ...: the other reply page
+//   0x2c49d8, 0x2c59d8  reply word 2 of the two reply pages
 
 .SECTION/PM seg_pmco;
 
@@ -108,9 +105,12 @@ wr_lm_pub.:
       DM(0x2dfa58) = R8;                // BLOCKS
       R9 = 0xfff;
       R9 = R8 AND R9;
-      IF NE JUMP 0x16fef9;              // -> wr_lm_send. (the window is still open)
+      IF NE JUMP 0x16ff14;              // -> wr_lm_send. (the window is still open)
 
-      // the window closes: SNAP's header, then each record, zeroed behind
+      // a window closes: every 32nd one goes to SNAP first
+      R9 = 0x1ffff;
+      R9 = R8 AND R9;
+      IF NE JUMP 0x16fefd;              // -> wr_lm_zero. (not a SNAP window)
       R9 = DM(0x2dfa60);
       R10 = 1;
       R9 = R9 + R10;
@@ -130,9 +130,6 @@ wr_lm_copy.:
       DM(0, I0) = R9;
       R9 = DM(1, I1);
       DM(1, I0) = R9;
-      R9 = R9 - R9;
-      DM(0, I1) = R9;
-      DM(1, I1) = R9;
       R10 = I1;
       R11 = 12;
       R10 = R10 + R11;
@@ -143,101 +140,71 @@ wr_lm_copy.:
       I0 = R10;
       R9 = 1;
       R8 = R8 - R9;
-      IF NE JUMP 0x16fed5;              // -> wr_lm_copy.
+      IF NE JUMP 0x16fedd;              // -> wr_lm_copy.
       R9 = R9 - R9;
-      DM(0, I0) = R9;                   // SNAP + 0x104: page 2's last word
+      DM(0x2dfa5c) = R9;                // PUBI: the new SNAP from its first half
 
-.GLOBAL wr_lm_send.;
-wr_lm_send.:
-      R9 = DM(0x2dfa60);                // SEQ
-      R9 = PASS R9;
-      IF EQ JUMP 0x16ff90;              // -> wr_lm_out. (no window closed yet)
-      R8 = DM(0x2dfa58);
-      R10 = 7;
-      R10 = R8 AND R10;
-      IF NE JUMP 0x16ff59;              // -> wr_lm_rows. (the page stays)
-
-      // a new page p: word 0, SNAP words 22p .. 22p + 21, the check
-      R8 = DM(0x2dfa5c);                // p
-      R10 = 0xff;
-      R9 = R9 AND R10;
-      R9 = LSHIFT R9 BY 8;
-      R9 = R9 OR R8;
-      R10 = 0x4c4d0000;
-      R9 = R9 OR R10;                   // word 0, and the check's start
-      I0 = 0x80780200;
-      DM(0, I0) = R9;
-      R10 = LSHIFT R8 BY 6;
-      R11 = LSHIFT R8 BY 4;
-      R10 = R10 + R11;
-      R11 = LSHIFT R8 BY 3;
-      R10 = R10 + R11;                  // 88p: 22 words a page
-      R11 = 0x80780000;
-      R10 = R10 + R11;
-      I1 = R10;
-      R8 = 22;
-.GLOBAL wr_lm_fill.;
-wr_lm_fill.:
-      R10 = DM(0, I1);
-      R9 = R9 XOR R10;
-      DM(1, I0) = R10;
+      // every window: the records start again from zero
+.GLOBAL wr_lm_zero.;
+wr_lm_zero.:
+      I1 = 0x2dfa80;
+      R8 = 31;
+      R9 = R9 - R9;
+.GLOBAL wr_lm_zrec.;
+wr_lm_zrec.:
+      DM(0, I1) = R9;
+      DM(1, I1) = R9;
       R10 = I1;
-      R11 = 4;
+      R11 = 12;
       R10 = R10 + R11;
       I1 = R10;
-      R10 = I0;
-      R10 = R10 + R11;
-      I0 = R10;
       R11 = 1;
       R8 = R8 - R11;
-      IF NE JUMP 0x16ff30;              // -> wr_lm_fill.
-      DM(1, I0) = R9;                   // word 23: the check
-      R8 = DM(0x2dfa5c);
+      IF NE JUMP 0x16ff03;              // -> wr_lm_zrec.
+
+      // every block: one half of SNAP into reply word 2 (0 until the first SNAP)
+.GLOBAL wr_lm_send.;
+wr_lm_send.:
+      R10 = R10 - R10;
+      R9 = DM(0x2dfa60);                // SEQ
+      R9 = PASS R9;
+      IF EQ JUMP 0x16ff57;              // -> wr_lm_put. (no SNAP yet)
+      R8 = DM(0x2dfa5c);                // i
+      R10 = LSHIFT R8 BY -1;
+      R10 = LSHIFT R10 BY 2;
+      R11 = 0x80780000;
+      R10 = R10 + R11;
+      I0 = R10;
+      R10 = DM(0, I0);                  // SNAP word i >> 1
+      R11 = 1;
+      R11 = R8 AND R11;
+      IF EQ JUMP 0x16ff37;              // -> wr_lm_low.
+      R10 = LSHIFT R10 BY -16;          // i odd: the high half
+.GLOBAL wr_lm_low.;
+wr_lm_low.:
+      R11 = 0xffff;
+      R10 = R10 AND R11;                // HALF
+      R11 = 0x3f;
+      R9 = R9 AND R11;
+      R9 = LSHIFT R9 BY 8;
+      R9 = R9 OR R8;
+      R11 = 0x8000;
+      R9 = R9 OR R11;                   // TAG
+      R10 = LSHIFT R10 BY 16;
+      R10 = R10 OR R9;                  // halves swapped: the ColdFire reads TAG << 16 | HALF
       R11 = 1;
       R8 = R8 + R11;
-      R11 = 3;
+      R11 = 130;                        // halves: 2 x (3 + 2N)
       COMP(R8, R11);
-      IF LT JUMP 0x16ff56;              // -> wr_lm_keep.
+      IF LT JUMP 0x16ff54;              // -> wr_lm_keep.
       R8 = R8 - R8;
 .GLOBAL wr_lm_keep.;
 wr_lm_keep.:
-      DM(0x2dfa5c) = R8;
-
-      // every block: the page into rows 1-12 of both reply records, one pass each
-.GLOBAL wr_lm_rows.;
-wr_lm_rows.:
-      DM(0x2dfa7c) = R12;
-      R12 = 0x2c4a84;                   // reply page 0x2c49d0 + 0x1c + 0x54 + 0x44
-.GLOBAL wr_lm_page.;
-wr_lm_page.:
-      I0 = 0x80780200;
-      I1 = R12;
-      R8 = 12;
-.GLOBAL wr_lm_row.;
-wr_lm_row.:
-      R9 = DM(0, I0);
-      DM(0, I1) = R9;                   // +0x44
-      R9 = DM(1, I0);
-      DM(1, I1) = R9;                   // +0x48
-      R10 = I0;
-      R11 = 8;
-      R10 = R10 + R11;
-      I0 = R10;
-      R10 = I1;
-      R11 = 0x54;
-      R10 = R10 + R11;
-      I1 = R10;
-      R11 = 1;
-      R8 = R8 - R11;
-      IF NE JUMP 0x16ff66;              // -> wr_lm_row.
-      R11 = 0x2c5a84;                   // the other reply page (0x2c59d0)
-      COMP(R12, R11);
-      IF EQ JUMP 0x16ff8d;              // -> wr_lm_rows_done. (both pages written)
-      R12 = PASS R11;                   // a compute: it sets the flags, so it comes after the test
-      JUMP 0x16ff5f;                    // -> wr_lm_page.
-.GLOBAL wr_lm_rows_done.;
-wr_lm_rows_done.:
-      R12 = DM(0x2dfa7c);
+      DM(0x2dfa5c) = R8;                // PUBI
+.GLOBAL wr_lm_put.;
+wr_lm_put.:
+      DM(0x2c49d8) = R10;               // reply word 2, both pages
+      DM(0x2c59d8) = R10;
 
 .GLOBAL wr_lm_out.;
 wr_lm_out.:

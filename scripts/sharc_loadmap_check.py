@@ -12,8 +12,8 @@ not move, so the mark's `R8 = EMUCLK` is fed the number of instructions run so f
 - block 2's records, from its dispatch mark to block 3's: each segment's instructions minus one
   mark per pass (the null segment's own size) equal what the plain run executes between the
   same targets, exactly; and each segment's passes are the plain run's arrivals at its target;
-- with BLOCKS preset to 4,095, the first block closes a window: SNAP holds the records (header,
-  SEQ 1), and both reply pages' rows 1-12 hold page 0 with a valid check word;
+- with BLOCKS preset to 131,071, the first block closes a SNAP window: SNAP holds the records
+  (header, SEQ 1), and in block k reply word 2 of both reply pages holds half k of SNAP, tagged;
 - the marks leave no trace: R0-R15, I0-I7, M0-M7, MODE1 and ASTAT at each stage's target are
   the plain run's.
 
@@ -115,8 +115,8 @@ def main() -> int:
         obs2 = Steps(log=False)
         g.fx.OBSERVER = obs2
         init = g.init_on(snap, mach, g.Image(dk, marked))
-        g.m2.poke(init.state, L.STATE_DM + 0x18, 4095)       # BLOCKS: block 0 closes a window
-        at_dispatch, seen_marked, rows = [], {}, []
+        g.m2.poke(init.state, L.STATE_DM + 0x18, L.SNAP_EVERY - 1)   # BLOCKS: block 0 closes a SNAP window
+        at_dispatch, seen_marked, word2, snapw = [], {}, [], []
 
         def feed(r):
             r.state.uregs[g.fx.UREG_CODES["R8"]] = g.fx.Const(obs2.n & 0xFFFFFFFF)
@@ -127,10 +127,9 @@ def main() -> int:
                                 for k in range(L.N)])
 
         def tail(r):
-            if not rows:
-                rows.append([[g.m2.word(r.state, base + 0x54 * (j // 2) + 4 * (j % 2)) or 0 for j in range(24)]
-                             for base in (0x2C4A84, 0x2C5A84)])
-                rows.append([g.m2.word(r.state, L.SNAP_AT + 4 * k) or 0 for k in range(66)])
+            word2.append([g.m2.word(r.state, a) or 0 for a in L.REPLY_WORD2])
+            if not snapw:
+                snapw.extend(g.m2.word(r.state, L.SNAP_AT + 4 * k) or 0 for k in range(L.HALVES // 2))
 
         hooks_m = {after_clock: feed, L.stub_sw(1): records, L.stub_sw(30): tail}
         for t in targets:
@@ -179,15 +178,15 @@ def main() -> int:
         print(f"{k:2d} {m['name']:10s} {n:6d} {pass_p[k]:6d} {cyc:8d} {net:8d} {seg_p[k]:8d} {'' if ok else '  <- differs'}")
     checks["each segment's instructions, less its marks, are the plain run's"] = exact
 
-    page_a, page_b = rows[0]
-    snapw = rows[1]
-    x = 0
-    for w in page_a[:23]:
-        x ^= w
     checks["SNAP's header: 'LM' | 31, 4096 blocks, SEQ 1"] = snapw[:3] == [L.MAGIC | L.N, L.WINDOW_BLOCKS, 1]
-    checks["rows hold page 0: tag, SNAP words 0-21, the check"] = (
-        page_a[0] == (L.MAGIC | 1 << 8) and page_a[1:23] == snapw[:22] and page_a[23] == x)
-    checks["both reply pages hold the same page"] = page_a == page_b
+    halves_ok = len(word2) == BLOCKS
+    for k, (a, b) in enumerate(word2):
+        got = L.decode_half(L.unswap(a))                  # the ColdFire's big-endian read swaps the halves
+        want = snapw[k >> 1] >> 16 if k & 1 else snapw[k >> 1] & 0xFFFF
+        print(f"block {k}: reply word 2 {a:#010x} {b:#010x} -> {got}")
+        halves_ok &= got == (1, k, want)
+    checks[f"blocks 0-{BLOCKS - 1}: reply word 2 holds SNAP's halves 0-{BLOCKS - 1}, tagged SEQ 1"] = halves_ok
+    checks["both reply pages hold the same word"] = all(a == b for a, b in word2)
     for name, ok in checks.items():
         print(f"{'PASS' if ok else 'FAIL'}  {name}")
     return 0 if all(checks.values()) else 1

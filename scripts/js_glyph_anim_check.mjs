@@ -1,4 +1,4 @@
-// The glyph animator's model (tools/glyph_anim_core.js) under node: the knob picks the frame
+// The glyph animator's model (site/js/glyph-tools/glyph_anim_core.js) under node: the knob picks the frame
 // by the stock formula, the firmware format encodes a hand-made 17x17 frame to the words
 // worked out by hand and decodes back, and the animation file round-trips byte for byte.
 // Run by test/test_glyph_animator.py.
@@ -7,7 +7,7 @@ import vm from "node:vm";
 
 const ROOT = new URL("../", import.meta.url);
 const ctx = {};
-vm.runInNewContext(readFileSync(new URL("tools/glyph_anim_core.js", ROOT), "utf8"), ctx);
+vm.runInNewContext(readFileSync(new URL("site/js/glyph-tools/glyph_anim_core.js", ROOT), "utf8"), ctx);
 const G = ctx.GlyphAnim;
 const ok = (name, pass) => { console.log(`${pass ? "OK  " : "FAIL"} ${name}`); if (!pass) process.exitCode = 1; };
 

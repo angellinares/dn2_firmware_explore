@@ -1,5 +1,5 @@
 /**
- * The Fills card that tools/glyph_editor.html and tools/glyph_animator.html share.
+ * The Fills card that site/glyph-editor.html and site/glyph-animator.html share.
  *
  * One subject: a form for one fill, a preview of what it gives, and Apply. The fill goes in
  * the selection, or in all of the frame when nothing is selected. Over several frames (the

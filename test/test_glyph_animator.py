@@ -1,4 +1,4 @@
-"""The glyph animator (`tools/glyph_animator.html`, model in `tools/glyph_anim_core.js`): the knob
+"""The glyph animator (`site/glyph-animator.html`, model in `site/js/glyph-tools/glyph_anim_core.js`): the knob
 picks the stock frame, the firmware format encodes and decodes, and the animation file
 (`site/js/mods/glyph-anims.js`) round-trips. `scripts/js_glyph_anim_check.mjs` runs it under node."""
 
@@ -22,7 +22,19 @@ def test_the_animator_model_under_node():
 
 
 def test_the_two_editors_link_to_each_other():
-    still = (ROOT / "tools/glyph_editor.html").read_text(encoding="utf-8")
-    anim = (ROOT / "tools/glyph_animator.html").read_text(encoding="utf-8")
-    assert 'href="glyph_animator.html"' in still and 'href="glyph_editor.html"' in anim
-    assert '<script src="glyph_anim_core.js"></script>' in anim
+    still = (ROOT / "site/glyph-editor.html").read_text(encoding="utf-8")
+    anim = (ROOT / "site/glyph-animator.html").read_text(encoding="utf-8")
+    assert 'href="glyph-animator.html"' in still and 'href="glyph-editor.html"' in anim
+    for page in (still, anim):
+        for src in ("glyph_anim_core.js", "glyph_icons.js", "glyph_tools.js", "glyph_fills_panel.js"):
+            assert f'<script src="js/glyph-tools/{src}"></script>' in page
+            assert (ROOT / "site/js/glyph-tools" / src).is_file()
+        assert 'href="css/glyph-tools.css"' in page
+
+
+def test_the_old_tools_paths_forward_to_the_site():
+    # Desktop shortcuts and old links open tools/glyph_*.html: each forwards to its site page.
+    for old, new in (("glyph_editor", "glyph-editor"), ("glyph_animator", "glyph-animator")):
+        stub = (ROOT / f"tools/{old}.html").read_text(encoding="utf-8")
+        assert f'url=../site/{new}.html' in stub and f'location.replace("../site/{new}.html"' in stub
+        assert (ROOT / f"site/{new}.html").is_file()

@@ -1,5 +1,5 @@
 /**
- * The model behind tools/glyph_animator.html: animated 1-bit glyphs as lists of frames.
+ * The model behind site/glyph-animator.html: animated 1-bit glyphs as lists of frames.
  *
  * One subject: frames as data. A frame is `height` strings of `width` characters,
  * `#` lit and `.` dark, as in site/js/mods/glyphs.js. This file reads and writes
@@ -36,7 +36,7 @@
   /* ---- the animation file ---- */
 
   const HEADER = `/**
- * Animated 1-bit glyphs, by name. Written by tools/glyph_animator.html.
+ * Animated 1-bit glyphs, by name. Written by site/glyph-animator.html.
  *
  * Each animation has a frame size and a list of frames. A frame is \`height\`
  * rows of \`width\` characters, \`#\` lit and \`.\` dark. A knob value picks a

@@ -1,0 +1,291 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glyph Editor</title>
+<!--
+  Edit the mod glyphs of the site (site/js/mods/glyphs.js) by hand.
+
+  Open this file in Chrome or Edge, press "Open glyphs.js" and pick
+  site/js/mods/glyphs.js. Draw, select and fill, then press "Save": the file is
+  written in place. Only the 16 rows of each glyph change; comments and code stay.
+  A browser without the File System Access API gets a download instead.
+  Over http (the published site, or a local server) the site's glyphs load as the
+  page opens, and "Save" downloads glyphs.js until a file is opened.
+  tools/glyph_editor.html forwards here, for links to the old place.
+  The tool bar, the selection and the fills are shared with the animator
+  (js/glyph-tools/glyph_tools.js, glyph_fills_panel.js).
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/glyph-tools.css">
+<style>
+  #status { color: var(--ink-soft); font-size: .9rem; }
+  .main { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start; }
+  #list { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: .4rem;
+          flex: 1 1 260px; max-width: 420px; }
+  #list button { display: grid; justify-items: center; gap: .2rem; padding: .4rem .2rem;
+                 font-size: .72rem; font-family: ui-monospace, Consolas, monospace; }
+  #list button.on { outline: 2px solid var(--accent); }
+  #list button.dirty::after { content: "edited"; color: var(--accent); }
+  .edit { flex: 1 1 340px; min-width: 0; }
+  .previews { display: flex; gap: .8rem; flex-wrap: wrap; align-items: center; }
+  .chip { padding: 8px; border-radius: 6px; display: flex; gap: 10px; align-items: center; }
+  .chip.light { background: #f6f5f2; color: #16181c; }
+  .chip.dark { background: #0c0d0f; color: #e8e6e1; }
+  svg { display: block; }
+  textarea { font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.15;
+             width: 18ch; height: 17.5em; background: var(--panel); color: var(--ink);
+             border: 1px solid var(--rule); border-radius: 6px; padding: 4px; }
+  .hint { color: var(--ink-soft); font-size: .85rem; max-width: 40rem; margin: 0; }
+  h1 + .hint { margin: 0 0 .8rem; }
+</style>
+
+<p class="eyebrow"><a href="index.html">Digitone II Mods</a> / glyph editor</p>
+<h1>Glyph Editor</h1>
+<p class="hint">For glyphs with frames, use the <a href="glyph-animator.html">Glyph Animator</a>.</p>
+<div class="bar">
+  <button id="open" class="primary">Open glyphs.js</button>
+  <button id="save" disabled>Save</button>
+  <span id="status">Pick site/js/mods/glyphs.js to start.</span>
+</div>
+
+<div class="main">
+  <div id="list"></div>
+  <div class="edit" id="edit" hidden>
+    <section class="card">
+      <h2 id="name"></h2>
+      <div id="toolbar"></div>
+      <div id="context"></div>
+      <div class="surface-box"><canvas id="paint" class="surface"></canvas></div>
+      <div class="bar">
+        <button data-op="up">Up</button><button data-op="down">Down</button>
+        <button data-op="left">Left</button><button data-op="right">Right</button>
+        <button data-op="flipx">Mirror</button><button data-op="invert">Invert</button>
+        <button data-op="clear">Clear</button><button data-op="bug">Add bug</button>
+        <button data-op="undo">Undo</button><button data-op="revert">Revert</button>
+        <button id="send">Send to animator</button>
+      </div>
+      <p class="hint">Pick a tool in the bar, or press its key. Press ? for all the shortcuts.</p>
+    </section>
+
+    <details class="card" open>
+      <summary>Fills</summary>
+      <div id="fills"></div>
+    </details>
+
+    <details class="card" open>
+      <summary>Preview</summary>
+      <div class="previews">
+        <div class="chip light" id="pv-light"></div>
+        <div class="chip dark" id="pv-dark"></div>
+      </div>
+      <p class="hint">1x, 2x and 3x, in the light and the dark theme.</p>
+    </details>
+
+    <details class="card" open>
+      <summary>Rows</summary>
+      <textarea id="rows" spellcheck="false" aria-label="Rows of the glyph"></textarea>
+      <p class="hint">Type or paste the 16 rows: <code>#</code> is lit and <code>.</code> is dark.</p>
+    </details>
+  </div>
+</div>
+
+<footer class="site-foot">
+  <p>Part of <a href="https://github.com/angellinares/dn2_firmware_explore">dn2_firmware_explore</a>,
+  AGPL-3.0-or-later. Not affiliated with or endorsed by Elektron.
+  Nothing here touches firmware. The glyphs are original art.</p>
+</footer>
+
+<script src="js/glyph-tools/glyph_anim_core.js"></script>
+<script src="js/glyph-tools/glyph_icons.js"></script>
+<script src="js/glyph-tools/glyph_tools.js"></script>
+<script src="js/glyph-tools/glyph_fills_panel.js"></script>
+<script>
+const N = 16;
+const GLYPH_RE = /(\n  (?:\/\/[^\n]*\n  )?([a-z0-9]+): \[\n)((?:    "[.#]{16}",\n){16})(  \],)/g;
+let handle = null, source = "", glyphs = {}, saved = {}, current = null, undo = [], badge = null;
+
+const $ = (id) => document.getElementById(id);
+const status = (t) => { $("status").textContent = t; };
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+function parse(text) {
+  const out = {};
+  for (const m of text.matchAll(GLYPH_RE)) out[m[2]] = m[3].match(/[.#]{16}/g);
+  const b = text.match(/export const BUG_BADGE = \[([^\]]*)\]/);
+  badge = b ? b[1].match(/[.#]+/g) : null;
+  return out;
+}
+
+function serialise() {
+  return source.replace(GLYPH_RE, (all, head, id, rows, tail) =>
+    head + glyphs[id].map((r) => `    "${r}",\n`).join("") + tail);
+}
+
+function svg(rows, scale) {
+  const s = N * scale;
+  let rects = "";
+  rows.forEach((row, y) => row.replace(/#+/g, (run, x) => {
+    rects += `<rect x="${x}" y="${y}" width="${run.length}" height="1"/>`;
+  }));
+  return `<svg width="${s}" height="${s}" viewBox="0 0 16 16" shape-rendering="crispEdges" fill="currentColor">${rects}</svg>`;
+}
+
+function drawList() {
+  $("list").replaceChildren(...Object.keys(glyphs).map((id) => {
+    const b = document.createElement("button");
+    b.innerHTML = svg(glyphs[id], 2) + id;
+    b.className = (id === current ? "on " : "") + (glyphs[id].join() !== saved[id].join() ? "dirty" : "");
+    b.onclick = () => select(id);
+    return b;
+  }));
+}
+
+function drawEdit() {
+  const rows = glyphs[current];
+  ed.render();
+  for (const t of ["light", "dark"]) $(`pv-${t}`).innerHTML = [1, 2, 3].map((s) => svg(rows, s)).join("");
+  if (document.activeElement !== $("rows")) $("rows").value = rows.join("\n");
+  $("name").textContent = current;
+  const dirty = Object.keys(glyphs).some((id) => glyphs[id].join() !== saved[id].join());
+  $("save").disabled = !dirty;
+  drawList();
+  fills.refresh();
+}
+
+function select(id) {
+  ed.drop();
+  current = id; undo = []; $("edit").hidden = false;
+  drawEdit();
+}
+
+function set(rows) {
+  ed.drop();
+  undo.push(glyphs[current]);
+  glyphs[current] = rows;
+  drawEdit();
+}
+
+function undoOnce() {
+  ed.drop();
+  if (undo.length) { glyphs[current] = undo.pop(); drawEdit(); }
+}
+
+/* The drawing surface, the selection and the fills are shared with the animator. */
+const ed = GlyphTools.surface({
+  canvas: $("paint"), toolbar: $("toolbar"), context: $("context"), max: 28,
+  frame: () => glyphs[current],
+  set: (rows) => { glyphs[current] = rows; drawEdit(); },
+  begin: () => undo.push(glyphs[current]),
+  unbegin: () => undo.pop(),
+  end: () => drawEdit(),
+  undo: undoOnce,
+  selected: () => fills.refresh(),
+});
+function thumb(canvas, rows) {
+  const s = 3;
+  canvas.width = rows[0].length * s; canvas.height = rows.length * s;
+  const c = canvas.getContext("2d");
+  c.fillStyle = css("--cell-off"); c.fillRect(0, 0, canvas.width, canvas.height);
+  c.fillStyle = css("--ink");
+  rows.forEach((r, y) => { for (let x = 0; x < r.length; x++) if (r[x] === "#") c.fillRect(x * s, y * s, s, s); });
+}
+const fills = GlyphFills.panel($("fills"), {
+  targets: () => (current ? [glyphs[current]] : [GlyphAnim.blank(N, N)]),
+  mask: () => ed.mask,
+  apply: ([rows]) => set(rows),
+  thumb,
+});
+
+const blank = ".".repeat(N);
+const OPS = {
+  up: (r) => [...r.slice(1), blank],
+  down: (r) => [blank, ...r.slice(0, -1)],
+  left: (r) => r.map((row) => row.slice(1) + "."),
+  right: (r) => r.map((row) => "." + row.slice(0, -1)),
+  flipx: (r) => r.map((row) => [...row].reverse().join("")),
+  invert: (r) => r.map((row) => row.replace(/./g, (c) => (c === "#" ? "." : "#"))),
+  clear: () => Array(N).fill(blank),
+  bug: (r) => {            // the badge in the lower right corner, with a dark row and column round it
+    if (!badge) return r;
+    const h = badge.length, w = badge[0].length, top = N - h, left = N - w;
+    return r.map((row, y) => {
+      if (y < top - 1) return row;
+      const keep = row.slice(0, left - 1) + ".";
+      return y === top - 1 ? keep + ".".repeat(w) : keep + badge[y - top];
+    });
+  },
+};
+document.querySelectorAll("[data-op]").forEach((b) => b.addEventListener("click", () => {
+  const op = b.dataset.op;
+  if (op === "undo") return undoOnce();
+  if (op === "revert") { set(saved[current]); return; }
+  set(OPS[op](glyphs[current]));
+}));
+
+/** The animator's URL for this glyph: its id and its pixels as it is now, edits included. */
+function animatorUrl(id, rows) {
+  const px = rows.map((r) => r.match(/.{4}/g)
+    .map((q) => parseInt(q.replace(/#/g, "1").replace(/\./g, "0"), 2).toString(16)).join("")).join("-");
+  return `glyph-animator.html#from=${id}&px=${px}`;
+}
+$("send").addEventListener("click", () => window.open(animatorUrl(current, glyphs[current]), "_blank"));
+
+$("rows").addEventListener("input", () => {
+  const rows = $("rows").value.split(/\r?\n/).map((r) => r.trim()).filter(Boolean);
+  if (rows.length === N && rows.every((r) => /^[.#]{16}$/.test(r))) set(rows);
+});
+
+function load(text) {
+  source = text;
+  glyphs = parse(text);
+  saved = structuredClone(glyphs);
+  const n = Object.keys(glyphs).length;
+  status(n ? `${n} glyphs loaded.` : "No glyphs found in that file.");
+  if (n) select(current && glyphs[current] ? current : Object.keys(glyphs)[0]);
+}
+
+$("open").addEventListener("click", async () => {
+  if (window.showOpenFilePicker) {
+    try {
+      [handle] = await showOpenFilePicker({ types: [{ description: "glyphs.js", accept: { "text/javascript": [".js"] } }] });
+      load(await (await handle.getFile()).text());
+    } catch (e) { if (e.name !== "AbortError") status(e.message); }
+    return;
+  }
+  const input = Object.assign(document.createElement("input"), { type: "file", accept: ".js" });
+  input.onchange = async () => load(await input.files[0].text());
+  input.click();
+});
+
+$("save").addEventListener("click", async () => {
+  ed.drop();
+  const text = serialise();
+  if (handle) {
+    const w = await handle.createWritable();
+    await w.write(text);
+    await w.close();
+    status(`Saved ${handle.name} at ${new Date().toLocaleTimeString()}.`);
+  } else {
+    const a = Object.assign(document.createElement("a"), {
+      href: URL.createObjectURL(new Blob([text], { type: "text/javascript" })), download: "glyphs.js" });
+    a.click();
+    status("Downloaded glyphs.js. Put it in site/js/mods/.");
+  }
+  source = text;
+  saved = structuredClone(glyphs);
+  drawEdit();
+});
+
+/* Over http the site's own glyphs load as the page opens. From disk the fetch fails and the page waits for Open. */
+fetch("js/mods/glyphs.js", { cache: "no-store" })
+  .then((r) => (r.ok ? r.text() : Promise.reject(new Error(r.statusText))))
+  .then((text) => {
+    if (source) return;                       // a file was opened first
+    load(text);
+    const n = Object.keys(glyphs).length;
+    if (n) status(`${n} glyphs from the site. Save downloads glyphs.js. To save in place, open your copy.`);
+  })
+  .catch(() => {});
+</script>

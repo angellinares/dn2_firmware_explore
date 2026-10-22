@@ -14,6 +14,8 @@ TYPE, COLR, DEC) set:
 | PNK, COLR -64, DEC Inf | the same |
 | BRN, COLR +63, DEC 40 | the same: silent until the note restarts the envelope |
 | DIG, DEC 0, with the sub on (SIN) | the same, after the sub |
+| PNK, COLR +20, DEC 60 | the same: PNK with a finite DEC |
+| DIG, COLR -30, DEC Inf | the same: DIG with DEC Inf |
 
 The reference's voice is the one noise.asm ran for (16 - the block counter at its
 entry), so its seed is that voice's. Writes out/waverider/noise_*.wav (48 kHz, 16-bit
@@ -67,6 +69,9 @@ def main(argv=None) -> int:
         ("PNK, COLR -64, DEC Inf", {NOIS: 0x6400, TYPE: 0x0100, COLR: 0x0000, DEC: 0x7F00}),
         ("BRN, COLR +63, DEC 40", {NOIS: 0x7F00, TYPE: 0x0200, COLR: 0x7F00, DEC: 0x2800}),
         ("DIG, DEC 0, with the sub", {NOIS: 0x5000, TYPE: 0x0300, COLR: 0x4000, DEC: 0x0000, SUB: 0x6400}),
+        # the other DEC path for two of the types (load plan #3: DEC Inf runs the loop at env 1.0)
+        ("PNK, COLR +20, DEC 60", {NOIS: 0x6400, TYPE: 0x0100, COLR: 0x5400, DEC: 0x3C00}),
+        ("DIG, COLR -30, DEC Inf", {NOIS: 0x6400, TYPE: 0x0300, COLR: 0x2200, DEC: 0x7F00}),
     ]
     checks, report, wavs = {}, {"blocks": a.blocks, "cases": {}}, []
     g.OUT.mkdir(parents=True, exist_ok=True)

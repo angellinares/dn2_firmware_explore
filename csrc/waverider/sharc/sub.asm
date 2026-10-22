@@ -27,11 +27,10 @@
 //   0x2e2400  16 phases, a u32 per voice (zeros at boot)
 //   0x2e2440  1 when osc 2 ran this block
 //   0x2e2444  this voice's phase address, across the loop
-//   0x2e2448  samples left (the loop counts in software, as reader_m9.asm does)
 //
-// Only forms the firmware itself uses, as reader_m9.asm says: no DO loop, no DAG1
-// M0-M3 in a memory access, addresses as byte arithmetic then `In = Rn`, FLOAT only
-// with BY, every add with R8-R15 first. Clobbers R0-R15, I1, I2; I3 and I5 (the loop's
+// No DAG1 M0-M3 in a memory access, addresses as byte arithmetic then `In = Rn`, FLOAT
+// only with BY, every add with R8-R15 first. The shapes are DO loops, as reader_miph2.asm's
+// (until 2026-10-21 software loops, as reader_m9.asm's). Clobbers R0-R15, I1, I2; I3 and I5 (the loop's
 // pointers) are not touched.
 //
 // PLACEMENT IS FIXED at PM sw 0x171000 (DM byte 0x2e2000): the absolute jumps below are
@@ -140,9 +139,8 @@ wr_sub_followed.:
       R2 = DM(0x2dde88);                // the track buffer, both oscillators' sum
       I2 = R2;
       R8 = DM(0x2dde24);                // the dispatch's R9: the block size
-      DM(0x2e2448) = R8;
       R8 = PASS R8;
-      IF EQ JUMP 0x171143;              // -> wr_sub_done. (count 0: nothing)
+      IF EQ JUMP 0x17116c;              // -> wr_sub_done. (count 0: nothing)
       R15 = -25;                        // h's scale, 2^-25
 
       // opt2 O6 (A2): WAVE can't change within a block, so it is tested once here and each
@@ -150,95 +148,106 @@ wr_sub_followed.:
       // PLS don't use h, so their loops skip it. The arithmetic per shape is unchanged.
       R12 = 1;
       R13 = PASS R13;
-      IF EQ JUMP 0x1710db;              // -> wr_sub_sin.
+      IF EQ JUMP 0x1710e3;              // -> wr_sub_sin.
       COMP(R13, R12);
-      IF EQ JUMP 0x171104;              // -> wr_sub_tri.
+      IF EQ JUMP 0x171117;              // -> wr_sub_tri.
       R12 = 2;
       COMP(R13, R12);
-      IF EQ JUMP 0x17112d;              // -> wr_sub_sqr.
+      IF EQ JUMP 0x17114a;              // -> wr_sub_sqr.
 
+// Load plan #3 (2026-10-21): each shape is a hardware loop (LCNTR = R8, the count), with its
+// constants in R3..R5 and the half test as a conditional compute, so a sample takes no branch
+// (until then two: the half test and the software loop's back edge). Each value takes the same
+// operations as before, so the output is the same bit for bit. R9 takes what the oscillators
+// wrote early, so its load is not used by the next instruction.
 .GLOBAL wr_sub_pls.;
 wr_sub_pls.:
       R1 = 0x3f800000;                  // PLS: +1 for the first quarter
-      R2 = 0x40000000;
-      COMPU(R11, R2);
-      IF LT JUMP 0x1710cc;              // -> wr_sub_pls_have.
+      F3 = F6 * F1;                     // gain x +1
       R1 = -0x41555555;                 // f32(-1/3), 0xbeaaaaab (written signed, as selmap reads it)
-.GLOBAL wr_sub_pls_have.;
-wr_sub_pls_have.:
-      F1 = F6 * F1;                     // gain x shape
-      R2 = DM(0, I2);                   // what the oscillators wrote
-      F1 = F2 + F1;
+      F4 = F6 * F1;                     // gain x -1/3
+      R5 = 0x40000000;
+      LCNTR = R8, DO wr_sub_pls_last. UNTIL LCE;
+.NOCOMPRESS;                            // a hardware loop's last 11 instructions are 48-bit (PRM 4-42)
+      R9 = DM(0, I2);                   // what the oscillators wrote
+      R1 = PASS R4;
+      COMPU(R11, R5);
+      IF LT R1 = PASS R3;
+      F1 = F9 + F1;
       DM(I2, M6) = F1;
+.GLOBAL wr_sub_pls_last.;
+wr_sub_pls_last.:
       R11 = R11 + R10;                  // phase += step, mod 2^32
-      R8 = R8 - 1;                      // samples left (opt1 O2: in R8, which the loop doesn't use)
-      IF NE JUMP 0x1710be;              // -> wr_sub_pls.
-      JUMP 0x171143;                    // -> wr_sub_done.
+.COMPRESS;
+      JUMP 0x17116c;                    // -> wr_sub_done.
 
 .GLOBAL wr_sub_sin.;
 wr_sub_sin.:
+      R3 = 0x3f000000;                  // 0.5
+      R4 = 0x41800000;                  // 16.0
+      R5 = R5 - R5;                     // +0.0
+      LCNTR = R8, DO wr_sub_sin_last. UNTIL LCE;
+.NOCOMPRESS;
       R0 = LSHIFT R11 BY 1;
       R0 = LSHIFT R0 BY -8;
       F0 = FLOAT R0 BY R15;             // h = x mod 0.5, exact
-      R12 = 0x3f000000;                 // 0.5 (a data move after the F0 compute: anomaly 20000072)
-      F1 = F12 - F0;
+      F1 = F3 - F0;
       F1 = F0 * F1;
-      R12 = 0x41800000;                 // 16.0
-      F1 = F1 * F12;
+      R9 = DM(0, I2);                   // what the oscillators wrote
+      F1 = F1 * F4;
       R2 = PASS R11;
-      IF GE JUMP 0x1710f5;              // -> wr_sub_sin_have. (the first half)
-      R12 = R12 - R12;                  // +0.0
-      F1 = F12 - F1;
-.GLOBAL wr_sub_sin_have.;
-wr_sub_sin_have.:
+      IF LT F1 = F5 - F1;               // the second half: negated, as +0.0 - F1
       F1 = F6 * F1;                     // gain x shape
-      R2 = DM(0, I2);                   // what the oscillators wrote
-      F1 = F2 + F1;
+      F1 = F9 + F1;
       DM(I2, M6) = F1;
+.GLOBAL wr_sub_sin_last.;
+wr_sub_sin_last.:
       R11 = R11 + R10;                  // phase += step, mod 2^32
-      R8 = R8 - 1;                      // samples left (opt1 O2: in R8, which the loop doesn't use)
-      IF NE JUMP 0x1710db;              // -> wr_sub_sin.
-      JUMP 0x171143;                    // -> wr_sub_done.
+.COMPRESS;
+      JUMP 0x17116c;                    // -> wr_sub_done.
 
 .GLOBAL wr_sub_tri.;
 wr_sub_tri.:
+      R3 = 0x3f000000;                  // 0.5
+      R4 = 0x40800000;                  // 4.0
+      R5 = 0x3f800000;                  // 1.0
+      LCNTR = R8, DO wr_sub_tri_last. UNTIL LCE;
+.NOCOMPRESS;
       R0 = LSHIFT R11 BY 1;
       R0 = LSHIFT R0 BY -8;
       F0 = FLOAT R0 BY R15;             // h = x mod 0.5, exact
-      R12 = 0x3f000000;                 // 0.5 (a data move after the F0 compute: anomaly 20000072)
+      R9 = DM(0, I2);                   // what the oscillators wrote (a data move after the F0 compute: anomaly 20000072)
       R2 = PASS R11;
-      IF LT JUMP 0x171115;              // -> wr_sub_tri_a. (the second half: a = h)
-      F0 = F12 - F0;                    // the first half: a = 0.5 - h
-.GLOBAL wr_sub_tri_a.;
-wr_sub_tri_a.:
-      R12 = 0x40800000;                 // 4.0
-      F1 = F0 * F12;
-      R12 = 0x3f800000;                 // 1.0
-      F1 = F1 - F12;
+      IF GE F0 = F3 - F0;               // the first half: a = 0.5 - h; the second: a = h
+      F1 = F0 * F4;
+      F1 = F1 - F5;
       F1 = F6 * F1;                     // gain x shape
-      R2 = DM(0, I2);                   // what the oscillators wrote
-      F1 = F2 + F1;
+      F1 = F9 + F1;
       DM(I2, M6) = F1;
+.GLOBAL wr_sub_tri_last.;
+wr_sub_tri_last.:
       R11 = R11 + R10;                  // phase += step, mod 2^32
-      R8 = R8 - 1;                      // samples left (opt1 O2: in R8, which the loop doesn't use)
-      IF NE JUMP 0x171104;              // -> wr_sub_tri.
-      JUMP 0x171143;                    // -> wr_sub_done.
+.COMPRESS;
+      JUMP 0x17116c;                    // -> wr_sub_done.
 
 .GLOBAL wr_sub_sqr.;
 wr_sub_sqr.:
       R1 = 0x3f800000;                  // +1
-      R2 = PASS R11;
-      IF GE JUMP 0x171137;              // -> wr_sub_sqr_have.
+      F3 = F6 * F1;                     // gain x +1
       R1 = -0x40800000;                 // -1.0, 0xbf800000
-.GLOBAL wr_sub_sqr_have.;
-wr_sub_sqr_have.:
-      F1 = F6 * F1;                     // gain x shape
-      R2 = DM(0, I2);                   // what the oscillators wrote
-      F1 = F2 + F1;
+      F4 = F6 * F1;                     // gain x -1
+      LCNTR = R8, DO wr_sub_sqr_last. UNTIL LCE;
+.NOCOMPRESS;
+      R9 = DM(0, I2);                   // what the oscillators wrote
+      R1 = PASS R4;
+      R2 = PASS R11;
+      IF GE R1 = PASS R3;               // the first half
+      F1 = F9 + F1;
       DM(I2, M6) = F1;
+.GLOBAL wr_sub_sqr_last.;
+wr_sub_sqr_last.:
       R11 = R11 + R10;                  // phase += step, mod 2^32
-      R8 = R8 - 1;                      // samples left (opt1 O2: in R8, which the loop doesn't use)
-      IF NE JUMP 0x17112d;              // -> wr_sub_sqr.
+.COMPRESS;
 
 .GLOBAL wr_sub_done.;
 wr_sub_done.:

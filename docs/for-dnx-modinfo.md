@@ -64,7 +64,7 @@ This is unlike the pool record, whose size is fixed and whose hash sits at a con
 
 **Website builds fill the record too (from 2026-10-21).** The browser builder (`site/js/modinfo.js`) runs the same fill at every build of MAIN OS. Before that date, a website build shipped the record unfilled: `MODINFO-UNFILLED` at 24, and a zero image id and hash. Such a record fails the hash check. A website build differs from a `dnfw mods apply` build in four fields:
 - the tag is `web-` and the mod ids, for example `web-waverider-fxmod`.
-- the commit is `web-` and the Waverider version, for example `web-0.3.6`.
+- the commit is `web-` and the site's git commit (7 characters), for example `web-1a2b3c4`. The Pages deploy writes the commit into `site/js/build.js`. A copy of the site that was not deployed writes `web-local`. Until 2026-10-21 the commit was `web-` and the Waverider version, for example `web-0.3.6`, so it could not tell two site versions apart.
 - each mod's code hash is 0.
 - the mods list starts at Waverider. A mod applied on the website before Waverider leaves no record, so the list does not name it.
 

@@ -63,12 +63,12 @@ mountGlyphs({ ...doc, querySelectorAll: () => [still] }, false);
 ok("with motion off it shows the still glyph", same(lit(still.children[0]), want(GLYPHS.waverider)));
 
 
-// The glyph tools' drawing and morph (tools/glyph_anim_core.js, tools/glyph_tools.js), as the
+// The glyph tools' drawing and morph (site/js/glyph-tools/glyph_anim_core.js, site/js/glyph-tools/glyph_tools.js), as the
 // two editor pages load them: classic scripts in one global scope.
 {
   const ctx = {};
   vm.createContext(ctx);
-  for (const f of ["tools/glyph_anim_core.js", "tools/glyph_tools.js"]) {
+  for (const f of ["site/js/glyph-tools/glyph_anim_core.js", "site/js/glyph-tools/glyph_tools.js"]) {
     vm.runInContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), ctx);
   }
   const G = ctx.GlyphAnim, T = ctx.GlyphTools;
@@ -157,7 +157,7 @@ ok("with motion off it shows the still glyph", same(lit(still.children[0]), want
 {
   const ctx = {};
   vm.createContext(ctx);
-  for (const f of ["tools/glyph_anim_core.js", "tools/glyph_tools.js"]) {
+  for (const f of ["site/js/glyph-tools/glyph_anim_core.js", "site/js/glyph-tools/glyph_tools.js"]) {
     vm.runInContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), ctx);
   }
   const fit = ctx.GlyphTools.fitCell;
@@ -171,7 +171,7 @@ ok("with motion off it shows the still glyph", same(lit(still.children[0]), want
 {
   const ctx = {};
   vm.createContext(ctx);
-  for (const f of ["tools/glyph_anim_core.js", "tools/glyph_icons.js", "tools/glyph_tools.js", "tools/glyph_fills_panel.js"]) {
+  for (const f of ["site/js/glyph-tools/glyph_anim_core.js", "site/js/glyph-tools/glyph_icons.js", "site/js/glyph-tools/glyph_tools.js", "site/js/glyph-tools/glyph_fills_panel.js"]) {
     vm.runInContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), ctx);
   }
   const G = ctx.GlyphAnim, F = ctx.GlyphFills, T = ctx.GlyphTools, I = ctx.GlyphIcons;

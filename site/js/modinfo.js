@@ -10,7 +10,7 @@
  */
 
 import { indexOf } from "./bytes.js";
-import { VERSIONS } from "./mods/versions.js";
+import { SITE_BUILD } from "./build.js";
 
 const MAGIC = [0x44, 0x4e, 0x4d, 0x49, 0, 1, 1, 0];     // "DNMI", version 1, 256 bytes
 const BYTES = 256;
@@ -93,7 +93,7 @@ export function fill(content, mod = null, os = "1.11") {
   rec.fill(0, 20, 24);
   rec.set(text(os, 8), 24);
   rec.set(text(`web-${mods.map(([m]) => m).join("-")}`, 24), 32);
-  rec.set(text(`web-${VERSIONS.waverider}`, 12), 56);
+  rec.set(text(SITE_BUILD, 12), 56);          // web-<the site's commit>, web-local in a checkout
   rec.set([mods.length, 0, 0, 0], 68);
   rec.fill(0, MOD_AT, 248);
   mods.forEach(([id, code], k) => {

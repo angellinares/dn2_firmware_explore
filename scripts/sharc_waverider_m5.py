@@ -2,7 +2,7 @@
 
     python scripts/sharc_waverider_m5.py \\
         --image 00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip \\
-        --digikit ../digikit-wt-sharcemu3 \\
+        --digikit ../digikit-main \\
         [--blocks 8] [--frame FILE | --frame-be FILE | --frames PATTERN]
 
 The image is `dnfw.waverider.dsp.section7(stock)` -- byte for byte what the mod

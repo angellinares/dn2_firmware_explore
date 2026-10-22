@@ -2,7 +2,7 @@
 
     python scripts/sharc_waverider_render.py \\
         --image 00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip \\
-        --digikit ../digikit-wt-sharcemu3 [--assemble] [--seconds 0.5]
+        --digikit ../digikit-main [--assemble] [--seconds 0.5]
 
 Three gates, each one required before the next (`docs/waverider-feasibility.md`,
 "Milestone 1"):

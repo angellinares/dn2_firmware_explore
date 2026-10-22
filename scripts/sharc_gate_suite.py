@@ -1,6 +1,6 @@
 """Run the DSP gate suite against one digikit worktree, saving every gate's output; or compare two runs.
 
-    python scripts/sharc_gate_suite.py run --digikit ../digikit-wt-sharcemu3 --label new
+    python scripts/sharc_gate_suite.py run --digikit ../digikit-main --label new
     python scripts/sharc_gate_suite.py compare old new
 
 `run` executes each gate below with DNFW_DIGIKIT_SHARC (and --digikit where the gate takes

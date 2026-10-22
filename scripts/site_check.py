@@ -17,7 +17,8 @@ every tool page, and the compatibility table `dnfw mods matrix` generates. This 
   doesn't run it on every commit);
 - **every tool page has the shared parts:** a link back to `index.html`, the footer's
   "Not affiliated with or endorsed by Elektron", and on every page that builds firmware
-  the go-back-to-stock warning ("Make sure that you can go back to stock").
+  the go-back-to-stock warning ("Make sure that you can go back to stock") and the site
+  build in the footer (`data-site-build`, filled by `site/js/build.js`).
 
 The judgement part (is the In progress table still true? does a new fix belong under Bug
 fixes?) can't be checked by a script: the Claude Code hook in `.claude/settings.json`
@@ -38,7 +39,8 @@ DIAGNOSTIC = {"usbprobe"}            # a measuring tool for our own builds, neve
 NOT_OFFERED: set[str] = set()       # a mod in development: on the index's In progress table, not the README's
 SHARED = (("a link back to the index", 'href="index.html"', False),
           ("the go-back-to-stock warning", "Make sure that you can go back to stock", True),
-          ("the footer's disclaimer", "Not affiliated with or endorsed by Elektron", False))
+          ("the footer's disclaimer", "Not affiliated with or endorsed by Elektron", False),
+          ("the site build in the footer", "data-site-build", True))
 MATRIX_HEAD = re.compile(r"<!-- dnfw:matrix(?:-row [a-z0-9]+)? -->.*?<thead>(.*?)</thead>", re.S)
 COMBINES = re.compile(r"<!-- dnfw:combines ([a-z0-9]+) -->(.*?)<!-- /dnfw:combines -->", re.S)
 

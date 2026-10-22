@@ -46,7 +46,7 @@ def test_xxh32_matches_the_python_one(run):
 
 def test_the_fill_is_the_python_fill_byte_for_byte(run):
     from dnfw.mods import modinfo
-    want = modinfo.fill(run["main"], [("waverider", 0)], "web-waverider", "web-0.3.6", "1.11")
+    want = modinfo.fill(run["main"], [("waverider", 0)], "web-waverider", "web-local", "1.11")
     assert want != run["main"]
     assert run["once"] == want
 
@@ -76,3 +76,10 @@ def test_a_second_mod_keeps_the_list_and_refills(run):
 
 def test_an_image_without_the_record_is_unchanged(run):
     assert run["stock"] == run["main"][:65536]
+
+
+def test_the_deploy_can_stamp_the_site_s_commit():
+    # .github/workflows/pages.yml replaces this exact line with the commit, and fails without it
+    build = (ROOT / "site/js/build.js").read_text(encoding="utf-8")
+    assert 'export const SITE_COMMIT = "local";' in build.splitlines()
+    assert "s/^export const SITE_COMMIT = \\\"local\\\";$/" in (ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")

@@ -1,6 +1,6 @@
 """Waverider Milestone 6: what the stock unpack does with WaveTone's TUN1.
 
-    python scripts/sharc_waverider_m6_tune.py [--digikit ../digikit-wt-sharcemu3]
+    python scripts/sharc_waverider_m6_tune.py [--digikit ../digikit-main]
 
 TUN1 is WaveTone's parameter index 25 (`dnfw params`: "Osc1 Tune", group 1,
 range 0x7c00, default 0x4000). The frame carries it at byte 218 + 146t, the word

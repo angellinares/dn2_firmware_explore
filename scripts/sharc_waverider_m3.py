@@ -2,7 +2,7 @@
 
     python scripts/sharc_waverider_m3.py \\
         --image 00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip \\
-        --digikit ../digikit-wt-sharcemu3 [--assemble] [--blocks 6]
+        --digikit ../digikit-main [--assemble] [--blocks 6]
 
 Three steps, each PASS/FAIL (`docs/waverider-feasibility.md`, "Milestone 3"):
 

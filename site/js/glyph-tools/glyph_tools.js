@@ -1,5 +1,5 @@
 /**
- * The drawing surface that tools/glyph_editor.html and tools/glyph_animator.html share.
+ * The drawing surface that site/glyph-editor.html and site/glyph-animator.html share.
  *
  * One subject: turning the pointer and the keyboard into frames. It holds the tool bar (icons
  * from glyph_icons.js, in groups), the context bar for the active tool, the shortcut help, the

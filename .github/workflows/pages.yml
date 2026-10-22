@@ -43,6 +43,13 @@ jobs:
           # depends on someone having clicked through repository settings
           # first, which is a step a fork has no way to know about.
           enablement: true
+      # The site's commit into site/js/build.js, so a build made on the site names the code that
+      # made it (its /modinfo record's commit field, and the footer). The grep fails the deploy
+      # if the line was not replaced.
+      - name: Stamp the site's commit
+        run: |
+          sed -i "s/^export const SITE_COMMIT = \"local\";$/export const SITE_COMMIT = \"${GITHUB_SHA::7}\";/" site/js/build.js
+          grep -q "^export const SITE_COMMIT = \"${GITHUB_SHA::7}\";$" site/js/build.js
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

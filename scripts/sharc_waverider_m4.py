@@ -2,7 +2,7 @@
 
     python scripts/sharc_waverider_m4.py \\
         --image 00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip \\
-        --digikit ../digikit-wt-sharcemu3 [--assemble] [--blocks 16]
+        --digikit ../digikit-main [--assemble] [--blocks 16]
 
 Every block runs the firmware's own per-block routine, `sw 0x1c2712`: the frame
 unpack, the slot dispatch, the per-track chain. Nothing is poked into a track

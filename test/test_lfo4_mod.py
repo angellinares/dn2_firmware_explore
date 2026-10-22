@@ -1,15 +1,8 @@
-"""The LFO4 mod: it applies to stock 1.11, refuses what it cannot sit on, and
-reproduces the image that was gated.
+"""The LFO4 mod: it applies to stock 1.11 and refuses what it cannot sit on.
 
-`scripts/gen_lfo4_code.py` packages `build_lfo4_browser.RELEASE`, the build
-the release `.syx` came from, so what is asserted here is **byte equality with
-`lfo4-fast`** (`python scripts/build_lfo4_browser.py --name lfo4-fast`).
-
-`lfo4-fast` is `lfo4-everyvoice4` -- the release twin of the code that passed
-tests 10 and 11 on the instrument (`docs/lfo4-build-plan.md`) -- with an idle
-LFO4 costing the frame nothing and the `memcpy` / `memset` test moved into the
-stubs, after the owner's save-while-playing stutter was bisected to lfo4
-(2026-09-27).
+Byte equality with the image on the instrument is test_flashed_build_reproduces.py: the last
+build that passed there, rebuilt from today's mods. The old check here compared with
+out/lfo4-fast (2026-09-27), which predates lfo4 1.0.1's state-array move (fbac7a3).
 """
 
 import pathlib
@@ -22,7 +15,6 @@ from dnfw.patch import area, paramtable
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-GATED = ROOT / "out/lfo4-fast/section_3_MAIN_OS.bin"
 BASE = lfo4.BASE
 
 
@@ -45,10 +37,6 @@ def applied(stock):
     return lfo4.compose(stock)
 
 
-def _code(content: bytes) -> list[bytes]:
-    return [d for c, d in area.parse(content[platform.STOCK_LENGTH:]) if c == area.CODE]
-
-
 def _table_at(content: bytes) -> int:
     """Where the relocated table starts in CONTENT: its CODE chunk's image."""
     blob = content[platform.STOCK_LENGTH:]
@@ -57,16 +45,6 @@ def _table_at(content: bytes) -> int:
         if cid == area.CODE and area.CodeChunk.unpack(blob[off:off + n]).load == lfo4.SPEC["table_va"]:
             return platform.STOCK_LENGTH + off + 16
     raise AssertionError("no CODE chunk holds the relocated table")
-
-
-def test_is_the_image_that_was_gated(applied):
-    """The gated build in every byte of the image and of its CODE chunks. The area
-    also carries the bus's count and the hooks' displaced copies (dnfw.mods.bus)."""
-    if not GATED.exists():
-        pytest.skip("out/lfo4-fast is not built")
-    gated = GATED.read_bytes()
-    assert applied[:platform.STOCK_LENGTH] == gated[:platform.STOCK_LENGTH]
-    assert _code(applied) == _code(gated)
 
 
 def test_changes_nothing_outside_its_extents(stock, applied):

@@ -2,7 +2,7 @@
 
     python scripts/sharc_waverider_voice.py \\
         --image 00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip \\
-        --digikit ../digikit-wt-sharcemu3 [--blocks 16] [--seconds 2.5]
+        --digikit ../digikit-main [--blocks 16] [--seconds 2.5]
 
 Steps, each reported PASS or FAIL (`docs/waverider-feasibility.md`, "Milestone 2"):
 

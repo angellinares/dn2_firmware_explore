@@ -33,9 +33,18 @@ From each mod's own declaration (`ram()`), 2026-10-11:
 | arpmodes | 2,320 | `0x467a0000` |
 | usbprobe | 2,304 | `0x46f00000` |
 | reloadconfirm, midiarp, lfolength, layermidi, bootscreen | 2,801 | `0x46708000`, `0x467b0000` (lfolength; `0x467f8000` until 2026-10-15), `0x467d0000..0x467e04b8` |
+| degreetranspose (2026-10-14) | 1,668 | `0x467b8000` |
 | arpscale (2026-10-13) | 997 | `0x467a8000`, and one byte of the settings block |
 | the platform's data window | 196,608 | `0x46710000` |
-| **all** | **703,658** | 0.67 MiB of the 24.9 MB |
+| **all** | **705,326** | 0.67 MiB of the 24.9 MB |
+
+### Pattern data a mod stores
+
+Some mods keep settings in each pattern, in bits that stock's load and save of a pattern drop. Those bits are saved with the project, so two mods must not claim the same ones.
+
+| mod | where, in RAM | stored | bits |
+|---|---|---|---|
+| degreetranspose | a track's `+1187` (stride 1,701) | the track's `+1176` (stride 1,187) | 2..5: the track's degrees. Bit 6 is free |
 
 ## Region A: `0x46701340..0x47fe0000`
 

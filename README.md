@@ -29,6 +29,7 @@ file, byte for byte. A test checks this.
 | `bootscreen` | Your own mark in the start-up animation | confirmed on hardware | yes |
 | `reloadconfirm` | FUNC + NO can ask before it reloads the pattern (a switch in SETTINGS > PERSONALIZE) | confirmed on hardware | yes |
 | `arpscale` | The arp's step offsets move by degrees of the track's scale and root, not semitones (a switch in SETTINGS > PERSONALIZE) | confirmed on hardware (2026-10-14) | no |
+| `degreetranspose` | [KEYBOARD] + [FUNC] or [TRK] + [+]/[−] (stock's track transpose keys, with [KEYBOARD] added) transposes the active track by degrees of its scale, not semitones, kept in each pattern, MIDI tracks included | not yet tested by the repository owner; external reports in `docs/flashing.md` | no |
 | `transients` | Replace the FM drum transient bank with your own samples | confirmed on hardware | yes |
 | `songguard` | A song with a damaged row count loads as empty instead of halting the instrument (a stock bug) | confirmed on hardware | no |
 | `lfolength` | The LFO ONE/HALF fix: TRIG MODE ONE and HALF run one cycle / half a cycle from the start phase and hold the value they reached, on audio and MIDI tracks (two stock bugs; supersedes `lfohold`) | confirmed on hardware (2026-10-09, audio track); MIDI tracks in the emulator | yes |

@@ -477,7 +477,64 @@
     };
   }
 
-  const api = { TOOLS, TOGGLES, SHORTCUTS, PATTERNS, drag, fitCell, contentWidth, maskEdges, surface,
+  /**
+   * A frame size picker: a list of sizes and "Other size", which shows W and H fields.
+   * `o`: presets ([w, h] pairs; GlyphAnim.SIZES by default), value [w, h], ids {select, w, h}
+   * for the three controls, label, onChange(w, h) when a valid size is picked.
+   * Returns { get size(), set(w, h) }. The fields keep the size of a preset too, so a page can
+   * read them.
+   */
+  function sizePicker(box, o = {}) {
+    const G = root.GlyphAnim, doc = box.ownerDocument;
+    const presets = o.presets ?? G.SIZES, ids = o.ids ?? {};
+    const el = (tag, props = {}, ...kids) => { const n = Object.assign(doc.createElement(tag), props); n.append(...kids); return n; };
+    const key = ([w, h]) => `${w}x${h}`;
+    const select = el("select", {}, ...presets.map((s) => el("option", { value: key(s), textContent: `${s[0]} x ${s[1]}` })),
+      el("option", { value: "custom", textContent: "Other size" }));
+    select.setAttribute("aria-label", o.label ?? "Frame size");
+    const field = (label, max) => el("input", { type: "number", min: 1, max, step: 1 });
+    const w = field("W", G.LIMITS.width), h = field("H", G.LIMITS.height);
+    w.setAttribute("aria-label", "Width"); h.setAttribute("aria-label", "Height");
+    if (ids.select) select.id = ids.select;
+    if (ids.w) w.id = ids.w;
+    if (ids.h) h.id = ids.h;
+    const wl = el("label", {}, "W ", w), hl = el("label", {}, "H ", h);
+    const size = () => [Math.round(+w.value), Math.round(+h.value)];
+    function show(v) {
+      [w.value, h.value] = v;
+      const preset = presets.some((s) => key(s) === key(v));
+      select.value = preset ? key(v) : "custom";
+      wl.hidden = hl.hidden = preset;
+    }
+    select.onchange = () => {
+      if (select.value === "custom") { wl.hidden = hl.hidden = false; w.focus(); return; }
+      show(select.value.split("x").map(Number));
+      o.onChange?.(...size());
+    };
+    for (const input of [w, h]) {
+      input.onchange = () => { const [a, b] = size(); if (G.sizeOk(a, b)) o.onChange?.(a, b); };
+    }
+    box.append(select, wl, hl);
+    show(o.value ?? presets[0]);
+    return { get size() { return size(); }, set: (a, b) => show([a, b]) };
+  }
+
+  /** Offer bytes or text as a file to save. */
+  function download(doc, data, filename, type) {
+    const a = Object.assign(doc.createElement("a"), { href: URL.createObjectURL(new Blob([data], { type })), download: filename });
+    a.click();
+  }
+
+  /** Ask for one file, with a plain file input. */
+  function pickFile(doc, accept) {
+    return new Promise((done) => {
+      const input = Object.assign(doc.createElement("input"), { type: "file", accept });
+      input.onchange = () => done(input.files[0]);
+      input.click();
+    });
+  }
+
+  const api = { TOOLS, TOGGLES, SHORTCUTS, PATTERNS, drag, fitCell, contentWidth, maskEdges, surface, sizePicker, download, pickFile,
     get clipboard() { return clipboard; } };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.GlyphTools = api;

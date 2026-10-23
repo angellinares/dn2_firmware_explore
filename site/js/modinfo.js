@@ -55,6 +55,38 @@ export function locate(content) {
   return at;
 }
 
+/** -> where a record starts in CONTENT, or null: `find` in src/dnfw/mods/modinfo.py. */
+export function find(content) {
+  const at = locate(content);
+  return at < 0 ? null : at;
+}
+
+/**
+ * A record (256 bytes) -> { ok, filled, imageId, os, tag, commit, mods }: the fields the
+ * Check page reads, as `parse` in src/dnfw/mods/modinfo.py reads them. `ok` is the magic, the
+ * version, the size and the hash over everything before it.
+ */
+export function parse(rec) {
+  const size = rec[6] << 8 | rec[7];
+  const version = rec[4] << 8 | rec[5];
+  const sizeOk = size >= BYTES && size <= rec.length;
+  const end = sizeOk ? size : Math.min(Math.max(size, 4), rec.length);
+  const magicOk = MAGIC.slice(0, 4).every((b, i) => rec[i] === b);
+  const str = (a, b) => new TextDecoder("ascii").decode(rec.subarray(a, b)).replace(/\0.*$/s, "");
+  const mods = [];
+  for (let k = 0; k < Math.min(rec[68], MAX_MODS); k++) {
+    const at = MOD_AT + MOD_BYTES * k;
+    mods.push([str(at, at + 12), u32(rec, at + 12)]);
+  }
+  return {
+    ok: magicOk && version >= 1 && sizeOk && u32(rec, end - 4) === xxh32(rec.subarray(0, end - 4)),
+    filled: indexOf(rec.subarray(MARKER_AT, MARKER_AT + MARKER.length), MARKER) !== 0,
+    imageId: u32(rec, 20), os: str(24, 32), tag: str(32, 56), commit: str(56, 68), mods,
+  };
+}
+
+export { BYTES };
+
 /** The record's mods list, when it is filled and checks out; else []. */
 function listed(rec) {
   if (indexOf(rec.subarray(MARKER_AT, MARKER_AT + MARKER.length), MARKER) === 0) return [];

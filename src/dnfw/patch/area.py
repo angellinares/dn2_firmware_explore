@@ -85,6 +85,8 @@ def parse(blob: bytes) -> list[tuple[bytes, bytes]]:
     total, count = struct.unpack_from(">II", blob, 4)
     if total > len(blob):
         raise AreaError(f"area claims {total} B, only {len(blob)} present")
+    if 12 + 12 * count > total:
+        raise AreaError(f"a directory of {count} chunks runs past the area")
     out = []
     for i in range(count):
         cid = blob[12 + 12 * i:16 + 12 * i]

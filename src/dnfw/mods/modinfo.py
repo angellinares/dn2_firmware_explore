@@ -73,6 +73,18 @@ def locate(payload: bytes) -> int | None:
     return start
 
 
+def find(payload: bytes) -> int | None:
+    """-> where a record starts in PAYLOAD by its header (filled or not), None if there is none.
+    The site's `locate` (site/js/modinfo.js) finds it the same way."""
+    head = MAGIC + struct.pack(">HH", VERSION, BYTES)
+    at = payload.find(head)
+    if at < 0:
+        return None
+    if payload.find(head, at + 1) >= 0:
+        raise ModInfoError("the /modinfo record appears twice")
+    return at
+
+
 def fill(payload: bytes, mods: list[tuple[str, int]], tag: str, commit: str, os: str) -> bytes:
     """PAYLOAD (MAIN OS, every mod applied) with its /modinfo record written; unchanged
     when it carries none."""

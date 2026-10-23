@@ -14,6 +14,13 @@
 
   const LIMITS = { width: 128, height: 64, frames: 128 };
   const RANGES = { "0x7f00": 0x7f00, "0x8000": 0x8000 };
+  /** The frame sizes the pickers offer, [width, height]: common sizes of the unit's frames. */
+  const SIZES = [[17, 17], [19, 17], [11, 11], [128, 64]];
+  /** The size of a mod glyph on the site (site/js/mods/glyphs.js). */
+  const GLYPH_SIZE = 16;
+
+  /** Whether a frame size is one the tools take: 1 to 128 wide, 1 to 64 high. */
+  const sizeOk = (w, h) => Number.isInteger(w) && Number.isInteger(h) && w >= 1 && w <= LIMITS.width && h >= 1 && h <= LIMITS.height;
 
   /** The frame the stock picker shows: round(value x (frames - 1) / range), value = knob x 256. */
   function knobFrame(knob, frames, range = 0x7f00) {
@@ -602,7 +609,7 @@ export const ANIMS = {
     return Uint8Array.from(bytes);
   }
 
-  const api = { gif, gifDelay, GIF_COLOURS, parseBlocks, fitRows, framesText, LIMITS, RANGES, knobFrame, blank, valid, serialise, parse, fromJSON, wordsPerColumn,
+  const api = { SIZES, GLYPH_SIZE, sizeOk, gif, gifDelay, GIF_COLOURS, parseBlocks, fitRows, framesText, LIMITS, RANGES, knobFrame, blank, valid, serialise, parse, fromJSON, wordsPerColumn,
     encode, decode, toHex, fromHex, OPS, dissolve, tween, resize, parseStill, rowsToHex, hexToRows,
     threshold, EASE, move, morph, line, rect, ellipse, constrain, shape, plot,
     maskNone, maskAll, maskEmpty, maskRect, maskInvert, maskCombine, maskBounds, wand, within, flood,

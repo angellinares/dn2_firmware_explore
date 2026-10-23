@@ -239,3 +239,40 @@ ok("with motion off it shows the still glyph", same(lit(still.children[0]), want
      && new Set([...T.TOOLS, ...T.TOGGLES].map((t) => t.key)).size === T.TOOLS.length + T.TOGGLES.length
      && I.iconSvg("bucket").includes('fill="currentColor"'));
 }
+
+// Canvas sizes in the still editor: a drawing of another size goes out and back in unchanged.
+{
+  const ctx = {};
+  vm.createContext(ctx);
+  vm.runInContext(readFileSync(new URL("../site/js/glyph-tools/glyph_anim_core.js", import.meta.url), "utf8"), ctx);
+  const G = ctx.GlyphAnim, J = JSON.stringify;
+  ok("the size list is 17x17, 19x17, 11x11 and 128x64, the glyph size is 16, and sizes run to 128 x 64",
+     J(G.SIZES) === J([[17, 17], [19, 17], [11, 11], [128, 64]]) && G.GLYPH_SIZE === 16
+     && G.sizeOk(128, 64) && G.sizeOk(1, 1) && !G.sizeOk(129, 64) && !G.sizeOk(16, 65) && !G.sizeOk(0, 4) && !G.sizeOk(2.5, 4));
+  const roundTrip = (rows) => {
+    const [w, h] = [rows[0].length, rows.length];
+    const hex = G.toHex(G.encode([rows], w, h), w, h);
+    return { bin: G.decode(G.encode([rows], w, h), w, h)[0], hex: G.decode(G.fromHex(hex), w, h)[0],
+      url: G.hexToRows(G.rowsToHex(rows), w), words: hex.split(" ").length };
+  };
+  let f17 = G.blank(17, 17);
+  f17 = G.plot(f17, G.ellipse(0, 0, 16, 16));
+  f17 = G.plot(f17, G.line(0, 16, 16, 0));
+  f17 = G.fill(f17, "hatch", { angle: 45, spacing: 3 }, G.maskRect(17, 17, 4, 4, 12, 12));
+  const r17 = roundTrip(f17);
+  ok("a 17 x 17 drawing goes out as 17 column words and back in, as .bin, hex and the animator's address, unchanged",
+     J(r17.bin) === J(f17) && J(r17.hex) === J(f17) && J(r17.url) === J(f17) && r17.words === 17 && f17[0][16] === "#");
+  let f128 = G.blank(128, 64);
+  f128 = G.plot(f128, G.rect(0, 0, 127, 63));
+  f128 = G.plot(f128, G.ellipse(70, 4, 123, 59, true));
+  f128 = G.fill(f128, "linear", { angle: 0 }, G.maskRect(128, 64, 4, 4, 60, 59));
+  f128 = G.plot(f128, G.line(0, 63, 127, 0), false);
+  const r128 = roundTrip(f128);
+  ok("a 128 x 64 drawing goes out as 2 words a column (256) and back in, as .bin, hex and the address, unchanged",
+     J(r128.bin) === J(f128) && J(r128.hex) === J(f128) && J(r128.url) === J(f128) && r128.words === 256
+     && G.encode([f128], 128, 64).length === 1024);
+  const big = G.resize(f17, 128, 64), small = G.resize(f128, 16, 16);
+  ok("a new size keeps the pixels at the top left: larger pads with dark pixels, smaller cuts",
+     J(big.slice(0, 17).map((r) => r.slice(0, 17))) === J(f17) && big[20] === ".".repeat(128) && big[0].slice(17) === ".".repeat(111)
+     && J(small) === J(f128.slice(0, 16).map((r) => r.slice(0, 16))));
+}

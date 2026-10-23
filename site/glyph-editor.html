@@ -3,7 +3,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Glyph Editor</title>
 <!--
-  Edit the mod glyphs of the site (site/js/mods/glyphs.js) by hand.
+  Edit the mod glyphs of the site (site/js/mods/glyphs.js) by hand, or draw a still
+  glyph of any size up to 128 x 64.
 
   Open this file in Chrome or Edge, press "Open glyphs.js" and pick
   site/js/mods/glyphs.js. Draw, select and fill, then press "Save": the file is
@@ -11,9 +12,13 @@
   A browser without the File System Access API gets a download instead.
   Over http (the published site, or a local server) the site's glyphs load as the
   page opens, and "Save" downloads glyphs.js until a file is opened.
+  The size picker makes the drawing a free canvas of another size (the animator's
+  sizes, plus 16 x 16). glyphs.js keeps 16 x 16 glyphs, so Save and "Copy into" work
+  at 16 x 16 only; at any size the drawing goes out and back in as rows, a .bin file
+  or hex (the unit's column words), or to the animator.
   tools/glyph_editor.html forwards here, for links to the old place.
-  The tool bar, the selection and the fills are shared with the animator
-  (js/glyph-tools/glyph_tools.js, glyph_fills_panel.js).
+  The tool bar, the selection, the fills and the size picker are shared with the
+  animator (js/glyph-tools/glyph_tools.js, glyph_fills_panel.js, glyph_anim_core.js).
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,21 +29,26 @@
   .main { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start; }
   #list { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: .4rem;
           flex: 1 1 260px; max-width: 420px; }
+  #list:empty { display: none; }
   #list button { display: grid; justify-items: center; gap: .2rem; padding: .4rem .2rem;
                  font-size: .72rem; font-family: ui-monospace, Consolas, monospace; }
   #list button.on { outline: 2px solid var(--accent); }
   #list button.dirty::after { content: "edited"; color: var(--accent); }
   .edit { flex: 1 1 340px; min-width: 0; }
   .previews { display: flex; gap: .8rem; flex-wrap: wrap; align-items: center; }
-  .chip { padding: 8px; border-radius: 6px; display: flex; gap: 10px; align-items: center; }
+  .chip { padding: 8px; border-radius: 6px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; max-width: 100%; }
   .chip.light { background: #f6f5f2; color: #16181c; }
   .chip.dark { background: #0c0d0f; color: #e8e6e1; }
   svg { display: block; }
   textarea { font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.15;
-             width: 18ch; height: 17.5em; background: var(--panel); color: var(--ink);
-             border: 1px solid var(--rule); border-radius: 6px; padding: 4px; }
+             width: 19ch; max-width: 100%; height: 19.9em; background: var(--panel); color: var(--ink);
+             border: 1px solid var(--rule); border-radius: 6px; padding: 4px; white-space: pre; overflow: auto; }
+  #hex { width: 100%; height: 6rem; }
   .hint { color: var(--ink-soft); font-size: .85rem; max-width: 40rem; margin: 0; }
   h1 + .hint { margin: 0 0 .8rem; }
+  .card-head { display: flex; flex-wrap: wrap; gap: .4rem 1rem; align-items: center; justify-content: space-between; }
+  .card-head h2 { margin: 0; font-size: 1rem; }
+  #size-note { margin: .2rem 0 .6rem; }
 </style>
 
 <p class="eyebrow"><a href="index.html">Digitone II Mods</a> / glyph editor</p>
@@ -47,14 +57,18 @@
 <div class="bar">
   <button id="open" class="primary">Open glyphs.js</button>
   <button id="save" disabled>Save</button>
-  <span id="status">Pick site/js/mods/glyphs.js to start.</span>
+  <span id="status">Draw on the canvas, or open site/js/mods/glyphs.js to edit the mod glyphs.</span>
 </div>
 
 <div class="main">
   <div id="list"></div>
-  <div class="edit" id="edit" hidden>
+  <div class="edit" id="edit">
     <section class="card">
-      <h2 id="name"></h2>
+      <div class="card-head">
+        <h2 id="name"></h2>
+        <div class="bar"><span id="size-box" class="size-box"></span><button id="copy-in" hidden>Copy into</button></div>
+      </div>
+      <p class="hint" id="size-note" hidden></p>
       <div id="toolbar"></div>
       <div id="context"></div>
       <div class="surface-box"><canvas id="paint" class="surface"></canvas></div>
@@ -62,11 +76,12 @@
         <button data-op="up">Up</button><button data-op="down">Down</button>
         <button data-op="left">Left</button><button data-op="right">Right</button>
         <button data-op="flipx">Mirror</button><button data-op="invert">Invert</button>
-        <button data-op="clear">Clear</button><button data-op="bug">Add bug</button>
+        <button data-op="clear">Clear</button><button data-op="bug" id="bug">Add bug</button>
         <button data-op="undo">Undo</button><button data-op="revert">Revert</button>
         <button id="send">Send to animator</button>
       </div>
-      <p class="hint">Pick a tool in the bar, or press its key. Press ? for all the shortcuts.</p>
+      <p class="hint">Pick a tool in the bar, or press its key. Press ? for all the shortcuts.
+        The size list changes the size of the drawing. Its pixels stay at the top left.</p>
     </section>
 
     <details class="card" open>
@@ -83,10 +98,25 @@
       <p class="hint">1x, 2x and 3x, in the light and the dark theme.</p>
     </details>
 
+    <details class="card">
+      <summary>Device format</summary>
+      <div class="bar">
+        <button id="bin-out">Download .bin</button><button id="hex-out">Show hex</button>
+        <button id="bin-in">Import .bin</button><button id="hex-in">Import hex</button>
+      </div>
+      <textarea id="hex" spellcheck="false" aria-label="Hex words"></textarea>
+      <p class="hint">The frame is its columns, left to right. Each column is one 32-bit big-endian
+        word, with the top row in the most significant bit. A frame taller than 32 rows uses more
+        words for each column. Import uses the size of the canvas.</p>
+    </details>
+
     <details class="card" open>
       <summary>Rows</summary>
       <textarea id="rows" spellcheck="false" aria-label="Rows of the glyph"></textarea>
-      <p class="hint">Type or paste the 16 rows: <code>#</code> is lit and <code>.</code> is dark.</p>
+      <div class="bar"><button id="rows-apply">Apply rows</button></div>
+      <p class="hint">Type or paste the rows: <code>#</code> is lit and <code>.</code> is dark.
+        Rows of the canvas's size apply as you type. Apply rows puts rows of another size at
+        the top left.</p>
     </details>
   </div>
 </div>
@@ -102,13 +132,19 @@
 <script src="js/glyph-tools/glyph_tools.js"></script>
 <script src="js/glyph-tools/glyph_fills_panel.js"></script>
 <script>
-const N = 16;
+const G = GlyphAnim;
+const N = G.GLYPH_SIZE;                      // a mod glyph in glyphs.js is N x N
 const GLYPH_RE = /(\n  (?:\/\/[^\n]*\n  )?([a-z0-9]+): \[\n)((?:    "[.#]{16}",\n){16})(  \],)/g;
 let handle = null, source = "", glyphs = {}, saved = {}, current = null, undo = [], badge = null;
+// The free canvas: rows of any size. When it is null, the page edits the mod glyph `current`.
+let canvas = G.blank(N, N);
 
 const $ = (id) => document.getElementById(id);
 const status = (t) => { $("status").textContent = t; };
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const rowsNow = () => canvas ?? glyphs[current];
+const sizeOf = (rows) => [rows[0].length, rows.length];
+const isGlyphSize = (rows) => rows.length === N && rows[0].length === N;
 
 function parse(text) {
   const out = {};
@@ -124,118 +160,179 @@ function serialise() {
 }
 
 function svg(rows, scale) {
-  const s = N * scale;
+  const [w, h] = sizeOf(rows);
   let rects = "";
   rows.forEach((row, y) => row.replace(/#+/g, (run, x) => {
     rects += `<rect x="${x}" y="${y}" width="${run.length}" height="1"/>`;
   }));
-  return `<svg width="${s}" height="${s}" viewBox="0 0 16 16" shape-rendering="crispEdges" fill="currentColor">${rects}</svg>`;
+  return `<svg width="${w * scale}" height="${h * scale}" viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges" fill="currentColor">${rects}</svg>`;
 }
 
 function drawList() {
   $("list").replaceChildren(...Object.keys(glyphs).map((id) => {
     const b = document.createElement("button");
     b.innerHTML = svg(glyphs[id], 2) + id;
-    b.className = (id === current ? "on " : "") + (glyphs[id].join() !== saved[id].join() ? "dirty" : "");
+    b.className = (id === current && !canvas ? "on " : "") + (glyphs[id].join() !== saved[id].join() ? "dirty" : "");
     b.onclick = () => select(id);
     return b;
   }));
 }
 
 function drawEdit() {
-  const rows = glyphs[current];
+  const rows = rowsNow(), [w, h] = sizeOf(rows), glyphSize = isGlyphSize(rows);
   ed.render();
-  for (const t of ["light", "dark"]) $(`pv-${t}`).innerHTML = [1, 2, 3].map((s) => svg(rows, s)).join("");
+  // the previews: 1x, 2x and 3x, as many as fit a phone's width
+  const scales = [1, 2, 3].filter((s) => s === 1 || w * s <= 260);
+  for (const t of ["light", "dark"]) $(`pv-${t}`).innerHTML = scales.map((s) => svg(rows, s)).join("");
   if (document.activeElement !== $("rows")) $("rows").value = rows.join("\n");
-  $("name").textContent = current;
+  $("rows").style.width = `${w + 3}ch`;
+  $("rows").style.height = `${Math.min(h, 32) * 1.15 + 1.5}em`;
+  $("name").textContent = canvas ? `Canvas, ${w} x ${h}` : current;
+  sizeBox.set(w, h);
   const dirty = Object.keys(glyphs).some((id) => glyphs[id].join() !== saved[id].join());
-  $("save").disabled = !dirty;
+  $("save").disabled = !dirty || !glyphSize;
+  $("copy-in").hidden = !canvas || !current;
+  $("copy-in").disabled = !glyphSize;
+  if (current) $("copy-in").textContent = `Copy into ${current}`;
+  $("size-note").hidden = glyphSize;
+  $("size-note").textContent = `glyphs.js holds ${N} x ${N} glyphs, so Save and Copy into a glyph work at ${N} x ${N} only. ` +
+    "At this size, keep your drawing with Rows, .bin or hex.";
+  $("bug").disabled = !badge || w < 7 || h < 8;
   drawList();
   fills.refresh();
 }
 
+/** Edit the mod glyph `id`, at its own size. */
 function select(id) {
   ed.drop();
-  current = id; undo = []; $("edit").hidden = false;
+  canvas = null; current = id; undo = [];
   drawEdit();
 }
 
+/** Change the size: the drawing becomes a free canvas of w x h, its pixels kept at the top left. */
+function resizeTo(w, h) {
+  if (!G.sizeOk(w, h)) return status(`The size is 1 to ${G.LIMITS.width} wide and 1 to ${G.LIMITS.height} high.`);
+  const rows = rowsNow(), [ow, oh] = sizeOf(rows);
+  if (w === ow && h === oh) return;
+  ed.drop();
+  canvas = G.resize(rows, w, h); undo = [];
+  status(w < ow || h < oh ? `The canvas is ${w} x ${h}. Pixels outside it were cut.` : `The canvas is ${w} x ${h}.`);
+  drawEdit();
+}
+
+function setRows(rows) { if (canvas) canvas = rows; else glyphs[current] = rows; }
+
 function set(rows) {
   ed.drop();
-  undo.push(glyphs[current]);
-  glyphs[current] = rows;
+  undo.push(rowsNow());
+  setRows(rows);
   drawEdit();
 }
 
 function undoOnce() {
   ed.drop();
-  if (undo.length) { glyphs[current] = undo.pop(); drawEdit(); }
+  if (undo.length) { setRows(undo.pop()); drawEdit(); }
 }
 
 /* The drawing surface, the selection and the fills are shared with the animator. */
 const ed = GlyphTools.surface({
   canvas: $("paint"), toolbar: $("toolbar"), context: $("context"), max: 28,
-  frame: () => glyphs[current],
-  set: (rows) => { glyphs[current] = rows; drawEdit(); },
-  begin: () => undo.push(glyphs[current]),
+  frame: () => rowsNow(),
+  set: (rows) => { setRows(rows); drawEdit(); },
+  begin: () => undo.push(rowsNow()),
   unbegin: () => undo.pop(),
   end: () => drawEdit(),
   undo: undoOnce,
   selected: () => fills.refresh(),
 });
-function thumb(canvas, rows) {
-  const s = 3;
-  canvas.width = rows[0].length * s; canvas.height = rows.length * s;
-  const c = canvas.getContext("2d");
-  c.fillStyle = css("--cell-off"); c.fillRect(0, 0, canvas.width, canvas.height);
-  c.fillStyle = css("--ink");
-  rows.forEach((r, y) => { for (let x = 0; x < r.length; x++) if (r[x] === "#") c.fillRect(x * s, y * s, s, s); });
+function thumb(c, rows) {
+  const s = Math.max(1, Math.min(3, Math.floor(64 / Math.max(...sizeOf(rows)))));
+  c.width = rows[0].length * s; c.height = rows.length * s;
+  const x2 = c.getContext("2d");
+  x2.fillStyle = css("--cell-off"); x2.fillRect(0, 0, c.width, c.height);
+  x2.fillStyle = css("--ink");
+  rows.forEach((r, y) => { for (let x = 0; x < r.length; x++) if (r[x] === "#") x2.fillRect(x * s, y * s, s, s); });
 }
 const fills = GlyphFills.panel($("fills"), {
-  targets: () => (current ? [glyphs[current]] : [GlyphAnim.blank(N, N)]),
+  targets: () => [rowsNow()],
   mask: () => ed.mask,
   apply: ([rows]) => set(rows),
   thumb,
 });
+const sizeBox = GlyphTools.sizePicker($("size-box"), {
+  presets: [[N, N], ...G.SIZES], value: [N, N], label: "Canvas size", ids: { select: "size", w: "size-w", h: "size-h" },
+  onChange: resizeTo,
+});
 
-const blank = ".".repeat(N);
-const OPS = {
-  up: (r) => [...r.slice(1), blank],
-  down: (r) => [blank, ...r.slice(0, -1)],
-  left: (r) => r.map((row) => row.slice(1) + "."),
-  right: (r) => r.map((row) => "." + row.slice(0, -1)),
-  flipx: (r) => r.map((row) => [...row].reverse().join("")),
-  invert: (r) => r.map((row) => row.replace(/./g, (c) => (c === "#" ? "." : "#"))),
-  clear: () => Array(N).fill(blank),
-  bug: (r) => {            // the badge in the lower right corner, with a dark row and column round it
-    if (!badge) return r;
-    const h = badge.length, w = badge[0].length, top = N - h, left = N - w;
-    return r.map((row, y) => {
-      if (y < top - 1) return row;
-      const keep = row.slice(0, left - 1) + ".";
-      return y === top - 1 ? keep + ".".repeat(w) : keep + badge[y - top];
-    });
-  },
-};
+/** The bug of a bug fix, in the lower right corner, with a dark row and column round it. */
+function addBug(r) {
+  if (!badge) return r;
+  const [W, H] = sizeOf(r), h = badge.length, w = badge[0].length, top = H - h, left = W - w;
+  return r.map((row, y) => {
+    if (y < top - 1) return row;
+    const keep = row.slice(0, left - 1) + ".";
+    return y === top - 1 ? keep + ".".repeat(w) : keep + badge[y - top];
+  });
+}
 document.querySelectorAll("[data-op]").forEach((b) => b.addEventListener("click", () => {
   const op = b.dataset.op;
   if (op === "undo") return undoOnce();
-  if (op === "revert") { set(saved[current]); return; }
-  set(OPS[op](glyphs[current]));
+  if (op === "revert") { if (!canvas) set(saved[current]); return; }
+  set(op === "bug" ? addBug(rowsNow()) : G.OPS[op](rowsNow()));
 }));
-
-/** The animator's URL for this glyph: its id and its pixels as it is now, edits included. */
-function animatorUrl(id, rows) {
-  const px = rows.map((r) => r.match(/.{4}/g)
-    .map((q) => parseInt(q.replace(/#/g, "1").replace(/\./g, "0"), 2).toString(16)).join("")).join("-");
-  return `glyph-animator.html#from=${id}&px=${px}`;
-}
-$("send").addEventListener("click", () => window.open(animatorUrl(current, glyphs[current]), "_blank"));
-
-$("rows").addEventListener("input", () => {
-  const rows = $("rows").value.split(/\r?\n/).map((r) => r.trim()).filter(Boolean);
-  if (rows.length === N && rows.every((r) => /^[.#]{16}$/.test(r))) set(rows);
+$("copy-in").addEventListener("click", () => {
+  if (!canvas || !current || !isGlyphSize(canvas)) return;
+  const rows = canvas;
+  ed.drop();
+  canvas = null; undo = [glyphs[current]]; glyphs[current] = rows;
+  status(`The canvas is now the ${current} glyph. Undo takes it back.`);
+  drawEdit();
 });
+
+/** The animator's URL for this drawing: its name, its pixels as they are now, and its width. */
+function animatorUrl(id, rows) {
+  return `glyph-animator.html#from=${id}&px=${G.rowsToHex(rows)}&w=${rows[0].length}`;
+}
+$("send").addEventListener("click", () => window.open(animatorUrl(canvas ? "canvas" : current, rowsNow()), "_blank"));
+
+/* Rows as text: rows of the canvas's size apply as you type; other sizes go in with Apply rows. */
+function readRows() {
+  const r = G.parseBlocks($("rows").value);
+  return r.error ? { error: r.error } : { rows: r.blocks[0], more: r.blocks.length > 1 };
+}
+$("rows").addEventListener("input", () => {
+  const { rows } = readRows(), [w, h] = sizeOf(rowsNow());
+  if (rows && rows.length === h && rows.every((r) => r.length === w)) set(rows);
+});
+$("rows-apply").addEventListener("click", () => {
+  const { rows, error, more } = readRows();
+  if (error) return status(error);
+  const [w, h] = sizeOf(rowsNow()), { frame, trimmed } = G.fitRows(rows, w, h);
+  set(frame);
+  $("rows").value = frame.join("\n");
+  status(`The rows are in the ${w} x ${h} canvas, at the top left.` + (trimmed ? " Rows larger than the canvas were cut." : "")
+    + (more ? " Only the first block was used." : ""));
+});
+
+/* The unit's format: columns of 32-bit big-endian words, the top row in the most significant bit. */
+$("bin-out").addEventListener("click", () => {
+  const rows = rowsNow(), [w, h] = sizeOf(rows);
+  GlyphTools.download(document, G.encode([rows], w, h), `${canvas ? "canvas" : current}_${w}x${h}.bin`, "application/octet-stream");
+});
+$("hex-out").addEventListener("click", () => {
+  const rows = rowsNow(), [w, h] = sizeOf(rows);
+  $("hex").value = G.toHex(G.encode([rows], w, h), w, h);
+});
+function importFrame(bytes) {
+  const [w, h] = sizeOf(rowsNow()), frames = G.decode(bytes, w, h);
+  set(frames[0]);
+  status(`Imported a ${w} x ${h} frame.` + (frames.length > 1 ? ` The data has ${frames.length} frames: this is frame 1.` : ""));
+}
+$("bin-in").addEventListener("click", async () => {
+  const f = await GlyphTools.pickFile(document, ".bin");
+  try { importFrame(new Uint8Array(await f.arrayBuffer())); } catch (e) { status(e.message); }
+});
+$("hex-in").addEventListener("click", () => { try { importFrame(G.fromHex($("hex").value)); } catch (e) { status(e.message); } });
 
 function load(text) {
   source = text;
@@ -254,13 +351,13 @@ $("open").addEventListener("click", async () => {
     } catch (e) { if (e.name !== "AbortError") status(e.message); }
     return;
   }
-  const input = Object.assign(document.createElement("input"), { type: "file", accept: ".js" });
-  input.onchange = async () => load(await input.files[0].text());
-  input.click();
+  const f = await GlyphTools.pickFile(document, ".js");
+  load(await f.text());
 });
 
 $("save").addEventListener("click", async () => {
   ed.drop();
+  if (!isGlyphSize(rowsNow())) return;
   const text = serialise();
   if (handle) {
     const w = await handle.createWritable();
@@ -268,9 +365,7 @@ $("save").addEventListener("click", async () => {
     await w.close();
     status(`Saved ${handle.name} at ${new Date().toLocaleTimeString()}.`);
   } else {
-    const a = Object.assign(document.createElement("a"), {
-      href: URL.createObjectURL(new Blob([text], { type: "text/javascript" })), download: "glyphs.js" });
-    a.click();
+    GlyphTools.download(document, text, "glyphs.js", "text/javascript");
     status("Downloaded glyphs.js. Put it in site/js/mods/.");
   }
   source = text;
@@ -278,14 +373,19 @@ $("save").addEventListener("click", async () => {
   drawEdit();
 });
 
+drawEdit();
+
 /* Over http the site's own glyphs load as the page opens. From disk the fetch fails and the page waits for Open. */
 fetch("js/mods/glyphs.js", { cache: "no-store" })
   .then((r) => (r.ok ? r.text() : Promise.reject(new Error(r.statusText))))
   .then((text) => {
     if (source) return;                       // a file was opened first
+    // a canvas drawn on before the glyphs arrived stays on screen
+    const keep = canvas && (!isGlyphSize(canvas) || canvas.some((r) => r.includes("#"))) ? canvas : null;
     load(text);
     const n = Object.keys(glyphs).length;
     if (n) status(`${n} glyphs from the site. Save downloads glyphs.js. To save in place, open your copy.`);
+    if (keep) { canvas = keep; drawEdit(); }
   })
   .catch(() => {});
 </script>

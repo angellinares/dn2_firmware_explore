@@ -85,6 +85,7 @@ export function parseArea(blob) {
   if (total > blob.length) {
     throw new ModError(`the appended area: area claims ${total} B, only ${blob.length} present`);
   }
+  if (12 + 12 * count > total) throw new ModError(`the appended area: a directory of ${count} chunks runs past the area`);
   const out = [];
   for (let i = 0; i < count; i++) {
     const cid = ascii(blob, 12 + 12 * i);

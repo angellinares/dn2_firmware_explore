@@ -68,6 +68,7 @@ These pages are on the site. They do not change firmware.
 
 | Tool | What it does |
 |---|---|
+| [Firmware Check](https://angellinares.github.io/dn2_firmware_explore/check.html) | Compares a modified OS 1.11 file with the stock file, and shows a checklist of what changed and where. `dnfw check` prints the same list |
 | [LFO Shape Bench](https://angellinares.github.io/dn2_firmware_explore/bench.html) | Draws every LFO shape on a copy of the 128 x 64 screen, and makes wavetables for `lfowaves` |
 | [Glyph Editor](https://angellinares.github.io/dn2_firmware_explore/glyph-editor.html) | Draws the 16 x 16 glyphs that the site shows beside each mod |
 | [Glyph Animator](https://angellinares.github.io/dn2_firmware_explore/glyph-animator.html) | Draws a glyph as frames that a knob picks from. Morphs one frame into another, and saves a GIF or the firmware's frame format |
@@ -99,6 +100,7 @@ Each command that takes a `.syx` file also takes the `.zip` that Elektron ship.
 | `dnfw extract <image> -o DIR` | write each section out, depacked where it is compressed |
 | `dnfw build <image> -s 3=FILE -o OUT` | rebuild with a replaced section, recomputing every checksum |
 | `dnfw diff <a> <b>` | compare two images section by section |
+| `dnfw check <image> --stock <stock>` | the safety checklist of a modified image against stock, as the site's Firmware Check shows it |
 | `dnfw mods list` / `apply` / `extract` | the mods above: list them, apply them, extract their factory content |
 | `dnfw mods matrix <image>` | try every pair of mods and report which combine |
 | `dnfw patch list` / `apply` | declarative single patches with stock-byte guards |

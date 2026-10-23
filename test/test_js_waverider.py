@@ -74,16 +74,10 @@ def test_the_refusal_is_worded_the_same(run):
     assert run["js"]["waverider_twice"] == run["python"]["waverider_twice"]
 
 
-def test_the_transients_page_refuses_a_waverider_image(run):
-    """The CLI refuses the pair by extents (Waverider claims all of section 7); the
-    browser chains pages, so the transients page has to refuse it itself."""
-    assert "carries Waverider" in (run["js"]["transients_after"] or ""), run["js"]
-
-
-def test_the_transients_page_knows_where_waverider_loads():
-    from dnfw.mods import waverider
-    js = (ROOT / "site/js/mods/transients.js").read_text(encoding="utf-8")
-    assert f"WAVERIDER_DRIVE_LOAD = 0x{waverider.SPEC['drive']['load']:08x};" in js
+def test_the_transients_page_applies_to_a_waverider_image(run):
+    """Waverider keeps the transient bank as stock has it, so the transients page applies to a
+    Waverider image (2026-10-23; before, it refused it)."""
+    assert run["js"]["transients_after"] is None, run["js"]
 
 
 def test_the_browser_data_is_current(fw):

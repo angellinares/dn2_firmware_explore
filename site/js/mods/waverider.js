@@ -8,7 +8,8 @@
  *   add two CODE chunks to the platform's area (the SYN pages, and the +Drive chunk), the
  *   group getter's displaced copy, the slot lookup's handler on the hook bus
  *   (`ev_param_slot`) and one machine on the bus's machine count.
- * - **The DSP boot stream (7):** only stock 1.11's section 7 is accepted (its sha256), so
+ * - **The DSP boot stream (7):** only stock 1.11's section 7 is accepted (its sha256), or stock
+ *   with its transient bank replaced (the transients mod; the bank's bytes are kept), so
  *   the result is fixed: our blocks spliced in before stock's final block, then a few runs
  *   of bytes written over stock code.
  *
@@ -63,10 +64,17 @@ function mainOs(original) {
 
 async function section7(stock) {
   const d = CODE.dsp;
-  const digest = toHex(new Uint8Array(await crypto.subtle.digest("SHA-256", stock)));
+  const sha = async (b) => toHex(new Uint8Array(await crypto.subtle.digest("SHA-256", b)));
+  const digest = await sha(stock);
   if (digest !== d.stock_sha256) {
-    throw new ModError(`the DSP boot stream: section 7 sha256 ${digest.slice(0, 12)}... is not `
-      + `stock DN2 1.11's (${d.stock_sha256.slice(0, 12)}...)`);
+    // Stock but for the FM drum transient bank (the transients mod): none of our blocks or
+    // patches is in it, so its bytes are carried through (dnfw.waverider.dsp._check_stock).
+    const masked = stock.slice();
+    for (const [at, n] of d.bank_spans) masked.fill(0, at, at + n);
+    if (stock.length !== d.stock_length || await sha(masked) !== d.stock_sha256_no_bank) {
+      throw new ModError(`the DSP boot stream: section 7 sha256 ${digest.slice(0, 12)}... is not `
+        + `stock DN2 1.11's (${d.stock_sha256.slice(0, 12)}...), nor stock with its transient bank replaced`);
+    }
   }
   const insert = hex(d.insert);
   const out = new Uint8Array(stock.length + insert.length);

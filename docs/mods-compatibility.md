@@ -168,9 +168,9 @@ with the Rust boot gate (`scripts/boot_gate_pairs.py`).
 | `moddest` | yes | yes | yes | yes | yes | yes | order | yes | yes | yes | - | yes | yes | yes | yes | yes |
 | `reloadconfirm` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | yes |
 | `songguard` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes |
-| `transients` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | **NO** |
+| `transients` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes |
 | `usbprobe` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes |
-| `waverider` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | **NO** | yes | - |
+| `waverider` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - |
 
 - **arpmodes + arpplocks: yes**: disjoint bytes. *Note:* emulator, 2026-09-26: arpplocks' MODE lock takes its ceiling from setMode's clamp (0x4004bf01), which arpmodes widens to 6. Turning MODE with every step held locks DOWN CYCL SHUF RAND RAND RAND with both, and DOWN CYCL CYCL ... with arpplocks alone (scripts/emu_arp_modes.py). A locked SHUF or RAND playing from a trig was not run.
 - **arpmodes + arpscale: yes**: disjoint bytes. *Note:* emulator, 2026-10-13, one build with arpscale, arpmodes and reloadconfirm: four of scripts/emu_arpscale.py's runs pass as with arpscale alone (C major and a per-track Pentatonic Minor from a trig, the toggle off equal to stock, C major held live). arpmodes enters the arp step's tail at 0x4002a376, before arpscale's hook at 0x4002a390, so SHUF and RAND offsets should move by degrees too; not run.
@@ -181,7 +181,6 @@ with the Rust boot gate (`scripts/boot_gate_pairs.py`).
 - **layermidi + midiarp: NO**: refused by hand: they fight over one feature (see the note). *Note:* refused by hand, not by bytes (both run from the platform, at 0x467d8000 and 0x467d0000): both turn layered copies on MIDI tracks into MIDI notes. midiarp's hook on the voice trigger (0x400268f8) used to play every layered copy on a MIDI track, from the inline note fields a sequencer trig never fills (random notes and lengths on the bench, 2026-10-01). Since 2026-10-03 (#179) it plays a copy only when its own track's arp is on and playing it. Checked in the emulator with the refusal bypassed (the maintainer, 2026-10-03, on emu_midiarp_layered.py's rig): a layered copy that is an arp step, on a MIDI track with its arp on, is sent twice -- midiarp sends the arp's note and layermidi sends it again; an arp step that is not a copy is sent once; with the arp off, or the arp without layering, the pair behaves. So the one clash is layering onto a MIDI track whose arp is on, and the pair stays refused until layermidi leaves those copies to midiarp.
 - **lfo4 + lfowaves: order**: lfowaves refuses after lfo4: the parameter table has been moved (expected 53 site(s) holding 0x401f7f94 (table - 60 + 8), found 0); lfo4 does that, and lfowaves edits records in the stock table, which nothing reads once it has moved: apply lfowaves first, then lfo4.
 - **lfo4 + moddest: order**: moddest refuses after lfo4: found 2 candidate parameter tables, expected 1; this image's layout is not the one this mod was measured against. *Note:* measured: with moddest applied first, all 13 masks it opens are in lfo4's relocated table (test/test_lfo4_mod.py).
-- **transients + waverider: NO**: transients and waverider both write section 7 0x000795d4..0x00084f24 (47,440 bytes).
 <!-- /dnfw:matrix -->
 
 ## Boot from reset, per pair
@@ -230,5 +229,6 @@ the init, so only pairs that include a loader mod are booted; the rest say why t
 - `moddest` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
 - `reloadconfirm` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
 - `songguard` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `transients` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-23)
 - `usbprobe` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
 <!-- /dnfw:boots -->

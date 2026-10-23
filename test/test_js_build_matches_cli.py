@@ -33,6 +33,8 @@ ORDERS = [
     ["fxmod", "waverider"], ["waverider", "fxmod"], ["lfo4", "waverider"], ["waverider", "lfo4"],
     ["waverider", "lfolength"], ["fxmod", "waverider", "lfo4"],
     ["lfowaves"], ["lfowaves", "lfo4"], ["lfowaves", "fxmod", "lfo4", "waverider"],
+    # the transients mod, with the samples of _transients (2026-10-23: it combines with Waverider)
+    ["transients"], ["transients", "waverider"], ["waverider", "transients"],
 ]
 NAME = "-".join
 
@@ -46,17 +48,44 @@ def built(tmp_path_factory):
         pytest.skip("node is not on PATH; the website build cannot be checked")
     tmp = tmp_path_factory.mktemp("js_build")
     (tmp / "web").mkdir()
+    hits = _transients(tmp)
     done = subprocess.run([node, str(HARNESS), "--syx", str(_stock_syx(tmp)), "--out", str(tmp / "web"),
+                           "--transients", str(tmp / "hits.bin"),
                            *[a for o in ORDERS for a in ("--order", ",".join(o))]],
                           capture_output=True, text=True, cwd=ROOT)
     assert done.returncode == 0, done.stderr
     for order in ORDERS:
         cli = subprocess.run([sys.executable, "-c", "import sys; from dnfw.cli.main import main; sys.exit(main(sys.argv[1:]))", "mods", "apply",
-                              *[a for m in order for a in ("--mod", m)], str(STOCK_111),
+                              *[a for m in order for a in ("--mod", m)],
+                              *(["--from", str(hits)] if "transients" in order else []), str(STOCK_111),
                               "-o", str(tmp / f"{NAME(order)}_DN2_1.11.syx")],
                              capture_output=True, text=True, cwd=ROOT)
         assert cli.returncode == 0, f"{order}: {cli.stdout[-800:]}{cli.stderr[-800:]}"
     return tmp
+
+
+def _transients(tmp: pathlib.Path) -> pathlib.Path:
+    """Three transients for slots 0..2, as WAVs for the CLI (--from) and as raw entries for the
+    website harness (hits.bin): 4,800 samples of 48 kHz mono int16 each, so neither side
+    resamples, pads or cuts them."""
+    import math
+    import struct
+    import wave
+    folder = tmp / "hits"
+    folder.mkdir()
+    raw = b""
+    for k in range(3):
+        samples = [int(20000 * math.exp(-n / (300 + 200 * k)) * math.sin(n * (0.05 + 0.03 * k)))
+                   for n in range(4800)]
+        data = struct.pack(f"<{len(samples)}h", *samples)
+        with wave.open(str(folder / f"{k:02d}.wav"), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(48000)
+            w.writeframes(data)
+        raw += data
+    (tmp / "hits.bin").write_bytes(raw)
+    return folder
 
 
 def _stock_syx(tmp: pathlib.Path) -> pathlib.Path:

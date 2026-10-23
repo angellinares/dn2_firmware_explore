@@ -124,21 +124,6 @@ export function extents(firmware) {
     }));
 }
 
-// Waverider's +Drive CODE chunk loads here (`waverider-code.js`, CODE.drive.load). The CLI
-// refuses the pair because Waverider claims the whole of section 7; a page has to refuse
-// it itself. Kept as a number so this page does not load Waverider's data.
-// test/test_js_waverider.py checks it against the mod.
-export const WAVERIDER_DRIVE_LOAD = 0x467f0000;
-
-function hasWaverider(firmware) {
-  const main = firmware.container.find(3)?.unpack();
-  if (!main) return false;
-  let chunks;
-  try { [, chunks] = platform.split(main); } catch { return false; }
-  return chunks.some(([kind, data]) => kind === platform.CODE
-    && platform.unpackCode(data).load === WAVERIDER_DRIVE_LOAD);
-}
-
 /**
  * Replace entries with `entries` -- a sparse Map of slot index -> Uint8Array of
  * `ENTRY_BYTES`. Slots absent from the map keep their factory bytes.
@@ -152,10 +137,6 @@ function hasWaverider(firmware) {
 export function apply(firmware, entries) {
   const section = firmware.container.find(SECTION);
   if (section === null) throw new Error(`image has no section ${SECTION}`);
-  if (hasWaverider(firmware)) {
-    throw new Error("this image carries Waverider, which rebuilds the DSP boot stream; "
-      + "the two are not combined: start from an image without Waverider");
-  }
   const original = section.unpack() ?? section.rawPayload;
   const content = original.slice();       // a copy: the loaded image stays clean
 

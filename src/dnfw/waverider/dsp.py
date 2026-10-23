@@ -57,6 +57,13 @@ from . import formant, harmonics, live, mip, reduce, table3, testtable
 from . import render as reference
 
 STOCK_SHA256 = "336e340aa0cdcd34e314cfa44849f709a3134f6bd4cd57dfc7e15702c83115e2"
+# The FM drum transient bank (`dnfw.mods.transients`): 34 entries of 4,800 int16 samples,
+# loaded at DDR 0x8045c380. It is the one part of section 7 that another mod may have
+# replaced: none of Waverider's blocks or edits is in it, so a section 7 that is stock but
+# for the bank is taken, and its bank is carried through. STOCK_SHA256_NO_BANK is stock's
+# section 7 with the bank's file bytes zeroed (test_waverider_dsp checks both constants).
+TRANSIENT_BANK = (0x8045C380, 34 * 4800 * 2)
+STOCK_SHA256_NO_BANK = "a810d0778c33a526826233d016d3c3fc330a522f5ab6722d0a33094e6c1f38f3"
 LOAD_ALIAS = 0x28000000          # boot-stream load address = LOAD_ALIAS + DM byte address
 CODE = pathlib.Path(__file__).with_name("sharc_code.json")
 
@@ -555,11 +562,36 @@ def idle_spans() -> list[tuple[str, int, bytes]]:
             ("idle_load.asm (wr_idle)", dm_to_load(IDLE_DM), code + bytes(end - IDLE_DM - len(code)))]
 
 
+def bank_spans(stream: bytes) -> list[tuple[int, int]]:
+    """The transient bank's file pieces in STREAM (fill pieces have none)."""
+    return [(at, n) for at, n in bootstream.spans(stream, *TRANSIENT_BANK) if at is not None]
+
+
 def _check_stock(stock: bytes) -> None:
+    """Stock DN2 1.11's section 7, or stock with its transient bank replaced."""
     digest = hashlib.sha256(stock).hexdigest()
-    if digest != STOCK_SHA256:
+    if digest == STOCK_SHA256:
+        return
+    masked = bytearray(stock)
+    try:
+        for at, n in bank_spans(stock):
+            masked[at:at + n] = bytes(n)
+    except ValueError:                                 # not a boot stream the bank maps into
+        masked = None
+    if masked is None or hashlib.sha256(bytes(masked)).hexdigest() != STOCK_SHA256_NO_BANK:
         raise DspError(f"section 7 sha256 {digest[:12]}... is not stock DN2 1.11's "
-                       f"({STOCK_SHA256[:12]}...)")
+                       f"({STOCK_SHA256[:12]}...), nor stock with its transient bank replaced")
+
+
+def site_loads() -> list[tuple[str, int, int]]:
+    """(what, load address, length) of each run `section7` writes over stock code, before the
+    final block. `mods.waverider.extents` declares them."""
+    return [("the entry jump", sw_to_load(ENTRY_SW), len(ENTRY_STOCK)),
+            ("the machine lookup's type 5", dm_to_load(LOOKUP_DM + 20), 4),
+            ("the idle task's jump", l2_sw_to_load(IDLE_SITE_SW), len(IDLE_SITE_STOCK)),
+            ("the entry-mark jump", sw_to_load(CALL_SITE_SW), len(CALL_SITE_STOCK)),
+            ("the command table's base", sw_to_load(TABLE_SITE_SW), 6),
+            ("the command bound", sw_to_load(BOUND_SITE_SW), 6)]
 
 
 def _check_idle_site(stock: bytes, obj: dict) -> None:
@@ -609,11 +641,9 @@ def section7_idle_only(stock: bytes) -> bytes:
 
 
 def section7(stock: bytes) -> bytes:
-    """DN2 1.11's section 7 -> Waverider's. Refuses anything else."""
-    digest = hashlib.sha256(stock).hexdigest()
-    if digest != STOCK_SHA256:
-        raise DspError(f"section 7 sha256 {digest[:12]}... is not stock DN2 1.11's "
-                       f"({STOCK_SHA256[:12]}...)")
+    """DN2 1.11's section 7 -> Waverider's. Refuses anything else but stock with its transient
+    bank replaced (`_check_stock`), whose bank it keeps."""
+    _check_stock(stock)
     obj = objects()
     entry = obj["entry_jump"] + NOP16
     if len(entry) != len(ENTRY_STOCK):

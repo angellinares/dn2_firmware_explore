@@ -1,6 +1,10 @@
 // The website's whole build, page after page, for test/test_js_build_matches_cli.py.
 //
 //   node scripts/js_build_check.mjs --syx STOCK.syx --out DIR --order fxmod,waverider [--order ...]
+//                                   [--transients ENTRIES.bin]
+//
+// ENTRIES.bin holds the transients mod's samples: whole entries of 4,800 int16 little-endian
+// samples, for slots 0, 1, ... in order, as the CLI reads them from WAVs with --from.
 //
 // For each order, applies each mod the way its page does (apply, then replacement() and build()
 // for every section it returns, then load() of the result for the next page), and writes the
@@ -20,6 +24,7 @@ import * as lfowaves from "../site/js/mods/lfowaves.js";
 import * as midiarp from "../site/js/mods/midiarp.js";
 import * as moddest from "../site/js/mods/moddest.js";
 import * as reloadconfirm from "../site/js/mods/reloadconfirm.js";
+import * as transients from "../site/js/mods/transients.js";
 import * as waverider from "../site/js/mods/waverider.js";
 
 const MAIN_OS = (mod) => async (f) => new Map([[3, mod.apply(f).content]]);
@@ -34,6 +39,14 @@ const args = process.argv;
 const arg = (n) => args[args.indexOf(`--${n}`) + 1];
 const orders = args.flatMap((a, i) => (a === "--order" ? [args[i + 1].split(",")] : []));
 const stock = await load(new Uint8Array(readFileSync(arg("syx"))));
+if (args.includes("--transients")) {
+  const raw = new Uint8Array(readFileSync(arg("transients")));
+  const entries = new Map();
+  for (let k = 0; k * transients.ENTRY_BYTES < raw.length; k++) {
+    entries.set(k, raw.slice(k * transients.ENTRY_BYTES, (k + 1) * transients.ENTRY_BYTES));
+  }
+  RUN.transients = async (f) => new Map([[7, transients.apply(f, entries).section.unpack()]]);
+}
 
 for (const order of orders) {
   let firmware = stock, bytes = null;

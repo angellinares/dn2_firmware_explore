@@ -13,10 +13,9 @@ new project. Back up the +Drive first, and keep the stock 1.11 firmware file for
 ## Before you start
 
 - **Firmware:** use Digitone II OS 1.11 only.
-- **Combining:** you can combine Waverider with the other mods. There are three exceptions: the LFO
-  modulation of the FX, the fourth LFO and the FM drum transients. The pages refuse these three. You can patch a
-  file that a different mod page made. We examined the combinations in the emulator, not on an
-  instrument.
+- **Combining:** you can combine Waverider with each of the other mods, in either order. You can
+  patch a file that a different mod page made. We examined the combinations in the emulator, not
+  on an instrument.
 - **Try it alone first:** use a file patched with Waverider only. If a problem occurs, we then know
   that the cause is Waverider and not a combination of mods. When you report a problem, tell us
   which mods are in your file.
@@ -154,19 +153,22 @@ p-lock it, but it does not change the sound yet.
 ### The wavetable page
 
 Push PRESET/KIT two times. The left column has three lists: LOAD, MANAGE and POOL. The right
-column shows the pool of this project. IN POOL is the number of tables in the pool. FREE is the
-number of empty slots. +DRIVE is the number of tables on the +Drive. The site's manual has
-screen captures of the page and its lists.
+column shows the pool of this project.
+
+IN POOL is the number of tables in the pool. FREE is the number of empty slots. +DRIVE is the
+number of tables on the +Drive. The site's manual has screen captures of the page and its lists.
 
 - **Move:** push UP or DOWN, or turn LEVEL/DATA. Hold FUNC and push UP or DOWN to move 7 rows.
 - **Open and close:** push YES to open a list. Push NO to go back. Push PRESET/KIT or NO on the
   wavetable page to close it.
-- **Operations:** in a list, push RIGHT. Push UP or DOWN to select an operation, then push YES. An
-  operation applies to the ticked rows. If no row is ticked, it applies to the highlighted row.
+- **Operations:** in a list, push RIGHT. Push UP or DOWN to select an operation. Then push YES.
   Push NO or LEFT to close the operations.
-- **LOAD:** the slots of the pool. Select a slot and push YES. If the last SYN page that you saw is
-  page 2, the table goes to TBL2. If not, it goes to TBL1. RIGHT shows LOAD TO TBL1 and LOAD TO
-  TBL2. On a track that is not a Waverider track, LOAD changes nothing.
+- **Rows:** an operation applies to the ticked rows. If no row is ticked, it applies to the
+  highlighted row.
+- **LOAD:** the slots of the pool. Select a slot. Then push YES. If the last SYN page that you saw is
+  page 2, the table goes to TBL2. If not, it goes to TBL1.
+- **LOAD TO:** in LOAD, RIGHT shows LOAD TO TBL1 and LOAD TO TBL2. On a track that is not a
+  Waverider track, LOAD changes nothing.
 - **MANAGE:** all the tables on the +Drive. A + shows a table that is in the pool. Push YES to tick
   a table. ADD TO POOL puts the ticked tables in empty slots. DELETE removes the ticked tables from
   the +Drive, after you confirm with YES.
@@ -207,6 +209,7 @@ Before you start, check these three conditions in DNX:
 
 - You use Chrome or Edge. DNX needs one of them to save files into a folder.
 - A DNX folder is set. To set it, click **settings** in the tool row, then **DNX folder**, then
+<!-- ste-lint ignore -->
   **Choose…**. DNX saves one file for each table there. Without a folder, DNX does not start the
   erase.
 - **WRITE** is on, in the tool row at the top.
@@ -214,8 +217,10 @@ Before you start, check these three conditions in DNX:
 Then:
 
 1. In DNX, click **settings** in the tool row. Back up and Erase work from every tool except the probe.
+<!-- ste-lint ignore -->
 2. Under **Back up the +Drive**, click **Back up…**. This backup holds your projects, sounds and
    kits. It does not hold the wavetables.
+<!-- ste-lint ignore -->
 3. Under **Erase the wavetable region**, click **Erase…**.
 4. DNX asks "Save a copy of N wavetable(s) first?". Click **Save the copies**. On an empty store,
    the button reads **Carry on**.

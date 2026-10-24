@@ -15,12 +15,15 @@
   const USES = {                                   // the settings each fill reads
     bayer: ["density", "offset"], checker: ["size", "offset"], hatch: ["angle", "spacing", "offset"],
     crosshatch: ["angle", "spacing", "offset"], halftone: ["density", "cell", "offset"], noise: ["density", "seed", "offset"],
-    blue: ["density", "offset"], linear: ["angle", "invert"], radial: ["invert"],
+    blue: ["density", "offset"], linear: ["angle", "start", "end", "curve", "invert"], radial: ["start", "end", "curve", "invert"],
   };
-  const EASED = ["density", "angle", "offset"];   // the settings that can change across frames
+  const EASED = ["density", "angle", "offset", "start", "end"];   // the settings that can change across frames
+  const PERCENT = ["density", "start", "end"];     // 0..1 here, 0..100 % on the page
   const LIMITS = { density: [0, 1, 0.05], angle: [-180, 180, 15], spacing: [2, 16, 1], cell: [2, 16, 1],
-    size: [1, 16, 1], seed: [1, 9999, 1], offset: [-64, 64, 1] };
-  const LABELS = { density: "Density", angle: "Angle", spacing: "Spacing", cell: "Cell", size: "Size", seed: "Seed", offset: "Offset", invert: "Lit to dark" };
+    size: [1, 16, 1], seed: [1, 9999, 1], offset: [-64, 64, 1], start: [0, 1, 0.05], end: [0, 1, 0.05] };
+  const LABELS = { density: "Density", angle: "Angle", spacing: "Spacing", cell: "Cell", size: "Size", seed: "Seed", offset: "Offset", invert: "Lit to dark",
+    start: "Start", end: "End", curve: "Curve" };
+  const curveName = (k) => root.GlyphTools?.CURVE_NAMES?.[k] ?? k;
 
   /** The frames a fill gives: `targets` are rows, one per frame; settings `from`, eased toward `to`. */
   function results(targets, kind, from, mask, { ease = null, to = {} } = {}) {
@@ -35,8 +38,9 @@
    */
   function panel(box, o) {
     const doc = box.ownerDocument;
-    const v = { kind: "bayer", density: 0.5, angle: 45, spacing: 4, cell: 4, size: 1, seed: 1, offset: 0, invert: false };
-    const end = { density: 1, angle: 135, offset: 8 };
+    const v = { kind: "bayer", density: 0.5, angle: 45, spacing: 4, cell: 4, size: 1, seed: 1, offset: 0, invert: false,
+      start: 0, end: 1, curve: "linear" };
+    const last = { density: 1, angle: 135, offset: 8, start: 0, end: 1 };   // the values at the last frame of a range
     let ease = false, curve = "linear";
     const el = (tag, props = {}, ...kids) => { const n = Object.assign(doc.createElement(tag), props); n.append(...kids); return n; };
     const form = el("div", { className: "fill-form" }), range = el("div", { className: "fill-range" });
@@ -51,18 +55,25 @@
         c.onchange = () => { onset(c.checked); refresh(); };
         return el("label", {}, c, " " + LABELS[key]);
       }
+      if (key === "curve") {
+        const sel = el("select", {}, ...Object.keys(root.GlyphAnim.EASE).map((k) => el("option", { value: k, textContent: curveName(k), selected: k === value })));
+        sel.setAttribute("aria-label", "Curve"); sel.dataset.fill = id ?? key;
+        sel.onchange = () => { onset(sel.value); refresh(); };
+        return el("label", {}, LABELS[key] + " ", sel);
+      }
       const [min, max, step] = LIMITS[key];
-      const input = el("input", { type: "number", min, max, step, value: key === "density" ? Math.round(value * 100) : value });
-      if (key === "density") { input.min = 0; input.max = 100; input.step = 5; }
+      const pct = PERCENT.includes(key);
+      const input = el("input", { type: "number", min, max, step, value: pct ? Math.round(value * 100) : value });
+      if (pct) { input.min = 0; input.max = 100; input.step = 5; }
       input.dataset.fill = id ?? key;
       input.oninput = () => {
         let x = +input.value;
         if (!Number.isFinite(x)) return;
-        if (key === "density") x /= 100;
+        if (pct) x /= 100;
         onset(Math.max(min, Math.min(max, x)));
         refresh();
       };
-      return el("label", {}, LABELS[key] + (key === "density" ? " %" : "") + " ", input);
+      return el("label", {}, LABELS[key] + (pct ? " %" : "") + " ", input);
     }
     function build() {
       const kind = el("select", {}, ...KINDS.map(([k, n]) => el("option", { value: k, textContent: n, selected: k === v.kind })));
@@ -78,16 +89,16 @@
       toggle.onchange = () => { ease = toggle.checked; build(); refresh(); };
       const kids = [el("label", {}, toggle, ` Change across the ${n} frames`)];
       if (ease) {
-        const sel = el("select", {}, ...Object.keys(root.GlyphAnim.EASE).map((k) => el("option", { value: k, textContent: k, selected: k === curve })));
+        const sel = el("select", {}, ...Object.keys(root.GlyphAnim.EASE).map((k) => el("option", { value: k, textContent: curveName(k), selected: k === curve })));
         sel.setAttribute("aria-label", "Easing"); sel.dataset.fill = "ease";
         sel.onchange = () => { curve = sel.value; refresh(); };
-        kids.push(sel, ...eased.map((k) => field(k, end[k], (x) => { end[k] = x; }, "end-" + k)));
+        kids.push(sel, ...eased.map((k) => field(k, last[k], (x) => { last[k] = x; }, "end-" + k)));
       }
       range.replaceChildren(el("div", { className: "bar" }, ...kids));
     }
     function compute() {
       const targets = o.targets();
-      return results(targets, v.kind, v, o.mask(), ease && targets.length > 1 ? { ease: curve, to: end } : {});
+      return results(targets, v.kind, v, o.mask(), ease && targets.length > 1 ? { ease: curve, to: last } : {});
     }
     function refresh() {
       const targets = o.targets();
@@ -98,7 +109,7 @@
     }
     apply.onclick = () => o.apply(compute());
     build(); refresh();
-    return { refresh, settings: v, end, get ease() { return ease ? curve : null; } };
+    return { refresh, settings: v, end: last, get ease() { return ease ? curve : null; } };
   }
 
   const api = { KINDS, USES, results, panel };

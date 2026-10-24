@@ -42,7 +42,24 @@ import sys
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-DIR = pathlib.Path(os.environ.get("DNFW_PROGRESS_DIR", ROOT / "out" / "progress"))
+
+
+def _main_checkout(root: pathlib.Path) -> pathlib.Path:
+    """The main checkout's folder: ROOT itself, or for a git worktree (whose .git is a file
+    naming its git dir) the folder that holds the shared .git. The pane reads the main
+    checkout's out/progress, so a job run from a worktree must write there too."""
+    git = root / ".git"
+    try:
+        if git.is_file():
+            gitdir = pathlib.Path(git.read_text(encoding="utf-8").split("gitdir:", 1)[1].strip())
+            common = gitdir / (gitdir / "commondir").read_text(encoding="utf-8").strip()
+            return common.resolve().parent
+    except (OSError, IndexError):
+        pass
+    return root
+
+
+DIR = pathlib.Path(os.environ.get("DNFW_PROGRESS_DIR", _main_checkout(ROOT) / "out" / "progress"))
 PARENT_ENV = "DNFW_PROGRESS_PARENT"
 MIN_INTERVAL = 0.25                     # seconds between writes of one job
 _counter = itertools.count()

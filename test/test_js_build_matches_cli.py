@@ -15,12 +15,15 @@ the fill that `dnfw mods apply` runs after the mods. The per-mod tests compared 
 payloads, before that step, so nothing saw it. A new mod or a new build step goes in ORDERS.
 """
 
+import os
 import pathlib
 import shutil
 import subprocess
 import sys
 
 import pytest
+
+from dnfw.pytest_progress import stage
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 HARNESS = ROOT / "scripts" / "js_build_check.mjs"
@@ -51,19 +54,26 @@ def built(tmp_path_factory):
     tmp = tmp_path_factory.mktemp("js_build")
     (tmp / "web").mkdir()
     hits = _transients(tmp)
-    done = subprocess.run([node, str(HARNESS), "--syx", str(_stock_syx(tmp)), "--out", str(tmp / "web"),
-                           "--transients", str(tmp / "hits.bin"),
-                           *[a for o in ORDERS for a in ("--order", ",".join(o))]],
-                          capture_output=True, text=True, cwd=ROOT)
+    with stage("website builds", total=1) as web:
+        done = subprocess.run([node, str(HARNESS), "--syx", str(_stock_syx(tmp)), "--out", str(tmp / "web"),
+                               "--transients", str(tmp / "hits.bin"),
+                               *[a for o in ORDERS for a in ("--order", ",".join(o))]],
+                              capture_output=True, text=True, cwd=ROOT)
+        web.advance(detail=f"{len(ORDERS)} orders")
     assert done.returncode == 0, done.stderr
-    for order in ORDERS:
-        cli = subprocess.run([sys.executable, "-c", "import sys; from dnfw.cli.main import main; sys.exit(main(sys.argv[1:]))", "mods", "apply",
-                              *[a for m in order for a in ("--mod", m.removesuffix("-equal"))],
-                              *(["--from", str(hits)] if any(m.startswith("transients") for m in order) else []),
-                              *(["--equal-slots"] if "transients-equal" in order else []), str(STOCK_111),
-                              "-o", str(tmp / f"{NAME(order)}_DN2_1.11.syx")],
-                             capture_output=True, text=True, cwd=ROOT)
-        assert cli.returncode == 0, f"{order}: {cli.stdout[-800:]}{cli.stderr[-800:]}"
+    # This checkout's dnfw, not an installed one: in a worktree, the editable install is the main checkout's.
+    env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
+    with stage("CLI builds", total=len(ORDERS)) as cli_stage:
+        for order in ORDERS:
+            cli_stage.update(step=NAME(order))
+            cli = subprocess.run([sys.executable, "-c", "import sys; from dnfw.cli.main import main; sys.exit(main(sys.argv[1:]))", "mods", "apply",
+                                  *[a for m in order for a in ("--mod", m.removesuffix("-equal"))],
+                                  *(["--from", str(hits)] if any(m.startswith("transients") for m in order) else []),
+                                  *(["--equal-slots"] if "transients-equal" in order else []), str(STOCK_111),
+                                  "-o", str(tmp / f"{NAME(order)}_DN2_1.11.syx")],
+                                 capture_output=True, text=True, cwd=ROOT, env=env)
+            assert cli.returncode == 0, f"{order}: {cli.stdout[-800:]}{cli.stderr[-800:]}"
+            cli_stage.advance()
     return tmp
 
 

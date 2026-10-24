@@ -66,13 +66,7 @@
   </div>
   <div class="bar">
     <input id="new-name" type="text" placeholder="name" size="10" aria-label="Name of the new animation">
-    <select id="preset" aria-label="Frame size">
-      <option value="17x17">17 x 17</option><option value="19x17">19 x 17</option>
-      <option value="11x11">11 x 11</option><option value="128x64">128 x 64</option>
-      <option value="custom">Other size</option>
-    </select>
-    <label>W <input id="new-w" type="number" min="1" max="128" value="17"></label>
-    <label>H <input id="new-h" type="number" min="1" max="64" value="17"></label>
+    <span id="size-box" class="size-box"></span>
     <label>Frames <input id="new-n" type="number" min="1" max="128" value="13"></label>
     <button id="create">New</button>
   </div>
@@ -559,12 +553,10 @@ $("play").onclick = () => {
 
 /* ---- animations ---- */
 
-$("preset").onchange = () => {
-  const v = $("preset").value;
-  if (v !== "custom") { const [w, h] = v.split("x"); $("new-w").value = w; $("new-h").value = h; }
-};
+// the frame size of a new animation: the picker the still editor uses too
+const newSize = GlyphTools.sizePicker($("size-box"), { ids: { select: "preset", w: "new-w", h: "new-h" } });
 $("create").onclick = () => {
-  const n = $("new-name").value.trim(), w = +$("new-w").value, h = +$("new-h").value, count = +$("new-n").value;
+  const n = $("new-name").value.trim(), [w, h] = newSize.size, count = +$("new-n").value;
   if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(n)) return status("Give a name of letters, digits and _.");
   if (anims[n]) return status(`There is already an animation called ${n}.`);
   if (!(w >= 1 && w <= G.LIMITS.width && h >= 1 && h <= G.LIMITS.height)) return status("The size is 1 to 128 wide and 1 to 64 high.");
@@ -599,18 +591,8 @@ function loadText(text, label = "the file") {
   changed();
 }
 
-function download(data, filename, type) {
-  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([data], { type })), download: filename });
-  a.click();
-}
-
-function pickFile(accept) {
-  return new Promise((done) => {
-    const input = Object.assign(document.createElement("input"), { type: "file", accept });
-    input.onchange = () => done(input.files[0]);
-    input.click();
-  });
-}
+const download = (data, filename, type) => GlyphTools.download(document, data, filename, type);
+const pickFile = (accept) => GlyphTools.pickFile(document, accept);
 
 $("open").onclick = async () => {
   try {
@@ -770,12 +752,14 @@ $("still-open").onclick = async () => {
   } catch (e) { if (e.name !== "AbortError") $("still-status").textContent = e.message; }
 };
 
-/** glyph-animator.html#from=ID&px=HEX: the still editor sends a glyph, with its pixels. */
+/** glyph-animator.html#from=ID&px=HEX&w=W: the still editor sends a glyph, with its pixels
+ *  and its width (16 when the address has none). */
 function fromHash() {
   const q = new URLSearchParams(location.hash.slice(1));
   const id = q.get("from");
   if (!id) return;
-  const rows = (q.get("px") && G.hexToRows(q.get("px"), 16)) || still[id];
+  const width = +(q.get("w") || G.GLYPH_SIZE);
+  const rows = (q.get("px") && G.sizeOk(width, 1) && G.hexToRows(q.get("px"), width)) || still[id];
   if (!rows) return status(`The glyph ${id} is not in glyphs.js. Open the file to load it.`);
   stillId = still[id] ? id : stillId;
   newFromGlyph(id, rows);

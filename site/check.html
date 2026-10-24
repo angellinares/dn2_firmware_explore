@@ -1,0 +1,151 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Firmware Check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<meta name="description" content="Compare a modified Digitone II firmware file with the stock file, and see a checklist of what changed and where.">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/tool.css">
+<style>
+  .pickers { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; }
+  .pickers .drop { padding: 1.4rem 1rem; }
+  .pickers .name { font-family: var(--mono); font-size: .82rem; margin-top: .6rem; min-height: 1.2em; overflow-wrap: anywhere; }
+  .label {
+    font-family: var(--mono); font-size: .7rem; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-soft); margin: 0 0 .6rem;
+  }
+
+  .summary { font-family: var(--mono); font-size: .9rem; margin: 1.2rem 0 .4rem; }
+  .list { display: grid; gap: .5rem; margin-top: .8rem; }
+  .row {
+    display: grid; grid-template-columns: 4.2rem minmax(0, 1fr); gap: .3rem .9rem;
+    align-items: baseline; padding: .7rem .9rem; border: 1px solid var(--rule);
+    border-radius: 8px; background: var(--panel);
+  }
+  .chip {
+    font-family: var(--mono); font-size: .7rem; font-weight: 500; letter-spacing: .1em;
+    text-align: center; border: 1px solid currentColor; border-radius: 3px; padding: .1rem 0;
+  }
+  .row .title { font-weight: 600; }
+  .row .detail {
+    grid-column: 2; color: var(--ink-soft); font-size: .86rem;
+    font-family: var(--mono); overflow-wrap: anywhere;
+  }
+  .row[data-status="pass"] .chip { color: var(--ok); }
+  .row[data-status="warn"] .chip { color: var(--warn); }
+  .row[data-status="warn"] { border-color: var(--warn); }
+  .row[data-status="fail"] .chip { color: #c33; }
+  .row[data-status="fail"] { border-color: #c33; }
+  .row[data-status="info"] .chip, .row[data-status="skip"] .chip { color: var(--ink-soft); }
+  @media (max-width: 480px) { .row { grid-template-columns: 1fr; } .row .detail { grid-column: 1; } .chip { justify-self: start; padding: .1rem .5rem; } }
+
+  .not-checked li { margin: .2rem 0; }
+  .explain dt { font-weight: 600; margin-top: .7rem; }
+  .explain dd { margin: .2rem 0 0; color: var(--ink-soft); }
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow"><a href="index.html">Digitone II Mods</a> / firmware check</p>
+  <h1>Firmware Check</h1>
+  <p class="lede">
+    This page compares a modified Digitone&nbsp;II firmware file with Elektron's stock file. It
+    shows a checklist of what changed and where. Use it before you flash a file, and for a file
+    that you got from somebody else.
+  </p>
+</header>
+
+<div class="note">
+  <p><strong>A checklist is not a guarantee.</strong> The page reads the two files. It does not run
+  the new code. A file with no warnings can still have a fault. The list at the end tells you
+  what the page does not check.</p>
+  <p><strong>Supported:</strong> Digitone&nbsp;II OS 1.11 only. Your browser reads both files.
+  Nothing is uploaded.</p>
+</div>
+
+<section class="step">
+  <div class="step-head"><span class="step-num">1</span><h2>The two files</h2></div>
+  <p>Choose the modified <code>.syx</code> file and the stock OS 1.11 <code>.syx</code> file from
+  Elektron's site. The check starts when you have both.</p>
+  <div class="pickers">
+    <div class="drop" id="dropPatched">
+      <p class="label">Modified file</p>
+      <p><label class="filebtn" for="patched">Choose a .syx file</label>
+        <input type="file" id="patched" accept=".syx,.SYX" hidden></p>
+      <p class="hint">or drag it here</p>
+      <p class="name" id="patchedName"></p>
+    </div>
+    <div class="drop" id="dropStock">
+      <p class="label">Stock file, OS 1.11</p>
+      <p><label class="filebtn" for="stock">Choose a .syx file</label>
+        <input type="file" id="stock" accept=".syx,.SYX" hidden></p>
+      <p class="hint">or drag it here</p>
+      <p class="name" id="stockName"></p>
+    </div>
+  </div>
+</section>
+
+<section class="step hidden" id="results">
+  <div class="step-head"><span class="step-num">2</span><h2>What the check found</h2></div>
+  <p class="summary" id="summary" aria-live="polite"></p>
+  <div class="list" id="list"></div>
+
+  <h3>Not checked</h3>
+  <ul class="not-checked" id="notChecked"></ul>
+</section>
+
+<section class="step">
+  <div class="step-head"><span class="step-num">?</span><h2>What each line means</h2></div>
+  <dl class="explain">
+    <dt>The file is intact</dt>
+    <dd>Every checksum and the signature of the modified file are correct. The instrument checks
+    the same fields before it writes anything. If this line fails, the page stops.</dd>
+    <dt>The stock file is a known Digitone II OS</dt>
+    <dd>Each part of the stock file matches Elektron's OS 1.11 exactly. The page keeps only
+    fingerprints of those parts, not the parts themselves.</dd>
+    <dt>The same OS version and sections</dt>
+    <dd>The modified file has the stock file's version, parts and load addresses.</dd>
+    <dt>The bootstrap and the other recovery sections are stock</dt>
+    <dd>Every part except the main OS and the DSP image is identical to stock. The bootstrap holds
+    the Early Start-up Menu, which can always flash the stock OS again. If this line fails, do not
+    flash the file.</dd>
+    <dt>Changes inside stock's MAIN OS</dt>
+    <dd>The places where the stock main OS changed, by address. A mod must change a few stock
+    bytes to call its own code.</dd>
+    <dt>The added code is a DNFW area</dt>
+    <dd>Code added after the end of the stock main OS uses the format that this site's mods use,
+    and the loader that copies it is in place.</dd>
+    <dt>Run-time RAM stays out of stock's</dt>
+    <dd>At start-up, the loader copies each added part to RAM. Every part must stay out of the RAM
+    that the stock OS uses and out of the stack. No two parts can overlap.</dd>
+    <dt>No new reference to stock's DMA buffers</dt>
+    <dd>The stock OS keeps its buffers for the +Drive and USB in one area of RAM. New code that
+    writes there damages saved projects. New code can also read there on purpose, so this line
+    warns and does not fail.</dd>
+    <dt>Changes in the DSP image</dt>
+    <dd>The places where the sound processor's code changed. The page does not check the DSP's
+    memory.</dd>
+    <dt>The /modinfo record checks out</dt>
+    <dd>A file with Waverider has a record that names its mods. Its fingerprint must match its
+    bytes and the main OS.</dd>
+    <dt>The record's mods rebuild this image exactly</dt>
+    <dd>The page applies the record's mods to your stock file. Then it compares the result with
+    the modified file. A pass shows that this site's patcher made the file, with no other change.</dd>
+  </dl>
+</section>
+
+<footer>
+  <p>
+    Part of <a href="https://github.com/angellinares/dn2_firmware_explore">dn2_firmware_explore</a>,
+    AGPL-3.0-or-later. Not affiliated with or endorsed by Elektron.
+  </p>
+  <p>Site build <span data-site-build>web-local</span>. Quote it when you report a problem with a check.</p>
+  <script type="module" src="js/build.js"></script>
+</footer>
+
+</div>
+
+<script type="module" src="js/app/check-page.js"></script>

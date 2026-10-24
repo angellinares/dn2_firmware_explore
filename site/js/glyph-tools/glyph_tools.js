@@ -41,6 +41,11 @@
     ["Ctrl+Z", "Undo"], ["?", "This help"],
   ];
 
+  /** The names of the easing curves in the lists. */
+  const CURVE_NAMES = { linear: "Linear", "quad-in": "Quadratic in", "quad-out": "Quadratic out", "quad-inout": "Quadratic in-out",
+    "cubic-in": "Cubic in", "cubic-out": "Cubic out", "cubic-inout": "Cubic in-out",
+    "sine-in": "Sine in", "sine-out": "Sine out", "sine-inout": "Sine in-out" };
+
   let clipboard = null;                       // {rows, mask}: shared by every frame on the page
 
   /* ---- a drag that draws (pencil and shapes) ---- */
@@ -110,7 +115,7 @@
     const G = root.GlyphAnim, I = root.GlyphIcons, doc = o.canvas.ownerDocument, win = doc.defaultView;
     const state = { tool: "pencil", erase: false, filled: false, connect: 4, mode: "replace",
       pattern: { kind: "bayer", density: 0.5, angle: 45, spacing: 4, cell: 4, size: 1, seed: 1 },
-      gradient: { kind: "linear", invert: false } };
+      gradient: { kind: "linear", invert: false, start: 0, end: 1, curve: "linear" } };
     let mask = null, maskUndo = [], float = null, gesture = null, lastCell = null, moved = false;
     const size = () => { const f = o.frame(); return [f[0].length, f.length]; };
     const css = (v) => win.getComputedStyle(doc.documentElement).getPropertyValue(v).trim();
@@ -266,10 +271,13 @@
       }
       try { o.canvas.setPointerCapture(e.pointerId); } catch { /* a pointer that is not active */ }
     });
+    /** The gradient of a drag: the press point is Start % and the point under the pointer End %
+     *  (radial: the press point is the centre). A click with no drag fills the whole area. */
     function showGradient(p) {
-      const g = gesture, dx = p[0] - g.from[0], dy = p[1] - g.from[1];
-      const angle = dx || dy ? (Math.atan2(dy, dx) * 180) / Math.PI : 0;
-      o.set(G.fill(g.start, state.gradient.kind, { angle, invert: state.gradient.invert }, mask));
+      const g = gesture, gr = state.gradient, dragged = p[0] !== g.from[0] || p[1] !== g.from[1];
+      const params = { angle: 0, invert: gr.invert, start: gr.start, end: gr.end, curve: gr.curve };
+      if (dragged) { params.from = g.from; params.to = p; }
+      o.set(G.fill(g.start, gr.kind, params, mask));
     }
     function pointerMove(p, shift) {
       const g = gesture, [w, h] = size();
@@ -396,8 +404,9 @@
       input.oninput = () => { const v = +input.value; if (Number.isFinite(v)) set(Math.max(min, Math.min(max, v))); };
       return el("label", {}, label + " ", input);
     }
-    function range(label, value, set) {
+    function range(label, value, set, key) {
       const input = el("input", { type: "range", min: 0, max: 100, value: Math.round(value * 100) });
+      if (key) input.dataset.ctx = key;
       const out = el("output", { textContent: `${input.value}%` });
       input.oninput = () => { set(+input.value / 100); out.textContent = `${input.value}%`; };
       return el("label", {}, label + " ", input, out);
@@ -447,7 +456,15 @@
         case "gradient":
           parts.push(segmented("Gradient", [["linear", "Linear"], ["radial", "Radial"]], state.gradient.kind, (v) => { state.gradient.kind = v; }));
           parts.push(segmented("Direction", [[false, "Dark to lit"], [true, "Lit to dark"]], state.gradient.invert, (v) => { state.gradient.invert = v; }));
-          parts.push(el("span", { className: "hint", textContent: "Drag to set the direction. It fills the selection." }));
+          parts.push(range("Start", state.gradient.start, (v) => { state.gradient.start = v; }, "start"));
+          parts.push(range("End", state.gradient.end, (v) => { state.gradient.end = v; }, "end"));
+          {
+            const curve = el("select", {}, ...Object.keys(G.EASE).map((k) => el("option", { value: k, textContent: CURVE_NAMES[k] ?? k, selected: k === state.gradient.curve })));
+            curve.setAttribute("aria-label", "Curve"); curve.dataset.ctx = "curve";
+            curve.onchange = () => { state.gradient.curve = curve.value; };
+            parts.push(el("label", {}, "Curve ", curve));
+          }
+          parts.push(el("span", { className: "hint", textContent: "Drag from the Start point to the End point. Past them the ends stay as they are. A click fills all of the selection." }));
           break;
         default: break;
       }
@@ -477,7 +494,64 @@
     };
   }
 
-  const api = { TOOLS, TOGGLES, SHORTCUTS, PATTERNS, drag, fitCell, contentWidth, maskEdges, surface,
+  /**
+   * A frame size picker: a list of sizes and "Other size", which shows W and H fields.
+   * `o`: presets ([w, h] pairs; GlyphAnim.SIZES by default), value [w, h], ids {select, w, h}
+   * for the three controls, label, onChange(w, h) when a valid size is picked.
+   * Returns { get size(), set(w, h) }. The fields keep the size of a preset too, so a page can
+   * read them.
+   */
+  function sizePicker(box, o = {}) {
+    const G = root.GlyphAnim, doc = box.ownerDocument;
+    const presets = o.presets ?? G.SIZES, ids = o.ids ?? {};
+    const el = (tag, props = {}, ...kids) => { const n = Object.assign(doc.createElement(tag), props); n.append(...kids); return n; };
+    const key = ([w, h]) => `${w}x${h}`;
+    const select = el("select", {}, ...presets.map((s) => el("option", { value: key(s), textContent: `${s[0]} x ${s[1]}` })),
+      el("option", { value: "custom", textContent: "Other size" }));
+    select.setAttribute("aria-label", o.label ?? "Frame size");
+    const field = (label, max) => el("input", { type: "number", min: 1, max, step: 1 });
+    const w = field("W", G.LIMITS.width), h = field("H", G.LIMITS.height);
+    w.setAttribute("aria-label", "Width"); h.setAttribute("aria-label", "Height");
+    if (ids.select) select.id = ids.select;
+    if (ids.w) w.id = ids.w;
+    if (ids.h) h.id = ids.h;
+    const wl = el("label", {}, "W ", w), hl = el("label", {}, "H ", h);
+    const size = () => [Math.round(+w.value), Math.round(+h.value)];
+    function show(v) {
+      [w.value, h.value] = v;
+      const preset = presets.some((s) => key(s) === key(v));
+      select.value = preset ? key(v) : "custom";
+      wl.hidden = hl.hidden = preset;
+    }
+    select.onchange = () => {
+      if (select.value === "custom") { wl.hidden = hl.hidden = false; w.focus(); return; }
+      show(select.value.split("x").map(Number));
+      o.onChange?.(...size());
+    };
+    for (const input of [w, h]) {
+      input.onchange = () => { const [a, b] = size(); if (G.sizeOk(a, b)) o.onChange?.(a, b); };
+    }
+    box.append(select, wl, hl);
+    show(o.value ?? presets[0]);
+    return { get size() { return size(); }, set: (a, b) => show([a, b]) };
+  }
+
+  /** Offer bytes or text as a file to save. */
+  function download(doc, data, filename, type) {
+    const a = Object.assign(doc.createElement("a"), { href: URL.createObjectURL(new Blob([data], { type })), download: filename });
+    a.click();
+  }
+
+  /** Ask for one file, with a plain file input. */
+  function pickFile(doc, accept) {
+    return new Promise((done) => {
+      const input = Object.assign(doc.createElement("input"), { type: "file", accept });
+      input.onchange = () => done(input.files[0]);
+      input.click();
+    });
+  }
+
+  const api = { TOOLS, TOGGLES, SHORTCUTS, PATTERNS, CURVE_NAMES, drag, fitCell, contentWidth, maskEdges, surface, sizePicker, download, pickFile,
     get clipboard() { return clipboard; } };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.GlyphTools = api;

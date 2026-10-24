@@ -32,6 +32,8 @@
   flash the stock firmware over MIDI. Do this one time with the stock file, <em>before</em> you
   flash a modified file. If that route does not work on your device, nothing here is safe to use.
   Also back up your +Drive first.</p>
+  <p><strong>Check a file before you flash it.</strong> The <a href="check.html">Firmware Check</a>
+  compares a modified file with the stock file and shows what changed and where.</p>
 </div>
 
 <p class="sections" style="margin-top:1.2rem">
@@ -562,6 +564,22 @@ fixed the jump on audio tracks only. It is superseded by the fix above and kept 
 
 <article class="mod">
   <div class="mod-head">
+    <h3>Firmware check</h3>
+    <span class="mod-id">check</span>
+    <span class="tag research">A check, not a mod</span>
+  </div>
+  <p>
+    Compare a modified Digitone&nbsp;II OS 1.11 file with the stock file. The checklist shows if
+    the bootstrap is stock, where the added code goes in RAM, and if a file from this site's
+    patcher rebuilds exactly. It reads the files only. It does not run the new code.
+  </p>
+  <p style="margin-top:1.2rem">
+    <a class="cta" href="check.html">Open the Firmware Check &#8594;</a>
+  </p>
+</article>
+
+<article class="mod">
+  <div class="mod-head">
     <h3>LFO shape bench</h3>
     <span class="mod-id">bench</span>
     <span class="tag research">A design tool, not a mod</span>
@@ -584,7 +602,9 @@ fixed the jump on audio tracks only. It is superseded by the fix above and kept 
   </div>
   <p>
     Draw the one-bit glyphs that this site shows beside each mod. The editor draws still
-    16&nbsp;&times;&nbsp;16 glyphs and shows each one at 1x, 2x and 3x, light and dark. The
+    16&nbsp;&times;&nbsp;16 glyphs and shows each one at 1x, 2x and 3x, light and dark. It also
+    draws a still glyph of another size, up to 128&nbsp;&times;&nbsp;64, and saves it in the
+    firmware's own format. The
     animator draws a glyph as a list of frames that a knob picks from, as on the unit. It can
     morph one frame into another. It saves a GIF, or the frames in the firmware's own format.
   </p>

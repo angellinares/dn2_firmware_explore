@@ -164,7 +164,16 @@ export async function buildAndOffer(firmware, replacements, {
     link.textContent = `Download ${name}`;
     link.style.marginTop = ".8rem";
     guardDownload(link);
-    into.append(link);
+    const checkNote = document.createElement("p");
+    checkNote.className = "hint";
+    checkNote.append("Before you flash it, you can compare it with the stock file on the ");
+    const checkLink = document.createElement("a");
+    checkLink.href = "check.html";
+    checkLink.textContent = "Firmware Check";
+    checkNote.append(checkLink, ".");
+    into.querySelector("p.check-note")?.remove();
+    checkNote.classList.add("check-note");
+    into.append(link, checkNote);
     link.scrollIntoView({ behavior: "smooth", block: "nearest" });
     status(`${note}${note ? " — " : ""}${bytes.length.toLocaleString()} bytes.`);
     return bytes;

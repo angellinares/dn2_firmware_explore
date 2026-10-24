@@ -67,4 +67,4 @@ def test_the_glyphs_draw_under_node():
         pytest.skip("node is not on PATH; the glyph check cannot run")
     done = subprocess.run([node, str(HARNESS)], capture_output=True, text=True, cwd=ROOT)
     assert done.returncode == 0, done.stdout + done.stderr
-    assert done.stdout.count("OK  ") == 36
+    assert done.stdout.count("OK  ") == 46

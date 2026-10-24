@@ -13,6 +13,11 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
+# Every run shows in the progress pane: tests done, the one running, the tally (dnfw.pytest_progress).
+from dnfw.pytest_progress import (  # noqa: E402,F401
+    pytest_collection_finish, pytest_runtest_logfinish, pytest_runtest_logreport, pytest_runtest_logstart,
+    pytest_sessionfinish)
+
 FIRMWARE = ROOT / "00_Resources" / "00_Firmware"
 
 # Filename, and the facts each image should report. Written down rather than

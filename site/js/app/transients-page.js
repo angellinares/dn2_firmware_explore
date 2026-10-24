@@ -233,6 +233,8 @@ function refreshSlot(slot) {
     fit.title = was > size(slot)
       ? `The factory transient is ${ms(was)}. Equal slots keep its first ${ms(size(slot))}.`
       : was < size(slot) ? `The factory transient is ${ms(was)}. The rest of the slot is silence.` : "";
+    // The note already says "factory": the name would only repeat it.
+    if (fit.textContent) element.querySelector(".slot-name").textContent = "";
   } else {
     const whole = entry.source.length / RATE;
     const kept = size(slot) / RATE;

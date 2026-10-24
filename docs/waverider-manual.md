@@ -252,6 +252,6 @@ To put a saved table back later, with Waverider on the unit:
 - We did not measure 4096-point tables on the unit.
 - In a sound from a build before page 5, FOLD, WARP, FM and NPOS show 64. FOLD, WARP and FM then
   change the sound. To get the sound from before, set them to 0.
-- With a 16-note chord and page 5 on all 16 voices, the DSP worked at most 76.3 % of a frame on the
-  unit. No frame was missed in 10 minutes (2026-10-19).
+- With a 16-note chord and all of page 5 on all 16 voices, the DSP worked at most 72.2 % of a frame
+  on the unit (0.3.7). The DSP missed no frame in 10 minutes (2026-10-22).
   Refer to `docs/waverider-performance.md`.

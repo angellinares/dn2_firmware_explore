@@ -6,6 +6,27 @@ busy period of a frame as a share of a frame (a frame is 1/1500 s). Overruns cou
 longer than a whole frame. The test plan has every run's steps; the entry names are in the
 last column.
 
+## 0.3.7 against 0.3.6 on the unit (2026-10-22)
+
+0.3.7 has the load plan's batch A: the same sound with less DSP code. The builds are fmdepth2 (0.3.6)
+and batcha1 (0.3.7). Both had a 16-note chord (notes 36 to 84) on Growlaren, with LFO 1 on AMT.
+Each figure is the median, over 60 s, of each second's longest busy stretch
+(`dn2sharc_load.py --frame-max`). The DSP missed no frame in any case.
+
+| Case | 0.3.6 | 0.3.7 | Change |
+|---|---|---|---|
+| Page 5 off | 66.7 % | 61.4 % | -5.3 |
+| FOLD 64 | 68.1 % | 62.8 % | -5.3 |
+| WARP 64 | 72.8 % | 63.8 % | -9.0 |
+| FM 64 | 71.1 % | 64.5 % | -6.6 |
+| Formant | 71.1 % | 65.9 % | -5.2 |
+| All of page 5 on | 81.1 % | 72.2 % | -8.9 |
+| SUB and NOIS 127 | 66.8 % | 61.5 % | -5.3 |
+| SUB and NOIS 0 | 62.0 % | 57.5 % | -4.5 |
+
+In a 10-minute soak with all of page 5 on, the median was 72.4 % (0.3.6: 78.2 %), and the DSP missed no frame.
+These figures use a different project from the sections below, so compare them only with each other.
+
 ## Waverider on its own (2026-10-12)
 
 The same project throughout (16 voices render every frame), one-second readings, osc 2 on, sub

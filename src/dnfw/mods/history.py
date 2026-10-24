@@ -114,6 +114,11 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     ) + PUBLISHED,
     "usbprobe": UNPUBLISHED,
     "waverider": (
+        Release("0.3.7", "2026-10-22", (
+            "Waverider uses less of the DSP. With a 16-note chord, the load is about 5 points lower "
+            "with [page 5](#page-5) off and about 9 points lower with all of page 5 on. The sound "
+            "stays the same.",
+        )),
         Release("0.3.6", "2026-10-20", (
             "FM on [page 5](#page-5) and LEV2 on page 2 are now separate. FM alone sets how much osc 2 "
             "changes osc 1, and LEV2 sets only how loud osc 2 is. With LEV2 at 0 you hear osc 1 alone, changed "

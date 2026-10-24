@@ -13,7 +13,7 @@ export const VERSIONS = {
   moddest: "1.0.0",
   reloadconfirm: "1.0.0",
   songguard: "0.1.0",
-  transients: "1.0.0",
+  transients: "2.0.0",
   usbprobe: "0.1.0",
   waverider: "0.3.6",
 };

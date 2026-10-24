@@ -68,11 +68,17 @@ def main() -> int:
     final = bootstream.walk(stock).final.offset
     insert = python[final:final + len(python) - len(stock)]
     base = stock[:final] + insert + stock[final:]
+    bank = dsp.bank_spans(stock)
     d = {"stock_sha256": hashlib.sha256(stock).hexdigest(), "stock_length": len(stock),
+         "stock_sha256_no_bank": dsp.STOCK_SHA256_NO_BANK, "bank_spans": [[at, n] for at, n in bank],
          "final_offset": final, "insert": insert.hex(), "limit": dsp.STREAM_LIMIT,
          "patches": [{"at": at, "bytes": b.hex()} for at, b in runs(base, python)]}
     if replay(stock, d) != python:
         print("REFUSED: the data does not replay to dnfw.waverider.dsp.section7's output")
+        return 1
+    ends = [(p["at"], p["at"] + len(p["bytes"]) // 2) for p in d["patches"]] + [(final, len(python))]
+    if any(lo < at + n and at < hi for lo, hi in ends for at, n in bank):
+        print("REFUSED: a patch or the insert lands in the transient bank, which the transients mod writes")
         return 1
     spec = waverider.SPEC
     code = {"os": spec["os"], "stock_length": spec["stock_length"], "names": spec["names"],

@@ -22,7 +22,7 @@ import {
 } from "./shell.js";
 import { decode, fit } from "../audio.js";
 import {
-  COUNT, ENTRY_SAMPLES, RATE, apply, extract, toEntry, toFloat,
+  COUNT, EQUAL_SAMPLES, RATE, apply, extract, fit as fitEntry, lengths, toEntry, toFloat,
 } from "../mods/transients.js";
 
 /** Page state. One object so `reset` is one assignment and cannot half-clear. */
@@ -32,9 +32,32 @@ function fresh() {
   return {
     firmware: null,
     filename: "firmware.syx",
-    factory: [],                  // Float32Array per slot, the original bank
+    equal: false,                 // the layout: factory sizes, or equal slots
+    raw: [],                      // the current sound of each slot, as the table plays it
+    factory: [],                  // Float32Array per slot: that sound fitted to the slot
     replacements: new Map(),      // slot -> { name, source, options, fitted }
   };
+}
+
+/** A slot's length in samples, in the layout chosen. */
+const size = (slot) => lengths(state.equal)[slot];
+const ms = (samples) => `${((1000 * samples) / RATE).toFixed(1)} ms`;
+
+function fitFor(slot, entry) {
+  return fit(entry.source, { ...entry.options, length: size(slot) });
+}
+
+function refreshFactory() {
+  state.factory = state.raw.map((pcm, slot) => toFloat(fitEntry(pcm, size(slot))));
+}
+
+/** The layout checkbox: refit every slot to its new length and redraw. */
+function setLayout(equal) {
+  state.equal = equal;
+  refreshFactory();
+  for (const [slot, entry] of state.replacements) entry.fitted = fitFor(slot, entry);
+  for (let slot = 0; slot < COUNT; slot++) refreshSlot(slot);
+  updateStatus();
 }
 
 /**
@@ -69,8 +92,11 @@ async function openFirmware(file) {
   return openFirmwareShell(file, {
     onReady: (firmware) => {
       state.firmware = firmware;
-      state.factory = extract(firmware).map(toFloat);
+      state.raw = extract(firmware);
+      state.equal = $("equalSlots").checked;
+      refreshFactory();
       drawSlots();
+      for (let slot = 0; slot < COUNT; slot++) refreshSlot(slot);
       for (const id of ["step2", "step3", "bar"]) $(id).classList.remove("hidden");
       status(`Loaded. ${COUNT} slots ready.`);
     },
@@ -96,32 +122,25 @@ function slotCard(slot) {
   const n = document.createElement("span");
   n.className = "slot-n";
   n.textContent = String(slot).padStart(2, "0");
-  // The TRAN value that plays this slot, measured on hardware -- see
-  // docs/tran-mapping.md. Slots 0 and 1 land below TRAN 0, so the knob cannot
-  // reach them at all; saying so on the card is cheaper than letting someone
-  // spend a sample on a slot they will never hear.
+  // The TRAN value that plays this slot: the DSP's table has one entry per TRAN
+  // step of 4 (docs/tran-mapping.md).
   const tran = document.createElement("span");
   tran.className = "slot-tran";
-  const value = 4 * slot - 8;
-  if (value < 0) {
-    tran.classList.add("unreachable");
-    tran.textContent = "no TRAN";
-    tran.title = "TRAN starts at 0, which is slot 2. This slot cannot be selected.";
-  } else {
-    tran.textContent = `TRAN ${value}`;
-    tran.title = `Set TRAN to ${value} to hear this slot`;
-  }
+  const value = 4 * slot;
+  tran.textContent = `TRAN ${value}`;
+  tran.title = `Set TRAN to ${value} to hear this slot`;
+  // The slot's length: how much of a sample it can hold, in the layout chosen.
+  const len = document.createElement("span");
+  len.className = "slot-len";
   const name = document.createElement("span");
   name.className = "slot-name";
   name.textContent = "factory";
-  // Whether this slot had to cut the user's file, and from what. The slot is
-  // always 100 ms and there is no length field to change, so truncation is not
-  // an edge case -- most samples people reach for are longer than 100 ms. A
-  // tool that silently kept the first tenth of a second would be lying by
-  // omission, and `fit` already returns the flag.
+  // Whether this slot had to cut the user's file, and from what. Every slot has
+  // the same length, so truncation is not an edge case: most samples people reach
+  // for are longer. `fit` returns the flag.
   const fit = document.createElement("span");
   fit.className = "slot-fit";
-  top.append(n, tran, name, fit);
+  top.append(n, tran, len, name, fit);
 
   const canvas = document.createElement("canvas");
   canvas.width = 460;
@@ -183,14 +202,14 @@ async function loadSample(slot, file) {
       options: { leadMs: 3, startMs: null, gain: 1 },
       fitted: null,
     };
-    entry.fitted = fit(source, entry.options);
+    entry.fitted = fitFor(slot, entry);
     state.replacements.set(slot, entry);
     refreshSlot(slot);
     play(entry.fitted.samples);
     updateStatus();
     if (entry.fitted.truncated) {
       status(`${file.name} is ${(source.length / RATE).toFixed(2)}s — `
-             + `cut to the ${(ENTRY_SAMPLES / RATE * 1000).toFixed(0)}ms a slot holds.`);
+             + `cut to the ${ms(size(slot))} this slot holds.`);
     }
   } catch (error) {
     status(`${file.name}: ${error.message ?? error}`);
@@ -202,20 +221,29 @@ function refreshSlot(slot) {
   const entry = state.replacements.get(slot);
   element.classList.toggle("filled", Boolean(entry));
   element.querySelector(".slot-name").textContent = entry ? entry.name : "factory";
+  element.querySelector(".slot-len").textContent = ms(size(slot));
 
   const fit = element.querySelector(".slot-fit");
   if (!entry) {
-    fit.textContent = "";
-    fit.classList.remove("cut");
+    // A factory transient that the layout cuts or pads: say so on the slot.
+    const was = state.raw[slot].length / 2;
+    fit.classList.toggle("cut", was > size(slot));
+    fit.textContent = was > size(slot) ? `factory ${ms(was)}, cut to ${ms(size(slot))}`
+      : was < size(slot) ? `factory ${ms(was)}, padded` : "";
+    fit.title = was > size(slot)
+      ? `The factory transient is ${ms(was)}. Equal slots keep its first ${ms(size(slot))}.`
+      : was < size(slot) ? `The factory transient is ${ms(was)}. The rest of the slot is silence.` : "";
+    // The note already says "factory": the name would only repeat it.
+    if (fit.textContent) element.querySelector(".slot-name").textContent = "";
   } else {
     const whole = entry.source.length / RATE;
-    const kept = ENTRY_SAMPLES / RATE;
+    const kept = size(slot) / RATE;
     fit.classList.toggle("cut", entry.fitted.truncated);
     fit.textContent = entry.fitted.truncated
-      ? `cut ${whole.toFixed(2)}s → ${(kept * 1000).toFixed(0)}ms`
-      : `${(whole * 1000).toFixed(0)}ms, padded to ${(kept * 1000).toFixed(0)}ms`;
+      ? `cut ${whole.toFixed(2)}s → ${(kept * 1000).toFixed(1)}ms`
+      : `${(whole * 1000).toFixed(0)}ms, padded to ${(kept * 1000).toFixed(1)}ms`;
     fit.title = entry.fitted.truncated
-      ? `Your file is ${whole.toFixed(2)} s. A slot holds ${(kept * 1000).toFixed(0)} ms, `
+      ? `Your file is ${whole.toFixed(2)} s. A slot holds ${(kept * 1000).toFixed(1)} ms, `
         + `so only the window starting at ${(entry.fitted.start / RATE * 1000).toFixed(0)} ms is kept. `
         + "Move it with the start control."
       : `Your file is shorter than a slot; the rest is silence.`;
@@ -269,7 +297,7 @@ function drawTuning(slot, host, entry) {
 
     range.addEventListener("input", () => {
       entry.options[control.key] = Number(range.value);
-      entry.fitted = fit(entry.source, entry.options);
+      entry.fitted = fitFor(slot, entry);
       host.querySelectorAll("output").forEach((o, i) => {
         const c = controls[i];
         const v = entry.options[c.key];
@@ -293,7 +321,7 @@ function drawTuning(slot, host, entry) {
       auto.style.justifySelf = "start";
       auto.addEventListener("click", () => {
         entry.options.startMs = entry.options.startMs === null ? Number(range.value) : null;
-        entry.fitted = fit(entry.source, entry.options);
+        entry.fitted = fitFor(slot, entry);
         drawTuning(slot, host, entry);
         paint(slot);
         play(entry.fitted.samples);
@@ -306,15 +334,15 @@ function drawTuning(slot, host, entry) {
 /**
  * Draw one slot.
  *
- * **With no replacement:** the factory entry, filling the canvas.
+ * **With no replacement:** the current sound as the build writes it, filling the canvas.
  *
- * **With a replacement:** the user's *whole* file, with the 100 ms that will
+ * **With a replacement:** the user's *whole* file, with the slot's length that will
  * actually be imported shaded and drawn in the accent; everything outside the
  * shaded band is greyed, because it is being thrown away.
  *
- * Drawing only the fitted 100 ms — which is what this did first — hides the
- * decision the tool just made on the user's behalf. A slot is a fixed 4,800
- * samples and most files people reach for are longer, so the interesting
+ * Drawing only the fitted part — which is what this did first — hides the
+ * decision the tool just made on the user's behalf. A slot has a fixed length
+ * and most files people reach for are longer, so the interesting
  * question is never "what does the slot contain" but "which part of my sample
  * did it take". Shading it answers that, and the `start` control visibly slides
  * the band.
@@ -346,12 +374,12 @@ function paint(slot) {
   }
 
   // The canvas spans whichever is longer: the user's file, or the window the
-  // slot takes. A file *shorter* than 100 ms is padded with silence at the end,
+  // slot takes. A file *shorter* than a slot is padded with silence at the end,
   // and spanning only the file would hide that padding entirely -- the user
   // would see a full-width waveform and have no idea most of the slot is empty.
-  const span = Math.max(entry.source.length, entry.fitted.start + ENTRY_SAMPLES);
+  const span = Math.max(entry.source.length, entry.fitted.start + size(slot));
   const from = (entry.fitted.start / span) * width;
-  const to = ((entry.fitted.start + ENTRY_SAMPLES) / span) * width;
+  const to = ((entry.fitted.start + size(slot)) / span) * width;
   const sourceEnd = (entry.source.length / span) * width;
 
   // The band first, so the waveform sits on top of it rather than under.
@@ -430,12 +458,13 @@ async function buildImage() {
   }
   const entries = new Map();
   for (const [slot, entry] of state.replacements) {
-    entries.set(slot, toEntry(entry.fitted.samples));
+    entries.set(slot, toEntry(entry.fitted.samples, size(slot)));
   }
-  const applied = apply(state.firmware, entries);
+  const applied = apply(state.firmware, entries, { equal: state.equal });
   await buildAndOffer(state.firmware, new Map([[7, applied.section]]), {
     filename: state.filename, mod: "transients", suffix: "transients",
-    note: `${count} slot${count === 1 ? "" : "s"} replaced`,
+    note: `${count} slot${count === 1 ? "" : "s"} replaced, `
+      + (state.equal ? `equal slots of ${ms(EQUAL_SAMPLES)}` : "factory slot sizes"),
   });
 }
 
@@ -452,6 +481,9 @@ $("syx").addEventListener("change", (event) => {
   if (event.target.files?.[0]) openFirmware(event.target.files[0]);
 });
 $("buildBtn").addEventListener("click", buildImage);
+$("equalSlots").addEventListener("change", (event) => {
+  if (state.firmware) setLayout(event.target.checked);
+});
 $("resetBtn").addEventListener("click", () => location.reload());
 
 // Repaint on a theme change: the waveforms take their colours from the CSS

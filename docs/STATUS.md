@@ -36,7 +36,7 @@ Rules that keep it honest:
 |---|---|---|---|
 | **Extra LFO destinations** | **SHIPPED** | — | `docs/modulation-mask.md`, browser tool, PR #61 |
 | **Transient Swapper** | **SHIPPED** | — | `docs/pcm-hunt.md`, `docs/tran-mapping.md`, PR #64 |
-| **TRAN mapping** | **SOLVED** | — | `TRAN = 4 × slot − 8`; 32 of 34 reachable; `docs/tran-mapping.md` |
+| **TRAN mapping** | **SOLVED** | — | a table of 32 (start, length) entries in section 7, one per `TRAN` step of 4; transients 2.0.0: slot n = entry n, factory sizes or Equal slots (32 × 107.6 ms, 2026-10-24); `docs/tran-mapping.md` |
 | **LFO4** | **UNBLOCKED** | **No DSP blocker.** Modulation is generated and applied on the ColdFire; LFO parameters are never sent. **The goal is a real fourth LFO** (owner, 2026-09-15) — a fourth `[MOD]` page, saved with the sound. A **seventh modulation source** is a documented fallback only, and costs per-preset storage. One engine unknown remains: **where LFO1–3 are ticked** | `docs/engine-state.md`, `docs/modulation-matrix.md`, `docs/lfo4-slot-plan.md` |
 | **Chimera (DT2 machines + samples)** | **SCOPED** | ColdFire half tractable. SHARC half: we ship its program, know how it is loaded, and a third party has mapped the **six machine selector roles** and a full sample-resource lifecycle | `docs/chimera-feasibility.md`, `docs/sharc-image.md`, `docs/lalzart-dt2-crosscheck.md` |
 | **An eighth LFO waveform (`STP`)** | **BUILT, AWAITING HARDWARE.** `lfo-wave8_DN2_1.11.syx`. Five seven-entry tables copied out as eight, nine pointer edits, `WAVE` max 6 -> 7, an 18-byte generator. The waveform table -- `docs/ideas-backlog.md` §8's long-standing "not located" -- is `0x4020b340`, found while reading the LFO evaluators. Risk: the `[MOD]` page's waveform graph renderer is untraced | `docs/ideas-backlog.md` §8 |
@@ -85,7 +85,7 @@ Rules that keep it honest:
 | **Is the DN2's engine modifiable?** | **Yes in principle** — ~~"permanently unmodifiable"~~ retracted. The DSP has no program until we give it one | `docs/engine-index-map.md` §9 `[SUPERSEDED]` |
 | `0xec09xxxx` is an FPGA register file | ≥279 accesses, 57 addresses, byte-wide; **not** a data path — far too few to carry audio | `docs/sharc-image.md`, `scripts/mmio_window_map.py` |
 | `0xec038000` is a DSPI block | Six registers at the six standard offsets (`MCR`, `CTAR0/1`, `SR`, `RSER`, `PUSHR`), internally consistent with the `PUSHR` words used | `docs/sharc-image.md` |
-| Transient bank location | DDR `0x8045c380`, 34 × 4,800 samples | `docs/pcm-hunt.md` |
+| Transient bank location | DDR `0x8045b0c8`..`0x804abe88`, 32 entries of 50 to 150 ms; table at `0x28266d08` | `docs/pcm-hunt.md`, `docs/tran-mapping.md` |
 | MIDI RPC wire format | From `dagargo/elektroid`; ping answers | `docs/midi-rpc.md` |
 | DN2 advertises 22 opcodes, no FsSample | Static array at `0x40207f30`, one reference | `docs/midi-rpc-dispatch.md` |
 | SDRAM extent / unclaimed window | 128 MB; **25.3 MB above BSS is free** | `docs/memory-map.md`, `docs/ideas-backlog.md` §6 |

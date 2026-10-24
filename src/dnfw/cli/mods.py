@@ -154,6 +154,10 @@ def configure(parser) -> None:
                     help="onset-align each input to the slot and fade its end; "
                          "off by default so a factory round-trip stays "
                          "byte-identical")
+    ap.add_argument("--equal-slots", action="store_true",
+                    help="transients: give all 32 slots the same length, 107.6 ms. Without it each "
+                         "slot keeps its factory length (50, 100 or 150 ms). With it, the 8 factory "
+                         "transients of 150 ms that you do not replace are cut, and the others padded")
 
 
 def _staged(firmware, payloads: dict[int, bytes]):
@@ -229,8 +233,11 @@ def _apply_transients(mod, firmware, args):
                        f"{args.source}: {', '.join(sorted(unknown))}")
     if options:
         print(f"  prepare.csv: per-sample settings for {len(options)} file(s)")
+    sizes = mod.lengths(args.equal_slots)
+    print("  slot lengths: " + ("all 107.6 ms (--equal-slots)" if args.equal_slots else
+          ", ".join(f"{k:02d} {1000 * n / mod.RATE:.0f}" for k, n in enumerate(sizes)) + " ms"))
     return mod.apply(firmware, sources, condition=args.prepare,
-                     lead_ms=args.lead_ms, options=options)
+                     lead_ms=args.lead_ms, options=options, equal=args.equal_slots)
 
 
 def _read_pgm(path: pathlib.Path) -> set[tuple[int, int]]:
@@ -324,9 +331,8 @@ def _extract(args) -> int:
             w.setsampwidth(2)
             w.setframerate(mod.RATE)
             w.writeframes(raw)
-    print(f"wrote {len(entries)} factory entries to {args.out}")
-    print(f"  {mod.ENTRY_SAMPLES} samples each at {mod.RATE} Hz "
-          f"= {1000 * mod.ENTRY_SAMPLES // mod.RATE} ms")
+    print(f"wrote {len(entries)} transients to {args.out}, as the table plays them, at {mod.RATE} Hz:")
+    print("  " + ", ".join(f"{k:02d} {1000 * len(raw) // 2 / mod.RATE:.1f}" for k, raw in enumerate(entries)) + " ms")
     return 0
 
 

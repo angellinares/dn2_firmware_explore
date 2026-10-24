@@ -49,6 +49,7 @@ import json
 import pathlib
 
 from . import RAM, Extent, ModError, Result, bus, platform
+from ..image import bootstream
 from ..waverider import dsp
 
 ID = "waverider"
@@ -69,16 +70,26 @@ def extents(firmware=None, area_length: int = 0) -> list[Extent]:
     out = [Extent(MAIN_OS, e["va"] - BASE, len(e["new"]) // 2, e["what"],
                   displaced=e["va"] == DESTGROUP_SITE) for e in SPEC["edits"]]
     out += platform.extents(area_length)
-    size = None
+    stream = None
     if firmware is not None:
         section = firmware.container.find(DSP_STREAM)
-        content = section.unpack() if section is not None else None
-        size = len(content) if content is not None else None
-    # The boot stream is rebuilt as a whole (blocks inserted before its final
-    # block), so the whole of it is declared: nothing else may write it too.
-    out.append(Extent(DSP_STREAM, 0, size or 836_956,
-                      "the DSP boot stream, rebuilt: Waverider's code, state and two "
-                      "tables in L1 block 2, the entry jump, the machine lookup"))
+        stream = section.unpack() if section is not None else None
+    if stream is None or dsp.LOADMAP:
+        # Nothing to map the sites into, or the load-map diagnostic build, which patches
+        # more of the stream (waverider.loadmap): the whole boot stream.
+        out.append(Extent(DSP_STREAM, 0, 836_956, "the DSP boot stream, rebuilt"))
+        return out
+    # The boot stream is rebuilt: Waverider's blocks go in before the final block, so the
+    # final block and everything after it moves, and six runs of stock code are written
+    # over (dsp.site_loads). Nothing else in section 7 changes, the transient bank among
+    # it, so dnfw.mods.transients combines with this mod (owner, 2026-10-23).
+    for what, load, length in dsp.site_loads():
+        out += [Extent(DSP_STREAM, at, n, f"section 7: {what}")
+                for at, n in bootstream.spans(stream, load, length) if at is not None]
+    final = bootstream.walk(stream).final.offset
+    out.append(Extent(DSP_STREAM, final, len(stream) - final,
+                      "section 7: Waverider's blocks, inserted before the final block, and "
+                      "the final block after them"))
     return out
 
 

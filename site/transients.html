@@ -5,7 +5,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<meta name="description" content="Replace the Digitone II's 34 FM drum transients with your own samples.">
+<meta name="description" content="Replace the Digitone II's 32 FM drum transients with your own samples.">
 <link rel="stylesheet" href="css/base.css">
 <style>
   /* Page-specific. Everything shared lives in css/base.css. */
@@ -75,8 +75,8 @@
     padding: .1rem .3rem; border-radius: 3px;
     border: 1px solid var(--rule); color: var(--ink-soft);
   }
-  .slot-tran.unreachable {
-    border-color: var(--warn); color: var(--warn);
+  .slot-len {
+    font-size: .64rem; flex: none; color: var(--ink-soft); font-variant-numeric: tabular-nums;
   }
   .slot-name {
     font-size: .78rem; color: var(--ink-soft); flex: 1 1 auto;
@@ -117,7 +117,7 @@
   <p class="eyebrow"><a href="index.html">Digitone II Mods</a> / transients</p>
   <h1><span class="glyph" data-glyph="transients" aria-hidden="true"></span>Transient Swapper</h1>
   <p class="lede">
-    Replace any of the Digitone II's 34 FM&nbsp;DRUM transients with your own samples.
+    Replace any of the Digitone II's 32 FM&nbsp;DRUM transients with your own samples.
     Select your firmware file.
     Drop in your audio. Listen to the result. Then download a signed image.
   </p>
@@ -131,10 +131,12 @@
 
 <section class="changes">
   <h2>Version and changes</h2>
-  <p>This mod is at <strong><!-- dnfw:version transients -->v1.0.0<!-- /dnfw:version --></strong>.
+  <p>This mod is at <strong><!-- dnfw:version transients -->v2.0.0<!-- /dnfw:version --></strong>.
   What changed in each version, newest first.</p>
 <!-- dnfw:changes transients -->
 <dl class="changes">
+  <dt><span class="version">v2.0.0</span> <time datetime="2026-10-24">2026-10-24</time></dt>
+  <dd><ul><li>Every slot now plays your whole sample at its TRAN value. Before, a slot below TRAN 52 could play part of your sample, or part of the next one.</li><li>There are now 32 slots, one for each TRAN step. Slot n plays at TRAN 4 x n.</li><li>Each slot keeps its factory length, 50, 100 or 150 ms, and the page shows it. The factory transients that you do not replace sound as before.</li><li>A new option, Equal slots, makes every slot 107.6 ms. It cuts 8 factory transients from 150 ms and pads the other 24 with silence.</li><li>A bank made with 1.0.0 has its samples in other slots. Build it again with this version.</li><li>Works on a firmware with Waverider, in either order.</li></ul></dd>
   <dt><span class="version">v1.0.0</span> <time datetime="2026-10-11">2026-10-11</time></dt>
   <dd><ul><li>First numbered version.</li></ul></dd>
 </dl>
@@ -153,12 +155,12 @@
 <table class="matrix">
   <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>arpscale</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfolength</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>reloadconfirm</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
   <tbody>
-    <tr><th scope="row">FM drum transients <code>transients</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="both use the same code cave">&#10007;</td></tr>
+    <tr><th scope="row">FM drum transients <code>transients</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
   </tbody>
 </table>
 </div>
 <!-- /dnfw:matrix-row -->
-  <p><!-- dnfw:combines transients -->This mod combines with Arpeggiator SHUF and RAND, Arpeggiator p-locks, Arp offsets in scale, Boot screen, LFO modulation of the FX, Layering onto MIDI tracks, A fourth LFO, LFO ONE/HALF fix, New LFO waveforms, Arpeggiator on MIDI tracks, More modulation destinations, Reload confirm, Song guard and USB SysEx probe (diagnostic). This mod does <strong>not</strong> combine with Waverider, a sixth machine (both use the same code cave). See the compatibility table<!-- /dnfw:combines -->.</p>
+  <p><!-- dnfw:combines transients -->This mod combines with Arpeggiator SHUF and RAND, Arpeggiator p-locks, Arp offsets in scale, Boot screen, LFO modulation of the FX, Layering onto MIDI tracks, A fourth LFO, LFO ONE/HALF fix, New LFO waveforms, Arpeggiator on MIDI tracks, More modulation destinations, Reload confirm, Song guard, USB SysEx probe (diagnostic) and Waverider, a sixth machine. See the compatibility table<!-- /dnfw:combines -->.</p>
 </section>
 
 <section class="step">
@@ -180,38 +182,41 @@
 <section class="step hidden" id="step2">
   <div class="step-head"><span class="step-num">2</span><h2>The bank</h2></div>
   <p>
-    34 slots. Click a waveform to hear it. To replace a slot, drop audio on it. You can use any
-    format and rate that your browser can play. The page mixes the audio to mono and resamples it
-    for you.
+    32 slots, one for each <code>TRAN</code> step. Click a waveform to hear it. To replace a slot,
+    drop audio on it. You can use any format and rate that your browser can play. The page mixes the
+    audio to mono and resamples it for you.
   </p>
 
+  <div class="note" id="layoutNote">
+    <p><label><input type="checkbox" id="equalSlots"> <strong>Equal slots: make every slot
+    107.6&nbsp;ms</strong></label></p>
+    <p><strong>Off (the default): each slot keeps its factory length.</strong> The factory slots
+    are 50, 100 or 150&nbsp;ms, and each slot below shows its length. Choose a slot that is long
+    enough for your sample. The factory transients that you do not replace sound exactly as
+    before.</p>
+    <p><strong>On: every slot is 107.6&nbsp;ms</strong> (5,164 samples at 48&nbsp;kHz). Every sample
+    gets the same space. But the build changes the factory transients that you do not replace:
+    it cuts the 8 of 150&nbsp;ms to 107.6&nbsp;ms, with a short fade, and it pads the other 24 with
+    silence: the 3 of 50&nbsp;ms, and the 21 of 100&nbsp;ms by 7.6&nbsp;ms each. Each of those slots
+    says so below.</p>
+    <p>You can change this before you build. Your samples are fitted again to the new lengths.</p>
+  </div>
+
   <div class="note">
-    <p><strong>Every slot is exactly 100&nbsp;ms, and your sample is cut to
-    fit.</strong> That is 4,800 samples at 48&nbsp;kHz, the same for all 34. There is no length
-    field to change.</p>
-    <p>The page <em>truncates</em> a longer sample. It <em>pads a shorter sample with
-    silence at the end</em>. If the page cuts your file, the slot says so and gives the original
-    length. The <code>start</code> control moves the 100&nbsp;ms that the page keeps.</p>
+    <p><strong>Your sample is cut to fit its slot.</strong> The page <em>truncates</em> a longer
+    sample. It <em>pads a shorter sample with silence at the end</em>. If the page cuts your file,
+    the slot says so and gives the original length. The <code>start</code> control moves the part
+    that the page keeps.</p>
     <p>The waveform of the slot shows your whole file, with the imported window shaded. So you can
     see exactly what the page keeps and what it drops. For a short sample, you can also see how much
     of the slot is silence.</p>
-    <p>The transients of Elektron do not all fit either: <strong>20 of the 34 still ring when their
-    slot ends</strong>. You hear that ring at the start of the next slot. So the factory bank behaves
-    like a continuous 3.4-second recording, cut into 100&nbsp;ms pieces, and not like 34 separate
-    hits. When you replace a slot, the opening of the next slot also changes, because the borrowed
-    tail goes away. A sample that decays inside 100&nbsp;ms behaves more predictably than the factory
-    content does.</p>
   </div>
 
   <div class="note" id="tranNote">
-    <p><strong>Each slot sits at <code>TRAN</code> = 4 × slot − 8</strong>, measured
-    on hardware. Slot&nbsp;20 is at <code>TRAN</code>&nbsp;72, slot&nbsp;33 at
-    <code>TRAN</code>&nbsp;124. Every slot below shows its value.</p>
-    <p><strong>You cannot select slots 0 and 1.</strong> <code>TRAN</code> starts at 0, which is
-    already slot&nbsp;2. So the first two entries are in the bank, but the knob cannot reach them.
-    Do not put a sample there. <em>The knob reaches 32 of the 34.</em></p>
-    <p>The engine also <strong>interpolates between neighbours</strong> over that
-    four-unit stride, so values between two slots blend them rather than snapping.
+    <p><strong>Slot&nbsp;<em>n</em> plays at <code>TRAN</code> = 4 × <em>n</em>.</strong>
+    Slot&nbsp;0 is at <code>TRAN</code>&nbsp;0, slot&nbsp;31 at <code>TRAN</code>&nbsp;124. Every
+    slot below shows its value.</p>
+    <p>Values between two slots <strong>blend the two slots</strong>.
     <a href="https://github.com/angellinares/dn2_firmware_explore/blob/main/docs/tran-mapping.md">How this was measured</a>.</p>
   </div>
 

@@ -57,13 +57,14 @@ from . import formant, harmonics, live, mip, reduce, table3, testtable
 from . import render as reference
 
 STOCK_SHA256 = "336e340aa0cdcd34e314cfa44849f709a3134f6bd4cd57dfc7e15702c83115e2"
-# The FM drum transient bank (`dnfw.mods.transients`): 34 entries of 4,800 int16 samples,
-# loaded at DDR 0x8045c380. It is the one part of section 7 that another mod may have
-# replaced: none of Waverider's blocks or edits is in it, so a section 7 that is stock but
-# for the bank is taken, and its bank is carried through. STOCK_SHA256_NO_BANK is stock's
-# section 7 with the bank's file bytes zeroed (test_waverider_dsp checks both constants).
-TRANSIENT_BANK = (0x8045C380, 34 * 4800 * 2)
-STOCK_SHA256_NO_BANK = "a810d0778c33a526826233d016d3c3fc330a522f5ab6722d0a33094e6c1f38f3"
+# The FM drum transients (`dnfw.mods.transients`): the bank's samples at DDR
+# 0x8045b0c8..0x804abe88 and the 32-entry table that plays them at 0x28266d08. They are
+# the one part of section 7 that another mod may have replaced: none of Waverider's blocks
+# or edits is in them, so a section 7 that is stock but for these is taken, and they are
+# carried through. STOCK_SHA256_NO_BANK is stock's section 7 with their file bytes zeroed
+# (test_transients_with_waverider checks both constants).
+TRANSIENT_SPANS = ((0x8045B0C8, 0x804ABE88 - 0x8045B0C8), (0x28266D08, 32 * 8))
+STOCK_SHA256_NO_BANK = "b6e47fb428752873f9d16729fa029e38f3557e330ae84b89955734023b004691"
 LOAD_ALIAS = 0x28000000          # boot-stream load address = LOAD_ALIAS + DM byte address
 CODE = pathlib.Path(__file__).with_name("sharc_code.json")
 
@@ -563,8 +564,8 @@ def idle_spans() -> list[tuple[str, int, bytes]]:
 
 
 def bank_spans(stream: bytes) -> list[tuple[int, int]]:
-    """The transient bank's file pieces in STREAM (fill pieces have none)."""
-    return [(at, n) for at, n in bootstream.spans(stream, *TRANSIENT_BANK) if at is not None]
+    """The file pieces of the transient bank and its table in STREAM (fill pieces have none)."""
+    return [(at, n) for span in TRANSIENT_SPANS for at, n in bootstream.spans(stream, *span) if at is not None]
 
 
 def _check_stock(stock: bytes) -> None:

@@ -17,7 +17,7 @@
  * judgement calls is a function whose judgement calls never get tested.
  */
 
-import { ENTRY_SAMPLES, RATE } from "./mods/transients.js";
+import { RATE } from "./mods/transients.js";
 
 const FADE_SAMPLES = RATE / 500;   // 2 ms, far shorter than any decay
 const ONSET_FRACTION = 8;          // onset is the first point reaching peak/8
@@ -26,7 +26,7 @@ const ONSET_FRACTION = 8;          // onset is the first point reaching peak/8
  * Decode any audio file the browser can read -> mono Float32 at 48 kHz.
  *
  * The whole file, not one slot's worth: `fit` needs it all so it can choose
- * *which* 100 ms to keep, and truncating first would throw away the part the
+ * *which* part to keep, and truncating first would throw away the part the
  * user may be asking for.
  */
 export async function decode(arrayBuffer) {
@@ -47,10 +47,10 @@ export async function decode(arrayBuffer) {
 }
 
 /**
- * Fit any sample into one 100 ms slot -> Float32Array of exactly ENTRY_SAMPLES.
+ * Fit any sample into one slot -> Float32Array of exactly `length` samples, the slot's.
  *
- * A slot is 100 ms and a user's file is whatever it is, so something has to
- * choose *which* 100 ms.
+ * A slot has a fixed length and a user's file is whatever it is, so something has to
+ * choose *which* part.
  *
  * **`startMs` -- you choose.** The window starts exactly there. Use it when the
  * part you want is not the first attack: the second hit of a flam, a tail you
@@ -72,8 +72,8 @@ export async function decode(arrayBuffer) {
  * Returns `{ samples, onset, start, truncated }` rather than bare samples, so a
  * UI can show where the window landed instead of asking the user to trust it.
  */
-export function fit(samples, { leadMs = 3, startMs = null, gain = 1 } = {}) {
-  const out = new Float32Array(ENTRY_SAMPLES);
+export function fit(samples, { length, leadMs = 3, startMs = null, gain = 1 } = {}) {
+  const out = new Float32Array(length);
   if (!samples.length) return { samples: out, onset: 0, start: 0, truncated: false };
 
   let peak = 0;
@@ -94,14 +94,14 @@ export function fit(samples, { leadMs = 3, startMs = null, gain = 1 } = {}) {
     : Math.max(0, onset - Math.round((leadMs * RATE) / 1000));
 
   const available = Math.max(0, samples.length - start);
-  const n = Math.min(available, ENTRY_SAMPLES);
+  const n = Math.min(available, length);
   for (let i = 0; i < n; i++) out[i] = samples[start + i] * gain;
 
-  for (let i = 0; i < Math.min(FADE_SAMPLES, ENTRY_SAMPLES); i++) {
-    out[ENTRY_SAMPLES - 1 - i] *= i / FADE_SAMPLES;
+  for (let i = 0; i < Math.min(FADE_SAMPLES, length); i++) {
+    out[length - 1 - i] *= i / FADE_SAMPLES;
   }
 
-  return { samples: out, onset, start, truncated: available > ENTRY_SAMPLES };
+  return { samples: out, onset, start, truncated: available > length };
 }
 
 /** Peak absolute value, for a normalise control and for drawing. */

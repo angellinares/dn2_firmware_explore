@@ -92,7 +92,7 @@ def main(argv=None) -> int:
                         "information per sweep, harder to separate by ear")
     args = p.parse_args(argv)
 
-    n, rate = T.ENTRY_SAMPLES, T.RATE
+    n, rate = T.EQUAL_SAMPLES, T.RATE          # the CLI fits each file to its slot
     if args.all_slots:
         entries = {s: (f"{BASE_HZ + STEP_HZ * s} Hz",
                        tone(BASE_HZ + STEP_HZ * s, n, rate))

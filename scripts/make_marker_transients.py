@@ -80,7 +80,7 @@ def main(argv=None) -> int:
     p.add_argument("--out", default="out/marker_transients")
     args = p.parse_args(argv)
 
-    n, rate = T.ENTRY_SAMPLES, T.RATE
+    n, rate = T.EQUAL_SAMPLES, T.RATE          # the CLI fits each file to its slot
     markers = {
         0:  ("220 Hz square — low buzz", square(220, n, rate)),
         8:  ("880 Hz square — mid beep", square(880, n, rate)),

@@ -99,7 +99,19 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "moddest": PUBLISHED,
     "reloadconfirm": PUBLISHED,
     "songguard": UNPUBLISHED,
-    "transients": PUBLISHED,
+    "transients": (
+        Release("2.0.0", "2026-10-24", (
+            "Every slot now plays your whole sample at its TRAN value. Before, a slot below TRAN 52 could "
+            "play part of your sample, or part of the next one.",
+            "There are now 32 slots, one for each TRAN step. Slot n plays at TRAN 4 x n.",
+            "Each slot keeps its factory length, 50, 100 or 150 ms, and the page shows it. The factory "
+            "transients that you do not replace sound as before.",
+            "A new option, Equal slots, makes every slot 107.6 ms. It cuts 8 factory transients from 150 ms "
+            "and pads the other 24 with silence.",
+            "A bank made with 1.0.0 has its samples in other slots. Build it again with this version.",
+            "Works on a firmware with Waverider, in either order.",
+        )),
+    ) + PUBLISHED,
     "usbprobe": UNPUBLISHED,
     "waverider": (
         Release("0.3.6", "2026-10-20", (

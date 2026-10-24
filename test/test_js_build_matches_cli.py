@@ -33,8 +33,10 @@ ORDERS = [
     ["fxmod", "waverider"], ["waverider", "fxmod"], ["lfo4", "waverider"], ["waverider", "lfo4"],
     ["waverider", "lfolength"], ["fxmod", "waverider", "lfo4"],
     ["lfowaves"], ["lfowaves", "lfo4"], ["lfowaves", "fxmod", "lfo4", "waverider"],
-    # the transients mod, with the samples of _transients (2026-10-23: it combines with Waverider)
+    # the transients mod, with the samples of _transients (2026-10-23: it combines with Waverider),
+    # in the factory sizes and with equal slots (transients-equal = --equal-slots, 2026-10-24)
     ["transients"], ["transients", "waverider"], ["waverider", "transients"],
+    ["transients-equal"], ["transients-equal", "waverider"], ["waverider", "transients-equal"],
 ]
 NAME = "-".join
 
@@ -56,8 +58,9 @@ def built(tmp_path_factory):
     assert done.returncode == 0, done.stderr
     for order in ORDERS:
         cli = subprocess.run([sys.executable, "-c", "import sys; from dnfw.cli.main import main; sys.exit(main(sys.argv[1:]))", "mods", "apply",
-                              *[a for m in order for a in ("--mod", m)],
-                              *(["--from", str(hits)] if "transients" in order else []), str(STOCK_111),
+                              *[a for m in order for a in ("--mod", m.removesuffix("-equal"))],
+                              *(["--from", str(hits)] if any(m.startswith("transients") for m in order) else []),
+                              *(["--equal-slots"] if "transients-equal" in order else []), str(STOCK_111),
                               "-o", str(tmp / f"{NAME(order)}_DN2_1.11.syx")],
                              capture_output=True, text=True, cwd=ROOT)
         assert cli.returncode == 0, f"{order}: {cli.stdout[-800:]}{cli.stderr[-800:]}"
@@ -65,9 +68,9 @@ def built(tmp_path_factory):
 
 
 def _transients(tmp: pathlib.Path) -> pathlib.Path:
-    """Three transients for slots 0..2, as WAVs for the CLI (--from) and as raw entries for the
-    website harness (hits.bin): 4,800 samples of 48 kHz mono int16 each, so neither side
-    resamples, pads or cuts them."""
+    """Three transients for slots 0..2, as WAVs for the CLI (--from) and as raw samples for the
+    website harness (hits.bin): 2,400 samples of 48 kHz mono int16 each, the shortest slot, so
+    neither side resamples or cuts them (both pad them to the slot)."""
     import math
     import struct
     import wave
@@ -76,7 +79,7 @@ def _transients(tmp: pathlib.Path) -> pathlib.Path:
     raw = b""
     for k in range(3):
         samples = [int(20000 * math.exp(-n / (300 + 200 * k)) * math.sin(n * (0.05 + 0.03 * k)))
-                   for n in range(4800)]
+                   for n in range(2400)]
         data = struct.pack(f"<{len(samples)}h", *samples)
         with wave.open(str(folder / f"{k:02d}.wav"), "wb") as w:
             w.setnchannels(1)

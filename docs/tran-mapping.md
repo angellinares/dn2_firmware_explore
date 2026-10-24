@@ -1,5 +1,36 @@
 # `TRAN` maps onto the transient bank at four units per slot
 
+## Corrected on 2026-10-24: the DSP plays the bank through a table
+
+The rule below holds only from `TRAN` 52 up. The DSP reads each transient through a table of
+32 entries in section 7 (load address `0x28266d08`, file offset `0xb620` in stock 1.11). Each
+entry is a start address and a length in samples, little-endian. `TRAN` = 4 x k plays entry k,
+and values between two steps blend the two entries.
+
+| Entries | `TRAN` | Length | Start |
+|---|---|---|---|
+| 0 | 0 | 50 ms | before the old bank address `0x8045c380` |
+| 1 to 12 | 4 to 48 | 50 or 150 ms | half-slot starts on the old 4,800-sample grid |
+| 13 to 31 | 52 to 124 | 100 ms | on the old grid: entry k is old slot k + 2 |
+
+The factory entries lie end to end, from `0x8045b0c8` to `0x804abe88` (165,600 samples).
+
+DN2 1.10E has the same table at the same address. Its samples start 32 bytes lower, at
+`0x8045b0a8`, so the mod takes the bank's start from entry 0 of the table.
+
+**How it was found.** Build `trwr1` put the same two-tone beep (1 kHz, then 1.5 kHz) at every
+4,800 samples. On the unit, a TRAN sweep from 0 to 124 played one clean beep per note from
+`TRAN` 52 up. Below 52 the notes played half beeps, double beeps, or no beep at all. The table's
+starts and lengths explain every note of that sweep. The marker test of 2026-09-14 used five
+slots, and the probe sweep fitted slots 16 to 32, so neither one reached the lower entries.
+
+**What changed.** In transients 2.0.0, slot n is table entry n. It plays at `TRAN` 4 x n.
+By default, each slot keeps its factory length, and the table stays as it is. The Equal slots
+option rewrites the table to 32 entries of 5,164 samples (107.6 ms) each.
+
+The text below is the measurement of 2026-09-14, kept as it was.
+
+
 **Measured on hardware, 2026-09-14.** The question `docs/pcm-hunt.md` §16 left
 open — *"how `TRAN`'s 125 positions map onto 34 entries"* — is answered for the
 upper half of the bank, and the rule is exact:

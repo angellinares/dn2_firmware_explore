@@ -464,15 +464,19 @@ export const CODE = {
  "dsp": {
   "stock_sha256": "336e340aa0cdcd34e314cfa44849f709a3134f6bd4cd57dfc7e15702c83115e2",
   "stock_length": 836956,
-  "stock_sha256_no_bank": "a810d0778c33a526826233d016d3c3fc330a522f5ab6722d0a33094e6c1f38f3",
+  "stock_sha256_no_bank": "b6e47fb428752873f9d16729fa029e38f3557e330ae84b89955734023b004691",
   "bank_spans": [
    [
-    497108,
-    47440
+    492316,
+    52232
    ],
    [
     544580,
-    278924
+    278932
+   ],
+   [
+    46624,
+    256
    ]
   ],
   "final_offset": 836940,

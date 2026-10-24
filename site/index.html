@@ -124,11 +124,11 @@
     <span class="glyph" data-glyph="transients" aria-hidden="true"></span>
     <h3>FM drum transients</h3>
     <span class="mod-id">transients</span>
-    <span class="mod-version"><!-- dnfw:version transients -->v1.0.0<!-- /dnfw:version --></span>
+    <span class="mod-version"><!-- dnfw:version transients -->v2.0.0<!-- /dnfw:version --></span>
     <span class="tag ready">Confirmed on hardware</span>
   </div>
   <p>
-    Replace the factory FM&nbsp;DRUM transient bank with your own samples: 34 slots, each a short percussive hit. Drop in audio and the tool builds the combined
+    Replace the factory FM&nbsp;DRUM transient bank with your own samples: 32 slots, one for each <code>TRAN</code> step, each a short percussive hit. Drop in audio and the tool builds the combined
     bank and a signed firmware image for you.
   </p>
 
@@ -140,10 +140,10 @@
   </p>
 
   <dl class="facts">
-    <dt>Slots</dt><dd>34</dd>
-    <dt>Each</dt><dd>4,800 samples: exactly 100.0&nbsp;ms at 48&nbsp;kHz, 16-bit mono</dd>
+    <dt>Slots</dt><dd>32, slot <em>n</em> at <code>TRAN</code> 4 × <em>n</em></dd>
+    <dt>Each</dt><dd>its factory length, 50, 100 or 150&nbsp;ms, or 107.6&nbsp;ms for all with Equal slots; 48&nbsp;kHz, 16-bit mono</dd>
     <dt>Input</dt><dd>In the browser tool, any audio that your browser can play. The tool mixes it to mono, resampled to 48&nbsp;kHz and fitted to the slot for you. The command-line version takes 16-bit WAV.</dd>
-    <dt>Touches</dt><dd>Section 7 (the audio DSP image) only. No code, no lengths, no key material</dd>
+    <dt>Touches</dt><dd>Section 7 (the audio DSP image) only: the samples, and with Equal slots the table of their starts and lengths. No code, no key material</dd>
     <dt>Tested</dt><dd>Extracting the factory bank and writing it straight back produces a <strong>byte-identical</strong> image, and rebuilds pass 21&nbsp;of&nbsp;21 integrity checks</dd>
   </dl>
 
@@ -154,15 +154,18 @@ dnfw mods extract firmware.syx --mod transients -o factory/
 dnfw mods apply firmware.syx --mod transients --from my_hits/ -o modded.syx
 
 # --prepare onset-aligns each input to the slot and fades its end
-dnfw mods apply firmware.syx --mod transients --from my_hits/ -o modded.syx --prepare</pre>
+dnfw mods apply firmware.syx --mod transients --from my_hits/ -o modded.syx --prepare
+
+# --equal-slots makes all 32 slots 107.6 ms (8 factory ones are cut, 24 padded)
+dnfw mods apply firmware.syx --mod transients --from my_hits/ -o modded.syx --equal-slots</pre>
 
   <h4 style="margin:1.6rem 0 .5rem;font-size:.95rem">Getting a transient out of an ordinary sample</h4>
   <p style="margin-top:0">
-    A slot is 100&nbsp;ms of percussive attack, and most samples are neither. Two
+    A slot is 50 to 150&nbsp;ms of percussive attack, and most samples are neither. Two
     different problems, worth keeping apart:
   </p>
   <ul>
-    <li><strong>Fitting</strong>: mono, 48&nbsp;kHz, 100&nbsp;ms, starting at the attack
+    <li><strong>Fitting</strong>: mono, 48&nbsp;kHz, the slot's length, starting at the attack
       rather than at whatever silence the file begins with. That is what
       <code>--prepare</code> does.</li>
     <li><strong>Separating</strong>: pulling the percussive layer out of a sample that is

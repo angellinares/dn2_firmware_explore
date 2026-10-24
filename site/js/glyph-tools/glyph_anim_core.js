@@ -428,8 +428,41 @@ export const ANIMS = {
 
   const FILLS = ["bayer", "checker", "hatch", "crosshatch", "halftone", "noise", "blue", "linear", "radial"];
 
+  /** How far along a gradient (x, y) is, 0 at its start and 1 at its end.
+   *  With `from` and `to` (cells, the Gradient tool's drag) the gradient runs from one to the
+   *  other and keeps its end values past them: linear along the drag, radial from the centre
+   *  `from` out to the drag's length. Without them it spans `bounds`: linear along `angle`,
+   *  radial from the edge to the centre (as before the drag). */
+  function gradientAt(kind, x, y, p) {
+    const clamp = (v) => Math.max(0, Math.min(1, v));
+    if (p.from && p.to) {
+      const [fx, fy] = p.from, dx = p.to[0] - fx, dy = p.to[1] - fy, len2 = dx * dx + dy * dy;
+      if (len2 > 0) {
+        if (kind === "linear") return clamp(((x - fx) * dx + (y - fy) * dy) / len2);
+        return clamp(Math.hypot(x - fx, y - fy) / Math.sqrt(len2));
+      }
+    }
+    const [x0, y0, x1, y1] = p.bounds;
+    if (kind === "linear") {
+      const a = ((p.angle ?? 0) * Math.PI) / 180, ux = Math.cos(a), uy = Math.sin(a);
+      const cs = [[x0, y0], [x1, y0], [x0, y1], [x1, y1]].map(([cx, cy]) => cx * ux + cy * uy);
+      const lo = Math.min(...cs), hi = Math.max(...cs);
+      return hi > lo ? (x * ux + y * uy - lo) / (hi - lo) : 1;
+    }
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, R = Math.hypot((x1 - x0) / 2, (y1 - y0) / 2) || 1;
+    return 1 - Math.hypot(x - cx, y - cy) / R;
+  }
+
+  /** The density of a gradient at position v (0 to 1): the curve, then Start % to End %. */
+  function gradientDensity(v, p) {
+    const pos = p.invert ? 1 - v : v;
+    const start = p.start ?? 0, end = p.end ?? 1;
+    return start + (end - start) * (EASE[p.curve] ?? EASE.linear)(pos);
+  }
+
   /** Whether a pattern lights (x, y). `p`: density 0..1, angle in degrees, spacing, size,
-   *  cell, seed, offset (moves the pattern along x), and for gradients the bounds. */
+   *  cell, seed, offset (moves the pattern along x); for gradients the bounds, start and end
+   *  (0..1, the density at the two ends), curve (a name in EASE), invert, and from and to. */
   function patternAt(kind, x, y, p) {
     const d = p.density ?? 0.5, off = Math.round(p.offset ?? 0);
     const X = x - off;
@@ -453,21 +486,8 @@ export const ANIMS = {
       }
       case "noise": return threshold(X & 0xffff, y, "seeded", p.seed ?? 1) < d;
       case "blue": return ign(X, y) < d;
-      case "linear": case "radial": {
-        const [x0, y0, x1, y1] = p.bounds;
-        let v;
-        if (kind === "linear") {
-          const a = ((p.angle ?? 0) * Math.PI) / 180, ux = Math.cos(a), uy = Math.sin(a);
-          const cs = [[x0, y0], [x1, y0], [x0, y1], [x1, y1]].map(([cx, cy]) => cx * ux + cy * uy);
-          const lo = Math.min(...cs), hi = Math.max(...cs);
-          v = hi > lo ? (x * ux + y * uy - lo) / (hi - lo) : 1;
-        } else {
-          const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, R = Math.hypot((x1 - x0) / 2, (y1 - y0) / 2) || 1;
-          v = 1 - Math.hypot(x - cx, y - cy) / R;
-        }
-        if (p.invert) v = 1 - v;
-        return v > threshold(((x % 8) + 8) % 8, y, "ordered");
-      }
+      case "linear": case "radial":
+        return gradientDensity(gradientAt(kind, x, y, p), p) > threshold(((x % 8) + 8) % 8, y, "ordered");
       default: return false;
     }
   }
@@ -613,7 +633,7 @@ export const ANIMS = {
     encode, decode, toHex, fromHex, OPS, dissolve, tween, resize, parseStill, rowsToHex, hexToRows,
     threshold, EASE, move, morph, line, rect, ellipse, constrain, shape, plot,
     maskNone, maskAll, maskEmpty, maskRect, maskInvert, maskCombine, maskBounds, wand, within, flood,
-    lift, stamp, FILLS, patternAt, fill, rangeParams };
+    lift, stamp, FILLS, patternAt, gradientAt, gradientDensity, fill, rangeParams };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.GlyphAnim = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

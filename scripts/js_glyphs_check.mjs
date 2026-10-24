@@ -276,3 +276,75 @@ ok("with motion off it shows the still glyph", same(lit(still.children[0]), want
      J(big.slice(0, 17).map((r) => r.slice(0, 17))) === J(f17) && big[20] === ".".repeat(128) && big[0].slice(17) === ".".repeat(111)
      && J(small) === J(f128.slice(0, 16).map((r) => r.slice(0, 16))));
 }
+
+// Gradients: Start % and End %, a curve, a drag that sets the ends, and easing across frames.
+{
+  const ctx = {};
+  vm.createContext(ctx);
+  for (const f of ["site/js/glyph-tools/glyph_anim_core.js", "site/js/glyph-tools/glyph_tools.js", "site/js/glyph-tools/glyph_fills_panel.js"]) {
+    vm.runInContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), ctx);
+  }
+  const G = ctx.GlyphAnim, F = ctx.GlyphFills, J = JSON.stringify;
+  const t8 = (x, y) => G.threshold(((x % 8) + 8) % 8, y, "ordered");
+  // the gradients as they were before Start, End and the curve: the reference for the defaults
+  const before = (kind, w, h, p, mask) => {
+    const [x0, y0, x1, y1] = G.maskBounds(mask, w, h);
+    const rows = Array.from({ length: h }, (_, y) => Array.from({ length: w }, (_, x) => {
+      let v;
+      if (kind === "linear") {
+        const a = ((p.angle ?? 0) * Math.PI) / 180, ux = Math.cos(a), uy = Math.sin(a);
+        const cs = [[x0, y0], [x1, y0], [x0, y1], [x1, y1]].map(([cx, cy]) => cx * ux + cy * uy);
+        const lo = Math.min(...cs), hi = Math.max(...cs);
+        v = hi > lo ? (x * ux + y * uy - lo) / (hi - lo) : 1;
+      } else {
+        const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, R = Math.hypot((x1 - x0) / 2, (y1 - y0) / 2) || 1;
+        v = 1 - Math.hypot(x - cx, y - cy) / R;
+      }
+      if (p.invert) v = 1 - v;
+      return v > t8(x, y) ? "#" : ".";
+    }).join(""));
+    return G.within(G.blank(w, h), rows, mask);
+  };
+  let same = true, cases = 0;
+  for (const [w, h] of [[16, 16], [17, 17], [19, 17], [11, 11], [128, 64]]) {
+    for (const kind of ["linear", "radial"]) for (const angle of [0, 30, 45, 90, 135, -60]) for (const invert of [false, true]) {
+      for (const mask of [null, G.maskRect(w, h, 1, 2, w - 3, h - 4)]) {
+        cases++;
+        same &&= J(G.fill(G.blank(w, h), kind, { angle, invert }, mask)) === J(before(kind, w, h, { angle, invert }, mask))
+          && J(G.fill(G.blank(w, h), kind, { angle, invert, start: 0, end: 1, curve: "linear" }, mask)) === J(before(kind, w, h, { angle, invert }, mask));
+      }
+    }
+  }
+  ok(`the default gradients (Start 0 %, End 100 %, linear) give the same pixels as before, in ${cases} cases`, same && cases === 240);
+  const lit = (rows, x0, x1) => rows.reduce((n, r) => n + [...r.slice(x0, x1)].filter((c) => c === "#").length, 0) / (rows.length * (x1 - x0));
+  const g2070 = G.fill(G.blank(128, 64), "linear", { angle: 0, start: 0.2, end: 0.7 });
+  ok("Start 20 % and End 70 %: about 20 % lit at the start and 70 % at the end",
+     Math.abs(lit(g2070, 0, 8) - 0.22) < 0.04 && Math.abs(lit(g2070, 120, 128) - 0.68) < 0.04
+     && Math.abs(lit(G.fill(G.blank(128, 64), "linear", { angle: 0, start: 0.2, end: 0.7, invert: true }), 0, 8) - 0.68) < 0.04);
+  let monotonic = true;
+  for (const curve of Object.keys(G.EASE)) {
+    const g = G.fill(G.blank(128, 64), "linear", { angle: 0, start: 0.1, end: 0.9, curve });
+    const blocks = Array.from({ length: 16 }, (_, i) => lit(g, i * 8, i * 8 + 8));
+    monotonic &&= blocks.every((b, i) => i === 0 || b >= blocks[i - 1]) && blocks[15] > blocks[0];
+    for (let i = 1; i <= 20; i++) monotonic &&= G.gradientDensity(i / 20, { start: 0.1, end: 0.9, curve }) >= G.gradientDensity((i - 1) / 20, { start: 0.1, end: 0.9, curve });
+  }
+  const mid = (curve) => G.gradientDensity(0.5, { start: 0, end: 1, curve });
+  ok("every curve gives a ramp that only rises, and the curves differ in the middle",
+     monotonic && mid("linear") === 0.5 && mid("quad-in") === 0.25 && mid("quad-out") === 0.75 && Object.keys(G.EASE).length === 10);
+  const drag = G.fill(G.blank(128, 64), "linear", { start: 0.2, end: 0.7, from: [40, 10], to: [87, 10] });
+  ok("a drag sets the ends: before the press point Start % stays, past the release point End % stays",
+     lit(drag, 0, 40) === lit(G.fill(G.blank(40, 64), "bayer", { density: 0.2 }), 0, 40)
+     && lit(drag, 88, 128) === lit(G.fill(G.blank(40, 64), "bayer", { density: 0.7 }), 0, 40)
+     && Math.abs(lit(drag, 0, 40) - 13 / 64) < 1e-9 && Math.abs(lit(drag, 88, 128) - 45 / 64) < 1e-9);
+  const rad = G.fill(G.blank(128, 64), "radial", { from: [64, 32], to: [84, 32] });
+  const far = rad.every((r, y) => [...r].every((c, x) => Math.hypot(x - 64, y - 32) < 20 || c === "#"));
+  ok("a radial drag: the press point is the centre (Start %) and the drag length the radius (End % past it)",
+     far && rad[32][64] === "." && G.gradientAt("radial", 74, 32, { from: [64, 32], to: [84, 32] }) === 0.5
+     && G.gradientAt("radial", 64, 42, { from: [64, 32], to: [84, 32] }) === 0.5);
+  const flat = G.blank(64, 64);
+  const frames = F.results([flat, flat, flat, flat, flat], "linear", { angle: 0, start: 0.2, end: 0.2, curve: "linear" }, null,
+    { ease: "linear", to: { start: 0.6, end: 0.6 } });
+  ok("across 5 frames Start % and End % ease from 20 % to 60 %",
+     frames.map((f) => Math.round(lit(f, 0, 64) * 64)).join() === [0.2, 0.3, 0.4, 0.5, 0.6].map((d) => Math.ceil(d * 64 - 0.5)).join()
+     && F.USES.linear.includes("start") && F.USES.radial.includes("curve"));
+}

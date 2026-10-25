@@ -82,6 +82,10 @@ def section7_of(syx: pathlib.Path) -> bytes:
 
 
 def estimate(a) -> int:
+    # The cycle model needs every step (the recorder is fx.run's observer), so this runs the Python
+    # runner: run_blocks would otherwise switch to the native engine, which reports no steps
+    # (every estimate read 0 from 2026-10-17 to 2026-10-25).
+    os.environ["DNFW_WAVERIDER_PYTHON"] = "1"
     import sharc_waverider_m5 as g                    # noqa: PLC0415
     from dnfw.waverider import live                   # noqa: PLC0415
     from sharc_cycles_recorder import Recorder        # noqa: PLC0415
@@ -113,6 +117,9 @@ def estimate(a) -> int:
                 with Recorder(g.fx) as rec:
                     run = g.run_blocks(init, fb, a.blocks)
                 counts = dict(rec.model.counts)
+                if run["ok"] and not counts.get("instructions"):
+                    raise SystemExit(f"{label} {name}: the recorder saw no instructions "
+                                     "(is the runner the native engine?)")
                 cycles, parts, unpriced = C.estimate(counts, table)
                 report["cases"][name] = {"ok": run["ok"], "runner_instructions": run["instructions"],
                                          "skipped": rec.skips, "counts": counts, "cycles": cycles,

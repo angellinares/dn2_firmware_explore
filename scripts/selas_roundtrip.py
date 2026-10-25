@@ -25,11 +25,16 @@ from dnfw import sharcemu  # noqa: E402
 
 
 def decoder(digikit: pathlib.Path):
-    tools = str(digikit / "tools")
-    if tools not in sys.path:
-        sys.path.insert(0, tools)
-    import sharc_disasm  # noqa: PLC0415
-    import sharcfn  # noqa: PLC0415
+    if (digikit / "tools" / "sharc_dev").is_dir():       # digikit main's layout (since #264)
+        if str(digikit) not in sys.path:
+            sys.path.insert(0, str(digikit))
+        from tools.sharc_dev import sharc_disasm, sharcfn  # noqa: PLC0415
+    else:
+        tools = str(digikit / "tools")
+        if tools not in sys.path:
+            sys.path.insert(0, tools)
+        import sharc_disasm  # noqa: PLC0415
+        import sharcfn  # noqa: PLC0415
 
     class NoMemory:                     # the renderer annotates literal addresses from it
         @staticmethod

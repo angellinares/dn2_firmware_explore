@@ -5,9 +5,15 @@
     rec.model.counts            # the event counts (dnfw.sharccycles.model)
 
 While active it is fx.OBSERVER (scripts/sharc_dn2_fixups.py calls before/after
-around each instruction) and it wraps digikit's `_dm_read` / `_dm_write` where
-the forms and fixups call them, recording each data address an instruction
-touches. Outside an instruction (a harness tap, a hook) nothing is recorded.
+around each instruction). Each instruction's data addresses come from the runner's own
+trace events (digikit's tools/sharc_dev/sharc_accesses.py), plus the reads and writes our
+fix-ups in sharc_dn2_fixups make themselves, which no event records. Outside an
+instruction (a harness tap, a hook) nothing is recorded.
+
+Until 2026-10-25 this wrapped digikit's `_dm_read` / `_dm_write` by module name. The forms
+modules import those names directly, and digikit main loads them as
+tools.sharc_dev.sharc_core.*, so from 2026-10-21 the wrapper missed most loads and stores
+(batcha1's second oscillator read 3,395 estimated cycles a block instead of 4,445).
 
 Per step it works out what the model needs from the runner's state: whether a
 branch went (a delayed branch leaves `state.pending` with a target; any other
@@ -29,8 +35,26 @@ from dnfw.sharccycles import events as ev          # noqa: E402
 from dnfw.sharccycles import forms                 # noqa: E402
 from dnfw.sharccycles.model import Model           # noqa: E402
 
-_PATCHED_MODULES = ("sharc_core.memory", "sharc_core.forms_compute", "sharc_core.forms_flow",
-                    "sharc_core.forms_move")
+try:                                               # digikit main from PR "sharc_accesses"
+    from tools.sharc_dev.sharc_accesses import enable as _enable_events      # noqa: E402
+    from tools.sharc_dev.sharc_accesses import step_accesses as _step_accesses  # noqa: E402
+except ImportError:                                # shortcut: an older digikit checkout; drop when dnfw.sharcemu's has it
+    _KINDS = {"load": "r", "load-pey": "r", "store": "w", "store-pey": "w"}
+    _WIDTHS = {"byte": 1, "byte-sign-extended": 1, "short-word": 2, "short-word-sign-extended": 2,
+               "normal-word": 4, "long-word": 8}
+
+    def _enable_events(state) -> None:
+        state.record_events = True
+
+    def _step_accesses(events):
+        from types import SimpleNamespace
+        for e in events:
+            kind, address = _KINDS.get(e.get("action", "")), e.get("address")
+            if kind is not None and isinstance(address, int):
+                width = 8 if e.get("long_word") else _WIDTHS.get(e.get("access_width", ""), 4)
+                yield SimpleNamespace(kind=kind, address=address, width=width)
+
+
 _I_CODES = tuple(range(16, 32))                    # digikit UREG_CODES I0..I15
 _LOAD_FORMS = frozenset({"1a", "1b", "3a", "3b", "3c", "3d", "4a", "4b", "4d", "6a_mem",
                          "10a_rel", "14a", "15a", "15b"})
@@ -46,13 +70,17 @@ class Recorder:
         self._reads: list[int] = []
         self._writes: list[int] = []
         self._saved: list[tuple[object, str, object]] = []
+        self._fix_reads: list[int] = []
+        self._fix_writes: list[int] = []
+        self._runner = None
+        self._record_events = True
+        self._trace_at = 0
         self._steps = 0
         self._loop_starts: list[tuple[bool, int]] = []   # per active loop: (F1 opcode, first step)
 
     # -- the context ---------------------------------------------------------------------
 
     def __enter__(self):
-        mods = [sys.modules[m] for m in _PATCHED_MODULES if m in sys.modules] + [self.fx]
         concrete = sys.modules["sharc_core.memory"]._concrete_address
         rec = self
 
@@ -61,7 +89,7 @@ class Recorder:
                 if rec._inside:
                     a = concrete(address)
                     if a is not None:
-                        rec._reads.append(a)
+                        rec._fix_reads.append(a)
                 return orig(state, address, width, signed, **kw)   # newer digikit adds keywords (normal_word)
             return _dm_read
 
@@ -70,16 +98,16 @@ class Recorder:
                 if rec._inside:
                     a = concrete(address)
                     if a is not None:
-                        rec._writes.append(a)
+                        rec._fix_writes.append(a)
                 return orig(state, address, width, value, **kw)
             return _dm_write
 
-        for mod in mods:
-            for name, wrap in (("_dm_read", wrap_read), ("_dm_write", wrap_write)):
-                orig = getattr(mod, name, None)
-                if orig is not None:
-                    self._saved.append((mod, name, orig))
-                    setattr(mod, name, wrap(orig))
+        # only our own fix-ups: the forms' accesses come from the events
+        for name, wrap in (("_dm_read", wrap_read), ("_dm_write", wrap_write)):
+            orig = getattr(self.fx, name, None)
+            if orig is not None:
+                self._saved.append((self.fx, name, orig))
+                setattr(self.fx, name, wrap(orig))
         self.fx.OBSERVER = self
         return self
 
@@ -88,6 +116,9 @@ class Recorder:
         for mod, name, orig in reversed(self._saved):
             setattr(mod, name, orig)
         self._saved.clear()
+        if self._runner is not None:               # leave the state as found: events off, trace short
+            self._runner.state.record_events = self._record_events
+            del self._runner.state.trace[:-1]
         return False
 
     # -- fx.run's calls ------------------------------------------------------------------
@@ -103,12 +134,24 @@ class Recorder:
         self._pending = st.pending
         u = st.uregs
         self._iregs = [u.get(c) for c in _I_CODES]
+        if self._runner is not runner:
+            self._runner, self._record_events = runner, st.record_events
+        if not st.record_events:
+            _enable_events(st)
+        self._trace_at = len(st.trace)
         self._reads, self._writes = [], []
+        self._fix_reads, self._fix_writes = [], []
         self._inside = True
 
     def after(self, runner, insn, emulated: bool) -> None:
         self._inside = False
         st = runner.state
+        for a in _step_accesses(st.trace[self._trace_at:]):
+            to = self._reads if a.kind == "r" else self._writes
+            to.extend(range(a.address, a.address + max(4, a.width), 4))   # a 64-bit access: its two words
+        for got, mine in ((self._reads, self._fix_reads), (self._writes, self._fix_writes)):
+            got.extend(x for x in mine if x not in got)                  # a fix-up redoing a form's access
+        del st.trace[:-1]                                                # bounded: nothing reads further back
         pc = self._pc
         static = self._static.get(pc)
         if static is None or static.form != insn.type_name:

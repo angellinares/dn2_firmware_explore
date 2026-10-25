@@ -5,8 +5,8 @@
 Runs `build_arpscale.compose` on the user's own stock 1.11 image and writes
 what it changed as data, the pattern of `gen_lfolength_code.py`:
 
-- `edits`: the two hooks, each with the **stock bytes it expects** (a guard:
-  the mod refuses any image that differs) and its `jmp`;
+- `edits`: the hooks, each with the **stock bytes it expects** (a guard:
+  the mod refuses any image that differs) and its `jmp` or `jsr`;
 - `guards`: the instructions and tables the code relies on
   (`build_arpscale.CONTEXT`), read but not written;
 - `code`: the routines, assembled to run at `build_arpscale.CODE_VA`, as a
@@ -45,7 +45,7 @@ def main() -> int:
     edits = [{"va": va, "stock": stock_bytes.hex(),
               "new": content[va - bs.BASE:va - bs.BASE + len(stock_bytes)].hex(),
               "what": f"arpscale hook ({label})"}
-             for va, stock_bytes, label in bs.HOOKS]
+             for va, stock_bytes, label, _ in bs.HOOKS]
     replay = bytearray(stock)
     for e in edits:
         new = bytes.fromhex(e["new"])
@@ -59,7 +59,7 @@ def main() -> int:
         "stock_length": len(stock),
         "edits": edits,
         "guards": ([{"va": va, "bytes": want.hex()} for va, want, _ in bs.CONTEXT]
-                   + [{"va": va, "bytes": want.hex()} for va, want, _ in bs.HOOKS]),
+                   + [{"va": va, "bytes": want.hex()} for va, want, _, _ in bs.HOOKS]),
         "labels": labels,
         "code": {"va": bs.CODE_VA, "blob": blob.hex(), "labels": labels},
     }

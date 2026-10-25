@@ -34,9 +34,9 @@ From each mod's own declaration (`ram()`), 2026-10-11:
 | usbprobe | 2,304 | `0x46f00000` |
 | reloadconfirm, midiarp, lfolength, layermidi, bootscreen | 2,801 | `0x46708000`, `0x467b0000` (lfolength; `0x467f8000` until 2026-10-15), `0x467d0000..0x467e04b8` |
 | degreetranspose (2026-10-14) | 1,668 | `0x467b8000` |
-| arpscale (2026-10-13) | 997 | `0x467a8000`, and one byte of the settings block |
+| arpscale (2026-10-25) | 1,673 | `0x467a8000`, and one byte of the settings block; its marks are in each sound |
 | the platform's data window | 196,608 | `0x46710000` |
-| **all** | **705,326** | 0.67 MiB of the 24.9 MB |
+| **all** | **706,002** | 0.67 MiB of the 24.9 MB |
 
 ### Pattern data a mod stores
 

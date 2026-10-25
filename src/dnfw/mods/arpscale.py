@@ -15,6 +15,15 @@ in C major, E plus 2 plays G, and plus 7 is the octave.
 - SCALE and ROOT are read per track or per pattern, as KEYBOARD SETUP's
   CONFIG says, from the pattern that is playing.
 
+With the switch on, a step can also be marked to move in semitones. In the
+ARPEGGIATOR menu, `[UP]` on an active step marks it and the step graph draws a
+plus for it; `[DOWN]` removes the mark, and `[DOWN]` again mutes the step, as
+stock. The marks belong to the sound: it saves them in its stored bytes
+242..243, which stock zeroes and never reads, and keeps them in its value
+slot 100, which no parameter uses. The menu's rotate, copy, paste, clear and
+undo move them with the steps. With the switch off, every step moves in
+semitones and the menu is stock's.
+
 `scripts/build_arpscale.py` carries the reading of the arp step's tail and the
 toggle's byte, `scripts/build_scale_degrees.py` where the playing pattern keeps a
 track's scale and root and the move by degrees, and
@@ -29,15 +38,19 @@ The code is assembled ahead of time (`scripts/gen_arpscale_code.py` ->
 
 1. every guard and every edit's stock bytes are checked, and an image that
    differs is refused;
-2. the two hooks are written: the arp step's tail (`0x4002a390`) and
-   PERSONALIZE's constructor after its last stock item (`0x40098630`), each a
-   `jmp` into the chunk;
+2. the hooks are written, each a `jmp` into the chunk or a stock `jsr` turned
+   into a call of it: the arp step's tail (`0x4002a390`), PERSONALIZE's
+   constructor after its last stock item (`0x40098630`), the stored sound's
+   load and save at the step mask (`0x400dd5a0`, `0x400dd8c8`), the step
+   graph (`0x40018b4a`), and seven of the ARPEGGIATOR menu's calls: the step's
+   on/off, the rotate's mask, copy, clear, paste and the two calls of undo;
 3. the routines are added to the platform's area as a `CODE` chunk at
    `0x467a8000`, which the platform's start-up loader copies there.
 
 The toggle is one byte of RAM in the settings block (`0x405cd8af`, the byte after
 reloadconfirm's), which the firmware already saves to the +Drive and restores;
-the mod writes it only through the stock settings writer.
+the mod writes it only through the stock settings writer. The menu's copy and
+undo record keep their marks in two words after the code.
 """
 
 from __future__ import annotations
@@ -94,7 +107,8 @@ def apply(firmware) -> Result:
     return Result(payloads={SECTION: bytes(content)}, extents=extents(),
                   notes=["SETTINGS > PERSONALIZE > ARP OFS IN SCALE: off by default",
                          "on: arp step offsets count degrees of the track's scale from its root",
-                         f"{len(SPEC['edits'])} hooks in section 3, and a {len(BLOB):,} B CODE "
+                         "on: [UP] on an active arp step marks it to move in semitones",
+                         f"{len(SPEC['edits'])} edits in section 3, and a {len(BLOB):,} B CODE "
                          f"chunk at 0x{CODE_VA:08x} in the platform's area"])
 
 

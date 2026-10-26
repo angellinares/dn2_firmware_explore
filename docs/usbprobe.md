@@ -12,7 +12,7 @@ reads of the SHARC's reply page located Waverider's DSP stop
 
 A mod (`dnfw mods apply --mod usbprobe`, `src/dnfw/mods/usbprobe.py`) that
 makes a Digitone II answer three read-only SysEx commands over USB, and a
-Windows client (`tools/dn2probe.py`) that asks them. Nothing on the instrument
+Windows/macOS client (`tools/dn2probe.py`) that asks them. Nothing on the instrument
 changes unless a request arrives, apart from a few counter increments per audio
 frame and per context switch.
 
@@ -24,6 +24,44 @@ frame and per context switch.
 
 There is **no write command**. Any other command byte, including every one the
 stock Elektron protocols use, draws status 2.
+
+### macOS command-line client
+
+Install the optional MIDI dependencies from the repository root:
+
+```sh
+python -m pip install -e '.[midi]'
+python tools/dn2probe.py ports
+python tools/dn2probe.py hello --port "Digitone II"
+python tools/dn2probe.py stats 3 --in 1 --out 0
+```
+
+Use the input and output indices reported by `ports`; they need not match.
+`--backend auto` selects the existing package-free `winmm` transport on Windows
+and Mido/RtMidi's CoreMIDI transport on macOS. `--backend winmm` or
+`--backend rtmidi` selects explicitly. The RtMidi transport prefers an exact
+name, otherwise requires a unique substring match in each direction. It refuses
+ambiguous names and invalid indices. Identical full endpoint names cannot be
+resolved by index through Mido: rename or disconnect one endpoint first.
+
+MIDI dependencies load only when listing or opening ports; `selftest` and codec
+imports remain usable without them. The adapter uses complete SysEx messages,
+ignores short MIDI traffic, and keeps the existing request sequencing, retries
+and reply validation. It sends no controller resets when closing ports.
+See [Mido's RtMidi backend documentation](https://mido.readthedocs.io/en/stable/backends/rtmidi.html).
+
+This addition covers `dn2probe.py`; the separate `dn2live.py` dashboard and other
+tools that import `winmidi` directly remain Windows clients. No firmware changes
+are needed, but the instrument must already run a compatible `usbprobe` build.
+Stock firmware does not answer; this host backend does not add DIN probe support.
+Linux/RtMidi is an explicit, unvalidated option rather than an automatic choice.
+
+Transport regression tests use fake ports and the real Mido message codec:
+`python -m pytest test/test_midoport.py test/test_usbprobe.py test/test_dn2live.py`.
+On macOS, a virtual CoreMIDI loopback passed HELLO, STATS and a 1,024-byte PEEK
+reply on 2026-10-26 (Mido 1.3.2, python-rtmidi 1.5.8). That test opened only
+temporary virtual endpoints. Windows device behavior and macOS-to-DN2 replies
+still need hardware validation.
 
 ### Framing (irpina's design, unproven on DN2 until the owner's unit answers)
 
@@ -370,7 +408,7 @@ SHARC is still writing anything, word by word.
 | `src/dnfw/mods/usbprobe.py` | the mod |
 | `scripts/build_usbprobe.py` | a build, a section-7 swap, and the gate layout under `out/<name>/` |
 | `scripts/emu_usbprobe.py` | the emulator tests |
-| `tools/dn2probe.py`, `tools/winmidi.py` | the host |
+| `tools/dn2probe.py`, `tools/winmidi.py`, `tools/midoport.py` | command-line host, Windows transport, optional Mido/RtMidi transport |
 
 ## Live view: `tools/dn2live.py`
 

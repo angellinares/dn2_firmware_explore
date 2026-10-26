@@ -34,6 +34,7 @@ Rules that keep it honest:
 
 | Feature | State | Gate | Evidence |
 |---|---|---|---|
+| **macOS command-line USB probe** | **IMPLEMENTED; CoreMIDI virtual loopback passed 2026-10-26; device validation pending** | Optional Mido/RtMidi transport for `dn2probe.py`; Windows transport unchanged. Live dashboard remains Windows-only | [Client setup and validation scope](usbprobe.md#macos-command-line-client), `test/test_midoport.py` |
 | **Extra LFO destinations** | **SHIPPED** | — | `docs/modulation-mask.md`, browser tool, PR #61 |
 | **Transient Swapper** | **SHIPPED** | — | `docs/pcm-hunt.md`, `docs/tran-mapping.md`, PR #64 |
 | **TRAN mapping** | **SOLVED** | — | a table of 32 (start, length) entries in section 7, one per `TRAN` step of 4; transients 2.0.0: slot n = entry n, factory sizes or Equal slots (32 × 107.6 ms, 2026-10-24); `docs/tran-mapping.md` |

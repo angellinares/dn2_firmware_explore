@@ -1,6 +1,6 @@
 """Read live ColdFire state from a Digitone II running a usbprobe build, over USB MIDI.
 
-    python tools/dn2probe.py ports              the MIDI ports Windows sees
+    python tools/dn2probe.py ports              the MIDI ports the selected backend sees
     python tools/dn2probe.py hello              is a probe answering, and which build
     python tools/dn2probe.py stats [N]          N readings, one a second: CPU, ISR load, DSP link
     python tools/dn2probe.py dsp [SECONDS]      is the DSP alive, at a glance
@@ -11,6 +11,7 @@
     python tools/dn2probe.py selftest           the codec, with no device
 
     options: --port "Digitone II" (a substring of the port name), or --in N --out N
+             --backend auto|winmm|rtmidi (auto: winmm on Windows, RtMidi on macOS)
 
 derived from irpina/digihealth (tools/digiusb.py), GPL-2.0-or-later, used here under GPL-3.0 within this AGPL-3.0-or-later project
 
@@ -23,8 +24,9 @@ has no command that writes.
     reply    F0 00 20 3C 7D 00 <pack7: u16 seq, u8 cmd | 0x80, u8 status, payload> F7
 
 Integers big-endian. Status 0 ok, 1 refused argument, 2 unknown command.
-Windows only for the device (winmidi.py: winmm through ctypes, no packages);
-the codec imports anywhere. **Windows lets one program at a time open a MIDI
+Windows uses winmidi.py (winmm through ctypes, no packages). macOS uses
+midoport.py (Mido/python-rtmidi): python -m pip install -e '.[midi]'.
+The codec imports anywhere. **Windows lets one program at a time open a MIDI
 port: close Elektron Transfer and DNX first.**
 
 Divergences from digiusb.py: STATS is cumulative counters and link hashes,
@@ -176,7 +178,7 @@ def delta(a, b):
 
 
 class Probe:
-    """The channel over a winmidi Port. Stock firmware never answers."""
+    """The channel over a MIDI Port. Stock firmware never answers."""
 
     def __init__(self, port):
         self.port = port
@@ -526,6 +528,21 @@ COMMANDS = {'stacks': cmd_stacks, 'hello': cmd_hello, 'stats': cmd_stats, 'dsp':
             'watch': cmd_watch}
 
 
+def midi_backend(name):
+    if name == 'auto':
+        name = {'win32': 'winmm', 'darwin': 'rtmidi'}.get(sys.platform)
+        if name is None:
+            raise OSError('auto MIDI selection supports Windows and macOS; '
+                          'use --backend rtmidi to try another platform')
+    if name == 'winmm':
+        if sys.platform != 'win32':
+            raise OSError('winmm requires Windows; use --backend rtmidi')
+        import winmidi
+        return winmidi
+    import midoport
+    return midoport
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0],
                                 formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
@@ -534,26 +551,30 @@ def main(argv=None):
     p.add_argument('--port', default='Digitone II', help='a substring of the MIDI port name')
     p.add_argument('--in', dest='i', type=int, help='MIDI in index (see `ports`)')
     p.add_argument('--out', dest='o', type=int, help='MIDI out index')
+    p.add_argument('--backend', choices=('auto', 'winmm', 'rtmidi'), default='auto',
+                   help='MIDI transport (auto: Windows winmm, macOS RtMidi)')
     p.add_argument('--symbols', help='watch: a profiling build\'s symbols.json, for lfo4\'s timers')
     args = p.parse_args(argv)
     if args.command == 'selftest':
         selftest()
         return 0
     sys.path.insert(0, __import__('os').path.dirname(__file__))
-    import winmidi
-    if args.command == 'ports':
-        ins, outs = winmidi.ports()
-        print('in:  ' + '; '.join('%d %s' % kv for kv in enumerate(ins)))
-        print('out: ' + '; '.join('%d %s' % kv for kv in enumerate(outs)))
-        return 0
-    port = winmidi.Port(args.port, args.i, args.o)
+    port = None
     try:
+        midi = midi_backend(args.backend)
+        if args.command == 'ports':
+            ins, outs = midi.ports()
+            print('in:  ' + '; '.join('%d %s' % kv for kv in enumerate(ins)))
+            print('out: ' + '; '.join('%d %s' % kv for kv in enumerate(outs)))
+            return 0
+        port = midi.Port(args.port, args.i, args.o)
         COMMANDS[args.command](Probe(port), args)
-    except (TimeoutError, ValueError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         print(exc)
         return 1
     finally:
-        port.close()
+        if port is not None:
+            port.close()
     return 0
 
 

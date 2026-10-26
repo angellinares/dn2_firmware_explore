@@ -147,7 +147,7 @@ def _selas(src: pathlib.Path, work: pathlib.Path):
     be = fix_subword(fix_shift_imm(fix_ashift_imm(sharc_object.code(data, "seg_pmco"), offs, texts), offs),
                      offs, texts)
     be = fix_type7a(fix_dual_addsub(fix_type19a(be, offs, texts), offs, texts), offs, texts)
-    be = fix_type3a_pm(be, offs, texts)
+    be = fix_sysreg_read(fix_type3a_pm(be, offs, texts), offs, texts)
     be = fix_rel_jump(be, offs, texts, labels)
     return fix_loop_f1(be, offs, texts, labels), offs
 
@@ -190,6 +190,58 @@ def fix_subword(be: bytes, offs: list[int], texts: list[str]) -> bytes:
             raise SystemExit(f"{text!r}: selas's fields at +{o} are not this access's")
         l, x, w = SUBWORD[width.upper()]
         word |= (l << 30) | (0b11 << 20) | (w << 17) | (x << 16)
+        out[o:o + 6] = word.to_bytes(6, "big")
+    return bytes(out)
+
+
+# The system and sequencer registers' UREG codes: PRM chapter 27, "UREG Registers Class" (the
+# same as digikit's sharc_core.encoding.UREG_NAMES). The PRM's aliases that share a code with
+# another register (ASTAT, STKY, LIRPTL / MODE1STK) are left out.
+SYSREG_CODES = {"FADDR": 0x60, "DADDR": 0x61, "PC": 0x63, "PCSTK": 0x64, "PCSTKP": 0x65, "LADDR": 0x66,
+                "CURLCNTR": 0x67, "LCNTR": 0x68, "EMUCLK": 0x69, "EMUCLK2": 0x6A, "PX": 0x6B, "PX1": 0x6C,
+                "PX2": 0x6D, "TPERIOD": 0x6E, "TCOUNT": 0x6F, "USTAT1": 0x70, "USTAT2": 0x71, "MODE1": 0x72,
+                "MMASK": 0x73, "MODE2": 0x74, "FLAGS": 0x75, "ASTATX": 0x76, "ASTATY": 0x77, "STKYX": 0x78,
+                "STKYY": 0x79, "IRPTL": 0x7A, "IMASK": 0x7B, "IMASKP": 0x7C, "USTAT3": 0x7E, "USTAT4": 0x7F}
+_SYSREG = "|".join(sorted(SYSREG_CODES, key=len, reverse=True))
+SYSREG_READ = re.compile(rf"^R(\d+)\s*=\s*({_SYSREG})\s*;$", re.IGNORECASE)
+SYSREG_MOVE = re.compile(rf"(?:^|[,\s])(?:(?:{_SYSREG})\s*=\s*[A-Z]+\d*|[A-Z]+\d*\s*=\s*(?:{_SYSREG}))\s*;$", re.IGNORECASE)
+
+
+def fix_sysreg_read(be: bytes, offs: list[int], texts: list[str]) -> bytes:
+    """A 48-bit `Rn = <system register>` (Type 5a), with the source register's code written here.
+
+    selas's 48-bit Type 5a puts the wrong code in the source field for every register from PC
+    up (found 2026-10-25 with scripts/selas_roundtrip.py on stall.asm, then for each register):
+    PC to EMUCLK2 come out one code low (`R0 = EMUCLK` as 76be00, the decoder's LCNTR, as if
+    selas's table had no reserved code 0x62), and from PX1 on they are scrambled (`R0 = MODE1`
+    as 773e00, USTAT1; `R0 = TPERIOD` as 713e00, I0). selas's compressed forms are right:
+    every one in our committed objects decodes to the PRM code.
+
+    The PRM's codes (SYSREG_CODES) and digikit's decoder are the reference, and stock code
+    agrees with them. DN2 1.11's 48-bit `R1 = MODE1` (773f00, sw 0x1c06e2) sits between a
+    MODE1 bit 16 clear and `R1 = bset(R1, 16); MODE1 = R1`, and `R0 = PX1` / `R0 = PX2`
+    (76fe00 / 76fe80, sw 0x1c0f18 / 0x1c0f29) follow `PX = PM(I0, M6)`. DT2 1.16 reads its
+    cycle count as `R1 = EMUCLK2; R0 = EMUCLK` (sw 0x1c75a9). The fields, read from those:
+    the source's bits 6:2 at 42:38 and bits 1:0 at 32:31, the data register at 26:23 (29:23
+    holds its 7-bit UREG code). Other 48-bit moves of a system register are refused: only
+    reads into R0-R15 are checked."""
+    out = bytearray(be)
+    for i, (o, text) in enumerate(zip(offs, texts)):
+        end = offs[i + 1] if i + 1 < len(offs) else len(out)
+        if end - o != 6:
+            continue
+        mt = SYSREG_READ.match(text)
+        if not mt:
+            if SYSREG_MOVE.search(text):
+                raise SystemExit(f"{text!r}: a 48-bit move of a system register (only `Rn = SYSREG` is checked)")
+            continue
+        word = int.from_bytes(out[o:o + 6], "big")
+        if word >> 43 != 0b01110 or (word >> 33) & 0x1F != 0x1F or (word >> 23) & 0x7F != int(mt.group(1)) \
+                or word & 0x7FFFFF:
+            raise SystemExit(f"{text!r}: selas emitted {word:012x} at +{o}, not the Type 5a read this fix expects")
+        code = SYSREG_CODES[mt.group(2).upper()]
+        word &= ~((0x1F << 38) | (0b11 << 31))
+        word |= ((code >> 2) << 38) | ((code & 0b11) << 31)
         out[o:o + 6] = word.to_bytes(6, "big")
     return bytes(out)
 

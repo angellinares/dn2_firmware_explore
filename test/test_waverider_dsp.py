@@ -366,11 +366,11 @@ def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
     s3 = dsp.stage3_objects() if dsp.STAGE3 else {}
     # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm, sync/smooth/dclk.asm (M10b-2),
     # trim.asm, sub/noise.asm (page 3), the mip reader, stage 3's fft3, spec3, mipb3 and build3, page5.asm, phase.asm
-    # and formant.asm
-    assert len(code_spans) == 19 + len(s3)
-    for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["idle_load"],
+    # formant.asm, and fsrc.asm and fsrc_mix.asm (page 5's FSRC)
+    assert len(code_spans) == 21 + len(s3)
+    for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["fsrc"], obj["idle_load"],
                                                      obj["block_count"], obj["entry_mark"], obj["modulator"],
-                                                     obj["shapes"], obj["load"], obj["pool"], obj["sync"], obj["trim"],
+                                                     obj["shapes"], obj["fsrc_mix"], obj["load"], obj["pool"], obj["sync"], obj["trim"],
                                                      obj["smooth"], obj["dclk"], obj["sub"], obj["noise"],
                                                      obj[{"hermite": "reader_miph", "hermite2": "reader_miph2"}.get(mip.INTERP, "reader_mip")],
                                                      *(s3[k] for k in ("fft3", "spec3", "mipb3", "build3") if k in s3),

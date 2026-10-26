@@ -10,7 +10,7 @@ that proves wrong in testing can still change.
 
 | A | B | C | D | E | F | G | H |
 |---|---|---|---|---|---|---|---|
-| FOLD | WARP | FM | NPOS | TYPE | AMT | P1 | P2 |
+| FOLD | WARP | FM | FSRC | TYPE | AMT | P1 | P2 |
 
 - **A to D** are live knobs: wave fold, phase warp, FM depth from osc 2 into osc 1, noise into POS.
 - **E to H** are one shaper slot. TYPE picks Off, Ring or AM. Formant and Comb come later: the list
@@ -21,7 +21,7 @@ that proves wrong in testing can still change.
 
 ## What plays (Waverider 0.3.0, 2026-10-16)
 
-FOLD, TYPE, AMT, WARP and FM change the sound. NPOS, P1 and P2 do not, yet. `csrc/waverider/sharc/page5.asm`
+FOLD, TYPE, AMT, WARP and FM change the sound, and FSRC chooses FM's source (0.3.8, below). `csrc/waverider/sharc/page5.asm`
 and `csrc/waverider/sharc/phase.asm` do the work on the DSP. `dnfw.waverider.live` (`fold`, `shaper`,
 `warp_phase`, `fm_offsets`, `read_phases`, `phase_sel`) is their model.
 
@@ -83,15 +83,40 @@ and `csrc/waverider/sharc/phase.asm` do the work on the DSP. `dnfw.waverider.liv
   With page 5 at 0 the voice costs 87 more than in 0.2.0: the read of WARP's word and the tests before each reader call.
 - **Plain tables:** with DNFW_WAVERIDER_NOMIP=1, the WARP and FM cases also pass bit for bit. That run plays
   phase.asm's copy of the plain reader, which a pool table uses before build3 has its levels.
-- **NPOS is out, for now** (owner, 2026-10-16: the load must stay near 70 % and the factory machines' load).
+- **NPOS is out** (owner, 2026-10-16: the load must stay near 70 % and the factory machines' load). FSRC took
+  its knob in 0.3.8 (owner, 2026-10-26).
   Branch `wip/waverider-npos` has it: a random POS offset per block, before MPOS. Above NPOS 46, DCLK crossfades
   its jumps. At NPOS 64 with both oscillators at POS 64, that adds 5,557: a second table read on each oscillator
   in almost every block (24 blocks, 2026-10-16). It comes back once its load is balanced.
 - **Defaults, measured 2026-10-16 in the emulator:** when you select Waverider, MACHINE SEL sets sound slots 58
-  to 64 to 0. So every Waverider sound since 0.1.0 has FOLD, NPOS and TYPE at 0. Slot 48 (AMT, the MAST record) keeps
+  to 64 to 0. So every Waverider sound since 0.1.0 has FOLD, FSRC (then NPOS) and TYPE at 0. Slot 48 (AMT, the MAST record) keeps
   0x4000, so AMT reads 64. With TYPE Off, AMT changes nothing.
 - **Not measured yet:** whether the ColdFire adds MAST, and so AMT, to the note. The DSP side does not
   (`scripts/sharc_waverider_inert.py`). The instrument test turns AMT with TYPE Off and listens for a pitch change.
+
+## FSRC, FM's source (0.3.8, 2026-10-26)
+
+FSRC is knob D: OSC2, SUB or NOIS, the frame word >> 8, at most 2. `csrc/waverider/sharc/fsrc.asm` and
+`fsrc_mix.asm` do the work. `dnfw.waverider.live.render_two` (FSRC_NAMES, `fsrc_value`) is the model.
+
+- **OSC2** is FM as before: osc 2 plays first into FMB at a fixed gain, and osc 1 reads it.
+- **SUB and NOIS** play first into FMB, zeroed, at gain 1.0, before osc 1 reads it. FM's c is then
+  FM / 0x7f00 cycles per unit, so FM alone sets the depth, as LEV2 since 0.3.6. Osc 2 then plays as
+  without FM.
+- **At their own place in the mix**, the sub or the noise adds FMB times its gain. That place is
+  after the shaper, FOLD and the Formant. The gain is its level times the trim's factor. The result is
+  the same float32 as its own render, bit for bit.
+- **Under SUB, the sub follows osc 1**, whatever SRC is: osc 2 has not played yet.
+- **Taming and the mip level** take the modulator's increment from osc 2's reader block, word 2. Under
+  SUB, wr_fs_pre writes the sub's step there, and under NOIS osc 1's own. Osc 2 writes its own there
+  when it plays.
+- **Where the code sits.** `fsrc.asm` (352 bytes) is after the increment table, at DM 0x2de440.
+  `fsrc_mix.asm` (232 bytes) is in shapes.asm's slot after its code, at DM 0x2df220. page5.asm, sub.asm,
+  noise.asm and formant.asm only get calls, flags or new jump targets. page5.asm dropped three
+  instructions that no longer ran.
+- **The gates.** `scripts/sharc_waverider_fsrc.py` runs SUB and NOIS on all 16 voice slots, bit for bit
+  against the model. On slot 0 it adds WARP, Ring, FOLD, the Formant, an FSRC change and taming.
+  `scripts/sharc_formant_voice.py` case fsrc runs it with the Formant on two tracks.
 
 ## Where the eight records sit
 
@@ -103,7 +128,7 @@ FM Tone's 227 to 234 (slots 50 to 57, page 3). The rest:
 | FOLD | 208 | 58 | FM Tone |
 | WARP | 209 | 59 | FM Tone |
 | FM | 210 | 60 | FM Tone |
-| NPOS | 211 | 61 | FM Tone |
+| FSRC (NPOS until 0.3.8) | 211 | 61 | FM Tone |
 | TYPE | 235 | 62 | FM Tone |
 | P2 | 236 | 63 | FM Tone |
 | P1 | 237 | 64 | FM Tone |
@@ -123,10 +148,12 @@ to 61 the ids 208 to 211 and 62 to 64 the ids 235 to 237 (read in the emulator, 
 ## What is still open
 
 - **Defaults of an old sound.** A sound created before this page holds FM Tone's stock values
-  in slots 58 to 61 (0x4000, read from the live frame), so FOLD, WARP, FM and NPOS read 64 on
+  in slots 58 to 61 (0x4000, read from the live frame), so FOLD, WARP and FM read 64 on
   it. A feature wired to them must not read 64 as "on", or must re-default them. FOLD, WARP and FM
   play at 64 on such a sound. The manual tells the user to set them to 0. A new Waverider sound has
   them at 0 (MACHINE SEL, measured above).
+- **FSRC on an old sound** reads NOIS: 64 is past its last value, and the page and the DSP both take
+  the last. With FM at 0, as the manual tells, FSRC changes nothing.
 - **The labels** are fixed text. A label that follows TYPE needs a knob label that follows a
   value, which has not been shown to be possible.
 - **Changing TYPE under a held note** must crossfade, or it clicks.

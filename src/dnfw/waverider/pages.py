@@ -55,7 +55,7 @@ This module is pure: it builds the source; `coldfire.compose` assembles and plac
 from __future__ import annotations
 
 from .live import SHAPE_TYPES as LIVE_SHAPE_TYPES
-from .live import (DCLK_DEFAULT, MOVE_SHAPES, SUB_OCTAVES, SUB_WAVES, SYNC_INDEX, SYNC_NOTES,
+from .live import (DCLK_DEFAULT, FSRC_NAMES, MOVE_SHAPES, SUB_OCTAVES, SUB_WAVES, SYNC_INDEX, SYNC_NOTES,
                    dclk_names, smth_names)
 
 LOAD = 0x4670A000                 # RAM above BSS (0x466b74d0), clear of every declared range (docs/mods-compatibility.md): 0x4670C000 until pages 3 and 4, when the renderer outgrew the 16 KB to C_END; bootscreen's stamp ends at 0x46708140
@@ -91,13 +91,14 @@ SUBNOISE_DEC = 234                 # 0..126, Inf (row 6)
 # extremes). 262 (FINE, slot 49) stays free. None of the eight reaches the sound yet.
 # AMT is record 261 (WaveTone's MAST, a modulatable record) and P2 is 236 (mask 0): the amount can be
 # an LFO destination, P2 and P1 cannot (owner, 2026-10-13: the AMT/P2 swap). The sound slots stay.
-SHAPE = (208, 209, 210, 211, 235, 261, 237, 236)     # FOLD WARP FM NPOS / TYPE AMT P1 P2
-SHAPE_LABELS = dict(zip(SHAPE, ("FOLD", "WARP", "FM", "NPOS", "TYPE", "AMT", "P1", "P2")))
+SHAPE = (208, 209, 210, 211, 235, 261, 237, 236)     # FOLD WARP FM FSRC / TYPE AMT P1 P2
+SHAPE_LABELS = dict(zip(SHAPE, ("FOLD", "WARP", "FM", "FSRC", "TYPE", "AMT", "P1", "P2")))
 SHAPE_RUNS = ((58, 208, 4), (62, 235, 3))      # (first sound slot, its record id, how many): 58..61, 62..64
 SHAPE_TYPE = 235
+SHAPE_FSRC = 211                   # FM's modulator, OSC2 / SUB / NOIS (live.FSRC_NAMES; NPOS until 2026-10-26)
 TRIM_ID = 262                      # WaveTone's FINE (slot 49): the level trim, page 4 place D (docs/waverider-trim.md)
 SHAPE_TYPES = LIVE_SHAPE_TYPES           # Off, Ring, AM (page5.asm), Formant (formant.asm); the list grows, no slot
-SHAPE_PLAIN = tuple(rid for rid in SHAPE if rid != SHAPE_TYPE)   # 0..127 (wr_rate_fmt row 4)
+SHAPE_PLAIN = tuple(rid for rid in SHAPE if rid not in (SHAPE_TYPE, SHAPE_FSRC))   # 0..127 (wr_rate_fmt row 4)
 
 # record id -> Waverider's label (the records stay WaveTone's: their slots are the
 # frame's params 25..27, which the SHARC loop reads)
@@ -139,7 +140,7 @@ LONG_NAMES = {238: "Osc1 Tune", 239: "Osc1 Position", 247: "Osc1 Table",
               254: "Declick", 255: "Osc1 POS Slew", 258: "Osc2 POS Slew",
               227: "Sub Level", 228: "Sub Octave", 229: "Sub Wave", 230: "Sub Source",
               231: "Noise Level", 232: "Noise Type", 233: "Noise Colour", 234: "Noise Decay",
-              208: "Wave Fold", 209: "Phase Warp", 210: "FM Depth", 211: "Noise to Pos",
+              208: "Wave Fold", 209: "Phase Warp", 210: "FM Depth", 211: "FM Source",
               235: "Shaper Type", 261: "Shaper Amount", 237: "Shaper P1", 236: "Shaper P2",
               TRIM_ID: "Level Trim"}
 
@@ -150,7 +151,7 @@ PAGES = (
     SUBNOISE,                                   # page 3: SUB OCT WAVE SRC / NOIS TYPE COLR DEC
     (249, 259, 254, TRIM_ID, 248, 260, 255, 258),   # page 4 (page 3 until 2026-10-07): PRST (RSET: Off/On/Random), TRIG (TYPE: 0 restart),
                                                 # DCLK, TRIM (FINE, 2026-10-12); SYN1, SYN2, SMT1, SMT2 (M10b-2)
-    SHAPE,                                      # page 5: FOLD WARP FM NPOS / TYPE AMT P1 P2 (reserved, 2026-10-12)
+    SHAPE,                                      # page 5: FOLD WARP FM FSRC / TYPE AMT P1 P2
 )
 
 # M10b: the controls whose steps and value text are Waverider's own. The records stay
@@ -161,7 +162,7 @@ VALUE_NAMES = {253: MOVE_SHAPES, 257: MOVE_SHAPES, 259: ("Retrig", "Free"),
                228: SUB_OCTAVES, 229: SUB_WAVES, 230: ("OSC1", "OSC2"),
                232: ("WHT", "PNK", "BRN", "DIG"),
                248: ("Off", "On"), 260: ("Off", "On"),
-               SHAPE_TYPE: SHAPE_TYPES}
+               SHAPE_TYPE: SHAPE_TYPES, SHAPE_FSRC: FSRC_NAMES}
 # record id -> (min, max, default), as the firmware's limits getter returns them
 RANGES = {rid: (0, (len(names) - 1) << 8, 0) for rid, names in VALUE_NAMES.items()}
 RANGES[254] = (0, 0x7F00, DCLK_DEFAULT)

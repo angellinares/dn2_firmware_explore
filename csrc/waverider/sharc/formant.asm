@@ -284,10 +284,10 @@ wr_fm_k_end.:
 .GLOBAL wr_fm_post.;
 wr_fm_post.:
       CALL 0x173ac0;                    // -> wr_fm_collect.
-      CALL 0x172caf;                    // -> wr_p5_t146. (R9 = t, R10 = 146t; wr_p5_word keeps both)
+      CALL 0x172ca8;                    // -> wr_p5_t146. (R9 = t, R10 = 146t; wr_p5_word keeps both)
       R12 = 0x25c5b0;                   // 0x25c48c + 292: TYPE
       R2 = R12 + R10;
-      CALL 0x172cc4;                    // -> wr_p5_word.
+      CALL 0x172cbd;                    // -> wr_p5_word.
       R0 = LSHIFT R0 BY -8;
       R1 = 3;
       COMP(R0, R1);
@@ -298,15 +298,15 @@ wr_fm_post.:
       IF GT JUMP 0x173ab0;              // -> wr_fm_out. (longer than IO)
       R12 = 0x25c5b2;                   // 0x25c48c + 294: P2
       R2 = R12 + R10;
-      CALL 0x172cc4;                    // -> wr_p5_word.
+      CALL 0x172cbd;                    // -> wr_p5_word.
       DM(0x2e7fe4) = R0;                // P2, for after the coefficients
       R12 = 0x25c5b4;                   // 0x25c48c + 296: P1
       R2 = R12 + R10;
-      CALL 0x172cc4;                    // -> wr_p5_word.
+      CALL 0x172cbd;                    // -> wr_p5_word.
       R5 = PASS R0;
       R12 = 0x25c594;                   // 0x25c48c + 264: AMT
       R2 = R12 + R10;
-      CALL 0x172cc4;                    // -> wr_p5_word.
+      CALL 0x172cbd;                    // -> wr_p5_word.
       R4 = PASS R0;
       // a note on this voice: the frame's note mask (offset 34), bit t, as noise.asm reads it
       R0 = DM(0x25c4ac);
@@ -390,8 +390,8 @@ wr_fm_in_end.:
 wr_fm_out.:
       R0 = DM(0x2e6000);                // 1 when osc 2 ran: which way to the sub, as page5.asm went
       R0 = PASS R0;
-      IF NE JUMP 0x171000;              // -> wr_sub_ran. (sub.asm)
-      JUMP 0x171008;                    // -> wr_sub_skip. (sub.asm)
+      IF NE JUMP 0x16f910;              // -> wr_fs_sub_ran. (fsrc.asm, then sub.asm)
+      JUMP 0x16f91c;                    // -> wr_fs_sub_skip. (fsrc.asm, then sub.asm)
 
 // machine9_live.asm's way out of the loop comes here: the last voice in flight.
 .GLOBAL wr_fm_end.;

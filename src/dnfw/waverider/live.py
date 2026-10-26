@@ -869,7 +869,7 @@ def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
 
 
 def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs=None,
-               noises=None, trims=None, shapes=None) -> list[float]:
+               noises=None, trims=None, shapes=None, voice: int = 0) -> list[float]:
     """The loop's output with both oscillators (Milestone 9b), each block
     (note, osc1, osc2[, (TRIG, triggered[, PRST[, position, tempo[, DCLK]]])]) with each
     osc (WAV, TBL, TUN, LEV[, RATE, MPOS, MLEV, MOVE[, SYNC[, SMTH]]]), the frame's 16-bit
@@ -883,7 +883,7 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
     sub-oscillator (`render_sub`) adds into the mix after osc 2 while SUB is above 0. It
     follows osc 2's increment when SRC is 1 and osc 2 ran this block, else osc 1's (a
     skipped osc 2 has none). NOISES, one (NOIS, TYPE, COLR, DEC) per block or None: the
-    noise (`NoiseVoice`, voice 0's seed) adds in after the sub. TRIMS, one TRIM word per
+    noise (`NoiseVoice`, VOICE's seed) adds in after the sub. TRIMS, one TRIM word per
     block or None (the default word): each oscillator's factor slews (`trim_slew`), and the
     sub and the noise take the factor of the last oscillator that ran, as trim.asm leaves it."""
     out: list[float] = []
@@ -895,7 +895,7 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
     rnd = MoveRandom()
     table_t = increment_table()
     sub_phase = 0
-    noise = NoiseVoice(noise_seeds()[0])
+    noise = NoiseVoice(noise_seeds()[voice])
     trimmed = [0.0, 0.0]                        # each oscillator's last factor: zeros at boot
     osc1: list[float] = []
     vox = formant.Voice()                       # TYPE Formant: the cascade's states and vowel glide
@@ -965,9 +965,10 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
                 if fsrc == 1:
                     s = sub or (0, 0, 0, 0)
                     fmb, sub_phase = render_sub(sub_phase, inc, s, block, g=1.0)
+                    fmb = [_f32(0.0 + v) for v in fmb]    # added into FMB's zeros, as the DSP does
                     inc2 = inc >> (1 + min((s[1] & 0xFFFF) >> 8, len(SUB_OCTAVES) - 1))
                 else:
-                    fmb = noise.render(noises[b] if noises else NOISE_OFF, triggered, block, g=1.0)
+                    fmb = [_f32(0.0 + v) for v in noise.render(noises[b] if noises else NOISE_OFF, triggered, block, g=1.0)]
                     inc2 = inc
             if bend or (fm and k == 0):         # page 5: WARP on both oscillators, FM on osc 1
                 if fm and k == 0:

@@ -77,7 +77,7 @@ wr_p5_mid.:
       R0 = DM(0x2e6004);
       R1 = 2;
       COMP(R0, R1);
-      IF EQ JUMP 0x172d7d;                   // -> wr_p5_fm_mix. (osc 1 after osc 2: add FMB in)
+      IF EQ JUMP 0x172d7c;                   // -> wr_p5_fm_mix. (osc 1 after osc 2: add FMB in)
       CALL 0x172b32;                    // -> wr_p5_shaper_on.
       R0 = PASS R0;
       IF EQ JUMP 0x16ed86;              // -> wr_t5v_osc. (no shaper: nothing to keep)
@@ -158,7 +158,7 @@ wr_p5_ran.:
       R0 = DM(0x2e6004);
       R1 = 1;
       COMP(R0, R1);
-      IF EQ JUMP 0x172d62;                   // -> wr_p5_fm_o1. (osc 2 played first: now osc 1)
+      IF EQ JUMP 0x172d61;                   // -> wr_p5_fm_o1. (osc 2 played first: now osc 1)
       R0 = 1;
       DM(0x2e6000) = R0;
       JUMP 0x172bb1;                    // -> wr_p5_post.
@@ -167,7 +167,7 @@ wr_p5_skip.:
       R0 = DM(0x2e6004);
       R1 = 1;
       COMP(R0, R1);
-      IF EQ JUMP 0x172d62;                   // -> wr_p5_fm_o1.
+      IF EQ JUMP 0x172d61;                   // -> wr_p5_fm_o1.
       R0 = R0 - R0;
       DM(0x2e6000) = R0;
 
@@ -293,12 +293,8 @@ wr_p5_fold_end.:
 
 .GLOBAL wr_p5_out.;
 wr_p5_out.:
-      // the Formant (formant.asm) takes the way to the sub from here; the three after it are
-      // the way it was, kept so nothing after them moves (they no longer run)
+      // the Formant (formant.asm) takes the way to the sub from here
       JUMP 0x1739d3;                    // -> wr_fm_post.
-      R0 = PASS R0;
-      IF NE JUMP 0x171000;              // -> wr_sub_ran. (sub.asm)
-      JUMP 0x171008;                    // -> wr_sub_skip. (sub.asm)
 // R9 = t, R10 = 146t. Clobbers R0, R1, R11.
 .GLOBAL wr_p5_t146.;
 wr_p5_t146.:
@@ -332,17 +328,19 @@ wr_p5_word.:
 // machine9_live.asm's way into a voice's osc 1 comes here: FM's order, or osc 1 as before.
 .GLOBAL wr_p5_voice.;
 wr_p5_voice.:
-      CALL 0x172caf;                         // -> wr_p5_t146.
+      CALL 0x172ca8;                         // -> wr_p5_t146.
       R12 = 0x25c5aa;                   // 0x25c48c + 286: WARP, read once a voice for both oscillators
       R2 = R12 + R10;
-      CALL 0x172cc4;                         // -> wr_p5_word.
+      CALL 0x172cbd;                         // -> wr_p5_word.
       R0 = LSHIFT R0 BY -8;
       R1 = 127;
       R0 = MIN(R0, R1);
       DM(0x2e6020) = R0;                // v
       R12 = 0x25c5ac;                   // 0x25c48c + 288: FM
       R2 = R12 + R10;
-      CALL 0x172cc4;                         // -> wr_p5_word.
+      CALL 0x172cbd;                         // -> wr_p5_word.
+      CALL 0x16f220;                    // -> wr_fs_check. (fsrc.asm: FSRC, for every voice)
+      IF NE JUMP 0x16f246;              // -> wr_fs_voice. (FSRC SUB or NOIS: osc 1 first)
       R4 = PASS R0;
       IF EQ JUMP 0x16ed86;                   // -> wr_t5v_osc. (FM 0: osc 1 first, as before)
       // 0.3.6: FM plays at LEV2 0 too (osc 2 into FMB at a fixed gain, phase.asm's wr_ph_gain)
@@ -361,7 +359,7 @@ wr_p5_voice.:
       // osc 2's tune base: osc 1's TUN1 in semitones, frame word / 256 - 64, as the loop forms it
       R12 = 0x25c566;                   // 0x25c48c + 218: TUN1
       R2 = R12 + R10;
-      CALL 0x172cc4;                         // -> wr_p5_word.
+      CALL 0x172cbd;                         // -> wr_p5_word.
       R12 = -8;
       F13 = FLOAT R0 BY R12;
       R12 = 0x42800000;                 // 64.0
@@ -434,7 +432,7 @@ wr_p5_fm_mix.:
       R12 = 0x2e5e00;
       I2 = R12;                         // osc 1's copy
       R13 = DM(0x2dde24);
-      IF EQ JUMP 0x172dcc;                   // -> wr_p5_fm_zero. (LEV2 0: pure FM, osc 2 is not added)
+      IF EQ JUMP 0x172dcb;                   // -> wr_p5_fm_zero. (LEV2 0: pure FM, osc 2 is not added)
       LCNTR = R13, DO wr_p5_fmk_end. UNTIL LCE;
 .NOCOMPRESS;
       R1 = DM(0, I0);
@@ -445,11 +443,11 @@ wr_p5_fm_mix.:
 wr_p5_fmk_end.:
       DM(I0, M6) = F1;
 .COMPRESS;
-      JUMP 0x172dd9;                         // -> wr_p5_fm_keep.
+      JUMP 0x172dd8;                         // -> wr_p5_fm_keep.
 .GLOBAL wr_p5_fm_zero.;
 wr_p5_fm_zero.:
       R0 = PASS R0;
-      IF EQ JUMP 0x172dd9;                   // -> wr_p5_fm_keep. (no shaper: the buffer is o1 already)
+      IF EQ JUMP 0x172dd8;                   // -> wr_p5_fm_keep. (no shaper: the buffer is o1 already)
       LCNTR = R13, DO wr_p5_fmz_end. UNTIL LCE;
 .NOCOMPRESS;
       R1 = DM(I0, M6);
@@ -472,18 +470,18 @@ wr_p5_phase.:
       R5 = DM(0x2e6004);
       R1 = 2;
       COMP(R5, R1);
-      IF EQ JUMP 0x172df8;                   // -> wr_p5_ph_on. (osc 1 under FM)
+      IF EQ JUMP 0x16f261;                   // -> wr_fs_pre. (osc 1 under FM: fsrc.asm, then wr_p5_ph_on)
       R5 = R5 - R5;
       R0 = DM(0x2e6020);                // WARP's v (wr_p5_voice)
       R0 = PASS R0;
-      IF EQ JUMP 0x172ed8;                   // -> wr_p5_ph_go. (no WARP, no FM)
+      IF EQ JUMP 0x172ed7;                   // -> wr_p5_ph_go. (no WARP, no FM)
 .GLOBAL wr_p5_ph_on.;
 wr_p5_ph_on.:
       R13 = DM(4, I4);                  // N
       R1 = 128;
       COMP(R13, R1);
-      IF GT JUMP 0x172ed8;                   // -> wr_p5_ph_go. (longer than PH)
-      CALL 0x172caf;                         // -> wr_p5_t146. (R9 = t, for inc2)
+      IF GT JUMP 0x172ed7;                   // -> wr_p5_ph_go. (longer than PH)
+      CALL 0x172ca8;                         // -> wr_p5_t146. (R9 = t, for inc2)
       R0 = DM(0x2e6020);                // v
 .GLOBAL wr_p5_ph_fm.;
 wr_p5_ph_fm.:
@@ -506,9 +504,9 @@ wr_p5_ph_fm.:
       R12 = DM(0x2e600c);               // c
       CALL 0x1736e4;                         // -> wr_ph_tame. (phase.asm: taming, k1, k2 and c)
       R5 = PASS R5;
-      IF EQ JUMP 0x172e84;                   // -> wr_p5_ph_warp.
+      IF EQ JUMP 0x172e83;                   // -> wr_p5_ph_warp.
       R0 = PASS R0;
-      IF EQ JUMP 0x172e6c;                   // -> wr_p5_ph_fmonly.
+      IF EQ JUMP 0x172e6b;                   // -> wr_p5_ph_fmonly.
       // FM and WARP
       LCNTR = R13, DO wr_p5_phb_end. UNTIL LCE;
 .NOCOMPRESS;
@@ -530,7 +528,7 @@ wr_p5_ph_fm.:
 wr_p5_phb_end.:
       R8 = R8 + R11, DM(I2, M6) = R1;
 .COMPRESS;
-      JUMP 0x172ea5;                         // -> wr_p5_ph_end.
+      JUMP 0x172ea4;                         // -> wr_p5_ph_end.
 .GLOBAL wr_p5_ph_fmonly.;
 wr_p5_ph_fmonly.:
       LCNTR = R13, DO wr_p5_phf_end. UNTIL LCE;
@@ -544,7 +542,7 @@ wr_p5_ph_fmonly.:
 wr_p5_phf_end.:
       R8 = R8 + R11, DM(I2, M6) = R1;
 .COMPRESS;
-      JUMP 0x172ea5;                         // -> wr_p5_ph_end.
+      JUMP 0x172ea4;                         // -> wr_p5_ph_end.
 .GLOBAL wr_p5_ph_warp.;
 wr_p5_ph_warp.:
       LCNTR = R13, DO wr_p5_phw_end. UNTIL LCE;
@@ -570,7 +568,7 @@ wr_p5_ph_end.:
       F0 = FLOAT R11 BY R12;
       R2 = DM(0x2e6010);                // (a load between: no single-operand compute after a float one)
       R5 = PASS R5;
-      IF EQ JUMP 0x172ec2;                   // -> wr_p5_sel_warp.
+      IF EQ JUMP 0x172ec1;                   // -> wr_p5_sel_warp.
       R1 = LSHIFT R9 BY 5;
       R12 = 0x2de808;                   // osc 2's reader block, word 2: inc2
       R1 = R12 + R1;
@@ -584,7 +582,7 @@ wr_p5_ph_end.:
 wr_p5_sel_warp.:
       R1 = DM(0x2e6020);                // v
       R1 = PASS R1;
-      IF EQ JUMP 0x172ecd;                   // -> wr_p5_sel_put. (no WARP: k1 is 1)
+      IF EQ JUMP 0x172ecc;                   // -> wr_p5_sel_put. (no WARP: k1 is 1)
       R6 = DM(0x2e6024);                // the untamed k1 (wr_ph_tame): the level as without taming
       F0 = F0 * F6;
 .GLOBAL wr_p5_sel_put.;

@@ -72,6 +72,7 @@ wr_noise_halves.:
       R7 = R7 AND R12;                  // TYPE
       R13 = R13 AND R12;                // COLR
       R14 = R14 AND R12;                // DEC
+      R3 = DM(0x2e3080);                // FSRC NOIS (fsrc.asm's wr_fs_pre): 1.0, the noise plays at gain 1.0
 
       // this voice's state, 0x2e2e00 + 32t, in I1 from here on
       R2 = LSHIFT R9 BY 5;
@@ -87,12 +88,12 @@ wr_noise_halves.:
       R0 = LSHIFT R0 BY R1;             // >> t
       R1 = 1;
       R0 = R0 AND R1;
-      IF EQ JUMP 0x171362;              // -> wr_noise_held. (no note)
+      IF EQ JUMP 0x171365;              // -> wr_noise_held. (no note)
       R0 = 0x3f800000;                  // 1.0
       DM(6, I1) = R0;
 .GLOBAL wr_noise_held.;
 wr_noise_held.:
-      R6 = PASS R6;
+      R0 = R6 OR R3;
       IF EQ JUMP 0x16eeb3;              // -> wr_t5v_next. (NOIS 0: nothing)
 
       // the gain, NOIS / 100, as the sub's
@@ -100,6 +101,8 @@ wr_noise_held.:
       F6 = FLOAT R6 BY R12;
       R12 = DM(0x2de6c8);               // f32(10^(dB/20) / 25600): the trim's factor for this voice (trim.asm)
       F6 = F6 * F12;
+      R3 = PASS R3;
+      IF NE R6 = PASS R3;               // FSRC NOIS: gain 1.0
       // TYPE >> 8, at most 3 (DIG)
       R7 = LSHIFT R7 BY -8;
       R12 = 3;
@@ -132,7 +135,7 @@ wr_noise_held.:
       I2 = R2;
       R0 = DM(0x2dde24);                // the dispatch's R9: the block size
       R10 = PASS R0;                    // opt1 O2: the count in R10, which the loop doesn't use
-      IF EQ JUMP 0x171542;              // -> wr_noise_done. (count 0: nothing)
+      IF EQ JUMP 0x17154a;              // -> wr_noise_done. (count 0: nothing)
       R15 = -31;                        // w's scale, 2^-31
 
       // Load plan #3 (2026-10-21): each TYPE is a hardware loop (LCNTR = R10, the count) with no
@@ -142,19 +145,19 @@ wr_noise_held.:
       // after the loop (R9). Each value takes the same operations as before.
       R9 = PASS R5;                     // the envelope as it was
       R14 = PASS R14;
-      IF NE JUMP 0x1713b7;              // -> wr_noise_type.
+      IF NE JUMP 0x1713bf;              // -> wr_noise_type.
       R5 = 0x3f800000;                  // 1.0
       R8 = 0x3f800000;
 .GLOBAL wr_noise_type.;
 wr_noise_type.:
       R7 = PASS R7;
-      IF EQ JUMP 0x17140f;              // -> wr_noise_wht.
+      IF EQ JUMP 0x171417;              // -> wr_noise_wht.
       R12 = 1;
       COMP(R7, R12);
-      IF EQ JUMP 0x17144e;              // -> wr_noise_pink.
+      IF EQ JUMP 0x171456;              // -> wr_noise_pink.
       R12 = 2;
       COMP(R7, R12);
-      IF EQ JUMP 0x1714e7;              // -> wr_noise_brown.
+      IF EQ JUMP 0x1714ef;              // -> wr_noise_brown.
 
 // DIG: +-0.5 by x's top bit, as x's sign bit on 0.5's pattern (0x3f000000 or 0xbf000000)
 .GLOBAL wr_noise_dig.;
@@ -186,7 +189,7 @@ wr_noise_dig.:
 wr_noise_dig_last.:
       DM(I2, M6) = F1;
 .COMPRESS;
-      JUMP 0x17153e;                    // -> wr_noise_end.
+      JUMP 0x171546;                    // -> wr_noise_end.
 
 // WHT: n = w
 .GLOBAL wr_noise_wht.;
@@ -215,7 +218,7 @@ wr_noise_wht.:
 wr_noise_wht_last.:
       DM(I2, M6) = F1;
 .COMPRESS;
-      JUMP 0x17153e;                    // -> wr_noise_end.
+      JUMP 0x171546;                    // -> wr_noise_end.
 
 // PNK: P. Kellet's economy filters
 .GLOBAL wr_noise_pink.;
@@ -274,7 +277,7 @@ wr_noise_pink.:
 wr_noise_pink_last.:
       DM(I2, M6) = F1;
 .COMPRESS;
-      JUMP 0x17153e;                    // -> wr_noise_end.
+      JUMP 0x171546;                    // -> wr_noise_end.
 
 // BRN: a leaky integrator
 .GLOBAL wr_noise_brown.;
@@ -323,6 +326,9 @@ wr_noise_done.:
       DM(0, I1) = R11;                  // x, lp, env for the next block
       DM(5, I1) = R4;
       DM(6, I1) = R5;
+      R0 = DM(0x2e3080);
+      R0 = PASS R0;
+      IF NE RTS;                        // FSRC NOIS: back to fsrc.asm's wr_fs_pre
       JUMP 0x16eeb3;                    // -> wr_t5v_next.
 .wr_noise..end:
       .type wr_noise.,STT_FUNC;

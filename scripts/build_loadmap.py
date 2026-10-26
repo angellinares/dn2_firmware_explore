@@ -46,7 +46,8 @@ PLACED = {"reader_m9": dsp.READER_SW, "machine9_live": dsp.LOOP_SW, "idle_load":
           "shapes": dsp.SHAPES_SW, "load": dsp.LOAD_SW, "pool": dsp.POOL_SW, "sync": dsp.SYNC_SW,
           "smooth": dsp.SMOOTH_SW, "dclk": dsp.DCLK_SW, "sub": dsp.SUB_SW, "noise": dsp.NOISE_SW,
           "trim": dsp.TRIM_SW, "reader_miph2": dsp.MIP_SW, "page5": dsp.PAGE5_SW,
-          "phase": dsp.PHASE_SW, "formant": dsp.FORMANT_SW}
+          "phase": dsp.PHASE_SW, "formant": dsp.FORMANT_SW,
+          "fsrc": dsp.FSRC_SW, "fsrc_mix": dsp.FSRC_MIX_SW}
 # mark -> how its stub is reached (see the module docstring); None: only by another stub or code
 SPEC = {
     "emark": ("site", dsp.CALL_SITE_SW, dsp.EMARK_SW),

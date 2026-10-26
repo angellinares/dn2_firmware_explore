@@ -223,6 +223,7 @@ findings change what may be copied**, and both moved since this project started:
 | **`timhastie/octatrick`** (new 2026-09-27) | **MIT**, plus a trailing paragraph scoping the grant to the repo's own code (not Elektron firmware, not submodule content) — this appended text is why GitHub's API reports "NOASSERTION"/"Other" rather than plain MIT | **yes, for octatrick's own code**, with attribution. Ported submodule content (`octatrick-modules`) and any Elektron material stay out of the grant |
 | **`timhastie/octa-panel`** (licence checked for the first time 2026-09-27) | **MIT**, identical carve-out text to octatrick's (same appended paragraph, same reason for "NOASSERTION") | **yes**, with attribution, for the same reason as octatrick — though see the correction below: this repo is now a historical dev log, not the live location |
 | **`Zac-Kyoti/octatrack-kyoti-fw`** (new 2026-09-27) | **MIT with explicit exclusions**: `tools/attic/` (inherited from `mxldyn/octamax`, tagged `SPDX-License-Identifier: NONE`), patches to third-party tools and anything fetched at build time (keeps its own upstream licence — `dsp56300/dsp56300` is GPLv3, `octabam` is MIT), and all Elektron material | **yes, for the covered code**, with attribution. `tools/attic/` and vendored/patched third-party code are **not** covered — same "no" as octamax for the attic specifically |
+| `heavylight-industries/capicola` (added 2026-10-26, as the fork `angellinares/capicola`) | **AGPL-3.0**: `LICENSE` is the version 3 text, and the README says "GNU Affero General Public License v3.0" with no "or later". Its submodules `lib/alchemy-sdk` and libDaisy are MIT | read for its methods. Code copied from it would carry AGPL-3.0 only, narrower than this repo's AGPL-3.0-or-later: ask before porting, and carry its notice in `THIRD-PARTY.md` |
 
 **The restriction moved rather than lifted.** `ems-octakit` was the one to avoid
 and is now free to use; `octamax` is now the one to avoid. Earlier notes in this
@@ -1280,4 +1281,28 @@ read before listening. Its README says why: audio bugs are easier to catch in a 
 our own code and three additions: a spectrogram, the pitch and what lies between its harmonics,
 and a classification of steps into periodic and isolated. Not adopted yet: goldens and generated
 stress cases.
+
+## `heavylight-industries/capicola`: a time stretcher in a eurorack module (added 2026-10-26)
+
+<https://github.com/heavylight-industries/capicola>, by Heavylight Industries. The owner keeps a fork at
+<https://github.com/angellinares/capicola>, the same as upstream on 2026-10-26. AGPL-3.0, see the licence
+audit above.
+
+**What it is:** the firmware of a module for the Hermetic Modular Alchemy Lab platform. It stretches and
+pitch-shifts stereo audio in real time. In parallel it follows the input's envelope and finds its
+transients. A transient over the threshold moves the lagging read head to the present, with a short
+crossfade. So the stretch keeps the rhythm of the input. The method is the author's peer-reviewed DAFx26
+paper, "Keyframe Time Stretching via Extrema Sampling".
+
+**What is in it for a DSP reader:**
+- `lib/KeyframeRecorder.h`: the paper's method, for real-time and offline use.
+- `lib/Granule.h`: grains.
+- `lib/DeluxeLine.h`: a delay line with Hermite and B-spline interpolated reads. It also gives the first and
+  second derivatives and the Teager-Kaiser energy operator (TKEO).
+- `lib/Detector.h`: a peak detector driven by the TKEO, with an adaptive threshold.
+- `lib/filter.h`: Zavalishin's zero-delay-feedback filters, one-pole and state-variable.
+- `lib/TabulatedFunction.h`: tables for tanh, sin and similar functions.
+- `docs/`: a block diagram of the whole signal path, and an interactive manual.
+
+**Adopted so far:** nothing. It is a reference for methods. Before any port, re-check the licence.
 

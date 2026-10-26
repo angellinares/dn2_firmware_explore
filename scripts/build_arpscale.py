@@ -42,13 +42,14 @@ The marks are a sound's, as its offsets are: 16 bits, bit n for step n.
 - **Stored**, bytes 242..243 of the 359-byte sound. Stock's load (`0x400dd1ea`)
   reads the value words at 28..241 and the bytes from 244, and clears slots
   0..100 first (`0x400dd24a`); its save (`0x400dd6a6`) zeroes 28..243
-  (`0x400dd6ec`) and writes value words up to 241. So, by these routines, stock
-  loads a sound with marks as it always did, and its next save clears them; that
-  has not been run. Older stored formats reach the load with zeros there: the
-  format 0 upgrade writes 0 into bytes 238..243 (`0x400e0fde`..`0x400e0fe6`),
-  and the format 1 and 2 upgrades copy them (`0x400e0504`, `0x400e0596`). The
-  load's and the save's last field copy, the step mask (`0x400dd5a0`,
-  `0x400dd8c8`), each become `jmp` to a routine that also copies the marks.
+  (`0x400dd6ec`) and writes value words up to 241. So stock loads a sound with
+  marks as it always did, and its next save clears them, as w-winter's Digitone
+  II showed (`docs/flashing.md`, 2026-10-26). Older stored formats reach the
+  load with zeros there: the format 0 upgrade writes 0 into bytes 238..243
+  (`0x400e0fde`..`0x400e0fe6`), and the format 1 and 2 upgrades copy them
+  (`0x400e0504`, `0x400e0596`). The load's and the save's last field copy, the
+  step mask (`0x400dd5a0`, `0x400dd8c8`), each become `jmp` to a routine that
+  also copies the marks.
 
 The menu's code (`0x40019716`, the view's key handler, and the methods beside it
 in its vtable `0x401d4c78`) reaches the arp only through calls, and seven of them

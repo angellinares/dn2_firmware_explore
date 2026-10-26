@@ -148,12 +148,14 @@ def init_on(snap, m2mach, image: Image):
     return runner
 
 
-def native_on(init, image: Image, library=None, host_fixups: bool = True):
+def native_on(init, image: Image, library=None, host_fixups: bool = True, peripherals: bool = True):
     """INIT (from `init_on`) in digikit's native engine: `run_blocks` then runs the same
     blocks about 20 times faster. See scripts/sharc_native.py for what that is trusted for.
+    PERIPHERALS: IIR0 runs in the engine (the Formant), on by default.
     One engine holds one run's state: make a new one for each series of blocks."""
     import sharc_native  # noqa: PLC0415  (digikit's binding is importable only after fx.bind)
-    return sharc_native.Engine(library or sharcemu.native_library(), image.memory, init, host_fixups)
+    return sharc_native.Engine(library or sharcemu.native_library(), image.memory, init, host_fixups,
+                               peripherals)
 
 
 def fixups(hooks=None) -> fx.Fixups:

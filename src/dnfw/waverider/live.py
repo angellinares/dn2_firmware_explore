@@ -500,17 +500,73 @@ def sub_value(phase: int, wave: int) -> float:
     return 1.0 if phase < 0x40000000 else _f32(SUB_THIRD)
 
 
+# SQR and PLS jump between two levels, which aliases on high notes. Each jump gets a polyBLEP
+# (owner 2026-10-26): the two samples either side of an edge take +-(1 - |x|)^2 times half the
+# jump, x being the sample's distance from the edge in steps. Away from the edges the
+# correction is a signed zero, so those samples are the naive wave's, bit for bit.
+SUB_RECIP_SEED = 0x7EF311C7               # 1/x's seed from x's bits: an integer subtract
+SUB_PLS_EDGE = 0x40000000                 # PLS falls at a quarter cycle; SQR at a half
+SUB_PLS_HALF_JUMP = 2.0 / 3.0             # PLS jumps by 4/3 (from -1/3 to 1): half is 2/3
+SUB_BLEP_ALWAYS = 0x03E00000              # a step this big runs the polyBLEP in every block (the test below
+                                          # would overflow), about a 730 Hz sub
+
+
+def sub_near_edge(phase: int, step: int, count: int, edge: int) -> bool:
+    """sub.asm's block test: does any of the block's COUNT samples lie within one step of
+    the edge at 0 or at EDGE? With a = phase - step, an edge E is near when
+    0 < E - a < (count + 1) step, in int32. Away from the edges the polyBLEP is zero, so
+    such a block plays the naive wave."""
+    if step >= SUB_BLEP_ALWAYS:
+        return True
+    span = (count + 1) * step
+    a = (phase - step) & 0xFFFFFFFF
+    for e in (0, edge):
+        d = (e - a) & 0xFFFFFFFF
+        d = d - (1 << 32) if d >> 31 else d
+        if 0 < d < span:
+            return True
+    return False
+
+
+def sub_recip(x: float) -> float:
+    """f32(1/X) as sub.asm computes it: the bit seed, then three Newton steps y (2 - x y)."""
+    bits = struct.unpack("<I", struct.pack("<f", _f32(x)))[0]
+    y = struct.unpack("<f", struct.pack("<I", (SUB_RECIP_SEED - bits) & 0xFFFFFFFF))[0]
+    for _ in range(3):
+        y = _f32(y * _f32(2.0 - _f32(x * y)))
+    return y
+
+
+def sub_blep(sd: int, inv: float) -> float:
+    """The polyBLEP at signed distance SD (phase units, int32) from an edge, for 1/step INV:
+    x = SD x INV, v = max(1 - |x|, 0), and v^2 with x's sign. Zero (signed) when |x| >= 1."""
+    x = _f32(_f32(float(sd)) * inv)
+    v = max(_f32(1.0 - abs(x)), 0.0)
+    return math.copysign(_f32(v * v), x)
+
+
 def render_sub(phase: int, inc: int, sub: tuple, block: int,
                factor: float | None = None) -> tuple[list[float], int]:
     """One block of the sub-oscillator at gain SUB from PHASE: (its samples x gain, the
-    next phase). INC is the followed oscillator's own. FACTOR: the trim's, as `gain`."""
+    next phase). INC is the followed oscillator's own. FACTOR: the trim's, as `gain`.
+    SQR and PLS have a polyBLEP at each edge (above)."""
     lev, octave, wave = sub[0], sub[1], sub[2]
     g = gain(lev, factor=factor)
     step = inc >> (1 + min((octave & 0xFFFF) >> 8, len(SUB_OCTAVES) - 1))
     w = min((wave & 0xFFFF) >> 8, 3)
+    edge = 0x80000000 if w == 2 else SUB_PLS_EDGE
+    blep = w >= 2 and step and sub_near_edge(phase, step, block, edge)
+    inv = sub_recip(_f32(float(step))) if blep else None
+    h = _f32(1.0 if w == 2 else SUB_PLS_HALF_JUMP)                     # half the jump: SQR 1, PLS 2/3
+    signed = lambda v: v - (1 << 32) if v >> 31 else v
     out = []
     for _ in range(block):
-        out.append(_f32(g * sub_value(phase, w)))
+        n = sub_value(phase, w)
+        if blep:
+            c0 = sub_blep(signed(phase), inv)                          # the rise, at 0
+            c1 = sub_blep(signed((phase - edge) & 0xFFFFFFFF), inv)     # the fall
+            n = _f32(n + _f32(h * _f32(c1 - c0)))
+        out.append(_f32(g * n))
         phase = (phase + step) & 0xFFFFFFFF
     return out, phase
 

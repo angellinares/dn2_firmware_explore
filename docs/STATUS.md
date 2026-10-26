@@ -106,6 +106,7 @@ Rules that keep it honest:
 
 | Item | State | Next move |
 |---|---|---|
+| **Native ekFS on DN2 / Waverider coexistence** | **External hardware evidence, 2026-10-08:** a separate port retained 16-byte and 47,104-byte files across power cycles and loaded one sample into ONESHOT. Its filesystem write range contains Waverider's entire store; no coexistence test | Review [results, build identities and limits](dn2-ekfs-hardware-results.md); define a shared layout or migration before combining writers. No upstream port or stability claim |
 | **What dispatches an RPC opcode** | Five static approaches failed; DT2 diff reframed it | Extend DN2's list with `10 13 11 12`, count 22→26, ask the device |
 | **What crosses to the SHARC at runtime?** | **Answered, by digikit** — a periodic **DSPI2** frame over **eDMA 28/29**, `(tx_len, tx_buf, rx_len, rx_buf)`, driven from an interrupt. She has the frame's 16-pass per-track loop; we contributed the cross-device counts | `docs/sharc-image.md` |
 | ~~What are the other three modulator sources?~~ | **ANSWERED 2026-09-15 — none is free.** All six are the MIDI performance modulators: **Velocity, Mod Wheel, Pitch Bend, Breath, Aftertouch, Key Tracking**, four dest+depth each | `docs/modulation-matrix.md`. Moves to Closed |

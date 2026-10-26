@@ -46,8 +46,8 @@ with the toggle off, every step stock's.
 The `step-` checks drive the ARPEGGIATOR menu from the panel on track 1:
 
 - `step-keys`: `[UP]` and `[DOWN]` on step 3, the mask and the marks read after each press,
-  with the toggle on (muted, degrees, semitones) and then off (stock's mute and unmute,
-  which leave the step unmarked);
+  with the toggle on (muted, degrees, semitones), then off (stock's mute and unmute, the
+  mark kept), then on again (unmuting gives an unmarked step);
 - `step-graph`: the screen with steps 2 and 13 marked, against stock with the same pokes.
   Toggle off, the two are the same pixel for pixel; on, they differ only in the two steps'
   boxes, and the lit pixels in each box form exactly a plus;
@@ -343,7 +343,11 @@ def check_keys(images: dict, places: dict) -> bool:
     """[UP]/[DOWN] on step 3: (toggle, key, the mask and the marks expected after it)."""
     step = 2
     presses = [(1, UP, 1, 1), (1, UP, 1, 1), (1, DOWN, 1, 0), (1, DOWN, 0, 0), (1, UP, 1, 0),
-               (1, UP, 1, 1), (0, DOWN, 0, 0), (0, UP, 1, 0), (0, UP, 1, 0)]
+               (1, UP, 1, 1),
+               # toggle off: [UP] on the marked step changes nothing, and
+               # stock's mute and unmute keep the mark
+               (0, UP, 1, 1), (0, DOWN, 0, 1), (0, UP, 1, 1), (0, DOWN, 0, 1),
+               (1, UP, 1, 0)]
     sound = places["build"][1]
     look = [f"peek:{sound + ARP_MASK:#x}:2", f"peek:{sound + bs.MARKS:#x}:2"]
     steps = arp_menu(sound, toggle=1, marks=0) + tap(RIGHT) + tap(RIGHT)

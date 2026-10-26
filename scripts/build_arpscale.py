@@ -29,8 +29,8 @@ accidental in an otherwise in-scale sequence. In the ARPEGGIATOR menu, `[UP]` on
 an active step marks it, `[DOWN]` on a marked step clears the mark, and `[DOWN]`
 again mutes the step as in stock; unmuting a step gives an unmarked one. The step
 graph draws a marked step as a plus in the box where stock draws its square. With
-the toggle off, the keys and the graph are stock's and every step moves in
-semitones, marked or not.
+the toggle off, the keys and the graph are stock's, the keys leave the marks as
+they are, and every step moves in semitones, marked or not.
 
 The marks are a sound's, as its offsets are: 16 bits, bit n for step n.
 
@@ -42,13 +42,13 @@ The marks are a sound's, as its offsets are: 16 bits, bit n for step n.
 - **Stored**, bytes 242..243 of the 359-byte sound. Stock's load (`0x400dd1ea`)
   reads the value words at 28..241 and the bytes from 244, and clears slots
   0..100 first (`0x400dd24a`); its save (`0x400dd6a6`) zeroes 28..243
-  (`0x400dd6ec`) and writes value words up to 241. So stock loads a sound with
-  marks as it always did, and its next save clears them. Older stored formats
-  reach the load with zeros there: the format 0 upgrade writes 0 into bytes
-  238..243 (`0x400e0fde`..`0x400e0fe6`), and the format 1 and 2 upgrades copy
-  them (`0x400e0504`, `0x400e0596`). The load's and the
-  save's last field copy, the step mask (`0x400dd5a0`, `0x400dd8c8`), each
-  become `jmp` to a routine that also copies the marks.
+  (`0x400dd6ec`) and writes value words up to 241. So, by these routines, stock
+  loads a sound with marks as it always did, and its next save clears them; that
+  has not been run. Older stored formats reach the load with zeros there: the
+  format 0 upgrade writes 0 into bytes 238..243 (`0x400e0fde`..`0x400e0fe6`),
+  and the format 1 and 2 upgrades copy them (`0x400e0504`, `0x400e0596`). The
+  load's and the save's last field copy, the step mask (`0x400dd5a0`,
+  `0x400dd8c8`), each become `jmp` to a routine that also copies the marks.
 
 The menu's code (`0x40019716`, the view's key handler, and the methods beside it
 in its vtable `0x401d4c78`) reaches the arp only through calls, and seven of them
@@ -57,7 +57,7 @@ the steps:
 
 | call | stock | the routine |
 |---|---|---|
-| `0x400197e8` | `setStepEnabled(model, step, up)`, for `[UP]`/`[DOWN]` | `step_key`: with the toggle on, `[UP]` on an active step marks it and `[DOWN]` on a marked one unmarks it; anything else is stock's mute or unmute, which leaves the step unmarked |
+| `0x400197e8` | `setStepEnabled(model, step, up)`, for `[UP]`/`[DOWN]` | `step_key`: with the toggle on, `[UP]` on an active step marks it and `[DOWN]` on a marked one unmarks it; anything else is stock's mute or unmute, which leaves the step unmarked. With the toggle off, stock's call alone, and the marks stay as they are |
 | `0x40019992` | `getMask(model)`, once in the rotate (`[FUNC]` + `[LEFT]`/`[RIGHT]`), after the offsets move and before the mask does | `rotate_marks`: the marks move the same way within LEN (`%d2` the key, `%d7` LEN - 1, the rotate's) |
 | `0x4001949c` | `copy(model)` | `copy_marks`: the copy's marks |
 | `0x400195dc` | `clear(model, 1)` | `clear_marks`: no marks; the undo's are the steps' before |
@@ -252,7 +252,8 @@ notify:
 | [UP]/[DOWN] on a step, called in place of the menu's setStepEnabled(model,
 | step, up) (0x400197e8). With the toggle on, [UP] on an active step marks it
 | and [DOWN] on a marked step clears the mark. Anything else is stock's mute or
-| unmute, and leaves the step unmarked.
+| unmute, and leaves the step unmarked. With the toggle off, it is stock's call
+| alone, and the marks stay as they are.
 step_key:
     lea     -8(%sp),%sp
     movem.l %d2/%a2,(%sp)
@@ -266,7 +267,7 @@ step_key:
     mvz.b   {FLAG:#x},%d0
     moveq   #1,%d1
     cmp.l   %d1,%d0
-    bne.s   7f                          | the toggle is off
+    bne.s   8f                          | the toggle is off: stock, the marks as they are
     tst.b   23(%sp)                     | up?
     beq.s   5f
     move.w  {STEP_MASK}(%a2),%d0

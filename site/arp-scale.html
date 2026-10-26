@@ -1,0 +1,196 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arp Offsets in Scale</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<meta name="description" content="Make the Digitone II arpeggiator's step offsets count degrees of the track's scale, with single steps kept in semitones.">
+<link rel="stylesheet" href="css/base.css">
+<style>
+  .step { margin: 2.5rem 0; }
+  .step-head { display: flex; align-items: baseline; gap: .75rem; margin-bottom: .4rem; }
+  .step-num {
+    font-family: var(--mono); font-size: .72rem; letter-spacing: .1em;
+    color: var(--accent); border: 1px solid currentColor;
+    border-radius: 3px; padding: .1rem .4rem; flex: none;
+  }
+  .step h2 { margin: 0; border: 0; padding: 0; font-size: 1.2rem; }
+  .step > p { margin-top: .3rem; color: var(--ink-soft); }
+
+  .drop {
+    border: 2px dashed var(--rule); border-radius: 10px;
+    padding: 2rem 1.5rem; text-align: center; background: var(--panel);
+    transition: border-color .15s, background .15s;
+  }
+  .drop.over { border-color: var(--accent); background: var(--accent-dim); }
+  .drop p { margin: 0 auto; max-width: none; }
+  .drop .hint { color: var(--ink-soft); font-size: .88rem; margin-top: .5rem; }
+
+  button, .filebtn {
+    font: inherit; font-size: .9rem; cursor: pointer;
+    background: var(--panel); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 6px;
+    padding: .4rem .9rem; display: inline-block;
+  }
+  button:hover, .filebtn:hover { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+    font-weight: 600; padding: .6rem 1.4rem;
+  }
+  :root[data-theme="dark"] button.primary,
+  :root:not([data-theme="light"]) button.primary { color: #16181c; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .verdict { display: grid; gap: .3rem; margin-top: 1rem; font-size: .9rem; }
+  .verdict div { display: flex; gap: .6rem; align-items: baseline; }
+  .verdict .mark { font-family: var(--mono); flex: none; width: 1.2rem; }
+  .pass .mark { color: var(--ok); }
+  .fail .mark, .fail { color: #c33; }
+
+  .scroll { overflow-x: auto; }
+
+  .bar {
+    position: sticky; bottom: 0; background: var(--bg);
+    border-top: 1px solid var(--rule); padding: 1rem 0;
+    display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;
+    margin-top: 2rem;
+  }
+  .bar .status { color: var(--ink-soft); font-size: .88rem; flex: 1 1 14rem; }
+  .hidden { display: none; }
+  .busy { color: var(--accent); }
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow"><a href="index.html">Digitone II Mods</a> / arp offsets in scale</p>
+  <h1><span class="glyph" data-glyph="arpscale" aria-hidden="true"></span>Arp Offsets in Scale</h1>
+  <p class="lede">
+    The arpeggiator adds each step&rsquo;s offset in semitones, so an offset can take a note out of
+    the track&rsquo;s scale. With this mod, the offsets can count degrees of the scale instead, and
+    you can mark single steps to stay in semitones. Select your firmware file. Then download a signed image.
+  </p>
+</header>
+
+<div class="note">
+  <p><strong>Make sure that you can go back to stock before you flash a modified file.</strong>
+  The Early Start-up Menu flashes the stock firmware over MIDI. Do this one time with the stock
+  file, <em>before</em> you flash a modified file. Back up your +Drive. No tool here can recover it.</p>
+</div>
+
+<section>
+  <h2>How to use it</h2>
+  <ol>
+    <li><strong>Turn it on.</strong> In SETTINGS &gt; PERSONALIZE, set ARP OFS IN SCALE to on. Each
+    offset now counts degrees of the track&rsquo;s scale, from its root, as KEYBOARD SETUP sets them.
+    In C major, E plus 2 plays G, not F#.</li>
+    <li><strong>Mark a step to move in semitones.</strong> Press [ARP] to open the ARPEGGIATOR menu,
+    and select a step with [LEFT] or [RIGHT]. On an active step, press [UP]: the step shows a plus,
+    and its offset counts semitones, for a note outside the scale. [DOWN] removes the mark, and
+    [DOWN] again mutes the step.</li>
+  </ol>
+  <p>With ARP OFS IN SCALE off, the arpeggiator is stock: every step moves in semitones, and the
+  menu shows no plus. The marks stay with the sound for when you turn it on again.</p>
+</section>
+
+<section class="changes">
+  <h2>Version and changes</h2>
+  <p>This mod is at <strong><!-- dnfw:version arpscale -->v0.2.0<!-- /dnfw:version --></strong>.
+  What changed in each version, newest first.</p>
+<!-- dnfw:changes arpscale -->
+<dl class="changes">
+  <dt><span class="version">v0.2.0</span> <time datetime="2026-10-25">2026-10-25</time></dt>
+  <dd><ul><li>With ARP OFS IN SCALE on, you can mark an arp step to move in semitones, for a note outside the scale. In the ARPEGGIATOR menu, press UP on an active step: the step shows a plus. Press DOWN to remove the mark, and DOWN again to mute the step.</li><li>The sound keeps its marks when you save it, copy it, or copy, paste and clear its arp. With ARP OFS IN SCALE off, every step moves in semitones, as before.</li><li>You can now build it on the site, on this page.</li></ul></dd>
+  <dt><span class="version">v0.1.0</span> <time datetime="2026-10-11">2026-10-11</time></dt>
+  <dd><ul><li>First numbered version.</li><li>Not published on the site yet.</li></ul></dd>
+</dl>
+<!-- /dnfw:changes -->
+</section>
+
+<section class="combines">
+  <h2>Combines with</h2>
+  <p>The table below is the row of this mod in the
+  <a href="index.html#compatibility">compatibility table</a>. <code>dnfw mods matrix</code> generates it.</p>
+  <p>&#10003;: you can combine the two mods in either order. &#10003;*: you can combine them in one order
+  only. &#10007;: you cannot combine them. To see the reason, put the pointer on a cell.</p>
+<!-- dnfw:matrix-row arpscale -->
+<div class="scroll">
+<table class="matrix">
+  <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>arpscale</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>degreetranspose</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfolength</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>reloadconfirm</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
+  <tbody>
+    <tr><th scope="row">Arp offsets in scale <code>arpscale</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+  </tbody>
+</table>
+</div>
+<!-- /dnfw:matrix-row -->
+  <p><!-- dnfw:combines arpscale -->This mod combines with Arpeggiator SHUF and RAND, Arpeggiator p-locks, Boot screen, Degree transpose, LFO modulation of the FX, Layering onto MIDI tracks, A fourth LFO, LFO ONE/HALF fix, New LFO waveforms, Arpeggiator on MIDI tracks, More modulation destinations, Reload confirm, Song guard, FM drum transients, USB SysEx probe (diagnostic) and Waverider, a sixth machine. See the compatibility table<!-- /dnfw:combines -->.</p>
+</section>
+
+<section class="step">
+  <div class="step-head"><span class="step-num">1</span><h2>Your firmware</h2></div>
+  <p>Use a Digitone&nbsp;II OS 1.11 <code>.syx</code> file from Elektron. To combine mods, you can
+  also use an image that a different page here built (refer to the table above).</p>
+
+  <div class="drop" id="drop">
+    <p><label class="filebtn" for="syx">Choose a .syx file</label>
+      <input type="file" id="syx" accept=".syx,.SYX" hidden></p>
+    <p class="hint">or drag it here</p>
+  </div>
+
+  <div id="loaded" class="hidden">
+    <dl class="facts" id="facts"></dl>
+    <div class="verdict" id="verdict"></div>
+  </div>
+</section>
+
+<section class="step hidden" id="step2">
+  <div class="step-head"><span class="step-num">2</span><h2>What changes</h2></div>
+  <dl class="facts">
+    <dt>The switch</dt><dd>SETTINGS &gt; PERSONALIZE &gt; ARP OFS IN SCALE. Off by default, so a freshly flashed instrument behaves as stock</dd>
+    <dt>On</dt><dd>An offset counts degrees of the track&rsquo;s scale. An offset of 0 plays the held note, even one outside the scale. Other offsets first move a note outside the scale to the nearest note in it. RANGE still adds whole octaves</dd>
+    <dt>Marked steps</dt><dd>With the switch on, [UP] on an active step in the ARPEGGIATOR menu marks it, and its offset counts semitones. The marks are saved with the sound, and the menu&rsquo;s rotate, copy, paste and clear move them with the steps</dd>
+    <dt>Off</dt><dd>Stock: every step counts semitones, marked or not, and the menu works and looks as stock</dd>
+    <dt>Semitones anyway</dt><dd>SCALE CHROMATIC, and MODE CHORD MEMORY in KEYBOARD SETUP</dd>
+    <dt>Kept</dt><dd>The switch is saved with your other PERSONALIZE settings and survives a power cycle, with or without SAVE PROJECT</dd>
+    <dt>Writes</dt><dd id="writes">&mdash;</dd>
+  </dl>
+
+  <div class="note">
+    <p><strong>Confirmed on a Digitone&nbsp;II, 2026-10-14</strong>, before marked steps existed. With the
+    switch on, the arp plays in scale, from trigs and from keys held on the KEYBOARD page. With it off,
+    the arp plays stock&rsquo;s notes. The switch stays on after a power cycle.</p>
+    <p>Marked steps (version 0.2.0) passed on w-winter&rsquo;s Digitone&nbsp;II, 2026-10-25: a
+    marked step plays in semitones, and the marks survive a power cycle and a project reload.</p>
+  </div>
+</section>
+
+<section class="step hidden" id="step3">
+  <div class="step-head"><span class="step-num">3</span><h2>Build it</h2></div>
+  <p>
+    The image is rebuilt, re-signed with the key derived from your own file, and
+    every integrity field is checked again. Nothing downloads unless all of them pass.
+  </p>
+  <div class="verdict" id="buildVerdict"></div>
+</section>
+
+<div class="bar hidden" id="bar">
+  <button class="primary" id="buildBtn">Build firmware</button>
+  <button id="resetBtn">Start over</button>
+  <span class="status" id="status"></span>
+</div>
+
+<footer>
+  <p>
+    Part of <a href="https://github.com/angellinares/dn2_firmware_explore">dn2_firmware_explore</a>,
+    AGPL-3.0-or-later. Not affiliated with or endorsed by Elektron.
+  </p>
+  <p>Site build <span data-site-build>web-local</span>. Quote it when you report a problem with a build.</p>
+  <script type="module" src="js/build.js"></script>
+</footer>
+
+</div>
+
+<script type="module" src="js/app/arpscale-page.js"></script>
+<script type="module" src="js/app/glyphs-page.js"></script>

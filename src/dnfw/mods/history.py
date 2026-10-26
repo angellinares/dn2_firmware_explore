@@ -71,6 +71,7 @@ HISTORY: dict[str, tuple[Release, ...]] = {
             "DOWN to remove the mark, and DOWN again to mute the step.",
             "The sound keeps its marks when you save it, copy it, or copy, paste and clear its arp. With ARP "
             "OFS IN SCALE off, every step moves in semitones, as before.",
+            "You can now build it on the site, on this page.",
         )),
     ) + UNPUBLISHED,
     "bootscreen": PUBLISHED,

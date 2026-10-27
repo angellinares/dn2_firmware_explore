@@ -54,22 +54,27 @@ def test_installs_the_loader_lfo4_passed_with(stock):
 
 
 def test_lfo4_alone_is_the_gated_build(stock):
-    """lfo4 on the platform: its edits and its own two CODE chunks, as gated. The
-    bus writes its 53 bounds; the area also carries its count and its four hooks'
-    displaced copies, which nothing reads at run time."""
+    """lfo4 on the platform: its edits and its own two CODE chunks, as gated, plus
+    1.0.3's three stride edits and its table chunk 8 bytes longer (the last stock
+    record's tail, issue #293). The bus writes its 53 bounds; the area also carries
+    its count and its four hooks' displaced copies, which nothing reads at run time."""
     from dnfw.mods import bus, lfo4
     spec = lfo4.SPEC
     image = bytearray(stock)
-    for e in spec["edits"]:
+    for e in spec["edits"] + lfo4.STRIDE_EDITS:
         at = e["va"] - BASE
         image[at:at + len(e["new"]) // 2] = bytes.fromhex(e["new"])
-    blob = bytearray.fromhex(spec["blob"])
     records = lfo4._table(stock)
-    blob[spec["table_offset"]:spec["table_offset"] + len(records)] = records
+    expected = []
+    for c, d in area.parse(bytes.fromhex(spec["blob"])):
+        code = area.CodeChunk.unpack(d)
+        if code.load == spec["table_va"]:
+            d = area.CodeChunk(code.load, records + lfo4.PAGE_NAME_BYTES, code.bss, code.init).pack()
+        expected.append(d)
     out = lfo4.compose(stock)
     assert out[:platform.STOCK_LENGTH] == bytes(image[:platform.STOCK_LENGTH])
     chunks = area.parse(out[platform.STOCK_LENGTH:])
-    assert [d for c, d in chunks if c == area.CODE] == [d for c, d in area.parse(bytes(blob))]
+    assert [d for c, d in chunks if c == area.CODE] == expected
     assert [c for c, _ in chunks if c != area.CODE] == [platform.DISP] * 4 + [bus.ADDS]
     assert bus.totals(chunks) == {b"PARM": 10}
 

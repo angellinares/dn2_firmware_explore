@@ -38,6 +38,11 @@ const TABLE = 0x401f7fc8, RECORD = 60, COUNT = 320;
 // dnfw.patch.lfo4records
 const LFO3_FIRST = 94, GROUP_SIZE = 10, SLOT0 = 101;
 const SLOT = 12, NRPN = 36, UNIQUE = 40, FLAGS = 44, PAGE_NAME = 52;
+// The formatter and unit words that end a record: the first 8 bytes of the next
+// one in dnfw's view (dnfw.patch.lfo4records.TAIL, issue #293).
+export const TAIL = 8;
+// The page name after the table, in the packaged chunk.
+const PAGE_NAME_BYTES = [0x4c, 0x46, 0x4f, 0x34, 0, 0, 0, 0];
 const UNSET = 0xffffffff;
 const DEST_POSITION = 3, DEST_FLAGS = 0x00008000;
 const SLOTS = [0, 1, 2, 3, 4, 5, 5, 6, 7, 1];
@@ -63,7 +68,18 @@ const platformOwned = (e) => {
   return platform.loaderExtents().some((x) => x.start < hi && lo < x.start + x.length)
     || platform.busExtents().some((x) => x.start <= lo && hi <= x.start + x.length);
 };
-const OWN = CODE.edits.filter((e) => !platformOwned(e));
+// Three stock readers of the per-track LFO arrays that LFO4 widens from 120 bytes a
+// track to 160, left stepping by 120 by the packaged build (dnfw.mods.lfo4.STRIDE_EDITS,
+// issues #295, #294; fixed in 1.0.3).
+export const STRIDE_EDITS = [
+  { va: 0x40027832, stock: "43e90078", new: "43e900a0" },
+  { va: 0x40027836, stock: "1169ff830001", new: "1169ff5b0001" },
+  { va: 0x4002783c, stock: "1169ff860002", new: "1169ff5e0002" },
+  { va: 0x4012ab88, stock: "068400000078", new: "0684000000a0" },
+  { va: 0x4012b09e, stock: "e78b", new: "eb8b" },
+  { va: 0x4012b0ca, stock: "9283", new: "d283" },
+];
+const OWN = CODE.edits.filter((e) => !platformOwned(e)).concat(STRIDE_EDITS);
 
 export const EDITS = OWN.length;
 export const EDITED_BYTES = OWN.reduce((n, e) => n + e.new.length / 2, 0);
@@ -75,7 +91,7 @@ export function extents() {
   return [
     ...OWN.map((e) => ({ section: SECTION, start: e.va - BASE, length: e.new.length / 2,
                          what: "LFO4 edit", displaced: hooks.has(e.va) })),
-    ...platform.extents(APPENDED + AREA_EXTRA),
+    ...platform.extents(APPENDED + TAIL + AREA_EXTRA),
   ];
 }
 
@@ -116,13 +132,18 @@ export function freeUniqueIds(content, want = GROUP_SIZE) {
   return gaps.slice(0, want);
 }
 
-/** LFO4's ten records: LFO3's, with the slot, NRPN, id, flags and page name rewritten. */
+/** LFO4's ten records: LFO3's, with the slot, NRPN, id, flags and page name rewritten,
+ * the first one starting with the last stock record's tail, then LFO3's last tail. */
 export function lfo4Records(content, pageNameVa) {
   const ids = freeUniqueIds(content);
-  const out = new Uint8Array(RECORD * GROUP_SIZE);
+  const out = new Uint8Array(RECORD * GROUP_SIZE + TAIL);
   for (let k = 0; k < GROUP_SIZE; k++) {
     const at = TABLE - BASE + RECORD * (LFO3_FIRST + k);
     const record = content.slice(at, at + RECORD);
+    if (k === 0) {
+      const end = TABLE - BASE + RECORD * COUNT;
+      record.set(content.subarray(end, end + TAIL), 0);
+    }
     put32(record, SLOT, SLOT0 + SLOTS[k]);
     put32(record, NRPN, UNSET);
     put32(record, UNIQUE, ids[k]);
@@ -130,14 +151,16 @@ export function lfo4Records(content, pageNameVa) {
     put32(record, PAGE_NAME, pageNameVa);
     out.set(record, RECORD * k);
   }
+  const last = TABLE - BASE + RECORD * (LFO3_FIRST + GROUP_SIZE);
+  out.set(content.subarray(last, last + TAIL), RECORD * GROUP_SIZE);
   return out;
 }
 
-/** The relocated table, from this image: its 320 records and LFO4's ten. */
+/** The relocated table, from this image: its 320 records, LFO4's ten and their tail. */
 export function table(content) {
-  const nameVa = CODE.table_va + RECORD * CODE.table_records;
+  const nameVa = CODE.table_va + RECORD * CODE.table_records + TAIL;
   const stock = content.subarray(TABLE - BASE, TABLE - BASE + RECORD * COUNT);
-  const out = new Uint8Array(RECORD * (COUNT + GROUP_SIZE));
+  const out = new Uint8Array(RECORD * (COUNT + GROUP_SIZE) + TAIL);
   out.set(stock);
   out.set(lfo4Records(content, nameVa), stock.length);
   return out;
@@ -149,14 +172,24 @@ export function compose(content) {
   const out = base.slice();
   for (const e of OWN) platform.write(out, others, e.va, hex(e.stock), hex(e.new));
 
-  const blob = hex(CODE.blob);
   const records = table(base);
-  const at = CODE.table_offset;
-  if (blob.subarray(at, at + records.length).some((b) => b !== 0)) {
-    throw new ModError("lfo4_code.json is damaged: the table's place is not blank");
-  }
-  blob.set(records, at);
-  const chunks = platform.parseArea(blob);
+  const blank = RECORD * CODE.table_records;
+  const chunks = platform.parseArea(hex(CODE.blob)).map(([cid, data]) => {
+    if (cid !== platform.CODE) return [cid, data];
+    const c = platform.unpackCode(data);
+    if (c.load !== CODE.table_va) return [cid, data];
+    // The packaged chunk is the blank table, then the page name. The table is TAIL
+    // bytes longer than that blank, so the name moves on.
+    const name = c.image.subarray(blank);
+    if (c.image.subarray(0, blank).some((b) => b !== 0) || name.length !== PAGE_NAME_BYTES.length
+        || PAGE_NAME_BYTES.some((b, i) => name[i] !== b)) {
+      throw new ModError("lfo4_code.json is damaged: the table chunk is not a blank table and its name");
+    }
+    const image = new Uint8Array(records.length + name.length);
+    image.set(records);
+    image.set(name, records.length);
+    return [cid, platform.codeChunk(c.load, image, c.bss, c.init)];
+  });
   return platform.join(out, [...others, ...chunks, ...displacedCopies(base, chunks),
                              platform.contribute("PARM", CODE.table_records - COUNT)]);
 }

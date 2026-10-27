@@ -75,6 +75,12 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     ) + PUBLISHED,
     "layermidi": PUBLISHED,
     "lfo4": (
+        Release("1.0.3", "2026-10-27", (
+            "With the COMB+ filter, the FILTER page now shows the correct LPF value. Before, it "
+            "showed 1 after you changed LPF, while the sound used the value you set.",
+            "On a MIDI track, an LFO now modulates the CC values with that track's own LFOs. Before, "
+            "a MIDI track after track 1 could take its LFO values from another track.",
+        )),
         Release("1.0.2", "2026-10-15", (
             "You can now combine this mod with Waverider, in either order. LFO4 operates as before.",
         )),

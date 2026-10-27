@@ -14,6 +14,7 @@ import pytest
 
 from dnfw.cli.files import read_image
 from dnfw.firmware.load import load
+from dnfw.mods import lfo4
 from dnfw.patch import lfo4records, paramtable
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -81,8 +82,8 @@ def test_the_three_excluded_sites_are_not_this_bound(stock):
 
 
 def test_lfo4s_records_copy_lfo3s_except_where_they_must_not(stock):
-    records = lfo4records.build(stock, BASE, page_name_va=0x46904D58)
-    assert len(records) == lfo4records.RECORD * lfo4records.GROUP_SIZE
+    records = lfo4records.build(stock, BASE, page_name_va=0x46904D60)
+    assert len(records) == lfo4records.RECORD * lfo4records.GROUP_SIZE + lfo4records.TAIL
     written = {lfo4records.SLOT, lfo4records.NRPN, lfo4records.UNIQUE,
                lfo4records.FLAGS, lfo4records.PAGE_NAME}
     for k in range(lfo4records.GROUP_SIZE):
@@ -90,8 +91,36 @@ def test_lfo4s_records_copy_lfo3s_except_where_they_must_not(stock):
         was = stock[at:at + paramtable.RECORD]
         now = records[paramtable.RECORD * k:paramtable.RECORD * (k + 1)]
         for off in range(0, paramtable.RECORD, 4):
-            if off not in written:
-                assert was[off:off + 4] == now[off:off + 4], f"record {k}, +{off}"
+            if off in written or (k == 0 and off < lfo4records.TAIL):
+                continue   # record 0 starts with the last stock record's tail
+            assert was[off:off + 4] == now[off:off + 4], f"record {k}, +{off}"
+
+
+def _tail(table: bytes, entry: int) -> bytes:
+    """The formatter and unit words the firmware reads for `entry` (index + 1):
+    `table - 60 + 8` plus 52 and 56, the first 8 bytes of dnfw's record `entry`."""
+    at = paramtable.RECORD * entry
+    return table[at:at + lfo4records.TAIL]
+
+
+def test_every_entry_keeps_its_formatter_and_unit_in_the_relocated_table(stock):
+    """Issue #293: CMB+ LPF (entry 320) took LFO3's formatter and showed 1."""
+    stock_table = stock[paramtable.TABLE - BASE:]
+    table = lfo4._table(stock)
+    for entry in range(1, paramtable.COUNT + 1):
+        assert _tail(table, entry) == _tail(stock_table, entry), f"entry {entry}"
+    assert struct.unpack_from(">I", _tail(table, paramtable.COUNT))[0] == 0x400E2ECC
+
+
+def test_lfo4s_entries_end_as_lfo3s_do(stock):
+    """Entry 321 + k reads its formatter and unit as LFO3's entry 95 + k does,
+    and the last one no longer reads them from the page name's bytes."""
+    stock_table = stock[paramtable.TABLE - BASE:]
+    table = lfo4._table(stock)
+    for k in range(lfo4records.GROUP_SIZE):
+        assert (_tail(table, paramtable.COUNT + 1 + k)
+                == _tail(stock_table, lfo4records.LFO3_FIRST + 1 + k)), f"LFO4 entry {k}"
+    assert len(table) == paramtable.RECORD * (paramtable.COUNT + lfo4records.GROUP_SIZE) + lfo4records.TAIL
 
 
 def test_the_ten_value_slots_are_101_to_108_with_the_two_alternates(stock):
@@ -159,3 +188,16 @@ def test_the_scans_stop_at_the_firmware_s_own_image(stock):
     assert len(paramtable.bound_sites(tail, BASE)) == paramtable.EXPECTED_BOUNDS
     assert len(paramtable.base_sites(tail, BASE)) == sum(paramtable.EXPECTED_BASES.values())
     assert paramtable.STOCK_END == BASE + len(stock)
+
+
+def test_the_three_stock_readers_step_by_lfo4s_160_bytes_a_track(stock):
+    """Issue #295: the frame ISR's packet and the MIDI task's two LFO loops kept 120."""
+    edits = {e["va"]: e for e in lfo4._edits()}
+    for e in lfo4.STRIDE_EDITS:
+        at = e["va"] - BASE
+        assert stock[at:at + len(e["stock"]) // 2].hex() == e["stock"]
+        assert edits[e["va"]]["new"] == e["new"]
+    content = lfo4.compose(stock)
+    for va, new in ((0x40027832, "43e900a0"), (0x4012AB88, "0684000000a0"),
+                    (0x4012B09E, "eb8b"), (0x4012B0CA, "d283")):
+        assert content[va - BASE:va - BASE + len(new) // 2].hex() == new

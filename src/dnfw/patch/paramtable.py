@@ -2,8 +2,10 @@
 
 The Digitone II describes every knob it has in one table of 320 records, 60
 bytes each, at `0x401f7fc8` **inside the firmware image**. A fourth LFO needs
-ten more records, and the table cannot grow in place: the next byte after it
-already belongs to another array (`0x401fcac8`).
+ten more records, and the table cannot grow in place: another array follows
+it. The firmware reads each record 8 bytes later than dnfw's view, so the last
+record's text formatter and unit (8 bytes) lie past this table's end, at
+`0x401fcac8`. A copy must carry them (`lfo4records.TAIL`, issue #293).
 
 So the table is copied into the appended area with ten records after it, and
 every instruction that reaches the old one is repointed. That is possible only

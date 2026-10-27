@@ -31,6 +31,16 @@ choice:
   has read it; LFO3's is known to be valid, and `(group, id)` still names each
   record uniquely because the ids are 101-108.
 
+**The firmware's record is not aligned with dnfw's.** The accessors read an
+entry's fields from `table - 60 + 8`, so the firmware's record for index `i`
+is dnfw's record `i` from `+8` on, and its last two words, the text formatter
+and the unit suffix, are the first 8 bytes of dnfw's record `i + 1`. The last
+stock record keeps those 8 bytes past dnfw's table end, at `0x401fcac8`. So
+LFO4's first record starts with them, and the ten records end with the 8 bytes
+of LFO3's last record (`TAIL`). Before 1.0.3 the first record started with
+LFO3's, so CMB+ LPF took an LFO formatter and showed 1 (issue #293), and
+LFO4's last entry took its formatter from the page name's bytes.
+
 `+44`, the destination capability flags, is the one field where the firmware
 had already left a fourth LFO room: the staircase `0x1e00 / 0x0e00 / 0x0600`
 continues to `0x0200`, and the three `DEST` records' `0x40000 / 0x20000 /
@@ -54,6 +64,8 @@ NRPN = 36
 UNIQUE = 40
 FLAGS = 44
 PAGE_NAME = 52
+
+TAIL = 8                                   # the formatter and unit words that end a record
 
 UNSET = 0xFFFFFFFF
 DEST_POSITION = 3                          # SPD MULT FADE *DEST* WAVE SLEW SPH MODE DEP MULT'
@@ -79,18 +91,23 @@ def free_unique_ids(content: bytes, base: int, want: int = GROUP_SIZE) -> list[i
 
 
 def build(content: bytes, base: int, *, page_name_va: int) -> bytes:
-    """-> the ten records, ready to append to a copy of the table."""
+    """-> the ten records and LFO3's 8-byte tail, ready to append to a copy of the table."""
     ids = free_unique_ids(content, base)
     out = bytearray()
     for k in range(GROUP_SIZE):
         at = TABLE - base + RECORD * (LFO3_FIRST + k)
         record = bytearray(content[at:at + RECORD])
+        if k == 0:   # the last stock record's formatter and unit
+            end = TABLE - base + RECORD * COUNT
+            record[:TAIL] = content[end:end + TAIL]
         struct.pack_into(">I", record, SLOT, SLOT0 + SLOTS[k])
         struct.pack_into(">I", record, NRPN, UNSET)
         struct.pack_into(">I", record, UNIQUE, ids[k])
         struct.pack_into(">I", record, FLAGS, DEST_FLAGS if k == DEST_POSITION else 0)
         struct.pack_into(">I", record, PAGE_NAME, page_name_va)
         out += record
+    last = TABLE - base + RECORD * (LFO3_FIRST + GROUP_SIZE)
+    out += content[last:last + TAIL]   # LFO4's last entry ends as LFO3's does
     return bytes(out)
 
 

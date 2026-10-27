@@ -18,7 +18,9 @@ build **byte for byte**, so what applies here is exactly what was gated.
 ## What does not ship
 
 The relocated parameter table is 320 stock records followed by LFO4's ten,
-which are LFO3's with five fields rewritten. None of it is in the JSON: it is
+which are LFO3's with five fields rewritten, and 8 bytes that end the last of
+them (`lfo4records.TAIL`). The first LFO4 record starts with the 8 bytes that
+end the last stock record, CMB+ LPF (issue #293, fixed in 1.0.3). None of it is in the JSON: it is
 rebuilt at apply time from the image being modified, through the same library
 functions the build uses. A mod applied earlier that edits the stock table
 (`moddest` opens thirteen masks there) is therefore carried into the
@@ -86,8 +88,27 @@ def _platform_owned(e: dict) -> bool:
             or any(x.start <= lo and hi <= x.end for x in bus.extents(platform.SPEC)))
 
 
+# Three stock readers of the per-track LFO arrays that LFO4 moves and widens from 120
+# bytes a track (3 LFOs) to 160 (4), which the packaged build left stepping by 120
+# (issues #295, #294; fixed in 1.0.3). Each reads its base from a getter LFO4 repoints,
+# so with the old stride track t read track 0's array at 120 x t: another track's LFOs.
+STRIDE_EDITS = [
+    # the frame ISR's packet (base from 0x40137340): lea 120 -> 160, and the two
+    # reads behind it, -125 -> -165 and -122 -> -162
+    {"va": 0x40027832, "stock": "43e90078", "new": "43e900a0"},
+    {"va": 0x40027836, "stock": "1169ff830001", "new": "1169ff5b0001"},
+    {"va": 0x4002783C, "stock": "1169ff860002", "new": "1169ff5e0002"},
+    # the MIDI task, every track (base from the SECOND array): addil #120 -> #160
+    {"va": 0x4012AB88, "stock": "068400000078", "new": "0684000000a0"},
+    # the MIDI task, one track (base from 0x40137394): t x 128 - t x 8 -> t x 128 + t x 32,
+    # the encodings LFO4's own engine edit uses at 0x401373fc and 0x40137418
+    {"va": 0x4012B09E, "stock": "e78b", "new": "eb8b"},
+    {"va": 0x4012B0CA, "stock": "9283", "new": "d283"},
+]
+
+
 def _edits() -> list[dict]:
-    return [e for e in _spec()["edits"] if not _platform_owned(e)]
+    return [e for e in _spec()["edits"] if not _platform_owned(e)] + STRIDE_EDITS
 
 
 def _chunks(blob: bytes) -> list[tuple[bytes, bytes]]:
@@ -104,7 +125,7 @@ def extents(firmware=None) -> list[Extent]:
     hooks = {site for site, _ in HOOKS}
     out = [Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, "LFO4 edit", displaced=e["va"] in hooks)
            for e in _edits()]
-    return out + platform.extents(len(spec["blob"]) // 2 + AREA_EXTRA)
+    return out + platform.extents(len(spec["blob"]) // 2 + lfo4records.TAIL + AREA_EXTRA)
 
 
 # The evaluators' three LFO state arrays, moved so each track holds four LFOs
@@ -122,15 +143,19 @@ def ram() -> list[Extent]:
     out = []
     for _, data in _chunks(bytes.fromhex(_spec()["blob"])):
         code = platform.area.CodeChunk.unpack(data)
-        out.append(Extent(platform.RAM, code.load, len(code.image) + code.bss,
+        grow = lfo4records.TAIL if code.load == _spec()["table_va"] else 0
+        out.append(Extent(platform.RAM, code.load, len(code.image) + grow + code.bss,
                           "LFO4's C and its BSS" if code.bss else "the relocated parameter table"))
     return out
 
 
+PAGE_NAME_BYTES = b"LFO4\x00\x00\x00\x00"   # the page name after the table, in the packaged chunk
+
+
 def _table(content: bytes) -> bytes:
-    """The relocated table, from this image: its 320 records and LFO4's ten."""
+    """The relocated table, from this image: its 320 records, LFO4's ten and their tail."""
     spec = _spec()
-    name_va = spec["table_va"] + paramtable.RECORD * spec["table_records"]
+    name_va = spec["table_va"] + paramtable.RECORD * spec["table_records"] + lfo4records.TAIL
     return (paramtable.records(content, BASE)
             + lfo4records.build(content, BASE, page_name_va=name_va))
 
@@ -144,14 +169,18 @@ def compose(content: bytes) -> bytes:
     for e in _edits():
         platform.write(out, others, e["va"], bytes.fromhex(e["stock"]), bytes.fromhex(e["new"]))
 
-    blob = bytearray.fromhex(spec["blob"])
     records = _table(content)
-    at = spec["table_offset"]
-    if any(blob[at:at + len(records)]):
-        raise ModError("lfo4_code.json is damaged: the table's place is not blank")
-    blob[at:at + len(records)] = records
-
-    chunks = _chunks(bytes(blob))
+    chunks = []
+    for cid, data in _chunks(bytes.fromhex(spec["blob"])):
+        if cid == platform.area.CODE and platform.area.CodeChunk.unpack(data).load == spec["table_va"]:
+            # The packaged chunk is the blank table, then the page name. The table is
+            # TAIL bytes longer than that blank (lfo4records), so the name moves on.
+            code = platform.area.CodeChunk.unpack(data)
+            blank = paramtable.RECORD * spec["table_records"]
+            if any(code.image[:blank]) or code.image[blank:] != PAGE_NAME_BYTES:
+                raise ModError("lfo4_code.json is damaged: the table chunk is not a blank table and its name")
+            data = platform.area.CodeChunk(code.load, records + code.image[blank:], code.bss, code.init).pack()
+        chunks.append((cid, data))
     return platform.join(bytes(out), others + chunks + _displaced(content, chunks)
                          + [bus.contribute(b"PARM", spec["table_records"] - paramtable.COUNT)])
 

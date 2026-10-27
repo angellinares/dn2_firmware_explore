@@ -30,6 +30,9 @@ void wr_register(void *self, u8 *registry);
 void wr_file_invoker(void);
 void wp_add(void);
 void mi_add(void);
+#ifdef WR_SLOTROUTE
+void ds_add(void);
+#endif
 
 /* offset-to-top, typeinfo, then the four slots */
 static const u32 vtable[6] __attribute__((aligned(4))) = {
@@ -417,6 +420,9 @@ void wr_add(void)
     REG_ADD(REGISTRY, &owner);
     wp_add();                                     /* /wavepool after it (poolroute.c) */
     mi_add();                                     /* then /modinfo (modinfo.c) */
+#ifdef WR_SLOTROUTE
+    ds_add();                                     /* diagnostic builds: /devslots (slotroute.c) */
+#endif
     BUILT_FLAG = 1;
 }
 

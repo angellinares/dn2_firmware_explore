@@ -74,6 +74,12 @@ EXPECTED_RUNTIME = 902                     # the unrolled initialiser's literals
 # They are named here so that the count still checks.
 NOT_THE_BOUND = (0x40031FEE, 0x40032422, 0x400325E2)
 
+# The bound has a second form, `cmpa.l #320/#321,%aN`, where the entry sits in an
+# address register. Four of them are in stock 1.11 (elekloader's machines-dn2 lists
+# the 1.12 ones). `0x4006ef14` is not this bound: a `beq` case of a switch on `%fp`,
+# after `cmpa.l #319`.
+SWITCH_CASES = (0x4006EF14,)
+
 # And one site that **is** this bound and must be left alone anyway.
 #
 # `param_set_tables_build` (0x400dc4d0) walks every record and files its entry
@@ -102,8 +108,11 @@ NOT_THE_BOUND = (0x40031FEE, 0x40032422, 0x400325E2)
 NOT_THIS_TIME = {0x400DC7F0: "param_set_tables_build files by value slot into "
                              "101-entry tables; see docs/lfo4-build-plan.md",
                  0x400C241C: "the 68-byte companion table has no base to move; "
-                             "past its end are the RTOS task blocks"}
-EXPECTED_BOUNDS = 53
+                             "past its end are the RTOS task blocks",
+                 0x40044828: "a cmpa.l bound in 0x400446c2: it copies value[slot] words "
+                             "through the 1,163-byte live sounds and the 23,921-byte kits, "
+                             "101 slots each; LFO4's slots 101-108 would write past them"}
+EXPECTED_BOUNDS = 55                       # 53 cmpi.l, and cmpa.l at 0x4006eb9e and 0x4010756e
 
 
 class TableError(ValueError):
@@ -214,23 +223,30 @@ def bound_sites(content: bytes, base: int) -> list[Site]:
     call, three are loops over the table with the stride in an address
     register, and the three in `NOT_THE_BOUND` are not this bound at all.
 
+    The `cmpa.l` form was missed until 2026-10-28: lfo4 then repointed the base at
+    0x4006eb9e and 0x4010756e and left the bound, so LFO4's entries read entry 0's
+    short name there. `SWITCH_CASES` holds the one `cmpa.l #320` that is not a bound.
+
     `NOT_THIS_TIME` is the other kind of exclusion: a site that is this bound
     and must still be left where it is. Read its entry before changing it.
     """
     content = _stock(content, base)
     out = []
+    skip = set(NOT_THE_BOUND) | set(SWITCH_CASES) | set(NOT_THIS_TIME)
     for value in (320, 321):
         for reg in range(8):
-            opcode = bytes([0x0C, 0x80 | reg]) + struct.pack(">I", value)
-            i = 0
-            while True:
-                i = content.find(opcode, i)
-                if i < 0:
-                    break
-                va = base + i
-                if i % 2 == 0 and va not in NOT_THE_BOUND and va not in NOT_THIS_TIME:
-                    out.append(Site(va + 2, value, 0, f"bound, cmpil #{value},%d{reg}"))
-                i += 1
+            for opcode, name in ((bytes([0x0C, 0x80 | reg]), f"cmpil #{value},%d{reg}"),
+                                 (struct.pack(">H", 0xB1FC | reg << 9), f"cmpal #{value},%a{reg}")):
+                opcode += struct.pack(">I", value)
+                i = 0
+                while True:
+                    i = content.find(opcode, i)
+                    if i < 0:
+                        break
+                    va = base + i
+                    if i % 2 == 0 and va not in skip:
+                        out.append(Site(va + 2, value, 0, f"bound, {name}"))
+                    i += 1
     if len(out) != EXPECTED_BOUNDS:
         raise TableError(f"expected {EXPECTED_BOUNDS} bound sites, found {len(out)}")
     return out

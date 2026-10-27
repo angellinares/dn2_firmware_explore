@@ -56,20 +56,25 @@ def test_installs_the_loader_lfo4_passed_with(stock):
 def test_lfo4_alone_is_the_gated_build(stock):
     """lfo4 on the platform: its edits and its own two CODE chunks, as gated, plus
     1.0.3's three stride edits and its table chunk 8 bytes longer (the last stock
-    record's tail, issue #293). The bus writes its 55 bounds; the area also carries
+    record's tail, issue #293). 1.0.4's table chunk starts with stock's 52 bytes before
+    the table (entry 0). The bus writes its 55 bounds; the area also carries
     its count and its four hooks' displaced copies, which nothing reads at run time."""
     from dnfw.mods import bus, lfo4
+    from dnfw.patch import paramtable
     spec = lfo4.SPEC
     image = bytearray(stock)
     for e in spec["edits"] + lfo4.STRIDE_EDITS:
         at = e["va"] - BASE
         image[at:at + len(e["new"]) // 2] = bytes.fromhex(e["new"])
+    for va, width, value in bus.bounds(platform.SPEC, b"PARM"):
+        image[va - BASE:va - BASE + width] = (value + 10).to_bytes(width, "big")
     records = lfo4._table(stock)
     expected = []
     for c, d in area.parse(bytes.fromhex(spec["blob"])):
         code = area.CodeChunk.unpack(d)
         if code.load == spec["table_va"]:
-            d = area.CodeChunk(code.load, records + lfo4.PAGE_NAME_BYTES, code.bss, code.init).pack()
+            head = stock[paramtable.TABLE - lfo4.HEAD - BASE:paramtable.TABLE - BASE]
+            d = area.CodeChunk(code.load - lfo4.HEAD, head + records + lfo4.PAGE_NAME_BYTES, code.bss, code.init).pack()
         expected.append(d)
     out = lfo4.compose(stock)
     assert out[:platform.STOCK_LENGTH] == bytes(image[:platform.STOCK_LENGTH])

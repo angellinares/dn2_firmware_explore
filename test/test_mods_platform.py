@@ -56,7 +56,7 @@ def test_installs_the_loader_lfo4_passed_with(stock):
 def test_lfo4_alone_is_the_gated_build(stock):
     """lfo4 on the platform: its edits and its own two CODE chunks, as gated, plus
     1.0.3's three stride edits and its table chunk 8 bytes longer (the last stock
-    record's tail, issue #293). The bus writes its 53 bounds; the area also carries
+    record's tail, issue #293). The bus writes its 55 bounds; the area also carries
     its count and its four hooks' displaced copies, which nothing reads at run time."""
     from dnfw.mods import bus, lfo4
     spec = lfo4.SPEC

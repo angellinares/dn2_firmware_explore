@@ -75,6 +75,11 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     ) + PUBLISHED,
     "layermidi": PUBLISHED,
     "lfo4": (
+        Release("1.0.4", "2026-10-28", (
+            "A parameter the firmware does not know now gets stock's fallback settings again. Two "
+            "more places in the firmware now read LFO4's settings from its own records. LFO4 "
+            "operates as before.",
+        )),
         Release("1.0.3", "2026-10-27", (
             "With the COMB+ filter, the FILTER page now shows the correct LPF value. Before, it "
             "showed 1 after you changed LPF, while the sound used the value you set.",

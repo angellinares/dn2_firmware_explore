@@ -41,6 +41,9 @@ const SLOT = 12, NRPN = 36, UNIQUE = 40, FLAGS = 44, PAGE_NAME = 52;
 // The formatter and unit words that end a record: the first 8 bytes of the next
 // one in dnfw's view (dnfw.patch.lfo4records.TAIL, issue #293).
 export const TAIL = 8;
+// Entry 0, the fallback record, is read from the 52 bytes before the table and its first 8:
+// the table chunk starts with stock's 52, 52 bytes early (dnfw.mods.lfo4.HEAD).
+export const HEAD = RECORD - TAIL;
 // The page name after the table, in the packaged chunk.
 const PAGE_NAME_BYTES = [0x4c, 0x46, 0x4f, 0x34, 0, 0, 0, 0];
 const UNSET = 0xffffffff;
@@ -91,7 +94,7 @@ export function extents() {
   return [
     ...OWN.map((e) => ({ section: SECTION, start: e.va - BASE, length: e.new.length / 2,
                          what: "LFO4 edit", displaced: hooks.has(e.va) })),
-    ...platform.extents(APPENDED + TAIL + AREA_EXTRA),
+    ...platform.extents(APPENDED + HEAD + TAIL + AREA_EXTRA),
   ];
 }
 
@@ -185,10 +188,11 @@ export function compose(content) {
         || PAGE_NAME_BYTES.some((b, i) => name[i] !== b)) {
       throw new ModError("lfo4_code.json is damaged: the table chunk is not a blank table and its name");
     }
-    const image = new Uint8Array(records.length + name.length);
-    image.set(records);
-    image.set(name, records.length);
-    return [cid, platform.codeChunk(c.load, image, c.bss, c.init)];
+    const image = new Uint8Array(HEAD + records.length + name.length);
+    image.set(base.subarray(TABLE - HEAD - BASE, TABLE - BASE));
+    image.set(records, HEAD);
+    image.set(name, HEAD + records.length);
+    return [cid, platform.codeChunk(c.load - HEAD, image, c.bss, c.init)];
   });
   return platform.join(out, [...others, ...chunks, ...displacedCopies(base, chunks),
                              platform.contribute("PARM", CODE.table_records - COUNT)]);

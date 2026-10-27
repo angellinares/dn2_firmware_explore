@@ -35,7 +35,7 @@ area is already there, so it combines with `lfowaves` and `bootscreen`. The
 JSON still records the loader as LFO4's build installed it;
 `scripts/gen_platform_code.py` checks the platform installs those same bytes.
 
-The 53 bounds of the parameter table are the bus's parameter count
+The 55 bounds of the parameter table are the bus's parameter count
 (`dnfw.mods.bus`): LFO4 adds its ten records to the count, and the platform
 writes each bound, in place or in the copy another mod's hook replays. LFO4
 records the instructions its four entry hooks replay (`platform.displace`), so
@@ -125,7 +125,7 @@ def extents(firmware=None) -> list[Extent]:
     hooks = {site for site, _ in HOOKS}
     out = [Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, "LFO4 edit", displaced=e["va"] in hooks)
            for e in _edits()]
-    return out + platform.extents(len(spec["blob"]) // 2 + lfo4records.TAIL + AREA_EXTRA)
+    return out + platform.extents(len(spec["blob"]) // 2 + HEAD + lfo4records.TAIL + AREA_EXTRA)
 
 
 # The evaluators' three LFO state arrays, moved so each track holds four LFOs
@@ -139,12 +139,21 @@ STATE_HEAP = ((0x4464ABF0, 2560, "LFO state LIVE"), (0x4464BBF0, 2560, "LFO stat
               (0x4464CBF0, 2560, "LFO state BACKUP"))
 
 
+# Entry 0, the record every out-of-range entry falls back to, is read from the 52 bytes
+# before the table and its first 8 (the accessors' base is the table less 52). Stock's 52
+# are -1s and text pointers, so the table chunk starts with them, 52 bytes early: without
+# them the fallback read whatever RAM held (emu_param_readers.py, 2026-10-28: the group
+# getter 0x400dbce8 gave 0 for entry 0, stock -1).
+HEAD = paramtable.RECORD - lfo4records.TAIL
+
+
 def ram() -> list[Extent]:
     out = []
     for _, data in _chunks(bytes.fromhex(_spec()["blob"])):
         code = platform.area.CodeChunk.unpack(data)
-        grow = lfo4records.TAIL if code.load == _spec()["table_va"] else 0
-        out.append(Extent(platform.RAM, code.load, len(code.image) + grow + code.bss,
+        table = code.load == _spec()["table_va"]
+        grow, head = (lfo4records.TAIL, HEAD) if table else (0, 0)
+        out.append(Extent(platform.RAM, code.load - head, head + len(code.image) + grow + code.bss,
                           "LFO4's C and its BSS" if code.bss else "the relocated parameter table"))
     return out
 
@@ -179,7 +188,9 @@ def compose(content: bytes) -> bytes:
             blank = paramtable.RECORD * spec["table_records"]
             if any(code.image[:blank]) or code.image[blank:] != PAGE_NAME_BYTES:
                 raise ModError("lfo4_code.json is damaged: the table chunk is not a blank table and its name")
-            data = platform.area.CodeChunk(code.load, records + code.image[blank:], code.bss, code.init).pack()
+            head = content[paramtable.TABLE - HEAD - BASE:paramtable.TABLE - BASE]
+            data = platform.area.CodeChunk(code.load - HEAD, head + records + code.image[blank:],
+                                           code.bss, code.init).pack()
         chunks.append((cid, data))
     return platform.join(bytes(out), others + chunks + _displaced(content, chunks)
                          + [bus.contribute(b"PARM", spec["table_records"] - paramtable.COUNT)])

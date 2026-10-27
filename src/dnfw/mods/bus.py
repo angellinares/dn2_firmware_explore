@@ -29,13 +29,13 @@ MIDI events.
 ## Counts
 
 Some stock limits are one number checked in many places: the parameter table's
-size (320 records, 53 bounds) and the number of machine types (5, six bounds). A
+size (320 records, 55 bounds) and the number of machine types (5, six bounds). A
 mod that adds parameters or machines does not write those bounds. It adds to the
 count (`contribute`), and the platform writes every bound for the total.
 
 | count | stock | bounds |
 |---|---|---|
-| `PARM` | 320 parameter records | the 53 `cmpi.l #320` / `#321` of `dnfw.patch.paramtable.bound_sites` |
+| `PARM` | 320 parameter records | the 55 `cmpi.l` / `cmpa.l #320` / `#321` of `dnfw.patch.paramtable.bound_sites` |
 | `MACH` | 5 machine types | the five `moveq #4` of the name and attribute rows, and the stored-sound LOAD's `moveq #6` |
 
 Only one mod may add to each count. A mod that adds parameters must also give the
@@ -165,7 +165,7 @@ EVENTS = {
 }
 
 # The counts: the stock value, and the bounds that spell it (va, width, stock value).
-# PARM's 53 are found in the stock image by gen_platform_code.py (paramtable.bound_sites).
+# PARM's 55 are found in the stock image by gen_platform_code.py (paramtable.bound_sites).
 MACHINE_BOUNDS = ((0x400DC15D, 1, 4, "the attribute rows' byte getter: moveq #4"),
                   (0x400DC19D, 1, 4, "the permission test: moveq #4"),
                   (0x400DC333, 1, 4, "the long-name getter: moveq #4"),

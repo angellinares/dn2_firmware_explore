@@ -10,7 +10,7 @@ the site needs a toolchain to apply a mod:
     site/js/mods/platform-code.js
 
 It also assembles the hook bus's dispatchers (`dnfw.mods.bus.SOURCE`, at
-`bus.BUS_VA`) and finds the parameter count's 53 bounds in the stock image
+`bus.BUS_VA`) and finds the parameter count's 55 bounds in the stock image
 (`dnfw.patch.paramtable.bound_sites`), so neither needs a toolchain or a search
 at apply time.
 

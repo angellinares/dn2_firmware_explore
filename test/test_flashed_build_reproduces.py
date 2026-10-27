@@ -1,7 +1,8 @@
 """Today's mods rebuild the last build that passed on the instrument.
 
-batcha1 (fxmod, Waverider 0.3.6 with load plan batch A, usbprobe and lfo4) passed its device test
-on 2026-10-22 (load and soak) and is on the owner's unit. Before it, fmdepth2 (2026-10-20). `dnfw mods apply` of the same mods must give the same image. The one allowed
+lfo4fix2 (Waverider 0.3.7, layermidi, arpmodes, lfowaves, bootscreen and lfo4 1.0.3) passed its
+device test on 2026-10-27 (issues #293 and #295). Before it, batcha1 (2026-10-22) and fmdepth2
+(2026-10-20). `dnfw mods apply` of the same mods must give the same image. The one allowed
 difference is the /modinfo record's build part (commit, image id, hash). When a later build
 passes on the instrument, it replaces FLASHED here.
 
@@ -17,9 +18,10 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-FLASHED = ROOT / "00_Resources/02_Builds/batcha1-fxmod-lfo4-waverider-usbprobe_DN2_1.11.syx"
-MODS = ["fxmod", "waverider", "usbprobe", "lfo4"]
-PROBE_TAG = "batcha1-fxmod"
+FLASHED = ROOT / "00_Resources/02_Builds/lfo4fix2-waverider-layermidi-arpmodes-lfowaves-lfo4-bootscreen_DN2_1.11.syx"
+MODS = ["waverider", "layermidi", "arpmodes", "lfowaves", "bootscreen", "lfo4"]
+PROBE_TAG = "lfo4fix2-waverider-layermidi-arpmodes-lfowaves-lfo4-bootscreen"
+BOOT = ROOT / "00_Resources/08_MyBuilds/waverider_glyph_boot.pgm"
 
 
 def _sections(path: pathlib.Path) -> dict[int, bytes]:
@@ -29,12 +31,12 @@ def _sections(path: pathlib.Path) -> dict[int, bytes]:
 
 
 def test_the_flashed_build_rebuilds(tmp_path):
-    if not (STOCK_111.exists() and FLASHED.exists()):
-        pytest.skip("stock 1.11 or the flashed build is not in 00_Resources")
+    if not (STOCK_111.exists() and FLASHED.exists() and BOOT.exists()):
+        pytest.skip("stock 1.11, the flashed build or its boot image is not in 00_Resources")
     from dnfw.mods import modinfo
     out = tmp_path / "rebuilt_DN2_1.11.syx"
     done = subprocess.run([sys.executable, "-c", "import sys; from dnfw.cli.main import main; sys.exit(main(sys.argv[1:]))",
-                           "mods", "apply", *[a for m in MODS for a in ("--mod", m)], "--probe-tag", PROBE_TAG,
+                           "mods", "apply", *[a for m in MODS for a in ("--mod", m)], "--probe-tag", PROBE_TAG, "--boot-image", str(BOOT),
                            str(STOCK_111), "-o", str(out)], capture_output=True, text=True, cwd=ROOT)
     assert done.returncode == 0, done.stdout[-800:] + done.stderr[-800:]
     want, got = _sections(FLASHED), _sections(out)

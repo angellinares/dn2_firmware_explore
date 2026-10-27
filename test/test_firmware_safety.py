@@ -6,6 +6,7 @@ website's Check page).
 of waverider and fxmod. Every other case is the good image (or stock) changed on purpose and
 signed again, as a careful tool would sign it, so only the checklist's own rules can catch it.
 The flashed build batcha1 adds usbprobe, which reads stock's USB buffer: the DMA check warns.
+Its lfo4 is 1.0.2, so today's mods (lfo4 1.0.3, #298) do not rebuild it: the rebuild warns.
 
 `EXPECT` is each case's status per check. Both checklists must give it, and the same words for
 everything but a failure's reason and the rebuild's (each patcher rebuilds its own way).
@@ -43,7 +44,7 @@ STOPPED = {k: None for k in KEYS}
 EXPECT = {
     "good": GOOD,
     "stock": _after(area="info", ram="skip", record="skip", rebuild="skip"),
-    "flashed": _after(dma="warn"),
+    "flashed": _after(dma="warn", rebuild="warn"),
     # file: a damaged SysEx packet. Nothing after it is read.
     "damaged": {"file": "fail"},
     # layout: the updater's load address moved in the container's table

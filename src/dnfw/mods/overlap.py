@@ -60,8 +60,23 @@ def theirs(plan: dict, port: dict) -> list[Use]:
     for name, (used, _total) in plan.get("regions", {}).items():
         r = starts.get(name)
         if r and r.get("cpu") == "cf" and used:
-            out.append(Use("patchkit", "cf", r["start"], r["start"] + used, f"region {name}, the part in use"))
+            for lo, hi in _first_fit(r["start"], r["end"], r.get("excludes", []), used):
+                out.append(Use("patchkit", "cf", lo, hi, f"region {name}, the part in use"))
     return out
+
+
+def _first_fit(start: int, end: int, excludes, used: int) -> list[tuple[int, int]]:
+    """The spans USED bytes fill when placed first fit from START, around the region's excludes."""
+    spans, at = [], start
+    for a, b in sorted(excludes) + [(end, end)]:
+        if used <= 0:
+            break
+        take = min(used, max(0, a - at))
+        if take:
+            spans.append((at, at + take))
+            used -= take
+        at = max(at, b)
+    return spans
 
 
 # The kinds of collision, in the order the summary prints them

@@ -37,3 +37,13 @@ def test_a_rebuilt_stream_collides_with_any_dsp_write_and_only_then():
     dsp = {"cpu": "sharc", "addr": 0x20004a36, "len": 6, "kind": "patch", "owner": "core/y@0.1.0", "what": "hook"}
     assert kinds(named) == []
     assert kinds(named, plan(writes=[dsp])) == [overlap.STREAM]
+
+
+def test_the_used_part_of_a_region_goes_around_its_excludes():
+    port = {"region": [{"name": "cf.expansion", "cpu": "cf", "start": 0x46712000, "end": 0x47fe0000,
+                        "excludes": [[0x46713000, 0x46714000]]}]}
+    p = plan(writes=[], hooks=[], regions={"cf.expansion": [0x1800, 0x100000]})
+    spans = [(u.lo, u.hi) for u in overlap.theirs(p, port)]
+    assert spans == [(0x46712000, 0x46713000), (0x46714000, 0x46714800)]
+    inside = [("m", [Extent(RAM, 0x46713100, 16)])]
+    assert overlap.collisions(overlap.ours(inside, BASE), overlap.theirs(p, port)) == []

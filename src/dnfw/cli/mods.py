@@ -92,6 +92,14 @@ def configure(parser) -> None:
                     help="write each combinable MAIN OS pair to DIR/<a>+<b>/section_3_MAIN_OS.bin "
                          "for scripts/emu_boot_check.py")
 
+    ov = sub.add_parser("overlap", help="the ranges these mods declare, against a digikit patchkit plan")
+    ov.add_argument("image", type=pathlib.Path, help="the stock firmware the mods apply to")
+    ov.add_argument("--mod", required=True, action="append", choices=sorted(REGISTRY))
+    ov.add_argument("--plan", required=True, type=pathlib.Path,
+                    help="the plan JSON patchkit writes beside its image (patchkit patch ... --plan FILE)")
+    ov.add_argument("--port", required=True, type=pathlib.Path,
+                    help="digikit's port file of the same OS (devices/ports/dn2-1.11.toml): the region starts")
+
     ap = sub.add_parser("apply", help="apply a mod and rebuild the image")
     ap.add_argument("image", type=pathlib.Path)
     # Repeatable, because applying two mods together is the thing the extent
@@ -581,11 +589,36 @@ def _changelog(args) -> int:
     return 0
 
 
+def _overlap(args) -> int:
+    import json
+    from ..mods import overlap, platform
+    firmware = load(read_image(args.image))
+    named = [(mod.ID, list(mod.extents(firmware)) + list(getattr(mod, "ram", list)()))
+             for mod in (REGISTRY[m] for m in dict.fromkeys(args.mod))]
+    plan = json.loads(args.plan.read_text())
+    found = overlap.collisions(overlap.ours(named, platform.BASE), overlap.theirs(plan, overlap.load_port(args.port)))
+    modules = ", ".join(plan.get("modules", []))
+    for kind, line in found:
+        print(f"  COLLISION ({kind}): {line}")
+    if found:
+        print()
+        for kind in (overlap.SAME, overlap.HOOK, overlap.RAM_IN_REGION, overlap.STREAM):
+            n = sum(1 for k, _ in found if k == kind)
+            if n:
+                print(f"  {n:4d}  {kind}")
+        print(f"{len(found)} collisions between {', '.join(m for m, _ in named)} and patchkit's {modules}.")
+        return 1
+    print(f"No collisions between {', '.join(m for m, _ in named)} and patchkit's {modules}.")
+    return 0
+
+
 def run(args) -> int:
     if args.action == "list":
         return _list()
     if args.action == "changelog":
         return _changelog(args)
+    if args.action == "overlap":
+        return _overlap(args)
     if args.action == "matrix":
         return _matrix(args)
     if args.action == "extract":

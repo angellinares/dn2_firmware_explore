@@ -5,7 +5,7 @@ digikit's SHARC runner, bit for bit.
 
 From the Milestone 2 post-init snapshot, on the section 7 the mod ships
 (`dnfw.waverider.dsp.section7`), type-5 render blocks as `scripts/sharc_waverider_m5.py`
-runs them (a note at block 1), with page 5's frame words (slots 58 FOLD, 61 NPOS, 62 TYPE,
+runs them (a note at block 1), with page 5's frame words (slots 58 FOLD, 61 FSRC, 62 TYPE,
 48 AMT, 59 WARP, 60 FM) set:
 
 | case | must hold |
@@ -13,11 +13,11 @@ runs them (a note at block 1), with page 5's frame words (slots 58 FOLD, 61 NPOS
 | all 0 (the control) | the track buffer is `live.render_two`'s without page 5, bit for bit |
 | FOLD 64 | bit for bit `live.render_two` with page 5, and the fold changes samples |
 | FOLD 127, osc 2 on | the same |
-| NPOS 100 | bit for bit the control: NPOS changes nothing yet |
+| FSRC 100, FM 0 | bit for bit the control: FSRC changes nothing without FM (scripts/sharc_waverider_fsrc.py has FSRC with FM) |
 | Ring, AMT 127, osc 2 on | the same |
 | AM, AMT 64, osc 2 on | the same |
 | Ring, AMT 127, osc 2 off | the same: o2 is 0, so the mix is scaled by 1 - a |
-| all four with the sub | Ring and FOLD together, before the sub (NPOS set, no effect) |
+| all four with the sub | Ring and FOLD together, before the sub (FSRC set, FM 0: no effect) |
 | WARP 64 | the same: osc 1's phase bent |
 | WARP 127, osc 2 on | both oscillators bent |
 | FM 64, osc 2 on | osc 2 plays first and moves osc 1's phase |
@@ -54,7 +54,7 @@ from dnfw.waverider import dsp, live          # noqa: E402
 from dnfw.waverider import frame as FR        # noqa: E402
 from dnfw import sharcemu  # noqa: E402
 
-FOLD, NPOS, TYPE, AMT, WARP, FM = live.SHAPE_SLOTS[:6]
+FOLD, FSRC, TYPE, AMT, WARP, FM = live.SHAPE_SLOTS[:6]
 SUB = live.SUB_SLOTS[0]
 
 
@@ -85,11 +85,11 @@ def main(argv=None) -> int:
         ("control: all 0", {g.LEV2: 0}),
         ("FOLD 64", {g.LEV2: 0, FOLD: 0x4000}),
         ("FOLD 127, osc 2 on", {**on2, FOLD: 0x7F00}),
-        ("NPOS 100: no effect yet", {g.LEV2: 0, NPOS: 0x6400}),
+        ("FSRC 100, FM 0: no effect", {g.LEV2: 0, FSRC: 0x6400}),
         ("Ring, AMT 127, osc 2 on", {**on2, TYPE: 0x0100, AMT: 0x7F00}),
         ("AM, AMT 64, osc 2 on", {**on2, TYPE: 0x0200, AMT: 0x4000}),
         ("Ring, AMT 127, osc 2 off", {g.LEV2: 0, TYPE: 0x0100, AMT: 0x7F00}),
-        ("all four with the sub", {**on2, TYPE: 0x0100, AMT: 0x5000, FOLD: 0x3000, NPOS: 0x2000, SUB: 0x6400}),
+        ("all four with the sub", {**on2, TYPE: 0x0100, AMT: 0x5000, FOLD: 0x3000, FSRC: 0x2000, SUB: 0x6400}),
         ("WARP 64", {g.LEV2: 0, WARP: 0x4000}),
         ("WARP 127, osc 2 on", {**on2, WARP: 0x7F00}),
         ("FM 64, osc 2 on", {**on2, FM: 0x4000}),

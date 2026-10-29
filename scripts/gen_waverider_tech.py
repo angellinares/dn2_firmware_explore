@@ -710,6 +710,163 @@ def high_range_steps(scan: dict[int, list]) -> str:
     return "<ol>" + "".join(f"<li>{html.escape(s)}</li>" for s in steps) + "</ol>"
 
 
+# ---------------------------------------------------------------- 7b. the sub's polyBLEP (0.3.8)
+
+# The unit's reading of the sub alone (LEV1 and LEV2 0, SUB 100, OCT -1), notes 36 to 96 in steps
+# of 3, on fsrc2 (Waverider 0.3.8 with the polyBLEP), 2026-10-29: the power between the sub's
+# harmonics, 0.18 s into each note, the same measure as _between_db. Notes below 57 put the sub
+# under 100 Hz, where the measure is not used.
+UNIT_SUB = {
+    "SQR": {57: -37.9, 60: -43.4, 63: -42.5, 66: -43.0, 69: -43.4, 72: -43.6, 75: -43.5, 78: -43.2,
+            81: -51.6, 84: -42.1, 87: -41.5, 90: -40.8, 93: -40.1, 96: -39.3},
+    "PLS": {57: -36.2, 60: -40.8, 63: -40.3, 66: -40.8, 69: -41.2, 72: -41.4, 75: -41.4, 78: -41.2,
+            81: -47.1, 84: -40.4, 87: -39.9, 90: -39.4, 93: -38.7, 96: -37.8},
+}
+SUB_NOTES = list(range(36, 97, 3))             # the unit test's ramp
+SUB_MEASURED = [n for n in SUB_NOTES if n >= 57]  # from A3: the sub at 110 Hz and up
+SUB_WAVE = {"SQR": 2, "PLS": 3}
+SUB_N = 8192                                  # the measure's window, as on the unit
+
+
+def _sub_f0(note: int) -> float:
+    return note_hz(note - 12)                 # OCT -1: the sub plays an octave under the note
+
+
+def _sub_wave(f0: float, wave: int, count: int, blep: bool) -> np.ndarray:
+    """COUNT samples of the sub's WAVE at F0 Hz, gain 1: the DSP's own model with the polyBLEP,
+    or the plain wave without it."""
+    step = int(f0 / RATE * 2 ** 32)
+    out, ph = [], 0
+    if blep:
+        while len(out) < count:
+            ys, ph = live.render_sub(ph, step << 1, (0, 0, wave << 8, 0), BLOCK, g=1.0)
+            out += ys
+        return np.array(out[:count], float)
+    for _ in range(count):
+        out.append(live.sub_value(ph, wave))
+        ph = (ph + step) & 0xFFFFFFFF
+    return np.array(out, float)
+
+
+def _between_db(x: np.ndarray, f0: float) -> float:
+    """The power between the harmonics of F0, against all the power above 20 Hz (Blackman
+    window): what the unit's recording was measured with."""
+    X = np.abs(np.fft.rfft(x * np.blackman(len(x)))) ** 2
+    f = np.fft.rfftfreq(len(x), 1 / RATE)
+    near = np.abs(f / f0 - np.round(f / f0)) < 0.12
+    return float(10 * np.log10(X[(~near) & (f > 20)].sum() / X[f > 20].sum()))
+
+
+def sub_blep_edge() -> str:
+    """Two cycles of SQR at a high note, sample by sample: the plain wave, and the wave with
+    the polyBLEP, which moves the samples either side of each edge."""
+    f0 = _sub_f0(96)
+    n = 96
+    plain = _sub_wave(f0, 2, n, False)
+    blep = _sub_wave(f0, 2, n, True)
+    xs = list(range(n))
+    p = Plot((0, n - 1), (-1.6, 1.6), "Sample", "Level", xticks=list(range(0, n, 16)),
+             yticks=[-1.5, -1, -0.5, 0, 0.5, 1, 1.5], yfmt=lambda v: f"{v:g}", height=260, legend="below")
+    p.line(xs, plain, "s2", "SQR without the polyBLEP")
+    p.line(xs, blep, "s0", "SQR with the polyBLEP")
+    p.dots(xs, blep)
+    return p.svg(f"The sub's SQR at {f0:,.0f} Hz, sample by sample, with and without the polyBLEP")
+
+
+def _sub_series(name: str) -> tuple[list, list]:
+    plain, blep = [], []
+    for note in SUB_MEASURED:
+        f0 = _sub_f0(note)
+        skip = 4800                                                      # past the start, as on the unit
+        plain.append(_between_db(_sub_wave(f0, SUB_WAVE[name], skip + SUB_N, False)[skip:], f0))
+        blep.append(_between_db(_sub_wave(f0, SUB_WAVE[name], skip + SUB_N, True)[skip:], f0))
+    return plain, blep
+
+
+def sub_blep_alias() -> tuple[str, str, str]:
+    """For SQR and PLS: the power between the harmonics against the note, for the model with
+    and without the polyBLEP, and the unit's reading. Also the table of the same numbers."""
+    svgs, rows = [], {}
+    for name in ("SQR", "PLS"):
+        plain, blep = _sub_series(name)
+        unit = UNIT_SUB[name]
+        p = Plot((57, 96), (-70, -10), "Note (the sub plays an octave lower)", "Between the harmonics, dB",
+                 xticks=[57, 60, 72, 84, 96], xfmt=note_name, yticks=[-70, -60, -50, -40, -30, -20, -10],
+                 height=280, legend="below")
+        p.line(SUB_MEASURED, plain, "s2", f"{name}, model without the polyBLEP")
+        p.line(SUB_MEASURED, blep, "s1", f"{name}, model with the polyBLEP")
+        p.dots(list(unit), list(unit.values()), "s0", f"{name}, the unit (dots)")
+        svgs.append(p.svg(f"The power between the harmonics of the sub's {name}, against the note"))
+        for note, a, b in zip(SUB_MEASURED, plain, blep):
+            if note in unit:
+                rows.setdefault(note, [note_name(note), f"{_sub_f0(note):,.0f}"])
+                rows[note] += [f"{a:.0f} dB", f"{b:.0f} dB", f"{unit[note]:.0f} dB"]
+    table = table_html(["Note", "Sub Hz", "SQR without", "SQR with", "SQR, unit",
+                        "PLS without", "PLS with", "PLS, unit"], list(rows.values()))
+    return svgs[0], svgs[1], table
+
+
+SPEC_W, SPEC_H = 640, 200
+SPEC_STOPS = ((0.0, (8, 6, 14)), (0.25, (58, 18, 92)), (0.5, (160, 40, 90)),
+              (0.75, (236, 110, 40)), (1.0, (252, 240, 160)))          # dark to light, on a dark ground
+
+
+def _spec_png(x: np.ndarray, path: pathlib.Path, floor_db: float = -70.0) -> None:
+    """A spectrogram of X, 0 to 24 kHz up the image, time across, as a PNG of SPEC_W x SPEC_H.
+    Each column is scaled to its own loudest bin, so every note reads on the same scale, and the
+    window is a 4-term Blackman-Harris, whose leakage stays under the floor."""
+    from PIL import Image
+    n = 2048
+    hop = max(1, (len(x) - n) // SPEC_W)
+    k_ = np.arange(n) / (n - 1) * 2 * np.pi
+    win = 0.35875 - 0.48829 * np.cos(k_) + 0.14128 * np.cos(2 * k_) - 0.01168 * np.cos(3 * k_)
+    cols = []
+    for k in range(SPEC_W):
+        seg = x[k * hop:k * hop + n]
+        if len(seg) < n:
+            seg = np.pad(seg, (0, n - len(seg)))
+        cols.append(np.abs(np.fft.rfft(seg * win)) ** 2)
+    S = np.array(cols).T[:1000]                                          # 0 to 23.4 kHz, 5 bins a row
+    S = S.reshape(SPEC_H, -1, SPEC_W).mean(1)
+    db = 10 * np.log10(S / (S.max(0, keepdims=True) + 1e-30) + 1e-20)
+    v = np.clip((db - floor_db) / -floor_db, 0, 1)[::-1]
+    xs = [a for a, _ in SPEC_STOPS]
+    rgb = np.stack([np.interp(v, xs, [c[i] for _, c in SPEC_STOPS]) for i in range(3)], -1)
+    Image.fromarray(rgb.astype(np.uint8)).save(path, optimize=True)
+
+
+def _sub_ramp(blep: bool) -> np.ndarray:
+    """The unit test's ramp in the model: SQR, notes 36 to 96 in steps of 3, half a second each."""
+    return np.concatenate([_sub_wave(_sub_f0(n), 2, RATE // 2, blep) for n in SUB_NOTES])
+
+
+def sub_blep_spectrograms(unit_wav: pathlib.Path | None, write: bool = False) -> str:
+    """Three spectrograms of the same ramp: the model without and with the polyBLEP, and the
+    unit's recording when UNIT_WAV is given (else the PNG already on the page stays). The PNGs
+    are written only with WRITE (the command line), so a test that checks the page writes nothing."""
+    art = ROOT / "site/art/waverider"
+    if write:
+        _spec_png(_sub_ramp(False), art / "sub_blep_without.png")
+        _spec_png(_sub_ramp(True), art / "sub_blep_with.png")
+    if write and unit_wav and unit_wav.exists():
+        import wave
+        with wave.open(str(unit_wav)) as w:
+            pcm = np.frombuffer(w.readframes(w.getnframes()), "<i2").reshape(-1, w.getnchannels()).mean(1) / 32768
+        env = np.convolve(np.abs(pcm), np.ones(480) / 480, "same")
+        on = np.where(env > 10 ** (-60 / 20))[0]
+        _spec_png(pcm[on[0]:on[-1]], art / "sub_blep_unit.png")
+    figs = [("sub_blep_without.png", "The model, without the polyBLEP"),
+            ("sub_blep_with.png", "The model, with the polyBLEP"),
+            ("sub_blep_unit.png", "The unit, with the polyBLEP (Waverider 0.3.8)")]
+    out = ['<div class="spec-row">']
+    for name, cap in figs:
+        alt = f"{cap}: a spectrogram of the sub's SQR, from note C2 to C7"
+        out.append(f'<figure class="spec"><img src="art/waverider/{name}" alt="{html.escape(alt)}" '
+                   f'width="{SPEC_W}" height="{SPEC_H}"><figcaption>{html.escape(cap)}</figcaption></figure>')
+    out.append("</div>")
+    return "".join(out)
+
+
 # ---------------------------------------------------------------- the page
 
 # ---------------------------------------------------------------- 8. MIDI: the CC and NRPN of every knob
@@ -730,8 +887,9 @@ def midi_map() -> str:
     return table_html(["Page", "Knob", "Label", "Name", "CC", "NRPN"], rows)
 
 
-def figures(dnx: pathlib.Path | None) -> dict[str, str]:
+def figures(dnx: pathlib.Path | None, unit_wav: pathlib.Path | None = None, write: bool = False) -> dict[str, str]:
     alias_svg, alias_table, _ = alias_measure()
+    blep_sqr, blep_pls, blep_table = sub_blep_alias()
     scan = _hr_scan()
     return {
         "hrlevels": high_range_levels(),
@@ -762,6 +920,11 @@ def figures(dnx: pathlib.Path | None) -> dict[str, str]:
         "warpcurve": warp_curve(),
         "warpwave": warp_wave(),
         "fmwave": fm_wave(),
+        "subblepedge": sub_blep_edge(),
+        "subblepsqr": blep_sqr,
+        "subbleppls": blep_pls,
+        "subbleptable": blep_table,
+        "subblepspec": sub_blep_spectrograms(unit_wav, write),
     }
 
 
@@ -779,8 +942,10 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--page", type=pathlib.Path, default=ROOT / "site/waverider.html")
     ap.add_argument("--dnx", type=pathlib.Path, default=pathlib.Path("D:/01_Code/Z_Personal/DNX"))
+    ap.add_argument("--unit-wav", type=pathlib.Path, default=None,
+                    help="the unit's recording of the sub ramp, for its spectrogram (kept off the repository)")
     args = ap.parse_args(argv)
-    figs = figures(args.dnx)
+    figs = figures(args.dnx, args.unit_wav, write=True)
     args.page.write_text(rewrite(args.page.read_text(encoding="utf-8"), figs), encoding="utf-8", newline="\n")
     print(f"wrote {len(figs)} figures and tables into {args.page}")
     return 0

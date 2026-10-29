@@ -69,6 +69,14 @@ def _cases(live):
         ("osc2+warp", {**on2, live.SHAPE_SLOTS[4]: 0x4000}, True),
         ("osc2+fm", {**on2, live.SHAPE_SLOTS[5]: 0x4000}, True),
         ("osc2+warp+fm", {**on2, live.SHAPE_SLOTS[4]: 0x4000, live.SHAPE_SLOTS[5]: 0x4000}, True),
+        # FSRC (0.3.8): FM from the sub or the noise, heard (100) or not (0)
+        ("osc2+fm+sub", {**on2, live.SHAPE_SLOTS[5]: 0x4000, sub: 0x6400}, True),
+        ("fsrc-sub", {**on2, live.SHAPE_SLOTS[5]: 0x4000, live.SHAPE_SLOTS[1]: 0x0100, sub: 0x6400}, True),
+        ("fsrc-sub0", {**on2, live.SHAPE_SLOTS[5]: 0x4000, live.SHAPE_SLOTS[1]: 0x0100}, True),
+        ("osc2+fm+noise", {**on2, live.SHAPE_SLOTS[5]: 0x4000, nois: 0x6400, typ: 0x0100, colr: 0x4000, dec: 0x2800}, True),
+        ("fsrc-noise", {**on2, live.SHAPE_SLOTS[5]: 0x4000, live.SHAPE_SLOTS[1]: 0x0200, nois: 0x6400, typ: 0x0100,
+                        colr: 0x4000, dec: 0x2800}, True),
+        ("fsrc-noise0", {**on2, live.SHAPE_SLOTS[5]: 0x4000, live.SHAPE_SLOTS[1]: 0x0200}, True),
     ]
 
 

@@ -154,7 +154,7 @@ wr_t5v_loop.:
       DM(0x2dde90) = R0;
       DM(0x2dde94) = R0;
       DM(0x2dde98) = R0;                // osc 1 adds no tune base (+0.0)
-      JUMP 0x172cdf;                         // -> wr_p5_voice. (page 5: FM plays osc 2 first, page5.asm)
+      JUMP 0x172cd8;                         // -> wr_p5_voice. (page 5: FM plays osc 2 first, page5.asm)
 
 .GLOBAL wr_t5v_osc.;
 wr_t5v_osc.:
@@ -340,7 +340,7 @@ wr_t5v_tuned.:
       R3 = DM(0x2dde88);
       DM(5, I4) = R3;                   // out: the track buffer
       R4 = DM(0x2dde84);                // wr_render5's argument: the reader block
-      CJUMP 0x172de0 (DB);                   // -> wr_p5_phase. (page 5's WARP and FM, page5.asm, then wr_dclk_pre (M10b-2) and wr_render5(R4 = reader block))
+      CJUMP 0x172ddf (DB);                   // -> wr_p5_phase. (page 5's WARP and FM, page5.asm, then wr_dclk_pre (M10b-2) and wr_render5(R4 = reader block))
       DM(I7, M7) = R2;
       DM(I7, M7) = 0x16ee99;            // return address - 1: wr_t5v_osc_next. - 1
 

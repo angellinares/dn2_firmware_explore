@@ -35,7 +35,7 @@ Waverider's numbers (the owner, 2026-10-18: every parameter takes both CC and NR
 | Page | CC | NRPN |
 |---|---|---|
 | 1 to 4 | as stock | as stock |
-| 5: FOLD WARP FM NPOS | 12, 15, 35, 36 | 1:112 to 1:115 |
+| 5: FOLD WARP FM FSRC | 12, 15, 35, 36 | 1:112 to 1:115 |
 | 5: TYPE AMT P1 P2 | 37, 83, 93, 119 | 1:116 to 1:119 |
 
 - **NRPN 1:105 to 1:111 are not used:** stock uses 1:108 for Mute and 1:110 for Track level.

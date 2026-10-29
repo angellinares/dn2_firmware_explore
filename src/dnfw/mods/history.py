@@ -126,6 +126,14 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     ) + PUBLISHED,
     "usbprobe": UNPUBLISHED,
     "waverider": (
+        Release("0.3.8", "2026-10-26", (
+            "Knob D on [page 5](#page-5) is now FSRC, the FM source: OSC2, SUB or NOIS. OSC2 is FM as before. "
+            "SUB and NOIS let the sub-oscillator or the noise of [page 3](#page-3) change osc 1.",
+            "FM alone sets how much the source changes osc 1. SUB and NOIS on page 3 set only how loud you hear "
+            "the sub and the noise.",
+            "With FSRC at SUB, the sub follows osc 1, and SRC has no effect.",
+            "The sub's SQR and PLS waves add fewer harsh tones on high notes. SIN and TRI sound as before.",
+        )),
         Release("0.3.7", "2026-10-22", (
             "Waverider uses less of the DSP. With a 16-note chord, the load is about 5 points lower "
             "with [page 5](#page-5) off and about 9 points lower with all of page 5 on. The sound "

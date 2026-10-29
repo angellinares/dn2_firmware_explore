@@ -71,7 +71,7 @@ Branch `feature/waverider-pages34-ui`, build `out/wt128/waverider-pages34b-usbpr
 
 ## The sub-oscillator on the DSP (2026-10-07, SHARC runner; not flashed)
 
-**`csrc/waverider/sharc/sub.asm`**, at sw `0x171000` (DM `0x2e2000`), with 16 phases and three scratch words at DM `0x2e2400`, in L1 block 1's free tail after DCLK's state.
+**`csrc/waverider/sharc/sub.asm`**, at sw `0x171000` (DM `0x2e2000`), with 16 phases and three scratch words at DM `0x2e24b0` (at `0x2e2400` until 2026-10-26: the polyBLEP needed the room), in L1 block 1's free tail after DCLK's state.
 - **Where it runs:** machine9_live.asm's two exits for a type-5 track whose oscillators are done now go to it: `wr_sub_ran` (osc 2 ran) and `wr_sub_skip` (osc 2 skipped at LEV2 0). Then it goes on to `wr_t5v_next`.
 - **What it reads:** SUB, OCT, WAVE and SRC (params 50..53) from the frame copy at `0x25c48c + 268 + 146t`, four half-words.
 - **What it does:** with SUB above 0, it adds SUB/100 × shape(phase) into the track buffer the oscillators wrote. Its phase steps at the followed oscillator's increment >> (1 + OCT). That's osc 2's reader block when SRC is 1 and osc 2 ran, else osc 1's.
@@ -96,6 +96,8 @@ The sub changes 255..256 of 256 samples in every case it's on. It writes `out/wa
 - the middle strips of the chosen layouts (both pages draw oscillator 1's wave meanwhile).
 
 ## The noise on the DSP (2026-10-07, SHARC runner; not flashed)
+
+**The polyBLEP (2026-10-26, owner).** SQR and PLS jump between two levels, which aliases on high notes. A block whose samples come within one step of an edge (`live.sub_near_edge`) adds a polyBLEP to each sample: max(1 - |x|, 0)^2 with x's sign, x being the distance from the edge in steps, for the rise at 0 and the fall at the half (SQR) or the quarter (PLS). It is scaled by half the jump: 1 for SQR, 2/3 for PLS. 1/step is `live.sub_recip`: a seed from the float's bits, then three Newton steps, so the model and the DSP agree bit for bit. Any other block plays the naive wave, the same samples as before. In the model, the aliasing of a sub at 233 Hz to 2,093 Hz falls by 13 to 17 dB. The gate gains three cases: SQR at note 96 (every block corrects), PLS at note 84 (the block test) and SQR at note 72, OCT -2 (most blocks skip). It passes 10/10 bit for bit.
 
 **`csrc/waverider/sharc/noise.asm`**, at sw `0x171300` (DM `0x2e2600`). sub.asm's exits now go to it instead of `wr_t5v_next`, including the SUB 0 one, so the chain is oscillators, then the sub, then the noise, then the next track.
 

@@ -6,6 +6,30 @@ busy period of a frame as a share of a frame (a frame is 1/1500 s). Overruns cou
 longer than a whole frame. The test plan has every run's steps; the entry names are in the
 last column.
 
+## 0.3.8: FSRC and the sub's polyBLEP on the unit (2026-10-29)
+
+The build is fsrc2 (Waverider 0.3.8). Each figure is the median load of ten one-second readings,
+with a 16-note chord (notes 72 to 87) on Growlaren, 16 voices on Waverider. The DSP missed no frame.
+These figures use a different measure and project from the 0.3.7 table below, so compare them only
+with each other.
+
+| Case | FSRC OSC2 | FSRC SUB | FSRC NOIS |
+|---|---|---|---|
+| FM 64, LEV1 and LEV2 100, SUB 0, NOIS 0 | 60.5 % | 62.5 % (+2.0) | 62.1 % (+1.6) |
+| The costliest setup: FOLD 64, WARP 64, FM 127, Formant, SUB 100 SQR, NOIS 100 | 67.8 % | 68.0 % (+0.2) | 68.0 % (+0.2) |
+
+- In the costliest setup, the highest of the short readings over 20 s was 71.8 %.
+- When you can hear the sub or the noise, FSRC adds 0.2 points. With SUB or NOIS at 0, the source
+  plays only for the FM, and FSRC SUB adds 2.0 points. The estimate was 0.9.
+- The owner accepted the 2.0 points for 0.3.8 (2026-10-29). We can shave this load later if needed:
+  for example, render the sub for the FM only, without the mix.
+- The polyBLEP is not the cause. In the cycle model, FSRC SUB with SUB 0 costs 180 instructions a
+  voice and block at note 60 and at note 84. The polyBLEP corrects more blocks at note 84, so a
+  polyBLEP cost would grow with the note.
+- For 16 voices the cycle model gives about 0.6 to 0.7 points, against the unit's 2.0. The unit runs
+  about 1.26 times slower than the emulator assumes. That leaves about 2.4 times without a cause.
+  Memory waits are a guess. We did not check them.
+
 ## 0.3.7 against 0.3.6 on the unit (2026-10-22)
 
 0.3.7 has the load plan's batch A: the same sound with less DSP code. The builds are fmdepth2 (0.3.6)

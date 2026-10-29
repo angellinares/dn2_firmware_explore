@@ -1,15 +1,12 @@
 """The Formant type in the whole Waverider voice, in digikit's SHARC engine, against live.render_two.
 
-    python scripts/sharc_formant_voice.py [CASE ...] [--blocks 48] [--no-iir] [--engine-iir]
+    python scripts/sharc_formant_voice.py [CASE ...] [--blocks 48] [--no-iir] [--host-iir]
 
 Tracks 0 and 1 play Waverider with page 5's TYPE at Formant (3), so formant.asm starts IIR0
 on track 0's voice and collects it at track 1's FOLD, and collects track 1's at the loop's
-end. The core runs in digikit's Rust engine. The engine on 277760a has no IIR0 (main has
-it, see `--engine-iir` below), so by default this script runs digikit's IIR0 model (tools/sharc_dev/sharc_core/iir.py on a checkout with ElekLabs/
-digikit#122, the order read on silicon; --iir-digikit) on the engine's memory when
-formant.asm polls IIR0's DMASTAT, and hands the poll ACDONE. That is the same as IIR0
-finishing at any time before the poll: between the start and the poll nothing else touches
-IO or the voice's coefficients. Each track's output is compared bit for bit with
+end. The core and IIR0 run in digikit's Rust engine (main's native option 22, `peripheral_model`,
+the Rust twin of tools/sharc_dev/sharc_core/iir.py; `dnfw.sharcemu` builds it from digikit main).
+Each poll of DMASTAT must see ACDONE. Each track's output is compared bit for bit with
 live.render_two fed the DSP's unpacked inputs, page 3's and page 5's words and TRIM.
 
 | case | what moves |
@@ -19,15 +16,16 @@ live.render_two fed the DSP's unpacked inputs, page 3's and page 5's words and T
 | dry | P2 127: each track must equal the plain sound, bit for bit |
 | sub | the sub on, P2 32, notes every 12 blocks (the glide jumps) |
 | switch | TYPE Formant and Off in turn every 10 blocks |
+| fsrc | FSRC SUB with FM 48 and the sub at 80, osc 2 on (fsrc.asm's way to the sub) |
 
-`--no-iir` is the control: the IIR0 model does not run, so IO keeps the input and the
+`--no-iir` is the control: IIR0 does not run, so IO keeps the input, no poll sees ACDONE, and the
 check must fail wherever the voice is wet. Exit 0 when every case matches.
 
-`--engine-iir` runs IIR0 in the engine instead: digikit main's native option 22
-(`peripheral_model`, the Rust twin of iir.py) with `DNFW_SHARC_NATIVE_LIB` naming a library
-built from main and `--digikit` a main checkout. The host model does not run, and the poll
-reads DMASTAT from the engine: each poll must see ACDONE. With `--no-iir` too, option 22
-stays off (the control): no poll sees ACDONE, and the wet cases differ.
+`--host-iir` is a second opinion: digikit's Python IIR0 model (iir.py on a checkout with
+ElekLabs/digikit#122, the order read on silicon; --iir-digikit) runs on the engine's memory when
+formant.asm polls DMASTAT, and hands the poll ACDONE. That is the same as IIR0 finishing at any
+time before the poll: between the start and the poll nothing else touches IO or the voice's
+coefficients.
 """
 
 from __future__ import annotations
@@ -64,12 +62,14 @@ def case_words(name: str, b: int, n: int) -> tuple[dict, bool]:
         return {TYPE: FORMANT, AMT: 0x5000, P1: 0x2000, P2: 0x7F00, g.LEV2: 0x6400}, b == 0
     if name == "sub":
         return {TYPE: FORMANT, AMT: 0x6800 if b // 12 % 2 else 0x0800, P2: 0x2000, SUB: 0x6400, g.LEV2: 0}, b % 12 == 0
+    if name == "fsrc":       # FSRC SUB: the sub plays first into FMB, then adds after the Formant's dry part
+        return {TYPE: FORMANT, AMT: 0x4000, FM: 0x3000, NPOS: 0x0100, SUB: 0x5000, g.LEV2: 0x6400}, b == 0
     if name == "switch":
         return {TYPE: FORMANT if b // 10 % 2 == 0 else 0, AMT: 0x2000 + 64 * b, g.LEV2: 0x6400}, b == 0
     raise SystemExit(f"no case {name}")
 
 
-CASES = ("sweep", "shift", "dry", "sub", "switch")
+CASES = ("sweep", "shift", "dry", "sub", "switch", "fsrc")
 
 
 class Bus:
@@ -109,9 +109,7 @@ def run_case(name, a, dk, stock, sound, machines, wr, tables, iir, const) -> tup
         snap, m2mach = g.snapshot_path(dk, stock, pathlib.Path(tmp))
         init = g.init_on(snap, m2mach, wr)
         init.state.mmrs[iir.IIR_DMASTAT] = g.fx.Const(0)      # the engine refuses an MMR it has no value for
-        state = g.native_on(init, wr)
-        if a.engine_iir and not a.no_iir:
-            state.core.set_option(OPT_PERIPHERAL_MODEL, 1)
+        state = g.native_on(init, wr, peripherals=a.engine_iir and not a.no_iir)
         runs = []
         # track 0's page as base_frame builds it: without it track 1's LEV1 is 0, and with
         # osc 2 off the track is silent, so its check could not fail (found 2026-10-18)
@@ -206,9 +204,10 @@ def main(argv=None) -> int:
                     default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     ap.add_argument("--blocks", type=int, default=48)
     ap.add_argument("--no-iir", action="store_true", help="the control: IIR0's model does not run")
-    ap.add_argument("--engine-iir", action="store_true",
-                    help="IIR0 in the engine (digikit main's option 22), not the host model")
+    ap.add_argument("--host-iir", action="store_true",
+                    help="digikit's Python IIR0 model on the host, a second opinion (default: IIR0 in the engine)")
     a = ap.parse_args(argv)
+    a.engine_iir = not a.host_iir
     dk = g.m1.Digikit(a.digikit)
     g.fx.bind(str(a.digikit / "tools"))
     iir, const = iir_model(a.iir_digikit)

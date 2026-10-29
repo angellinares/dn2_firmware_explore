@@ -106,6 +106,8 @@ def main(argv=None) -> int:
             page5 = assemble("page5", dsp.PAGE5_SW, work)
             phase = assemble("phase", dsp.PHASE_SW, work)
             formant = assemble("formant", dsp.FORMANT_SW, work)
+            fsrc = assemble("fsrc", dsp.FSRC_SW, work)
+            fsrc_mix = assemble("fsrc_mix", dsp.FSRC_MIX_SW, work)
             ejump = one_jump(EMARK_LINE, dsp.CALL_SITE_SW, work)
             jump = one_jump(ENTRY_LINE, dsp.ENTRY_SW, work)
             ijump = one_jump(IDLE_LINE, dsp.IDLE_SITE_SW, work)
@@ -131,6 +133,8 @@ def main(argv=None) -> int:
             page5 = committed("page5")
             phase = committed("phase")
             formant = committed("formant")
+            fsrc = committed("fsrc")
+            fsrc_mix = committed("fsrc_mix")
             ejump = old["emark_jump"]
             if "entry_jump" not in old or "idle_jump" not in old:
                 raise SystemExit("no entry or idle JUMP committed yet: run with --assemble")
@@ -159,7 +163,9 @@ def main(argv=None) -> int:
             "reader_miph2": {k: v for k, v in rmiph2.items() if k != "instruction_offsets"},
             "page5": {k: v for k, v in page5.items() if k != "instruction_offsets"},
             "phase": {k: v for k, v in phase.items() if k != "instruction_offsets"},
-            "formant": {k: v for k, v in formant.items() if k != "instruction_offsets"}}
+            "formant": {k: v for k, v in formant.items() if k != "instruction_offsets"},
+            "fsrc": {k: v for k, v in fsrc.items() if k != "instruction_offsets"},
+            "fsrc_mix": {k: v for k, v in fsrc_mix.items() if k != "instruction_offsets"}}
     dsp.CODE.write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"wrote {dsp.CODE.relative_to(ROOT)}: reader {len(reader['object_parcels_be']) // 2} B, "
           f"loop {len(loop['object_parcels_be']) // 2} B, entry {len(jump['object_parcels_be']) // 2} B")

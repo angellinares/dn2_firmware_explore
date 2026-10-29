@@ -85,6 +85,8 @@ LOOP_SW = LOOP_DM // 2                       # 0x16ed00
 STATE_DM, STATE_BYTES = 0x2DDE00, 0x400      # save area, counters, 16 reader blocks
 READER_BLOCKS_DM, READER_BLOCK_BYTES = 0x2DDF00, 32
 INC_TABLE_DM = 0x2DE200
+FSRC_DM = 0x2DE440                           # fsrc.asm (page 5 knob D, FM's modulator), after the increment table
+FSRC_SW = FSRC_DM // 2                       # 0x16f220
 DIRECTORY_DM = 0x2DE600
 DIRECTORY_MAGIC = 0x57525431                 # 'WRT1'
 # The tables live in the SHARC's DDR, not in L1 (2026-10-03): 32 KB of L1's 43 KB free
@@ -127,6 +129,8 @@ MOVE_OFFSETS_DM = 0x2DE780                   # per oscillator, 32 bytes: frame o
 MOVE_RATE_DM = 0x2DE7D8                      # F[0..9], the rate table
 SHAPES_DM = 0x2DF000                         # shapes.asm (M10b-4): MOVE's eleven shapes, in L1 the tables left
 SHAPES_SW = SHAPES_DM // 2                   # 0x16f800
+FSRC_MIX_DM = 0x2DF220                       # fsrc_mix.asm (FSRC's mix entries), in shapes.asm's slot after its code
+FSRC_MIX_SW = FSRC_MIX_DM // 2               # 0x16f910
 MOVE_RANDOM_DM = 0x2DF400                    # 16 voices x 2 oscillators: the random shapes' (a, b), a u32 each
 MOVE_RANDOM_GEN_DM = 0x2DF500                # their generator's state
 MOVE_RANDOM_BYTES = 0x200                    # both, zeros at boot
@@ -187,7 +191,7 @@ DCLK_BUFFERS_DM = 0x2E1C00                   # its two scratch buffers of 128 sa
 DCLK_STATE_END = 0x2E2000
 SUB_DM = 0x2E2000                            # sub.asm (page 3): the sub-oscillator
 SUB_SW = SUB_DM // 2                         # 0x171000
-SUB_STATE_DM = 0x2E2400                      # its 16 phases, then three words of scratch (sub.asm)
+SUB_STATE_DM = 0x2E24B0                      # its 16 phases, then three words of scratch (sub.asm)
 SUB_STATE_BYTES = 0x50
 NOISE_DM = 0x2E2600                          # noise.asm (page 3): the noise, after the sub
 NOISE_SW = NOISE_DM // 2                     # 0x171300
@@ -312,7 +316,7 @@ def objects() -> dict[str, bytes]:
             for name in ("reader", "machine5_live", "entry_jump", "idle_load", "idle_jump", "block_count",
                          "entry_mark", "emark_jump", "modulator", "shapes", "load", "pool", "sync",
                          "smooth", "dclk", "sub", "noise", "trim", "reader_mip", "reader_miph", "reader_miph2",
-                         "page5", "phase", "formant")}
+                         "page5", "phase", "formant", "fsrc", "fsrc_mix")}
 
 
 def iir_word(dm: int) -> int:
@@ -385,12 +389,14 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("machine5_live.asm (wr_type5v)", LOOP_DM, obj["machine5_live"]),
         ("state: save area, counters, 16 reader blocks (zeros)", STATE_DM, bytes(STATE_BYTES)),
         ("increment table, 129 float32", INC_TABLE_DM, live.table_bytes()),
+        ("fsrc.asm (wr_fs_check, wr_fs_pre, wr_fs_noise)", FSRC_DM, obj["fsrc"]),
         ("wavetable directory", DIRECTORY_DM, directory()),
         ("idle_load.asm (wr_idle)", IDLE_DM, obj["idle_load"]),
         ("block_count.asm (wr_count)", COUNT_DM, obj["block_count"]),
         ("entry_mark.asm (wr_emark)", EMARK_DM, obj["entry_mark"]),
         ("modulator.asm (wr_mod)", MOD_DM, obj["modulator"]),
         ("shapes.asm (wr_shape)", SHAPES_DM, obj["shapes"]),
+        ("fsrc_mix.asm (wr_fs_sub_ran, wr_fs_noise)", FSRC_MIX_DM, obj["fsrc_mix"]),
         ("MOVE's random state (zeros)", MOVE_RANDOM_DM, bytes(MOVE_RANDOM_BYTES)),
         ("load.asm (wr_load)", LOAD_DM, obj["load"]),
         ("command table, 8 entries", CMD_TABLE_DM, command_table()),

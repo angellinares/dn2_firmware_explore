@@ -24,9 +24,10 @@
 //   PLS  +1 for the first quarter, then f32(-1/3): a 25 % pulse with no DC
 //
 // DM (byte addresses, the free tail of L1 block 1 after DCLK's state):
-//   0x2e2400  16 phases, a u32 per voice (zeros at boot)
-//   0x2e2440  1 when osc 2 ran this block
-//   0x2e2444  this voice's phase address, across the loop
+//   0x2e24b0  16 phases, a u32 per voice (zeros at boot)
+//   0x2e24f0  1 when osc 2 ran this block
+//   0x2e24f4  this voice's phase address, across the loop
+// (until the polyBLEP, 2026-10-26, at 0x2e2400: the code needed the room)
 //
 // No DAG1 M0-M3 in a memory access, addresses as byte arithmetic then `In = Rn`, FLOAT
 // only with BY, every add with R8-R15 first. The shapes are DO loops, as reader_miph2.asm's
@@ -41,12 +42,12 @@
 .GLOBAL wr_sub_ran.;
 wr_sub_ran.:
       R0 = 1;
-      DM(0x2e2440) = R0;
+      DM(0x2e24f0) = R0;
       JUMP 0x17100c;                    // -> wr_sub_go.
 .GLOBAL wr_sub_skip.;
 wr_sub_skip.:
       R0 = R0 - R0;
-      DM(0x2e2440) = R0;
+      DM(0x2e24f0) = R0;
 
 .GLOBAL wr_sub_go.;
 wr_sub_go.:
@@ -89,14 +90,17 @@ wr_sub_halves.:
       R7 = R7 AND R12;                  // OCT
       R13 = R13 AND R12;                // WAVE
       R14 = R14 AND R12;                // SRC
-      R6 = PASS R6;
-      IF EQ JUMP 0x171300;              // -> wr_noise. (SUB 0: no sub; noise.asm)
+      R5 = DM(0x2e24f8);                // FSRC SUB (fsrc.asm's wr_fs_pre): 1.0, the sub plays at gain 1.0
+      R0 = R6 OR R5;
+      IF EQ JUMP 0x16f934;              // -> wr_fs_noise. (SUB 0: no sub; fsrc.asm, then noise.asm)
 
       // the gain, SUB / 100, as machine9_live.asm forms LEV's
       R12 = R12 - R12;
       F6 = FLOAT R6 BY R12;
       R12 = DM(0x2de6c8);               // f32(10^(dB/20) / 25600): the trim's factor for this voice (trim.asm)
       F6 = F6 * F12;
+      R5 = PASS R5;
+      IF NE R6 = PASS R5;               // FSRC SUB: gain 1.0
       // WAVE >> 8, at most 3 (PLS)
       R13 = LSHIFT R13 BY -8;
       R12 = 3;
@@ -112,12 +116,12 @@ wr_sub_halves.:
       R2 = LSHIFT R9 BY 5;              // 32 bytes a reader block
       R14 = LSHIFT R14 BY -8;
       R14 = PASS R14;
-      IF EQ JUMP 0x171083;              // -> wr_sub_osc1.
-      R0 = DM(0x2e2440);
+      IF EQ JUMP 0x17108b;              // -> wr_sub_osc1.
+      R0 = DM(0x2e24f0);
       R0 = PASS R0;
-      IF EQ JUMP 0x171083;              // -> wr_sub_osc1.
+      IF EQ JUMP 0x17108b;              // -> wr_sub_osc1.
       R12 = 0x2de800;
-      JUMP 0x171086;                    // -> wr_sub_followed.
+      JUMP 0x17108e;                    // -> wr_sub_followed.
 .GLOBAL wr_sub_osc1.;
 wr_sub_osc1.:
       R12 = 0x2ddf00;
@@ -128,11 +132,11 @@ wr_sub_followed.:
       R10 = DM(2, I1);                  // its inc, this block's
       R10 = LSHIFT R10 BY R7;           // the sub's step: inc >> (1 + OCT)
 
-      // this voice's phase, 0x2e2400 + 4t
+      // this voice's phase, 0x2e24b0 + 4t
       R2 = LSHIFT R9 BY 2;
-      R12 = 0x2e2400;
+      R12 = 0x2e24b0;
       R2 = R12 + R2;
-      DM(0x2e2444) = R2;
+      DM(0x2e24f4) = R2;
       I1 = R2;
       R11 = DM(0, I1);
 
@@ -140,7 +144,7 @@ wr_sub_followed.:
       I2 = R2;
       R8 = DM(0x2dde24);                // the dispatch's R9: the block size
       R8 = PASS R8;
-      IF EQ JUMP 0x17116c;              // -> wr_sub_done. (count 0: nothing)
+      IF EQ JUMP 0x1711fa;              // -> wr_sub_done. (count 0: nothing)
       R15 = -25;                        // h's scale, 2^-25
 
       // opt2 O6 (A2): WAVE can't change within a block, so it is tested once here and each
@@ -148,38 +152,129 @@ wr_sub_followed.:
       // PLS don't use h, so their loops skip it. The arithmetic per shape is unchanged.
       R12 = 1;
       R13 = PASS R13;
-      IF EQ JUMP 0x1710e3;              // -> wr_sub_sin.
+      IF EQ JUMP 0x171193;              // -> wr_sub_sin.
       COMP(R13, R12);
-      IF EQ JUMP 0x171117;              // -> wr_sub_tri.
-      R12 = 2;
-      COMP(R13, R12);
-      IF EQ JUMP 0x17114a;              // -> wr_sub_sqr.
+      IF EQ JUMP 0x1711c7;              // -> wr_sub_tri.
+      JUMP 0x1710c0;                    // -> wr_sub_edge. (SQR and PLS)
 
 // Load plan #3 (2026-10-21): each shape is a hardware loop (LCNTR = R8, the count), with its
-// constants in R3..R5 and the half test as a conditional compute, so a sample takes no branch
-// (until then two: the half test and the software loop's back edge). Each value takes the same
-// operations as before, so the output is the same bit for bit. R9 takes what the oscillators
-// wrote early, so its load is not used by the next instruction.
-.GLOBAL wr_sub_pls.;
-wr_sub_pls.:
-      R1 = 0x3f800000;                  // PLS: +1 for the first quarter
-      F3 = F6 * F1;                     // gain x +1
-      R1 = -0x41555555;                 // f32(-1/3), 0xbeaaaaab (written signed, as selmap reads it)
-      F4 = F6 * F1;                     // gain x -1/3
-      R5 = 0x40000000;
-      LCNTR = R8, DO wr_sub_pls_last. UNTIL LCE;
+// constants in registers and the half test as a conditional compute, so a sample takes no branch.
+// R9 takes what the oscillators wrote early, so its load is not used by the next instruction.
+
+// SQR and PLS (2026-10-26, owner: the polyBLEP). Both jump between two levels: SQR +1 then -1
+// at a half, PLS +1 then f32(-1/3) at a quarter (the edge E). n = hi while phase < E (unsigned),
+// else lo. A block with an edge within a step of a sample (live.sub_near_edge's test) adds the
+// polyBLEP: c = max(1 - |x|, 0)^2 with x's sign, x = (phase - edge) / step as int32 x f32(1/step),
+// for the rise at 0 (c0) and the fall at E (c1), and y = n + h (c1 - c0), h half the jump (SQR 1,
+// PLS 2/3); then gain x y. Any other block plays n as before, bit for bit: away from the edges
+// the polyBLEP is a signed zero. 1/step is live.sub_recip's: a seed from the bits, three Newton steps.
+.GLOBAL wr_sub_edge.;
+wr_sub_edge.:
+      R12 = R12 - R12;                  // 0: FLOAT's scale
+      R3 = 0x3f800000;                  // hi: +1
+      R4 = -0x40800000;                 // lo: -1.0, 0xbf800000
+      R5 = -0x80000000;                 // E: a half, 0x80000000 (written signed, as selmap reads it)
+      R15 = 0x3f800000;                 // h: 1
+      R13 = PASS R13;
+      R0 = 2;
+      COMP(R13, R0);
+      IF EQ JUMP 0x1710dd;              // -> wr_sub_edge_test.
+      R4 = -0x41555555;                 // PLS: lo f32(-1/3), 0xbeaaaaab (written signed, as selmap reads it)
+      R5 = 0x40000000;                  //      E: a quarter
+      R15 = 0x3f2aaaab;                 //      h: f32(2/3)
+.GLOBAL wr_sub_edge_test.;
+wr_sub_edge_test.:
+      // is an edge near? a = phase - step; edge E is when 0 < E - a < (count + 1) step (int32)
+      R10 = PASS R10;
+      IF EQ JUMP 0x171174;              // -> wr_sub_naive. (step 0: no edges move)
+      R0 = 0x03e00000;                  // live.SUB_BLEP_ALWAYS
+      COMPU(R10, R0);
+      IF GE JUMP 0x171102;              // -> wr_sub_blep. (a big step: every block)
+      R2 = R8 + 1;
+      R2 = R10 * R2 (SSI);              // (count + 1) step, under 2^31 here
+      R0 = R11 - R10;                   // a
+      R1 = R12 - R0;                    // the rise's E - a, E = 0
+      R1 = PASS R1;                     // (R6 is the gain: test R1 itself)
+      IF LE JUMP 0x1710f8;              // -> wr_sub_edge_fall.
+      COMP(R1, R2);
+      IF LT JUMP 0x171102;              // -> wr_sub_blep.
+.GLOBAL wr_sub_edge_fall.;
+wr_sub_edge_fall.:
+      R1 = R5 - R0;                     // the fall's E - a
+      R1 = PASS R1;                     // (R6 is the gain: test R1 itself)
+      IF LE JUMP 0x171174;              // -> wr_sub_naive.
+      COMP(R1, R2);
+      IF GE JUMP 0x171174;              // -> wr_sub_naive.
+
+.GLOBAL wr_sub_blep.;
+wr_sub_blep.:
+      // 1/step: the bits' seed, then y (2 - x y) three times (live.sub_recip)
+      F7 = FLOAT R10 BY R12;            // x = step
+      R1 = 0x7ef311c7;
+      R1 = R1 - R7;                     // the seed
+      R0 = 0x40000000;                  // 2.0
+      F2 = F7 * F1;
+      F2 = F0 - F2;
+      F1 = F1 * F2;
+      F2 = F7 * F1;
+      F2 = F0 - F2;
+      F1 = F1 * F2;
+      F2 = F7 * F1;
+      F2 = F0 - F2;
+      F1 = F1 * F2;
+      F7 = PASS F1;                     // 1/step
+      R13 = 0x3f800000;                 // 1.0
+      R14 = R14 - R14;                  // +0.0
+      LCNTR = R8, DO wr_sub_blep_last. UNTIL LCE;
 .NOCOMPRESS;                            // a hardware loop's last 11 instructions are 48-bit (PRM 4-42)
+      R9 = DM(0, I2);                   // what the oscillators wrote
+      F0 = FLOAT R11 BY R12;            // the rise's distance, phase - 0
+      R1 = R11 - R5;                    // the fall's, phase - E
+      F0 = F0 * F7;                     // x0
+      F1 = FLOAT R1 BY R12;
+      F1 = F1 * F7;                     // x1
+      F2 = ABS F0;
+      F2 = F13 - F2;
+      F2 = MAX(F2, F14);
+      F2 = F2 * F2;
+      F2 = F2 COPYSIGN F0;              // c0
+      F8 = ABS F1;
+      F8 = F13 - F8;
+      F8 = MAX(F8, F14);
+      F8 = F8 * F8;
+      F8 = F8 COPYSIGN F1;              // c1
+      F8 = F8 - F2;                     // c1 - c0
+      F8 = F15 * F8;                    // h (c1 - c0)
+      R0 = PASS R4;                     // n: lo
+      COMPU(R11, R5);
+      IF LT R0 = PASS R3;               //    hi before the edge
+      F0 = F0 + F8;                     // y = n + h (c1 - c0)
+      F0 = F6 * F0;                     // gain x y
+      F0 = F9 + F0;
+      DM(I2, M6) = F0;
+.GLOBAL wr_sub_blep_last.;
+wr_sub_blep_last.:
+      R11 = R11 + R10;                  // phase += step, mod 2^32
+.COMPRESS;
+      JUMP 0x1711fa;                    // -> wr_sub_done.
+
+.GLOBAL wr_sub_naive.;
+wr_sub_naive.:
+      F3 = F6 * F3;                     // gain x hi
+      F4 = F6 * F4;                     // gain x lo
+      LCNTR = R8, DO wr_sub_naive_last. UNTIL LCE;
+.NOCOMPRESS;
       R9 = DM(0, I2);                   // what the oscillators wrote
       R1 = PASS R4;
       COMPU(R11, R5);
-      IF LT R1 = PASS R3;
+      IF LT R1 = PASS R3;               // hi before the edge
       F1 = F9 + F1;
       DM(I2, M6) = F1;
-.GLOBAL wr_sub_pls_last.;
-wr_sub_pls_last.:
+.GLOBAL wr_sub_naive_last.;
+wr_sub_naive_last.:
       R11 = R11 + R10;                  // phase += step, mod 2^32
 .COMPRESS;
-      JUMP 0x17116c;                    // -> wr_sub_done.
+      JUMP 0x1711fa;                    // -> wr_sub_done.
 
 .GLOBAL wr_sub_sin.;
 wr_sub_sin.:
@@ -204,7 +299,7 @@ wr_sub_sin.:
 wr_sub_sin_last.:
       R11 = R11 + R10;                  // phase += step, mod 2^32
 .COMPRESS;
-      JUMP 0x17116c;                    // -> wr_sub_done.
+      JUMP 0x1711fa;                    // -> wr_sub_done.
 
 .GLOBAL wr_sub_tri.;
 wr_sub_tri.:
@@ -228,32 +323,16 @@ wr_sub_tri.:
 wr_sub_tri_last.:
       R11 = R11 + R10;                  // phase += step, mod 2^32
 .COMPRESS;
-      JUMP 0x17116c;                    // -> wr_sub_done.
-
-.GLOBAL wr_sub_sqr.;
-wr_sub_sqr.:
-      R1 = 0x3f800000;                  // +1
-      F3 = F6 * F1;                     // gain x +1
-      R1 = -0x40800000;                 // -1.0, 0xbf800000
-      F4 = F6 * F1;                     // gain x -1
-      LCNTR = R8, DO wr_sub_sqr_last. UNTIL LCE;
-.NOCOMPRESS;
-      R9 = DM(0, I2);                   // what the oscillators wrote
-      R1 = PASS R4;
-      R2 = PASS R11;
-      IF GE R1 = PASS R3;               // the first half
-      F1 = F9 + F1;
-      DM(I2, M6) = F1;
-.GLOBAL wr_sub_sqr_last.;
-wr_sub_sqr_last.:
-      R11 = R11 + R10;                  // phase += step, mod 2^32
-.COMPRESS;
+      JUMP 0x1711fa;                    // -> wr_sub_done.
 
 .GLOBAL wr_sub_done.;
 wr_sub_done.:
-      R2 = DM(0x2e2444);
+      R2 = DM(0x2e24f4);
       I1 = R2;
       DM(0, I1) = R11;                  // the phase, for the next block
-      JUMP 0x171300;                    // -> wr_noise. (noise.asm)
+      R0 = DM(0x2e24f8);
+      R0 = PASS R0;
+      IF NE RTS;                        // FSRC SUB: back to fsrc.asm's wr_fs_pre
+      JUMP 0x16f934;                    // -> wr_fs_noise. (fsrc.asm, then noise.asm)
 .wr_sub_ran..end:
       .type wr_sub_ran.,STT_FUNC;

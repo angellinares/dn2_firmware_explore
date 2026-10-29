@@ -43,19 +43,28 @@ import sharc_dn2_fixups as fx
 import sharc_waverider_m4 as m4
 
 
+OPT_PERIPHERAL_MODEL = 22      # digikit main's native option: IIR0 (the Rust twin of sharc_core/iir.py)
+IIR0_DMASTAT = 0x310C4004      # IIR0 + 0x04
+
+
 class Engine:
     """One native engine holding the state. `state` is the engine itself, so the taps
     written for the Python runner (`m2.word(r.state, a)`, `m2.word_reg(r, "R12")`) read
     it unchanged."""
 
-    def __init__(self, library, image_memory, python_runner, host_fixups: bool = True):
+    def __init__(self, library, image_memory, python_runner, host_fixups: bool = True,
+                 peripherals: bool = True):
         import sharc_transpile_run as tr  # noqa: PLC0415  (digikit's, importable after fx.bind)
         # the binding's own staleness check imports digikit's transpiler (and mypy); the
         # comparison with the Python runner is the check here
         tr.check_build_info = lambda info, path: None
+        if peripherals:     # the engine refuses an MMR it has no value for: IIR0's DMASTAT starts at 0
+            python_runner.state.mmrs.setdefault(IIR0_DMASTAT, fx.Const(0))
         self.core = tr.NativeCore(tr.pack_image(image_memory), str(library))
         tr.to_native(self.core, python_runner.state)
         self.core.set_option(tr.OPT_RUNTIME_DECODE, 1)
+        if peripherals:     # IIR0 in the engine (digikit's peripheral model), so the Formant runs in every gate
+            self.core.set_option(getattr(tr, "OPT_PERIPHERAL_MODEL", OPT_PERIPHERAL_MODEL), 1)
         self.library = self.core.info()
         self.decode = python_runner._decode
         self.host_fixups = host_fixups

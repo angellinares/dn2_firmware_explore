@@ -500,17 +500,74 @@ def sub_value(phase: int, wave: int) -> float:
     return 1.0 if phase < 0x40000000 else _f32(SUB_THIRD)
 
 
+# SQR and PLS jump between two levels, which aliases on high notes. Each jump gets a polyBLEP
+# (owner 2026-10-26): the two samples either side of an edge take +-(1 - |x|)^2 times half the
+# jump, x being the sample's distance from the edge in steps. Away from the edges the
+# correction is a signed zero, so those samples are the naive wave's, bit for bit.
+SUB_RECIP_SEED = 0x7EF311C7               # 1/x's seed from x's bits: an integer subtract
+SUB_PLS_EDGE = 0x40000000                 # PLS falls at a quarter cycle; SQR at a half
+SUB_PLS_HALF_JUMP = 2.0 / 3.0             # PLS jumps by 4/3 (from -1/3 to 1): half is 2/3
+SUB_BLEP_ALWAYS = 0x03E00000              # a step this big runs the polyBLEP in every block (the test below
+                                          # would overflow), about a 730 Hz sub
+
+
+def sub_near_edge(phase: int, step: int, count: int, edge: int) -> bool:
+    """sub.asm's block test: does any of the block's COUNT samples lie within one step of
+    the edge at 0 or at EDGE? With a = phase - step, an edge E is near when
+    0 < E - a < (count + 1) step, in int32. Away from the edges the polyBLEP is zero, so
+    such a block plays the naive wave."""
+    if step >= SUB_BLEP_ALWAYS:
+        return True
+    span = (count + 1) * step
+    a = (phase - step) & 0xFFFFFFFF
+    for e in (0, edge):
+        d = (e - a) & 0xFFFFFFFF
+        d = d - (1 << 32) if d >> 31 else d
+        if 0 < d < span:
+            return True
+    return False
+
+
+def sub_recip(x: float) -> float:
+    """f32(1/X) as sub.asm computes it: the bit seed, then three Newton steps y (2 - x y)."""
+    bits = struct.unpack("<I", struct.pack("<f", _f32(x)))[0]
+    y = struct.unpack("<f", struct.pack("<I", (SUB_RECIP_SEED - bits) & 0xFFFFFFFF))[0]
+    for _ in range(3):
+        y = _f32(y * _f32(2.0 - _f32(x * y)))
+    return y
+
+
+def sub_blep(sd: int, inv: float) -> float:
+    """The polyBLEP at signed distance SD (phase units, int32) from an edge, for 1/step INV:
+    x = SD x INV, v = max(1 - |x|, 0), and v^2 with x's sign. Zero (signed) when |x| >= 1."""
+    x = _f32(_f32(float(sd)) * inv)
+    v = max(_f32(1.0 - abs(x)), 0.0)
+    return math.copysign(_f32(v * v), x)
+
+
 def render_sub(phase: int, inc: int, sub: tuple, block: int,
-               factor: float | None = None) -> tuple[list[float], int]:
+               factor: float | None = None, g: float | None = None) -> tuple[list[float], int]:
     """One block of the sub-oscillator at gain SUB from PHASE: (its samples x gain, the
-    next phase). INC is the followed oscillator's own. FACTOR: the trim's, as `gain`."""
+    next phase). INC is the followed oscillator's own. FACTOR: the trim's, as `gain`.
+    G, when given, is the gain itself (1.0: the plain wave, FSRC's modulator).
+    SQR and PLS have a polyBLEP at each edge (above)."""
     lev, octave, wave = sub[0], sub[1], sub[2]
-    g = gain(lev, factor=factor)
+    g = gain(lev, factor=factor) if g is None else g
     step = inc >> (1 + min((octave & 0xFFFF) >> 8, len(SUB_OCTAVES) - 1))
     w = min((wave & 0xFFFF) >> 8, 3)
+    edge = 0x80000000 if w == 2 else SUB_PLS_EDGE
+    blep = w >= 2 and step and sub_near_edge(phase, step, block, edge)
+    inv = sub_recip(_f32(float(step))) if blep else None
+    h = _f32(1.0 if w == 2 else SUB_PLS_HALF_JUMP)                     # half the jump: SQR 1, PLS 2/3
+    signed = lambda v: v - (1 << 32) if v >> 31 else v
     out = []
     for _ in range(block):
-        out.append(_f32(g * sub_value(phase, w)))
+        n = sub_value(phase, w)
+        if blep:
+            c0 = sub_blep(signed(phase), inv)                          # the rise, at 0
+            c1 = sub_blep(signed((phase - edge) & 0xFFFFFFFF), inv)     # the fall
+            n = _f32(n + _f32(h * _f32(c1 - c0)))
+        out.append(_f32(g * n))
         phase = (phase + step) & 0xFFFFFFFF
     return out, phase
 
@@ -561,16 +618,17 @@ class NoiseVoice:
         self.x, self.pink, self.brown, self.lp, self.env = seed, [0.0, 0.0, 0.0], 0.0, 0.0, 0.0
 
     def render(self, noise: tuple, triggered: bool, block: int,
-               factor: float | None = None) -> list[float] | None:
+               factor: float | None = None, g: float | None = None) -> list[float] | None:
         """One block at (NOIS, TYPE, COLR, DEC), the frame's words: the samples to add,
         or None at NOIS 0. A note restarts the envelope, whatever NOIS is. FACTOR: the
-        trim's, as `gain`."""
+        trim's, as `gain`. G, when given, is the gain itself, and the block plays at
+        NOIS 0 too (1.0: the plain noise, FSRC's modulator)."""
         nois, typ, colr, dec = (w & 0xFFFF for w in noise)
         if triggered:
             self.env = 1.0
-        if not nois:
+        if not nois and g is None:
             return None
-        g = gain(nois, factor=factor)
+        g = gain(nois, factor=factor) if g is None else g
         typ = min(typ >> 8, 3)
         c = _f32(_f32(float((colr >> 8) - 64)) * NOISE_COLR_STEP)
         dec = min(dec >> 8, NOISE_INF)
@@ -668,6 +726,21 @@ FM_SEL = 2 * math.pi / SHAPE_MAX              # the level's increment: + 2 pi FM
 FM_GLIDE = _f32(1 / 32)
 FM_SETTLED = 2.0 ** -34    # (target - r)^2 below this, r takes the target: the mix is then one multiply, or none at 0
 PHASE_MAX = 128                           # longer blocks play without WARP and FM (the buffer's size)
+# FSRC (knob D, NPOS's place, owner 2026-10-26): FM's modulator. OSC2 (0) is FM as above. SUB (1)
+# and NOIS (2) play first into FMB, at gain 1.0 (the plain wave, so FM alone sets the depth, as
+# 0.3.6 made it for osc 2), before osc 1; c is then FM / 0x7f00 cycles per unit. At their own place
+# in the mix they add their gain x FMB: the same float32 as their own render, bit for bit. Under SUB
+# the sub follows osc 1 (osc 2 has not played yet), whatever SRC is; taming and the mip level take
+# the sub's step as the modulator's increment, and osc 1's own under NOIS (noise has no pitch).
+# Osc 2 then plays as it does without FM. The value past the end (an old sound's 64) is NOIS, as the
+# page shows it.
+FSRC_NAMES = ("OSC2", "SUB", "NOIS")
+FSRC_SCALE = 1 / SHAPE_MAX                # cycles per unit of a plain modulator, per FM word
+NOISE_OFF = (0, 0, 0x4000, 0x7F00)        # page 3's noise defaults: NOIS 0, WHT, COLR 0, DEC Inf
+
+
+def fsrc_value(word: int) -> int:
+    return min((word & 0xFFFF) >> 8, len(FSRC_NAMES) - 1)
 
 
 def warp_table() -> list[tuple[float, float]]:
@@ -693,10 +766,11 @@ def warp_phase(ph: int, k1: float, k2: float) -> int:
     return (_trunc_by(min(a, b), 31) << 1) & 0xFFFFFFFF
 
 
-def fm_offsets(o2: list[float], word: int, t: float = 1.0) -> list[int]:
+def fm_offsets(o2: list[float], word: int, t: float = 1.0, scale: float = FM_SCALE) -> list[int]:
     """Osc 2's samples as phase offsets for osc 1: TRUNC (o2 x c) BY 24, << 8 (cycles, mod 1).
-    T is taming's factor (`tame`), applied to c as phase.asm's wr_ph_tame does."""
-    c = _f32(float(word & 0xFFFF) * _f32(FM_SCALE))
+    T is taming's factor (`tame`), applied to c as phase.asm's wr_ph_tame does. SCALE:
+    FSRC_SCALE for a plain modulator (SUB, NOIS)."""
+    c = _f32(float(word & 0xFFFF) * _f32(scale))
     if t != 1.0:
         c = _f32(c * t)
     return [(_trunc_by(_f32(m * c), 24) << 8) & 0xFFFFFFFF for m in o2]
@@ -795,7 +869,7 @@ def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
 
 
 def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs=None,
-               noises=None, trims=None, shapes=None) -> list[float]:
+               noises=None, trims=None, shapes=None, voice: int = 0) -> list[float]:
     """The loop's output with both oscillators (Milestone 9b), each block
     (note, osc1, osc2[, (TRIG, triggered[, PRST[, position, tempo[, DCLK]]])]) with each
     osc (WAV, TBL, TUN, LEV[, RATE, MPOS, MLEV, MOVE[, SYNC[, SMTH]]]), the frame's 16-bit
@@ -809,7 +883,7 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
     sub-oscillator (`render_sub`) adds into the mix after osc 2 while SUB is above 0. It
     follows osc 2's increment when SRC is 1 and osc 2 ran this block, else osc 1's (a
     skipped osc 2 has none). NOISES, one (NOIS, TYPE, COLR, DEC) per block or None: the
-    noise (`NoiseVoice`, voice 0's seed) adds in after the sub. TRIMS, one TRIM word per
+    noise (`NoiseVoice`, VOICE's seed) adds in after the sub. TRIMS, one TRIM word per
     block or None (the default word): each oscillator's factor slews (`trim_slew`), and the
     sub and the noise take the factor of the last oscillator that ran, as trim.asm leaves it."""
     out: list[float] = []
@@ -821,29 +895,33 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
     rnd = MoveRandom()
     table_t = increment_table()
     sub_phase = 0
-    noise = NoiseVoice(noise_seeds()[0])
+    noise = NoiseVoice(noise_seeds()[voice])
     trimmed = [0.0, 0.0]                        # each oscillator's last factor: zeros at boot
     osc1: list[float] = []
     vox = formant.Voice()                       # TYPE Formant: the cascade's states and vowel glide
     fm_r = 0.0                                  # 0.3.6: osc 2's mix ratio under FM, 0 at boot as the DSP's
     fm_target = 0.0
     for b, blk in enumerate(blocks):
-        shp = (tuple(shapes[b]) + (0,) * 8)[:8] if shapes else (0,) * 8   # page 5: FOLD, NPOS (no effect yet), TYPE, AMT, WARP, FM, P1, P2
+        shp = (tuple(shapes[b]) + (0,) * 8)[:8] if shapes else (0,) * 8   # page 5: FOLD, FSRC, TYPE, AMT, WARP, FM, P1, P2
         incs = [None, None]
         note, oscs = blk[0], blk[1:3]
         wv = warp_value(shp[4]) if block <= PHASE_MAX else 0
         bend = warp_table()[wv] if wv else None
         fm = shp[5] & 0xFFFF if block <= PHASE_MAX else 0          # 0.3.6: also at LEV2 0
+        fsrc = fsrc_value(shp[1]) if fm else 0
+        fm2 = fm if not fsrc else 0             # osc 2 as the modulator: it plays first
+        sub = subs[b] if subs else None
+        fmb = None                              # FSRC SUB or NOIS: the plain modulator
         ys: list = [None, None]
         trig_mode, triggered, *rest = blk[3] if len(blk) > 3 else (TRIG_RESTART, False)
         prst = rest[0] if rest else PRST_OFF
         song, tempo = (rest[1], rest[2]) if len(rest) > 2 else (0, 0)
         dclk = rest[3] & 0xFFFF if len(rest) > 3 else 0
         mixed: list[float] = []
-        for k in ((1, 0) if fm else (0, 1)):    # FM: osc 2 plays first, into its own buffer
+        for k in ((1, 0) if fm2 else (0, 1)):   # FM: osc 2 plays first, into its own buffer
             osc = oscs[k]
             wav, tbl, tun, lev = osc[:4]
-            if k and not lev & 0xFFFF and not fm:
+            if k and not lev & 0xFFFF and not fm2:
                 continue
             if len(osc) > 4:                    # M10a: RATE, MPOS, MLEV, MOVE
                 rate, mpos, mlev, move = osc[4:8]
@@ -861,7 +939,7 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
             target = trim_factor(trims[b] if trims else TRIM_DEFAULT_WORD)
             factor = trimmed[k] = trim_slew(trimmed[k], target, triggered)
             g = gain(lev, factor=factor)
-            if k and fm:                        # 0.3.6: FMB at the fixed gain, osc 2's own as the mix ratio
+            if k and fm2:                       # 0.3.6: FMB at the fixed gain, osc 2's own as the mix ratio
                 fm_target = _f32(g * fm_inv_g())
                 g = fm_gain()
             pos = position(wav)
@@ -882,10 +960,24 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
             incs[k] = inc
             phase0 = phase[k]
             ph = sel = None
+            inc2 = incs[1]
+            if fm and k == 0 and fsrc:          # FSRC: the sub or the noise plays first, plain, into FMB
+                if fsrc == 1:
+                    s = sub or (0, 0, 0, 0)
+                    fmb, sub_phase = render_sub(sub_phase, inc, s, block, g=1.0)
+                    fmb = [_f32(0.0 + v) for v in fmb]    # added into FMB's zeros, as the DSP does
+                    inc2 = inc >> (1 + min((s[1] & 0xFFFF) >> 8, len(SUB_OCTAVES) - 1))
+                else:
+                    fmb = [_f32(0.0 + v) for v in noise.render(noises[b] if noises else NOISE_OFF, triggered, block, g=1.0)]
+                    inc2 = inc
             if bend or (fm and k == 0):         # page 5: WARP on both oscillators, FM on osc 1
-                offs = fm_offsets(ys[1], fm, tame_fm(fm, inc, incs[1])) if fm and k == 0 else None
+                if fm and k == 0:
+                    offs = (fm_offsets(fmb, fm, tame_fm(fm, inc, inc2), FSRC_SCALE) if fsrc
+                            else fm_offsets(ys[1], fm, tame_fm(fm, inc, inc2)))
+                else:
+                    offs = None
                 ph = read_phases(phase0, inc, block, tame_warp(wv, inc) if bend else None, offs)
-                sel = phase_sel(inc, bend, incs[1] if offs else None, fm)
+                sel = phase_sel(inc, bend, inc2 if offs else None, fm)
             samples, phase[k] = mip.read(tab, phase0, inc, pos, block, precision, ph, sel)
             y = [_f32(g * v) for v in samples] if precision == "float32" else [g * v for v in samples]
             if fade[k] is not None:             # M10b-2: DCLK, the old settings fading out
@@ -897,7 +989,7 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
                     fade[k] = None
             ys[k] = y
         mixed = osc1 = ys[0]
-        if ys[1] is not None and fm:           # 0.3.6: o1 + r FMB, r gliding to osc 2's own gain
+        if ys[1] is not None and fm2:          # 0.3.6: o1 + r FMB, r gliding to osc 2's own gain
             d = _f32(fm_target - fm_r)
             if _f32(d * d) < FM_SETTLED:        # settled (page5.asm): r is the target, one multiply or none
                 fm_r = fm_target
@@ -921,12 +1013,19 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
         if kind == TYPE_FORMANT:                # page 5: the Formant, after FOLD: AMT the vowel, P1 the shift, P2 the dry part
             wet, d, e = vox.filter(mixed, shp[3], shp[6], shp[7], triggered)
             mixed = [_f32(d * m) for m in mixed]
-        sub = subs[b] if subs else None
-        if sub and sub[0] & 0xFFFF:
+        if fsrc == 1:                           # FSRC SUB: the sub played first; its gain x FMB
+            if sub and sub[0] & 0xFFFF:
+                g = gain(sub[0], factor=factor)
+                mixed = [_f32(a + _f32(g * v)) for a, v in zip(mixed, fmb)]
+        elif sub and sub[0] & 0xFFFF:
             src = 1 if (sub[3] & 0xFFFF) >> 8 and incs[1] is not None else 0
             ys, sub_phase = render_sub(sub_phase, incs[src], sub, block, factor)
             mixed = [_f32(a + v) for a, v in zip(mixed, ys)]
-        if noises:
+        if fsrc == 2:                           # FSRC NOIS: the noise played first; its gain x FMB
+            if noises and noises[b][0] & 0xFFFF:
+                g = gain(noises[b][0], factor=factor)
+                mixed = [_f32(a + _f32(g * v)) for a, v in zip(mixed, fmb)]
+        elif noises:
             ys = noise.render(noises[b], triggered, block, factor)
             if ys is not None:
                 mixed = [_f32(a + v) for a, v in zip(mixed, ys)]

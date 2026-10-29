@@ -15,6 +15,7 @@ runs them, with the sub's four frame words (params 50..53: SUB, OCT, WAVE, SRC) 
 | SUB 100, OCT 3 (above the range) | the same as -3: the DSP clamps it |
 | SUB 80, SQR, SRC OSC2, osc 2 on (detuned) | the same: the sub follows osc 2's increment |
 | SUB 100, PLS, SRC OSC2, osc 2 off (LEV2 0) | the same: a skipped osc 2 has no increment, so osc 1's |
+| SQR at note 96, PLS at note 84, SQR at note 72 OCT -2 | the polyBLEP (2026-10-26): every block, the block test with edges, mostly skipped blocks; bit for bit |
 
 Each case's frame words are read back from the DSP's frame copy, as the reference is fed
 the inputs the DSP holds. Writes out/waverider/sub_*.wav (48 kHz, 16-bit mono, LOOPED
@@ -70,20 +71,26 @@ def main(argv=None) -> int:
         ("SIN, OCT past -3 (clamped)", {SUB: 0x6400, OCT: 0x0300, WAVE: 0x0000, SRC: 0x0000}, False),
         ("SQR, SRC OSC2, osc 2 on (a fifth up)", {SUB: 0x5000, OCT: 0x0000, WAVE: 0x0200, SRC: 0x0100}, True),
         ("PLS, SRC OSC2, osc 2 off", {SUB: 0x6400, OCT: 0x0000, WAVE: 0x0300, SRC: 0x0100}, False),
+        # the polyBLEP: a sub step past live.SUB_BLEP_ALWAYS (every block), the block test with an
+        # edge in most blocks, and a low sub where most blocks skip it
+        ("SQR at note 96 (every block)", {SUB: 0x6400, OCT: 0x0000, WAVE: 0x0200, SRC: 0x0000}, False, 0x6000),
+        ("PLS at note 84 (the block test)", {SUB: 0x6400, OCT: 0x0000, WAVE: 0x0300, SRC: 0x0000}, False, 0x5400),
+        ("SQR at note 72, OCT -2 (mostly skipped)", {SUB: 0x6400, OCT: 0x0100, WAVE: 0x0200, SRC: 0x0000}, False, 0x4800),
     ]
     checks, report, wavs = {}, {"blocks": a.blocks, "cases": {}}, []
     g.OUT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=g.OUT) as tmp:
         snap, m2mach = g.snapshot_path(dk, stock, pathlib.Path(tmp))
         init = g.init_on(snap, m2mach, wr)
-        for name, words, osc2_on in cases:
+        for name, words, osc2_on, *rest in cases:
+            note = rest[0] if rest else 0x3C00
             over = {g.WAV1: 0x4000, **words}
             over[g.LEV2] = 0x6400 if osc2_on else 0
             if osc2_on:
                 over[g.TUN2] = DETUNE
 
-            def fb(b, over=over):
-                return g.base_frame(sound, machines, trigger=(b == 1), overrides=over).to_bytes()
+            def fb(b, over=over, note=note):
+                return g.base_frame(sound, machines, trigger=(b == 1), overrides=over, note=note).to_bytes()
 
             subs = []
 
@@ -112,7 +119,7 @@ def main(argv=None) -> int:
             report["cases"][name] = {"mismatches": bad, "samples_the_sub_changes": heard,
                                      "frame_words": per_block[-1] if per_block else None}
             tag = "".join(ch if ch.isalnum() else "_" for ch in name.lower()).strip("_")   # the whole case: SIN at -1 and -3 differ
-            g.wav(f"sub_{tag}.wav", got, a.seconds, wavs, f"the runner: {name}, note 60")
+            g.wav(f"sub_{tag}.wav", got, a.seconds, wavs, f"the runner: {name}, note {note >> 8}")
     report["checks"] = checks
     report["wavs"] = wavs
     (g.OUT / "sub_report.json").write_text(json.dumps(report, indent=1, default=str) + "\n")

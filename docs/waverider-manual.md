@@ -75,8 +75,8 @@ Rnd Glide.
 |---|---|---|
 | A | SUB | The level of the sub-oscillator, 0 to 127. At 0, the sub-oscillator is off |
 | B | OCT | -1, -2 or -3 octaves below the oscillator that it follows |
-| C | WAVE | The wave: SIN, TRI, SQR or PLS (a 25 % pulse) |
-| D | SRC | The oscillator that the sub-oscillator follows: OSC1 or OSC2 |
+| C | WAVE | The wave: SIN, TRI, SQR or PLS (a 25 % pulse). SQR and PLS add few harsh tones on high notes |
+| D | SRC | The oscillator that the sub-oscillator follows: OSC1 or OSC2. With FSRC at SUB on page 5, the sub follows osc 1, and SRC has no effect |
 | E | NOIS | The level of the noise, 0 to 127. At 0, the noise is off |
 | F | TYPE | The noise type: WHT, PNK, BRN or DIG |
 | G | COLR | The tilt of the spectrum, -64 to +63. A negative value adds low frequencies. A positive value removes them |
@@ -101,15 +101,14 @@ The middle of the page shows the sound of the track as a scope.
 
 ## Page 5: Shape
 
-FOLD, WARP, FM, TYPE, AMT, P1 and P2 change the sound. NPOS is for a future version: you can set and
-p-lock it, but it does not change the sound yet.
+FOLD, WARP, FM, FSRC, TYPE, AMT, P1 and P2 change the sound.
 
 | Knob | Control | Function |
 |---|---|---|
 | A | FOLD | Folds the wave of the two oscillators back on itself. 0 is off. A higher value gives more folds and a brighter sound |
 | B | WARP | Bends the phase of the two oscillators. The first half of each wave plays in a shorter part of the cycle, and the second half in a longer part. 0 is off. A higher value gives a brighter sound |
-| C | FM | Osc 2 changes the phase of osc 1 (frequency modulation). 0 is off. A higher value gives more overtones and a brighter sound |
-| D | NPOS | No effect yet |
+| C | FM | The FM source changes the phase of osc 1 (frequency modulation). 0 is off. A higher value gives more overtones and a brighter sound |
+| D | FSRC | The FM source: OSC2, SUB or NOIS. OSC2 is osc 2. SUB is the sub-oscillator of page 3, with its OCT and WAVE. NOIS is the noise of page 3, with its TYPE, COLR and DEC |
 | E | TYPE | The shaper: Off, Ring, AM or Formant. Ring multiplies the two oscillators. AM uses osc 2 to change the level of osc 1. Formant filters the mix of the two oscillators so that it sounds like a voice that sings a vowel |
 | F | AMT | With Ring and AM: how much of the shaper you hear, 0 is none and 127 is the shaper only. With Formant: the vowel, from A at 0 through E, I and O to U at 127 |
 | G | P1 | With Formant: moves all the formants up, from no shift at 0 to one octave at 127. No effect with the other types |
@@ -123,6 +122,12 @@ p-lock it, but it does not change the sound yet.
 - **FOLD follows the level.** A higher LEV1, LEV2 or TRIM gives more folds.
 - **FM and LEV2 are separate.** FM sets how much osc 2 changes osc 1. LEV2 on page 2 sets only how
   loud osc 2 is. With LEV2 at 0 you hear osc 1 alone, changed by FM.
+- **FSRC SUB and NOIS work the same way.** FM sets how much the sub or the noise changes osc 1. SUB
+  and NOIS on page 3 set only how loud you hear them. At SUB or NOIS 0 you do not hear the sub or the
+  noise, but FM still uses it.
+- **With FSRC at SUB, the sub follows osc 1.** SRC on page 3 then has no effect.
+- **NOIS changes osc 1 a lot, even at a low FM.** Try FM below 10 first. With a short DEC, the noise
+  changes osc 1 only at the start of each note.
 - **FM and DETN:** the interval between the two oscillators sets the overtones. DETN at 0, +12, +19 or
   +24 semitones gives a harmonic sound. Most other values give a metallic sound.
 - **WARP and FM change where the oscillator reads its wave.** They do not change POS or the table.
@@ -246,12 +251,11 @@ To put a saved table back later, with Waverider on the unit:
 
 ## Known limits in this alpha
 
-- NPOS on page 5 does not change the sound yet.
 - A click may occur if the pool loads again while a note plays on a pool table. Nobody has measured
   this on the unit. If you hear a click, tell us.
 - We did not measure 4096-point tables on the unit.
-- In a sound from a build before page 5, FOLD, WARP, FM and NPOS show 64. FOLD, WARP and FM then
-  change the sound. To get the sound from before, set them to 0.
+- In a sound from a build before page 5, FOLD, WARP and FM show 64, and FSRC shows NOIS. FOLD,
+  WARP and FM then change the sound. To get the sound from before, set FOLD, WARP and FM to 0.
 - With a 16-note chord and all of page 5 on all 16 voices, the DSP worked at most 72.2 % of a frame
   on the unit (0.3.7). The DSP missed no frame in 10 minutes (2026-10-22).
   Refer to `docs/waverider-performance.md`.

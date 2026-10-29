@@ -20,8 +20,10 @@ def test_every_region_is_filled():
     import gen_waverider_tech as gen
     text = PAGE.read_text(encoding="utf-8")
     found = {m.group(2): m.group(0) for m in gen.TECH.finditer(text)}
-    assert len(found) == 28                 # 17, page 5: foldcurve, foldwave, shaper, warpcurve, warpwave, fmwave, the high range: hrlevels, hrcliff, hrtable, hrsteps, and MIDI: midimap
+    assert len(found) == 33                 # 17, page 5: foldcurve, foldwave, shaper, warpcurve, warpwave, fmwave, the high range: hrlevels, hrcliff, hrtable, hrsteps, and MIDI: midimap, and the sub's polyBLEP: subblepedge, subblepsqr, subbleppls, subbleptable, subblepspec
     assert all(len(block) > 200 for block in found.values()), [k for k, v in found.items() if len(v) <= 200]
+    for name in ("sub_blep_without", "sub_blep_with", "sub_blep_unit"):     # the spectrograms the polyBLEP section shows
+        assert (ROOT / f"site/art/waverider/{name}.png").is_file(), name
 
 
 def test_the_page_is_current():

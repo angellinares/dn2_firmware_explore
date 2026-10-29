@@ -39,6 +39,7 @@ class BusCheck(Recorder):
         self.keep = keep
 
     def after(self, runner, insn, emulated: bool) -> None:
+        super().after(runner, insn, emulated)          # it collects this step's reads and writes (since a16aeb8)
         kind, dm, pm = self.buses(insn)
         for a in self._reads:
             if regions.data_region(a) not in regions.CACHED:
@@ -52,7 +53,6 @@ class BusCheck(Recorder):
         for a in self._writes:
             if regions.data_region(a) in regions.CACHED:
                 self.writer[a & ~3] = self.bus_of(kind, dm, pm, a)
-        super().after(runner, insn, emulated)
 
     def report(self) -> str:
         if not self.count:

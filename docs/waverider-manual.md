@@ -75,8 +75,8 @@ Rnd Glide.
 |---|---|---|
 | A | SUB | The level of the sub-oscillator, 0 to 127. At 0, the sub-oscillator is off |
 | B | OCT | -1, -2 or -3 octaves below the oscillator that it follows |
-| C | WAVE | The wave: SIN, TRI, SQR or PLS (a 25 % pulse) |
-| D | SRC | The oscillator that the sub-oscillator follows: OSC1 or OSC2 |
+| C | WAVE | The wave: SIN, TRI, SQR or PLS (a 25 % pulse). SQR and PLS add few harsh tones on high notes |
+| D | SRC | The oscillator that the sub-oscillator follows: OSC1 or OSC2. With FSRC at SUB on page 5, the sub follows osc 1, and SRC has no effect |
 | E | NOIS | The level of the noise, 0 to 127. At 0, the noise is off |
 | F | TYPE | The noise type: WHT, PNK, BRN or DIG |
 | G | COLR | The tilt of the spectrum, -64 to +63. A negative value adds low frequencies. A positive value removes them |

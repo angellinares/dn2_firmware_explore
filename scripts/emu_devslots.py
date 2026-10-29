@@ -11,9 +11,12 @@ here when missing), so a swapped or stale read shows:
    byte, each with its own marker;
 3. `/devslots/2` is a settings block (`COKi`), not either slot (the card's slots are an
    old version, so the unit starts from defaults);
-4. a write to `/devslots/0` is refused, and slot 0 reads back unchanged; `/devslots/3` is
-   refused;
-5. the control, stock 1.11: `/` has no `devslots`, and the open of `/devslots/0` is answered
+4. a write to `/devslots/0` is refused, and slot 0 reads back unchanged;
+5. the whole saved state: `/devslots/3` and `/4` are 197 CRC-32s of 64 KiB blocks, equal to
+   the card's own (a marker in each slot's last block); `/5` is the running copy's; block
+   reads (`/devslots/1196`, slot 0's last block, 45,332 bytes, and `/1708`, the running
+   copy's) equal the card and their CRC entries; `/6`, `/1197` and `/1768` are refused;
+6. the control, stock 1.11: `/` has no `devslots`, and the open of `/devslots/0` is answered
    with the stock refusal.
 """
 
@@ -26,6 +29,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import zlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
@@ -40,6 +44,13 @@ SECTORS = (0x40000, 0x48000)
 MARKS = (b"DEVSLOTS-TEST-A0", b"DEVSLOTS-TEST-B1")
 MARK_AT = 32
 PIECES = 1 + (31 + BYTES + 12 + 15) // 16
+FULL, BLOCK, BLOCKS = 12890388, 0x10000, 197
+LAST = FULL - (BLOCKS - 1) * BLOCK                      # 45,332
+DEEP = ((BLOCKS - 1) * BLOCK + 100, b"DEVSLOTS-DEEP-A0", b"DEVSLOTS-DEEP-B1")   # a marker in each last block
+
+
+def pieces(n: int) -> int:
+    return 1 + (31 + n + 12 + 15) // 16
 
 
 def make_card(card: pathlib.Path) -> None:
@@ -49,6 +60,22 @@ def make_card(card: pathlib.Path) -> None:
         for sector, mark in zip(SECTORS, MARKS):
             f.seek(sector * 512 + MARK_AT)
             f.write(mark)
+
+
+def add_deep_marks(card: pathlib.Path) -> None:
+    with open(card, "r+b") as f:
+        for sector, mark in zip(SECTORS, DEEP[1:]):
+            f.seek(sector * 512 + DEEP[0])
+            f.write(mark)
+
+
+def card_full(card: pathlib.Path) -> list[bytes]:
+    with open(card, "rb") as f:
+        out = []
+        for sector in SECTORS:
+            f.seek(sector * 512)
+            out.append(f.read(FULL))
+        return out
 
 
 def card_slots(card: pathlib.Path) -> list[bytes]:
@@ -78,7 +105,10 @@ def main() -> int:
     a = ap.parse_args()
     if not a.card.exists():
         make_card(a.card)
+    add_deep_marks(a.card)
     want = card_slots(a.card)
+    whole = card_full(a.card)
+    want_crc = [[zlib.crc32(w[b * BLOCK:(b + 1) * BLOCK]) for b in range(BLOCKS)] for w in whole]
 
     f = Frames()
     f.frame("root", 0x53, b"/\0")
@@ -87,7 +117,12 @@ def main() -> int:
         f.read(f"r{i}", f"/devslots/{i}", PIECES)
     f.write("w0", "/devslots/0", container(bytes(BYTES), 0x53))
     f.read("r0b", "/devslots/0", PIECES)
-    f.frame("open3", 0x54, b"/devslots/3\0")
+    for i in (3, 4, 5):
+        f.read(f"c{i}", f"/devslots/{i}", pieces(BLOCKS * 4))
+    f.read("b1196", "/devslots/1196", pieces(LAST))
+    f.read("b1708", "/devslots/1708", pieces(LAST))
+    for i in (6, 1197, 1768):
+        f.frame(f"open{i}", 0x54, f"/devslots/{i}\0".encode())
     replies = run(a.build, str(a.card), f)
 
     s = Frames()
@@ -98,10 +133,10 @@ def main() -> int:
     def answer(rep, label):
         return dec(rep[label][0])[5:] if rep[label] else b""
 
-    def read_back(label):
-        raw = b"".join(answer(replies, f"{label}:chunk{k}")[22:] for k in range(1, PIECES))
+    def read_back(label, n=BYTES):
+        raw = b"".join(answer(replies, f"{label}:chunk{k}")[22:] for k in range(1, pieces(n)))
         at = raw.find(bytes.fromhex("ac11d303"))
-        return (raw[at:at + 31], raw[at + 31:at + 31 + BYTES]) if at >= 0 else (b"", b"")
+        return (raw[at:at + 31], raw[at + 31:at + 31 + n]) if at >= 0 else (b"", b"")
 
     ok = True
 
@@ -113,8 +148,9 @@ def main() -> int:
     root = [n for _, n, _ in listing(replies["root"][0])]
     check("/ lists devslots after modinfo", root[-2:] == ["modinfo", "devslots"], root)
     lst = listing(replies["list"][0])
-    check("/devslots lists 0 slot-40000, 1 slot-48000, 2 ram, used",
-          lst == [(0, "slot-40000", 1), (1, "slot-48000", 1), (2, "ram", 1)], lst)
+    check("/devslots lists 0 slot-40000, 1 slot-48000, 2 ram, 3 crc-40000, 4 crc-48000, 5 crc-ram, used",
+          lst == [(0, "slot-40000", 1), (1, "slot-48000", 1), (2, "ram", 1),
+                  (3, "crc-40000", 1), (4, "crc-48000", 1), (5, "crc-ram", 1)], lst)
 
     got = [read_back(f"r{i}") for i in range(3)]
     for i in range(2):
@@ -134,8 +170,24 @@ def main() -> int:
           any(b"Permission denied" in m or b"read-only" in m for m in (w_open, w_first)), (w_open[:60], w_first[:60]))
     check("and slot 0 reads back unchanged", read_back("r0b")[1] == want[0])
     check("the card's slots are unchanged after the run", card_slots(a.card) == want)
-    o3 = answer(replies, "open3")
-    check("/devslots/3 is refused", b"files are 0, 1 and 2" in o3, o3[:80])
+    crcs = {}
+    for i in (3, 4, 5):
+        head, body = read_back(f"c{i}", BLOCKS * 4)
+        crcs[i] = list(struct.unpack(f">{BLOCKS}I", body)) if len(body) == BLOCKS * 4 else []
+    for i, src in ((3, 0), (4, 1)):
+        diff = [b for b in range(BLOCKS) if not crcs[i] or crcs[i][b] != want_crc[src][b]]
+        check(f"/devslots/{i}: 197 CRC-32s, equal to the card's slot {src}", bool(crcs[i]) and not diff, f"differ at {diff[:8]}")
+    check("  the two slots' last-block CRCs differ (their deep markers)", bool(crcs[3]) and bool(crcs[4]) and crcs[3][-1] != crcs[4][-1])
+    check("/devslots/5: 197 CRC-32s of the running copy", len(crcs[5]) == BLOCKS, len(crcs[5]))
+    _, b1196 = read_back("b1196", LAST)
+    check("/devslots/1196 is slot 0's last block, 45,332 bytes, byte for byte, with its marker",
+          b1196 == whole[0][(BLOCKS - 1) * BLOCK:] and DEEP[1] in b1196, f"{len(b1196)} B")
+    _, b1708 = read_back("b1708", LAST)
+    check("/devslots/1708 is the running copy's last block: its CRC is crc-ram's last entry",
+          len(b1708) == LAST and bool(crcs[5]) and zlib.crc32(b1708) == crcs[5][-1], f"{len(b1708)} B")
+    for i in (6, 1197, 1768):
+        o = answer(replies, f"open{i}")
+        check(f"/devslots/{i} is refused", b"files are 0 to 5" in o, o[:80])
 
     sroot = [n for _, n, _ in listing(stock["root"][0])]
     check("control, stock 1.11: / has no devslots", "devslots" not in sroot, sroot)

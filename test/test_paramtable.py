@@ -201,3 +201,15 @@ def test_the_three_stock_readers_step_by_lfo4s_160_bytes_a_track(stock):
     for va, new in ((0x40027832, "43e900a0"), (0x4012AB88, "0684000000a0"),
                     (0x4012B09E, "eb8b"), (0x4012B0CA, "d283")):
         assert content[va - BASE:va - BASE + len(new) // 2].hex() == new
+
+
+def test_the_cmpa_bounds(stock):
+    """The bound's `cmpa.l #320/#321,%aN` form: two are raised, one is a switch case,
+    one must stay (it copies value[slot] words into 101-slot arrays)."""
+    sites = {site.va - 2: site for site in paramtable.bound_sites(stock, BASE)}
+    for va, opcode in ((0x4006EB9E, b"\xbd\xfc\x00\x00\x01\x41"), (0x4010756E, b"\xbb\xfc\x00\x00\x01\x40")):
+        assert stock[va - BASE:va - BASE + 6] == opcode and va in sites
+    assert stock[0x40044828 - BASE:0x40044828 - BASE + 6] == b"\xb3\xfc\x00\x00\x01\x40"
+    assert 0x40044828 in paramtable.NOT_THIS_TIME and 0x40044828 not in sites
+    assert stock[0x4006EF0A - BASE:0x4006EF0A - BASE + 6] == b"\xbd\xfc\x00\x00\x01\x3f"   # case 319
+    assert paramtable.SWITCH_CASES == (0x4006EF14,) and 0x4006EF14 not in sites

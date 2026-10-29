@@ -94,7 +94,7 @@ def test_a_count_writes_every_bound_and_split_restores_them(stock):
         assert int.from_bytes(_at(out, va, width), "big") == value + 10
     for va, width, value in bus.bounds(platform.SPEC, b"MACH"):
         assert int.from_bytes(_at(out, va, width), "big") == value + 1
-    assert len(bus.bounds(platform.SPEC, b"PARM")) == 53
+    assert len(bus.bounds(platform.SPEC, b"PARM")) == 55
     assert platform.split(out)[0] == platform.join(stock, [])[:platform.STOCK_LENGTH]
 
 

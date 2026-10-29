@@ -1,8 +1,8 @@
 """Today's mods rebuild the last build that passed on the instrument.
 
-lfo4fix2 (Waverider 0.3.7, layermidi, arpmodes, lfowaves, bootscreen and lfo4 1.0.3) passed its
-device test on 2026-10-27 (issues #293 and #295). Before it, batcha1 (2026-10-22) and fmdepth2
-(2026-10-20). `dnfw mods apply` of the same mods must give the same image. The one allowed
+lfo4fix4 (Waverider 0.3.7, layermidi, arpmodes, lfowaves, bootscreen and lfo4 1.0.4) passed its
+device test on 2026-10-29 (#301). Before it, lfo4fix2 (2026-10-27), batcha1 (2026-10-22) and
+fmdepth2 (2026-10-20). `dnfw mods apply` of the same mods must give the same image. The one allowed
 difference is the /modinfo record's build part (commit, image id, hash). When a later build
 passes on the instrument, it replaces FLASHED here.
 
@@ -18,9 +18,9 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-FLASHED = ROOT / "00_Resources/02_Builds/lfo4fix2-waverider-layermidi-arpmodes-lfowaves-lfo4-bootscreen_DN2_1.11.syx"
+FLASHED = ROOT / "00_Resources/02_Builds/lfo4fix4-waverider-layermidi-arpmodes-lfowaves-lfo4-bootscreen_DN2_1.11.syx"
 MODS = ["waverider", "layermidi", "arpmodes", "lfowaves", "bootscreen", "lfo4"]
-PROBE_TAG = "lfo4fix2-waverider-layermidi-arpmodes-lfowaves-lfo4-bootscreen"
+PROBE_TAG = "lfo4fix4-waverider-layermidi-arpmodes-lfowaves-lfo4-bootscreen"
 BOOT = ROOT / "00_Resources/08_MyBuilds/waverider_glyph_boot.pgm"
 
 

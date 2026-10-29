@@ -38,12 +38,12 @@ def applied(stock):
 
 
 def _table_at(content: bytes) -> int:
-    """Where the relocated table starts in CONTENT: its CODE chunk's image."""
+    """Where the relocated table starts in CONTENT: its CODE chunk's image, after stock's HEAD bytes."""
     blob = content[platform.STOCK_LENGTH:]
     for i in range(struct.unpack_from(">I", blob, 8)[0]):
         cid, (off, n) = blob[12 + 12 * i:16 + 12 * i], struct.unpack_from(">II", blob, 16 + 12 * i)
-        if cid == area.CODE and area.CodeChunk.unpack(blob[off:off + n]).load == lfo4.SPEC["table_va"]:
-            return platform.STOCK_LENGTH + off + 16
+        if cid == area.CODE and area.CodeChunk.unpack(blob[off:off + n]).load == lfo4.SPEC["table_va"] - lfo4.HEAD:
+            return platform.STOCK_LENGTH + off + 16 + lfo4.HEAD
     raise AssertionError("no CODE chunk holds the relocated table")
 
 

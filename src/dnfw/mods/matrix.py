@@ -46,7 +46,7 @@ NOTES: dict[frozenset, str] = {
     frozenset(("arpplocks", "arpscale")):
         "arpscale's marks (steps in semitones) are in each sound's value slot 100, and a trig with "
         "arp locks plays a shadow that arpplocks copies from the whole sound (shadow_apply, 1,163 "
-        "bytes), so a locked trig keeps its sound's marks; the marks are not lockable. arpplocks' "
+        "bytes), so a locked trig keeps its sound's marks. The marks are not lockable. arpplocks' "
         "--all build, which is not in the registry, would lock the mutes through the same call as "
         "arpscale's [UP]/[DOWN] (0x400197e8) and would not apply with it. Not run.",
     frozenset(("arpscale", "reloadconfirm")):

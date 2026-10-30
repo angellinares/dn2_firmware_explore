@@ -221,3 +221,10 @@ A window of 2+ frames can't tell a burst spread over two frames (~81 % each, har
 | voice stealing (2 tracks, priority high) | 0 | 64.1 % | 67.0 % |
 
 One overrun since boot, before the first reading (start-up or the project load). **No busy stretch reached 68 % of a frame in any state**, so `--peak`'s ~45 frame-% "bursts" weren't DSP work: most likely the probe's read of reply words 1-2 straddling the ColdFire's per-frame rewrite of its reply copy (same size on every machine, more often when the ColdFire is busier), unverified. The worst frame leaves ~33 % of the DSP free.
+
+**Checked in digikit's runner** (`scripts/sharc_idle_load_check.py`, 14 of 14, from 2026-10-30, with a fed clock):
+- a stretch of 666,667 cycles counts as an overrun, and a stretch of 666,666 cycles does not.
+- reply word 3 of both pages holds the count, halves swapped.
+- the window closes at 1,500 stretches: reply word 4 of both pages holds its longest stretch, and the next window starts at 0.
+
+The first pass after boot measures from a zeroed "previous pass" word. So it counts as a stretch of all the cycles since reset, an overrun, and the first window's longest. That fits the one overrun since boot above. The host differences the count, so the readings are not affected.

@@ -113,3 +113,42 @@ def check_compatible(named_extents) -> list[str]:
                             + ("use RAM " if a.section == RAM else f"write section {a.section} ")
                             + f"0x{lo:08x}..0x{hi:08x} ({hi - lo:,} bytes)")
     return conflicts
+
+
+def undeclared_writes(stock: dict[int, bytes], payloads: dict[int, bytes], named_extents) -> list[str]:
+    """-> the runs of bytes a build changed that no applied mod declared; empty is clean.
+
+    `stock` and `payloads` map section id -> unpacked payload, before and after;
+    `named_extents` is as for `check_compatible`. Bytes past a stock payload's end
+    count as changed. This holds every mod to its `extents()` promise on the whole
+    build, not only in its own tests (elekloader's linker refuses the same way).
+    """
+    found = []
+    for sid, new in sorted(payloads.items()):
+        old = stock[sid]
+        if len(new) < len(old):
+            found.append(f"section {sid} shrank from {len(old):,} to {len(new):,} bytes")
+            continue
+        spans = sorted((e.start, e.end) for _, ext in named_extents for e in ext if e.section == sid)
+        runs, at, step = [], 0, 4096
+        while at < len(old):                    # compare in blocks, bytes only where a block differs
+            if old[at:at + step] != new[at:at + step]:
+                for i in range(at, min(at + step, len(old))):
+                    if old[i] != new[i]:
+                        if runs and runs[-1][1] == i:
+                            runs[-1][1] = i + 1
+                        else:
+                            runs.append([i, i + 1])
+            at += step
+        if len(new) > len(old):
+            runs.append([len(old), len(new)])
+        for lo, hi in runs:
+            i = lo
+            for a, b in spans:                  # walk the sorted spans over the run
+                if a <= i < b:
+                    i = b
+                if i >= hi:
+                    break
+            if i < hi:
+                found.append(f"section {sid} 0x{i:08x}..0x{hi:08x} changed, and no mod declares it")
+    return found

@@ -66,7 +66,7 @@ SPEC = json.loads((pathlib.Path(__file__).with_name("waverider_code.json")).read
 DESTGROUP_SITE, DESTGROUP_DISPLACED = 0x400DBCE8, 10
 
 
-def extents(firmware=None, area_length: int = 0) -> list[Extent]:
+def extents(firmware=None, area_length: int = 0, stream_length: int = 0) -> list[Extent]:
     out = [Extent(MAIN_OS, e["va"] - BASE, len(e["new"]) // 2, e["what"],
                   displaced=e["va"] == DESTGROUP_SITE) for e in SPEC["edits"]]
     out += platform.extents(area_length)
@@ -87,7 +87,8 @@ def extents(firmware=None, area_length: int = 0) -> list[Extent]:
         out += [Extent(DSP_STREAM, at, n, f"section 7: {what}")
                 for at, n in bootstream.spans(stream, load, length) if at is not None]
     final = bootstream.walk(stream).final.offset
-    out.append(Extent(DSP_STREAM, final, len(stream) - final,
+    # stream_length: section 7 as rebuilt, longer than stock by Waverider's blocks
+    out.append(Extent(DSP_STREAM, final, max(stream_length, len(stream)) - final,
                       "section 7: Waverider's blocks, inserted before the final block, and "
                       "the final block after them"))
     return out
@@ -193,7 +194,7 @@ def apply(firmware) -> Result:
         bus.contribute(b"MACH", 1)])
     area_length = len(content) - platform.STOCK_LENGTH
     return Result(payloads={MAIN_OS: content, DSP_STREAM: section7},
-                  extents=extents(firmware, area_length),
+                  extents=extents(firmware, area_length, len(section7)),
                   notes=[f"MACHINE SEL offers {SPEC['names'][0].upper()} after SWARMER "
                          f"(type {SPEC['new_type']}; WaveTone's pages)",
                          f"{len(SPEC['edits'])} edits in section 3, two CODE chunks in the "

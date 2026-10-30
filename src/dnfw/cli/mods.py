@@ -16,7 +16,7 @@ from ..firmware.build import build as rebuild
 from ..firmware.build import replacement
 from ..firmware.load import load
 from ..firmware.verify import verify
-from ..mods import ModError, check_compatible
+from ..mods import ModError, check_compatible, undeclared_writes
 from ..mods import arpmodes as arpmodes_mod
 from ..mods import arpplocks as arpplocks_mod
 from ..mods import arpscale as arpscale_mod
@@ -380,6 +380,7 @@ def _apply(args) -> int:
     # mod sees the earlier one's bytes. Disjoint extents make the order
     # irrelevant to the result; it is not relied on.
     payloads: dict[int, bytes] = {}
+    wrote = []
     for mod in chosen:
         staged = _staged(firmware, payloads)
         if mod.ID == "transients":
@@ -395,9 +396,22 @@ def _apply(args) -> int:
         for note in result.notes:
             print(f"  {note}")
         payloads.update(result.payloads)
+        wrote.append((mod.ID, result.extents))
 
     if 3 in payloads:
         payloads[3] = _modinfo(payloads[3], chosen, args)
+
+    stock = {s.id: s.unpack() or s.raw_payload for s in firmware.container.sections if s.id in payloads}
+    from ..mods import platform
+    if len(payloads.get(platform.SECTION, b"")) > platform.STOCK_LENGTH:
+        # only the platform writes past stock's end, from every mod's chunks: its area at its real length
+        wrote.append(("platform", platform.loader_extents(len(payloads[platform.SECTION]) - platform.STOCK_LENGTH)))
+    stray = undeclared_writes(stock, payloads, named + wrote)   # before and as applied
+    if stray:
+        for line in stray[:20]:
+            print(f"  UNDECLARED: {line}")
+        print("\nNot written. Every byte a build changes must be inside an extent a mod declares.")
+        return 1
 
     reps = {sid: replacement(firmware, sid, payload)
             for sid, payload in payloads.items()}

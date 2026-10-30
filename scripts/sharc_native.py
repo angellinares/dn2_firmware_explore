@@ -17,7 +17,10 @@ One still does, a register write after the step, so it is applied here from the 
       I register; FEXT (SE) unmasked); none fired in the frames checked, so these three
       are untested here
 
-Not carried: G5 (two addresses the core decodes at the wrong width: refused here), G6/G8
+Not carried: G5 (two addresses an older core decodes at the wrong width: refused here when
+the checkout's decoder still reads them as 32-bit Type 2b. digikit acaba310, in digikit-main
+since 2026-10-18, reads both as the 16-bit Type 2c in its Python table and in sharc-rt, and
+m5's step 4 then runs bit for bit as the Python runner does, 2026-10-30), G6/G8
 (a conditional form the core stops on: the engine stops too, and the run says so), G12 to
 G14 (bit-reverse, Type 1a in SIMD, fixed-point CLIP: the engine does without them, so code
 that needs one stops or differs). The library must decode our image at run time (option 4):
@@ -93,7 +96,7 @@ class Engine:
 
     # -- the host-side fix-ups ---------------------------------------------------------
     def classify(self, pc: int):
-        if pc in fx.AS_2C:
+        if pc in fx.AS_2C and self.decode(pc).type_name == "2b":
             raise SystemExit(f"sw {pc:#x} needs fix-up G5 (decode width), which the native engine cannot take")
         if not self.host_fixups:
             return None

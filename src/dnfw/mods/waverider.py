@@ -118,10 +118,11 @@ NOT_RAM = tuple(range(SPEC["layout"]["wr_spans"] & ~1, SPEC["layout"]["wr_spans_
 # them, so the check flags the new places again and they are read afresh.
 NOT_RAM += (
     # 2026-10-18, MIDI CC: the assembly grew 730 bytes and the renderer moved 0x400 up; knob
-    # travel: 92 bytes more. Read again in the applied chunk
-    0x4670B2F8,              # "Noise Colour": the label text "Nois" (the uncached window's 0x4e...)
-    0x4670B316,              # "ave Fold": the label text "Fold"
-    0x4670B48E,              # "Formant", TYPE's fourth value: the text "Form"
+    # travel: 92 bytes more. Read again in the applied chunk. 2026-10-30, 0.3.8: FSRC's labels moved
+    # Nois and Fold 0x18 up (were 0x4670B2F8 and 0x4670B316)
+    0x4670B310,              # "Noise Colour": the label text "Nois" (the uncached window's 0x4e...)
+    0x4670B32E,              # "ave Fold": the label text "Fold"
+    # "Formant" (TYPE's fourth value) starts at 0x4670B4A3 in 0.3.8, an odd place: no aligned word reads "Form"
     0x4670B94A,              # notl %d3 ; andl %d3,%d2
     0x4670BBDA,              # addil #0x469fe800,%d0: the pool spans' base 0x46a00000 less two
                              # 3072 B entries, indexed by the table number (2 and up), declared

@@ -26,7 +26,8 @@ def test_the_two_editors_link_to_each_other():
     anim = (ROOT / "site/glyph-animator.html").read_text(encoding="utf-8")
     assert 'href="glyph-animator.html"' in still and 'href="glyph-editor.html"' in anim
     for page in (still, anim):
-        for src in ("glyph_anim_core.js", "glyph_icons.js", "glyph_tools.js", "glyph_fills_panel.js"):
+        for src in ("glyph_anim_core.js", "glyph_icons.js", "glyph_font3x5.js", "glyph_text.js", "glyph_controls.js",
+                    "glyph_tools.js", "glyph_fills_panel.js"):
             assert f'<script src="js/glyph-tools/{src}"></script>' in page
             assert (ROOT / "site/js/glyph-tools" / src).is_file()
         assert 'href="css/glyph-tools.css"' in page

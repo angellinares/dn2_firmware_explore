@@ -71,7 +71,7 @@ These pages are on the site. They do not change firmware.
 |---|---|
 | [Firmware Check](https://angellinares.github.io/dn2_firmware_explore/check.html) | Compares a modified OS 1.11 file with the stock file, and shows a checklist of what changed and where. `dnfw check` prints the same list |
 | [LFO Shape Bench](https://angellinares.github.io/dn2_firmware_explore/bench.html) | Draws every LFO shape on a copy of the 128 x 64 screen, and makes wavetables for `lfowaves` |
-| [Glyph Editor](https://angellinares.github.io/dn2_firmware_explore/glyph-editor.html) | Draws the 16 x 16 glyphs that the site shows beside each mod, and still glyphs of other sizes up to 128 x 64 |
+| [Glyph Editor](https://angellinares.github.io/dn2_firmware_explore/glyph-editor.html) | Draws the 16 x 16 glyphs that the site shows beside each mod, and still glyphs of other sizes up to 128 x 64. Places text in a pixel font, and knobs, sliders, buttons and switches drawn from their settings |
 | [Glyph Animator](https://angellinares.github.io/dn2_firmware_explore/glyph-animator.html) | Draws a glyph as frames that a knob picks from. Morphs one frame into another, and saves a GIF or the firmware's frame format |
 
 On the site, **Save** downloads the file. The name of each download ends with the date and time,

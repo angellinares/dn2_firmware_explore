@@ -74,7 +74,9 @@ These pages are on the site. They do not change firmware.
 | [Glyph Editor](https://angellinares.github.io/dn2_firmware_explore/glyph-editor.html) | Draws the 16 x 16 glyphs that the site shows beside each mod, and still glyphs of other sizes up to 128 x 64 |
 | [Glyph Animator](https://angellinares.github.io/dn2_firmware_explore/glyph-animator.html) | Draws a glyph as frames that a knob picks from. Morphs one frame into another, and saves a GIF or the firmware's frame format |
 
-On the site, **Save** downloads the file. To edit the files of your own copy, open
+On the site, **Save** downloads the file. The name of each download ends with the date and time,
+for example `glyph-anims_261030-141502.js`. Clear **Add date and time to file names** to turn
+this off. To edit the files of your own copy, open
 `site/glyph-editor.html` or `site/glyph-animator.html` in Chrome or Edge. Press
 **Open glyphs.js** or **Open file**, and pick `site/js/mods/glyphs.js` or
 `site/js/mods/glyph-anims.js`. **Save** then writes the file in place.

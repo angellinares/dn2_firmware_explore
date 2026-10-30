@@ -91,4 +91,7 @@ details.card > summary::-webkit-details-marker { display: none; }
 
 /* A frame size picker sits in the bar around it. */
 .size-box { display: contents; }
+
+/* The file-name option sits in the bar beside Save. */
+.stamp-box { display: contents; }
 .size-box label[hidden] { display: none; }

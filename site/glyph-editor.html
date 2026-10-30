@@ -57,6 +57,7 @@
 <div class="bar">
   <button id="open" class="primary">Open glyphs.js</button>
   <button id="save" disabled>Save</button>
+  <span id="stamp-box" class="stamp-box"></span>
   <span id="status">Draw on the canvas, or open site/js/mods/glyphs.js to edit the mod glyphs.</span>
 </div>
 
@@ -317,7 +318,8 @@ $("rows-apply").addEventListener("click", () => {
 /* The unit's format: columns of 32-bit big-endian words, the top row in the most significant bit. */
 $("bin-out").addEventListener("click", () => {
   const rows = rowsNow(), [w, h] = sizeOf(rows);
-  GlyphTools.download(document, G.encode([rows], w, h), `${canvas ? "canvas" : current}_${w}x${h}.bin`, "application/octet-stream");
+  const file = GlyphTools.download(document, G.encode([rows], w, h), `${canvas ? "canvas" : current}_${w}x${h}.bin`);
+  status(`Downloaded ${file}.`);
 });
 $("hex-out").addEventListener("click", () => {
   const rows = rowsNow(), [w, h] = sizeOf(rows);
@@ -359,20 +361,22 @@ $("save").addEventListener("click", async () => {
   ed.drop();
   if (!isGlyphSize(rowsNow())) return;
   const text = serialise();
-  if (handle) {
-    const w = await handle.createWritable();
-    await w.write(text);
-    await w.close();
+  const failed = handle ? await GlyphTools.writeHandle(handle, text) : null;
+  if (handle && !failed) {
     status(`Saved ${handle.name} at ${new Date().toLocaleTimeString()}.`);
   } else {
-    GlyphTools.download(document, text, "glyphs.js", "text/javascript");
-    status("Downloaded glyphs.js. Put it in site/js/mods/.");
+    // no file open, or the write failed: the work goes out as a download
+    const file = GlyphTools.download(document, text, "glyphs.js");
+    status((failed ? `Could not save ${handle.name} (${failed.message}). ` : "")
+      + `Downloaded ${file}. Rename it to glyphs.js and put it in site/js/mods/.`);
   }
+  if (failed) return;                     // a failed write keeps Save on: the opened file is not up to date
   source = text;
   saved = structuredClone(glyphs);
   drawEdit();
 });
 
+GlyphTools.stampOption($("stamp-box"));
 drawEdit();
 
 /* Over http the site's own glyphs load as the page opens. From disk the fetch fails and the page waits for Open. */

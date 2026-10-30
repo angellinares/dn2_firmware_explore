@@ -55,6 +55,7 @@
 <div class="bar">
   <button id="open" class="primary">Open file</button>
   <button id="save" disabled>Save</button>
+  <span id="stamp-box" class="stamp-box"></span>
   <span id="status" class="muted">Open site/js/mods/glyph-anims.js, or make a new animation.</span>
 </div>
 
@@ -593,6 +594,7 @@ function loadText(text, label = "the file") {
 
 const download = (data, filename, type) => GlyphTools.download(document, data, filename, type);
 const pickFile = (accept) => GlyphTools.pickFile(document, accept);
+GlyphTools.stampOption($("stamp-box"));
 
 $("open").onclick = async () => {
   try {
@@ -608,21 +610,23 @@ $("open").onclick = async () => {
 
 $("save").onclick = async () => {
   const text = serialiseAll();
-  if (handle && handle.name.endsWith(".js")) {
-    const w = await handle.createWritable();
-    await w.write(text); await w.close();
+  const inPlace = handle && handle.name.endsWith(".js");
+  const failed = inPlace ? await GlyphTools.writeHandle(handle, text) : null;
+  if (inPlace && !failed) {
     status(`Saved ${handle.name} at ${new Date().toLocaleTimeString()}.`);
   } else {
-    download(text, "glyph-anims.js", "text/javascript");
-    status("Downloaded glyph-anims.js. Put it in site/js/mods/.");
+    // no .js file open, or the write failed: the work goes out as a download
+    const file = download(text, "glyph-anims.js");
+    status((failed ? `Could not save ${handle.name} (${failed.message}). ` : "")
+      + `Downloaded ${file}. Rename it to glyph-anims.js and put it in site/js/mods/.`);
   }
-  savedText = text;
+  if (!failed) savedText = text;          // a failed write keeps Save on: the opened file is not up to date
   changed();
 };
 
 $("bin-out").onclick = () => {
   const a = anim();
-  download(G.encode(a.frames, a.width, a.height), `${name}_${a.width}x${a.height}_${a.frames.length}.bin`, "application/octet-stream");
+  status(`Downloaded ${download(G.encode(a.frames, a.width, a.height), `${name}_${a.width}x${a.height}_${a.frames.length}.bin`)}.`);
 };
 $("hex-out").onclick = () => { const a = anim(); $("hex").value = G.toHex(G.encode(a.frames, a.width, a.height), a.width, a.height); };
 
@@ -641,7 +645,7 @@ $("bin-in").onclick = async () => {
 };
 $("hex-in").onclick = () => { try { importFrames(G.fromHex($("hex").value)); } catch (e) { status(e.message); } };
 
-$("json-out").onclick = () => download(JSON.stringify(anims, null, 1), "glyph-anims.json", "application/json");
+$("json-out").onclick = () => status(`Downloaded ${download(JSON.stringify(anims, null, 1), "glyph-anims.json")}.`);
 $("json-in").onclick = async () => {
   const f = await pickFile(".json");
   try {
@@ -664,13 +668,11 @@ $("gif-save").onclick = async () => {
   const bytes = gifBytes(), file = `${name}_${$("gif-scale").value}x_${$("gif-theme").value}.gif`;
   try {
     if (window.showSaveFilePicker) {
-      const h = await showSaveFilePicker({ suggestedName: file, types: [{ description: "GIF", accept: { "image/gif": [".gif"] } }] });
-      const w = await h.createWritable();
-      await w.write(bytes); await w.close();
-      status(`Saved ${h.name}: ${frames().length} frames.`);
+      const h = await showSaveFilePicker({ suggestedName: GlyphTools.downloadName(file), types: [{ description: "GIF", accept: { "image/gif": [".gif"] } }] });
+      const failed = await GlyphTools.writeHandle(h, bytes);
+      status(failed ? `Could not save ${h.name} (${failed.message}).` : `Saved ${h.name}: ${frames().length} frames.`);
     } else {
-      download(bytes, file, "image/gif");
-      status(`Downloaded ${file}.`);
+      status(`Downloaded ${download(bytes, file)}.`);
     }
   } catch (e) { if (e.name !== "AbortError") status(e.message); }
 };

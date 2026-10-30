@@ -536,10 +536,71 @@
     return { get size() { return size(); }, set: (a, b) => show([a, b]) };
   }
 
-  /** Offer bytes or text as a file to save. */
-  function download(doc, data, filename, type) {
-    const a = Object.assign(doc.createElement("a"), { href: URL.createObjectURL(new Blob([data], { type })), download: filename });
+  /* ---- files out: download names and the download itself ---- */
+
+  const STAMP_KEY = "glyph-tools.stamp-names";
+  const pad2 = (n) => String(n).padStart(2, "0");
+
+  /** The file name with the local date and time before its extension: name_yymmdd-hhmmss.ext. */
+  function stampName(filename, date = new Date()) {
+    const stamp = pad2(date.getFullYear() % 100) + pad2(date.getMonth() + 1) + pad2(date.getDate()) + "-"
+      + pad2(date.getHours()) + pad2(date.getMinutes()) + pad2(date.getSeconds());
+    const dot = filename.lastIndexOf(".");
+    return dot > 0 ? `${filename.slice(0, dot)}_${stamp}${filename.slice(dot)}` : `${filename}_${stamp}`;
+  }
+
+  /** Whether downloads get the date and time in their names: the viewer's choice, on by default.
+   *  Storage can be missing or blocked, so a failed read is "on" and a failed write is ignored. */
+  function stampNames(win = root) {
+    try { return win.localStorage?.getItem(STAMP_KEY) !== "off"; } catch { return true; }
+  }
+  function setStampNames(on, win = root) {
+    try { win.localStorage?.setItem(STAMP_KEY, on ? "on" : "off"); } catch { /* the choice lasts for this page only */ }
+  }
+
+  /** The name a download gets: with the date and time when the viewer wants them (or `stamp` says so). */
+  function downloadName(filename, { stamp = stampNames(), date = new Date() } = {}) {
+    return stamp ? stampName(filename, date) : filename;
+  }
+
+  /** Offer bytes or text as a file to save; returns the file name used. The link is in the
+   *  document while it is clicked, and its URL is freed later: phone browsers need both. */
+  function download(doc, data, filename, type = "application/octet-stream") {
+    const name = downloadName(filename, { stamp: stampNames(doc.defaultView) });
+    const url = URL.createObjectURL(new Blob([data], { type }));
+    const a = Object.assign(doc.createElement("a"), { href: url, download: name });
+    a.style.display = "none";
+    doc.body.append(a);
     a.click();
+    a.remove();
+    doc.defaultView.setTimeout(() => URL.revokeObjectURL(url), 30000);
+    return name;
+  }
+
+  /** The "Add date and time to file names" check box, with its note, into `box`. */
+  function stampOption(box) {
+    const doc = box.ownerDocument, win = doc.defaultView;
+    const input = Object.assign(doc.createElement("input"), { type: "checkbox", checked: stampNames(win), id: "stamp-names" });
+    const label = doc.createElement("label");
+    label.append(input, " Add date and time to file names");
+    const note = Object.assign(doc.createElement("span"), { className: "muted stamp-note",
+      textContent: "A browser does not overwrite a file it downloaded. To save over one file, open it and press Save (Chrome or Edge on a computer)." });
+    const show = () => { note.hidden = input.checked; };
+    input.onchange = () => { setStampNames(input.checked, win); show(); };
+    show();
+    box.append(label, note);
+    return input;
+  }
+
+  /** Write text or bytes through a File System Access handle. Returns null when it worked, or
+   *  the error: a lost permission or a full disk must not look like a save. */
+  async function writeHandle(handle, data) {
+    try {
+      const w = await handle.createWritable();
+      await w.write(data);
+      await w.close();
+      return null;
+    } catch (e) { return e; }
   }
 
   /** Ask for one file, with a plain file input. */
@@ -552,6 +613,7 @@
   }
 
   const api = { TOOLS, TOGGLES, SHORTCUTS, PATTERNS, CURVE_NAMES, drag, fitCell, contentWidth, maskEdges, surface, sizePicker, download, pickFile,
+    stampName, stampNames, setStampNames, downloadName, stampOption, writeHandle,
     get clipboard() { return clipboard; } };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.GlyphTools = api;

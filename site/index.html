@@ -496,6 +496,38 @@ dnfw mods apply firmware.syx --mod midiarp --mod arpmodes -o modded.syx</pre>
 
 <article class="mod">
   <div class="mod-head">
+    <span class="glyph" data-glyph="arpscale" aria-hidden="true"></span>
+    <h3>Arp offsets in scale</h3>
+    <span class="mod-id">arpscale</span>
+    <span class="mod-version"><!-- dnfw:version arpscale -->v0.2.0<!-- /dnfw:version --></span>
+    <span class="tag ready">Confirmed on hardware</span>
+  </div>
+  <p>
+    The arp adds each step&rsquo;s offset in semitones, so an offset can leave the scale. This mod
+    adds a switch to SETTINGS &gt; PERSONALIZE. With the switch on, the offsets count degrees of the
+    track&rsquo;s scale, and you can mark single steps in the ARPEGGIATOR menu to stay in semitones.
+    The mod is the work of <a href="https://github.com/w-winter">w-winter</a>.
+  </p>
+
+  <p style="margin-top:1.2rem">
+    <a class="cta" href="arp-scale.html">Open the Arp Offsets in Scale tool &#8594;</a>
+  </p>
+  <p class="cta-note">
+    On stock firmware, the arp plays every offset in semitones.
+  </p>
+
+  <dl class="facts">
+    <dt>Adds</dt><dd>ARP OFS IN SCALE in SETTINGS &gt; PERSONALIZE (off by default). With it on, [UP] on an active arp step marks it to move in semitones, shown as a plus</dd>
+    <dt>Changes</dt><dd>12 edits in section 3, and 1,672&nbsp;B of code in the platform&rsquo;s appended area, copied to RAM at start-up</dd>
+    <dt>Tested</dt><dd>Flashed 2026-10-14: offsets in scale from trigs and live keys, and the switch kept after a power cycle. Marked steps passed on w-winter&rsquo;s Digitone&nbsp;II, 2026-10-26, on the current build (<code>arpscale5</code>)</dd>
+    <dt>Combines</dt><dd><!-- dnfw:combines arpscale -->This mod combines with Arpeggiator SHUF and RAND, Arpeggiator p-locks, Boot screen, Degree transpose, LFO modulation of the FX, Layering onto MIDI tracks, A fourth LFO, LFO ONE/HALF fix, New LFO waveforms, Arpeggiator on MIDI tracks, More modulation destinations, Reload confirm, Song guard, FM drum transients, USB SysEx probe (diagnostic) and Waverider, a sixth machine. See the compatibility table<!-- /dnfw:combines --></dd>
+  </dl>
+
+<pre>dnfw mods apply firmware.syx --mod arpscale -o modded.syx</pre>
+</article>
+
+<article class="mod">
+  <div class="mod-head">
     <span class="glyph" data-glyph="bootscreen" aria-hidden="true"></span>
     <h3>Boot screen</h3>
     <span class="mod-id">bootscreen</span>
@@ -679,10 +711,6 @@ fixed the jump on audio tracks only. It is superseded by the fix above and kept 
     <tr><th>Idea</th><th>Where it stands</th></tr>
   </thead>
   <tbody>
-    <tr>
-      <td><span class="glyph" data-glyph="arpscale" aria-hidden="true"></span><strong>Arp offsets in scale</strong> <code>arpscale</code></td>
-      <td><span class="tag ready">Confirmed on hardware</span> The step offsets of the arp move by degrees of the scale and root of the track, not by semitones. A switch in SETTINGS &gt; PERSONALIZE turns it on. For now, it is on the command line only (<code>dnfw mods apply --mod arpscale</code>). The mod is the work of <a href="https://github.com/w-winter">w-winter</a> (pull request #212).</td>
-    </tr>
     <tr>
       <td><strong>Degree transpose</strong> <code>degreetranspose</code></td>
       <td><span class="tag ready">Confirmed on hardware</span> [KEYBOARD] + [FUNC] + [+]/[-] moves the active track by degrees of its scale and root, as the factory firmware moves it by semitones. For now, it is on the command line only (<code>dnfw mods apply --mod degreetranspose</code>). The mod is the work of <a href="https://github.com/w-winter">w-winter</a> (pull request #214).</td>

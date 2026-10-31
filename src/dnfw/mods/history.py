@@ -64,7 +64,16 @@ UNPUBLISHED = _first("0.1.0", "Not published on the site yet.")
 HISTORY: dict[str, tuple[Release, ...]] = {
     "arpmodes": PUBLISHED,
     "arpplocks": UNPUBLISHED,
-    "arpscale": UNPUBLISHED,
+    "arpscale": (
+        Release("0.2.0", "2026-10-25", (
+            "With ARP OFS IN SCALE on, you can mark an arp step to move in semitones, for a note outside "
+            "the scale. In the ARPEGGIATOR menu, press UP on an active step: the step shows a plus. Press "
+            "DOWN to remove the mark, and DOWN again to mute the step.",
+            "The sound keeps its marks when you save it, copy it, or copy, paste and clear its arp. With ARP "
+            "OFS IN SCALE off, every step moves in semitones, as before.",
+            "You can now build it on the site, on this page.",
+        )),
+    ) + UNPUBLISHED,
     "bootscreen": PUBLISHED,
     "degreetranspose": UNPUBLISHED,
     "fxmod": (

@@ -673,7 +673,7 @@ def step_map(dk, snap, m2mach, m5: Image, stock: bytes, init, sound, machines) -
     # our spans, as the runner's memory holds them after init
     spans = {}
     for what, at, payload in dsp.spans():
-        dm = at if at >= 0x80000000 else at - dsp.LOAD_ALIAS        # DDR has no load alias
+        dm = at if at >= 0x80000000 or at < dsp.LOAD_ALIAS else at - dsp.LOAD_ALIAS   # DDR and L2 have no load alias
         words = [m2.word(init.state, dm + 4 * k) for k in range(len(payload) // 4)]
         want = [struct.unpack_from("<I", payload, 4 * k)[0] for k in range(len(payload) // 4)]
         spans[what] = sum(1 for x, y in zip(words, want) if x != y)

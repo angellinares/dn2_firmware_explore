@@ -16,8 +16,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-SOURCES = {"fft": 0x16F800, "rfft": 0x16F900, "fft2": 0x16FC00, "fft3": 0x171C00, "spec3": 0x172280,
-           "selftest": 0x16F800, "mipb3": 0x172400, "build3": 0x172580}   # name -> load sw (dnfw.waverider.dsp)
+SOURCES = {"fft": 0x16F800, "rfft": 0x16F900, "fft2": 0x16FC00, "fft3": 0xBD8000, "spec3": 0xBD8400,
+           "selftest": 0x16F800, "mipb3": 0xBD8580, "build3": 0xBD8700}   # name -> load sw (dnfw.waverider.dsp; stage 3 in L2)
 TOOLCHAIN = "selache selas -proc ADSP-21569 (js216/selache 2b26d3b, GPL-3.0, WSL)"
 
 

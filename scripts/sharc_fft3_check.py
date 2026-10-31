@@ -3,7 +3,7 @@
     python scripts/sharc_fft3_check.py [--sizes 8 64 1024] [--parts]
 
 Reads csrc/waverider/sharc/fft3.json (scripts/build_fft.py --assemble). Builds stock + the
-idle stub plus fft3.asm at sw 0x171c00, the per-stage twiddle tables (TWR[h + k] =
+idle stub plus fft3.asm at its placement (sw 0xbd8000, L2), the per-stage twiddle tables (TWR[h + k] =
 cos(pi k / h), TWI[h + k] = -sin(pi k / h)) and the parameter block at 0x2e4060; for each
 size M (complex points) writes M random complex floats as split arrays (re, im) (DDR or
 L1, --where),
@@ -34,7 +34,7 @@ from dnfw.sharccycles import costs as C                         # noqa: E402
 from dnfw.waverider import dsp                                  # noqa: E402
 
 m5 = F.m5
-FFT3_SW, FFT3_DM = dsp.FFT3_SW, dsp.FFT3_DM            # the stage 3 build's placement
+FFT3_SW, FFT3_LOAD = dsp.FFT3_SW, dsp.FFT3_LOAD            # the stage 3 build's placement
 P3 = 0x2E4060
 SHARC = ROOT / "csrc" / "waverider" / "sharc"
 SLACK = 1024
@@ -81,9 +81,9 @@ def twiddles(m: int) -> tuple[np.ndarray, np.ndarray]:
 def stream(stock: bytes) -> bytes:
     code = sharc_object.load_bytes(bytes.fromhex(json.loads((SHARC / "fft3.json").read_text())["object_parcels_be"]))
     if len(code) > 0x2000:
-        raise SystemExit(f"fft3 is {len(code)} bytes, over its 8 KB at DM {FFT3_DM:#x}")
+        raise SystemExit(f"fft3 is {len(code)} bytes, over its 8 KB at {FFT3_LOAD:#x}")
     base = dsp.section7_idle_only(stock)
-    return bootstream.insert_before_final(base, bootstream.block(dsp.dm_to_load(FFT3_DM), code))
+    return bootstream.insert_before_final(base, bootstream.block(FFT3_LOAD, code))
 
 
 def params(st, m: int, inverse: bool, at: dict[str, int]) -> None:

@@ -36,7 +36,7 @@
 // M1 and changes none of M5-M7, M13-M15, I7, L or B. Every array is read on the bus
 // that wrote it (scripts/sharc_bus_check.py).
 //
-// PLACEMENT IS FIXED: this code loads at PM sw 0x172580 (L1 block 1, byte 0x2e4b00); the
+// PLACEMENT IS FIXED: this code loads at PM sw 0xbd8700 (L2, load 0x200b0e00; L1 sw 0x172580 until 2026-10-31); the
 // absolute CALLs and JUMPs are written by scripts/sharc_resolve_jumps.py.
 //
 // DM (byte addresses):
@@ -356,7 +356,7 @@ wr_build3_twin.:
       DM(0x2e40cc) = R0;                // src re
       R0 = 0x84808000;
       DM(0x2e40d0) = R0;                // src im
-      CALL 0x172400;                    // -> wr_mipb3_in.
+      CALL 0xbd8580;                    // -> wr_mipb3_in.
 
       R0 = 0x84800000;
       DM(0x2e4060) = R0;                // fft3: src re
@@ -374,7 +374,7 @@ wr_build3_twin.:
       DM(0x2e4078) = R0;                // TWR
       R0 = 0x80706000;
       DM(0x2e407c) = R0;                // TWI
-      CALL 0x171c00;                    // -> wr_fft3.
+      CALL 0xbd8000;                    // -> wr_fft3.
 
       R0 = 0x84810000;
       DM(0x2e40a0) = R0;                // split: Z re
@@ -390,7 +390,7 @@ wr_build3_twin.:
       DM(0x2e40b4) = R0;                // Br
       R0 = 0x84838000;
       DM(0x2e40b8) = R0;                // Bi
-      CALL 0x172280;                    // -> wr_spec3_split.
+      CALL 0xbd8400;                    // -> wr_spec3_split.
 
       // level 0: the frames themselves (S = 0)
       R13 = R13 - R13;
@@ -403,12 +403,12 @@ wr_build3_twin.:
       DM(0x2e40dc) = R0;                // row a
       R0 = R0 - R0;
       DM(0x2e40e0) = R0;                // S = 0
-      CALL 0x172457;                    // -> wr_mipb3_out.
+      CALL 0xbd85d7;                    // -> wr_mipb3_out.
       R0 = 0x84808000;
       DM(0x2e40d4) = R0;                // src im (frame b), on PM
       R0 = DM(0x2e4334);
       DM(0x2e40dc) = R0;                // row b
-      CALL 0x1724cf;                    // -> wr_mipb3_out_pm.
+      CALL 0xbd864f;                    // -> wr_mipb3_out_pm.
 
       R0 = 1;
       DM(0x2e432c) = R0;                // level 1
@@ -435,7 +435,7 @@ wr_build3_level.:
       DM(0x2e40b8) = R0;
       R0 = DM(0x2e4348);
       DM(0x2e40bc) = R0;                // H
-      CALL 0x1722e9;                    // -> wr_spec3_join.
+      CALL 0xbd8469;                    // -> wr_spec3_join.
 
       R0 = 0x84840000;
       DM(0x2e4060) = R0;                // fft3: Z re
@@ -453,7 +453,7 @@ wr_build3_level.:
       DM(0x2e4078) = R0;
       R0 = 0x80706000;
       DM(0x2e407c) = R0;
-      CALL 0x171c00;                    // -> wr_fft3.
+      CALL 0xbd8000;                    // -> wr_fft3.
 
       R0 = 0x84818000;
       DM(0x2e40d4) = R0;                // out: frame a's level, the result's imaginary part (PM)
@@ -463,12 +463,12 @@ wr_build3_level.:
       DM(0x2e40dc) = R0;                // row a
       R0 = DM(0x2e4328);
       DM(0x2e40e0) = R0;                // S = log2 N + 1
-      CALL 0x1724cf;                    // -> wr_mipb3_out_pm.
+      CALL 0xbd864f;                    // -> wr_mipb3_out_pm.
       R0 = 0x84810000;
       DM(0x2e40d4) = R0;                // frame b's level, the real part (DM)
       R0 = DM(0x2e4334);
       DM(0x2e40dc) = R0;                // row b
-      CALL 0x172457;                    // -> wr_mipb3_out.
+      CALL 0xbd85d7;                    // -> wr_mipb3_out.
 
       R8 = 1;
       R0 = DM(0x2e432c);

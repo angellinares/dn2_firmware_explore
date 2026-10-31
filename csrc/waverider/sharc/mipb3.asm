@@ -26,7 +26,7 @@
 // leaves PEYEN clear. Leaves the C
 // runtime's constants (M5-M7, M13-M15), I7 and the L and B registers alone.
 //
-// Placement: PM sw 0x172400 (DM 0x2e4800, dnfw.waverider.dsp); its jumps are PC-relative, so the
+// Placement: PM sw 0xbd8580 (L2, load 0x200b0b00, dnfw.waverider.dsp; was L1 sw 0x172400 until 2026-10-31); its jumps are PC-relative, so the
 // self-test build loads the same bytes elsewhere.
 
 .SECTION/PM seg_pmco;

@@ -53,3 +53,22 @@ def test_combines_with_the_boot_screen():
     named = [(arpplocks.ID, arpplocks.extents()),
              (bootscreen.ID, bootscreen.extents(None, area_length=4096))]
     assert check_compatible(named) == []
+
+
+def test_a_knob_push_in_the_arp_menu_reaches_the_clear(dn2_111):
+    """Issue #317: the ARPEGGIATOR menu's key handler takes an encoder push and does
+    nothing with it (0x4001975c, `addi.l #-41,%d2`). The mod puts a `jmp push_hook`
+    there, and push_hook's knob table maps A..D to MODE, SPEED, RANGE and N.LEN
+    (k 0, 2, 1, 3; E..H none). The clear itself is measured in the emulator
+    (scripts/emu_arp_push_clear.py)."""
+    import struct
+    push = arpplocks.SPEC["code"]["labels"]["push_hook"]
+    content = arpplocks.apply(dn2_111).payloads[arpplocks.SECTION]
+    at = 0x4001975C - arpplocks.BASE
+    stock = dn2_111.container.find(arpplocks.SECTION).unpack()
+    assert stock[at:at + 6] == bytes.fromhex("0682ffffffd7")
+    assert content[at:at + 6] == b"\x4e\xf9" + struct.pack(">I", push)
+    # push_hook comes after every earlier routine, so none of them moved
+    assert push == max(arpplocks.SPEC["code"]["labels"].values())
+    blob = arpplocks.BLOB
+    assert blob.rstrip(b"\x00")[-8:] == bytes([0, 2, 1, 3, 0xFF, 0xFF, 0xFF, 0xFF])

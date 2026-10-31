@@ -15,6 +15,19 @@
   .capture { image-rendering: pixelated; border-radius: 6px; background: #000; max-width: 100%; height: auto; }
   .hero .capture { width: 256px; flex: 0 1 256px; }
 
+  /* the sound demo, drawn as the unit's screen (js/demo-player.js) */
+  .demo { display: flex; flex-wrap: wrap; gap: .8rem 1.2rem; align-items: center; margin-top: 1.4rem; }
+  .demo-screen { position: relative; flex: 0 1 256px; max-width: 100%; }
+  .demo-screen canvas { display: block; width: 256px; max-width: 100%; height: auto; }
+  .demo-seek { position: absolute; inset: 22% 10% 12%; width: 80%; height: 66%; margin: 0; opacity: 0; cursor: pointer; }
+  .demo-seek:focus-visible { opacity: .35; }
+  .demo-side { flex: 1 1 14rem; display: flex; gap: .8rem; align-items: center; min-width: 0; }
+  .demo-play { flex: none; width: 48px; height: 48px; border-radius: 50%; border: 0; padding: 0;
+    background: var(--accent); color: var(--bg); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+  .demo-play .pause, .demo-play[data-playing="1"] .play { display: none; }
+  .demo-play[data-playing="1"] .pause { display: inline; }
+  .demo-side p { margin: 0; }
+
   .tabs { display: flex; flex-wrap: wrap; gap: .25rem; border-bottom: 1px solid var(--rule); margin: 2rem 0 1.5rem; }
   .tabs button {
     background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
@@ -90,6 +103,21 @@
       <div class="tags">
         <span class="tag untested">alpha 5</span>
         <span class="tag research">OS 1.11 only</span>
+      </div>
+      <div class="demo" data-demo data-title="WAVERIDER DEMO 001" data-duration="120.49" data-solos="0-58,110-120.49"
+           data-peaks=".02,.20,.28,.26,.22,.30,.20,.20,.33,.19,.22,.33,.31,.18,.23,.31,.16,.29,.25,.21,.32,.19,.24,.33,.28,.25,.26,.32,.23,.24,.33,.25,.26,.29,.27,.21,.30,.27,.18,.34,.24,.23,.31,.26,.31,.25,.27,.24,.27,.24,.25,.29,.23,.25,.27,.24,.25,.27,.24,.26,.25,.25,.26,.25,.27,.26,.25,.28,.25,.26,.25,.24,.26,.25,.23,.24,.27,.25,.27,.24,.28,.24,.23,.27,.24,.26,.24,.23,.34,.22,.26,.23,.30,.27,.26,.11">
+        <div class="demo-screen">
+          <canvas class="capture" width="128" height="64" aria-hidden="true"></canvas>
+          <input class="demo-seek" type="range" min="0" max="120.49" step="0.1" value="0" aria-label="Position in the demo">
+        </div>
+        <div class="demo-side">
+          <button type="button" class="demo-play" aria-label="Play the demo">
+            <svg class="play" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2 L14 8 L4 14 Z" fill="currentColor"/></svg>
+            <svg class="pause" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2h4v12H3zM9 2h4v12H9z" fill="currentColor"/></svg>
+          </button>
+          <p class="small">Recorded from the Digitone II over USB audio, with no processing. Waverider plays the drone alone at the start and at the end. The other sounds are the Digitone II's stock machines.</p>
+        </div>
+        <audio preload="none" src="audio/waverider-demo-001.wav"></audio>
       </div>
     </div>
     <img class="capture" src="art/waverider/page2.png" alt="Waverider's page 2: oscillator 2 on the Harm. table" width="256" height="128">
@@ -936,3 +964,4 @@
 
 <script type="module" src="js/app/waverider-page.js"></script>
 <script type="module" src="js/app/glyphs-page.js"></script>
+<script type="module" src="js/demo-player.js"></script>

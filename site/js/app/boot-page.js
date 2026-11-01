@@ -6,76 +6,12 @@
 
 import { $, buildAndOffer, openFirmware, status, wireDrop } from "./shell.js";
 import { replacement } from "../firmware.js";
-import { H, STOCK_TUNNEL, W, apply, asciiFrames, invert, markFromPixels, pixelOf, spinFrames } from "../mods/bootscreen.js";
+import { STOCK_TUNNEL, W, apply, asciiFrames, invert, markFromPixels, spinFrames } from "../mods/bootscreen.js";
 import { GLYPHS } from "../asciiglitch.js";
+import { chimera, drawFrame, loadPicture } from "./boot-picture.js";
 
 const state = { firmware: null, filename: "firmware.syx", luma: null, mark: null, ascii: null, lit: null };
 const INTRO_FRAMES = 175;   // measured on 1.11: the intro routine's second argument
-
-/** A binary PGM (P5) -> 8-bit luminance at its own size. */
-function parsePgm(bytes) {
-  const fields = [];
-  let at = 0;
-  const space = (b) => b === 0x20 || b === 0x0a || b === 0x0d || b === 0x09;
-  while (fields.length < 4) {
-    while (space(bytes[at])) at++;
-    if (bytes[at] === 0x23) { while (bytes[at] !== 0x0a) at++; continue; }   // comment
-    let s = "";
-    while (!space(bytes[at])) s += String.fromCharCode(bytes[at++]);
-    fields.push(s);
-  }
-  at++;
-  const [magic, w, h] = [fields[0], Number(fields[1]), Number(fields[2])];
-  if (magic !== "P5") throw new Error("only binary PGM (P5) is read");
-  return { w, h, data: bytes.subarray(at, at + w * h) };
-}
-
-/** Any picture -> 128 x 64 luminance, fitted inside the screen on black. */
-function fitToScreen(draw, sw, sh) {
-  const canvas = document.createElement("canvas");
-  canvas.width = W; canvas.height = H;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
-  const scale = Math.min(W / sw, H / sh);
-  const dw = sw * scale, dh = sh * scale;
-  draw(ctx, (W - dw) / 2, (H - dh) / 2, dw, dh);
-  const px = ctx.getImageData(0, 0, W, H).data;
-  const luma = new Uint8Array(W * H);
-  for (let i = 0; i < W * H; i++) {
-    luma[i] = Math.round(0.2126 * px[4 * i] + 0.7152 * px[4 * i + 1] + 0.0722 * px[4 * i + 2]);
-  }
-  return luma;
-}
-
-function lumaFromPgm(pgm) {
-  if (pgm.w === W && pgm.h === H) return Uint8Array.from(pgm.data);
-  const src = document.createElement("canvas");
-  src.width = pgm.w; src.height = pgm.h;
-  const img = src.getContext("2d").createImageData(pgm.w, pgm.h);
-  pgm.data.forEach((v, i) => img.data.set([v, v, v, 255], 4 * i));
-  src.getContext("2d").putImageData(img, 0, 0);
-  return fitToScreen((ctx, x, y, w, h) => ctx.drawImage(src, x, y, w, h), pgm.w, pgm.h);
-}
-
-async function loadPicture(file) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  if (/\.pgm$/i.test(file.name)) return lumaFromPgm(parsePgm(bytes));
-  const bitmap = await createImageBitmap(new Blob([bytes]));
-  return fitToScreen((ctx, x, y, w, h) => ctx.drawImage(bitmap, x, y, w, h), bitmap.width, bitmap.height);
-}
-
-/** `upright`: animation frames and tunnel marks are stored upside down (bootscreen.js). */
-function drawFrame(canvas, image, upright = false) {
-  const ctx = canvas.getContext("2d");
-  const out = ctx.createImageData(W, H);
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const v = pixelOf(image, x, upright ? H - 1 - y : y) ? 255 : 0;
-      out.data.set([v, v, v, 255], 4 * (y * W + x));
-    }
-  }
-  ctx.putImageData(out, 0, 0);
-}
 
 const flashing = () => $("modeFlash").checked;
 const ascii = () => $("modeAscii").checked;
@@ -187,8 +123,7 @@ function render() {
 }
 
 async function usePreset() {
-  const res = await fetch("art/chimera.pgm");
-  state.luma = lumaFromPgm(parsePgm(new Uint8Array(await res.arrayBuffer())));
+  state.luma = await chimera();
   render();
 }
 

@@ -6,11 +6,13 @@
         --page docs/mods-compatibility.md --page site/index.html \
         --page site/arp-modes.html --page site/arp.html --page site/boot.html \
         --page site/destinations.html --page site/fx.html --page site/lfo.html \
-        --page site/lfo4.html --page site/transients.html \
+        --page site/lfo4.html --page site/transients.html --page site/compose.html \
         --boots out/mod-pairs
 
 (the tool pages each carry their own mod's row, `<!-- dnfw:matrix-row ID -->`,
 and the index carries the whole table at the top), which tries **every pair of mods, in both orders**, on stock 1.11 (`src/dnfw/mods/matrix.py`).
+The Mod Composer (`site/compose.html`) also carries the whole table. It reads the table to grey out the
+mods that do not combine.
 A table kept by hand is a copy, and it goes stale the first time a mod changes.
 octabam's remixer makes the same choice: its `matrix()` prints from the conflict
 check rather than from a README (`docs/references.md`).

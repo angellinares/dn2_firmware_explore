@@ -1,0 +1,63 @@
+# The checks on every pull request (CONTRIBUTING.md, section 2).
+#
+# The repository is public, so GitHub-hosted runners cost no minutes. The jobs are still
+# kept small: the fast test set only (about 2.5 minutes on a desktop), one Python version,
+# a time limit, and a new push to the same PR cancels the run that is still going.
+#
+# The stock firmware is Elektron's and is not in the repository, so the tests that need it
+# skip here. They run on the maintainers' computers.
+name: checks
+
+on:
+  pull_request:
+    paths-ignore:
+      - '**/*.png'
+      - '**/*.jpg'
+      - '**/*.gif'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install -e ".[dev]"
+      - name: m68k binutils, for the tests that assemble ColdFire code
+        run: sudo apt-get install -y --no-install-recommends binutils-m68k-linux-gnu
+      - name: Fast tests
+        run: python -m pytest -m "not slow" -q
+        env:
+          PYTHONPATH: src
+      - name: Site matches the mods
+        run: python scripts/site_check.py
+
+  prose:
+    # Report only: style findings do not block a merge (CONTRIBUTING.md, section 7).
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Writing check on the changed Markdown files
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          [ -n "$base" ] || base="$(git rev-parse HEAD~1)"
+          files=$(git diff --name-only --diff-filter=AM "$base" HEAD -- '*.md' ':!**/ISSUE_TEMPLATE/**' ':!.github/pull_request_template.md')
+          [ -n "$files" ] || { echo "No changed Markdown files."; exit 0; }
+          python scripts/ste_lint.py --mode descriptive $files

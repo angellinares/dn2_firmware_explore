@@ -11,6 +11,8 @@ from __future__ import annotations
 import pathlib
 import sys
 
+import pytest
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -26,6 +28,7 @@ def test_header_matches_the_map():
         "`python -m dnfw.telemetry.gen`")
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="midi_watch opens winmm")
 def test_decoder_reads_the_same_map():
     """The host decoder names the signals the header defines."""
     import midi_watch
@@ -36,6 +39,7 @@ def test_decoder_reads_the_same_map():
         assert midi_watch.TLM_CC[s["cc"]] == s["name"]
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="midi_watch opens winmm")
 def test_decoder_only_names_signals_on_the_telemetry_channel():
     """A CC 20 from a MIDI track is not telemetry and must not be labelled as
     one -- the instrument sends its own CCs and they would read as findings."""

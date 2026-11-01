@@ -26,8 +26,11 @@ def fx():
         path = sharcemu.path()
     except Exception as exc:                      # noqa: BLE001  (no digikit checkout here)
         pytest.skip(f"no digikit runner: {exc}")
-    import sharc_dn2_fixups as fx
-    fx.bind(str(path / "tools"))
+    try:
+        import sharc_dn2_fixups as fx
+        fx.bind(str(path / "tools"))
+    except ImportError as exc:                    # a digikit checkout without the SHARC runner
+        pytest.skip(f"no digikit runner: {exc}")
     return fx
 
 

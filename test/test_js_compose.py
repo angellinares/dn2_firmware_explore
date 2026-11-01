@@ -41,14 +41,13 @@ def test_a_refused_pair_blocks_the_other_mod():
     assert got == [["layermidi", {"with": ["midiarp"], "full": False}]]
 
 
-def test_a_build_with_waverider_holds_eleven_mods():
-    got = _run('const ids = c.GROUPS.flatMap((g) => g.mods).slice(0, 11);'
-               "return { ids, blocked: [...c.blocked(ids, [])] };")
-    assert "waverider" in got["ids"]
-    assert got["blocked"] == [["reloadconfirm", {"with": [], "full": True}], ["bootscreen", {"with": [], "full": True}]]
-    without = _run('const ids = c.GROUPS.flatMap((g) => g.mods).filter((m) => m !== "waverider").slice(0, 11);'
-                   "return [...c.blocked(ids, [])].map(([m]) => m);")
-    assert without == ["waverider"]
+def test_every_mod_that_combines_fits_beside_waverider():
+    """the /modinfo record holds 26 mods (modinfo.js), more than the site offers: ticking every
+    mod but midiarp (which does not combine with layermidi) blocks nothing for room"""
+    got = _run('const ids = c.GROUPS.flatMap((g) => g.mods).filter((m) => m !== "midiarp");'
+               "return { ids, max: c.MAX_WITH_RECORD, blocked: [...c.blocked(ids, [])] };")
+    assert "waverider" in got["ids"] and got["max"] == 26 and len(got["ids"]) < got["max"]
+    assert not any(why["full"] for _, why in got["blocked"]), got["blocked"]
 
 
 def test_the_command_carries_each_file_option():

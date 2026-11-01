@@ -127,6 +127,43 @@ export function outputName(filename, suffix, mod = null, versions = VERSIONS) {
 }
 
 /**
+ * Reload BYTES, re-verify them, and offer them as NAME only if every check passes -> the bytes,
+ * or null. Throws if they do not load.
+ */
+export async function offer(bytes, { name, into = $("buildVerdict"), note = "" }) {
+  const reloaded = await load(bytes);
+  const checks = await verify(reloaded);
+  showChecks(into, checks);
+
+  if (!checks.every((c) => c.ok)) {
+    status("The rebuilt image does not verify. It is not offered for download.");
+    return null;
+  }
+
+  into.querySelector("a.filebtn")?.remove();
+  const link = document.createElement("a");
+  link.className = "filebtn";
+  link.href = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  link.download = name;
+  link.textContent = `Download ${name}`;
+  link.style.marginTop = ".8rem";
+  guardDownload(link);
+  const checkNote = document.createElement("p");
+  checkNote.className = "hint";
+  checkNote.append("Before you flash it, you can compare it with the stock file on the ");
+  const checkLink = document.createElement("a");
+  checkLink.href = "check.html";
+  checkLink.textContent = "Firmware Check";
+  checkNote.append(checkLink, ".");
+  into.querySelector("p.check-note")?.remove();
+  checkNote.classList.add("check-note");
+  into.append(link, checkNote);
+  link.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  status(`${note}${note ? " — " : ""}${bytes.length.toLocaleString()} bytes.`);
+  return bytes;
+}
+
+/**
  * Build with `replacements`, re-verify from the built bytes, and offer a
  * download only if every check passes.
  *
@@ -146,37 +183,7 @@ export async function buildAndOffer(firmware, replacements, {
   await new Promise((r) => requestAnimationFrame(r));
   try {
     const bytes = await build(firmware, replacements);
-    const reloaded = await load(bytes);
-    const checks = await verify(reloaded);
-    showChecks(into, checks);
-
-    if (!checks.every((c) => c.ok)) {
-      status("The rebuilt image does not verify. It is not offered for download.");
-      return null;
-    }
-
-    const name = outputName(filename, suffix, mod);
-    into.querySelector("a.filebtn")?.remove();
-    const link = document.createElement("a");
-    link.className = "filebtn";
-    link.href = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
-    link.download = name;
-    link.textContent = `Download ${name}`;
-    link.style.marginTop = ".8rem";
-    guardDownload(link);
-    const checkNote = document.createElement("p");
-    checkNote.className = "hint";
-    checkNote.append("Before you flash it, you can compare it with the stock file on the ");
-    const checkLink = document.createElement("a");
-    checkLink.href = "check.html";
-    checkLink.textContent = "Firmware Check";
-    checkNote.append(checkLink, ".");
-    into.querySelector("p.check-note")?.remove();
-    checkNote.classList.add("check-note");
-    into.append(link, checkNote);
-    link.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    status(`${note}${note ? " — " : ""}${bytes.length.toLocaleString()} bytes.`);
-    return bytes;
+    return await offer(bytes, { name: outputName(filename, suffix, mod), into, note });
   } catch (error) {
     showChecks(into, [{ name: "build failed", ok: false,
                         detail: String(error.message ?? error) }]);

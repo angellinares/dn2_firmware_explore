@@ -1,0 +1,401 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mod Composer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<meta name="description" content="Pick several Digitone II mods, add your own files, and build one firmware file.">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/tool.css">
+<style>
+  .wrap.wide { max-width: 76rem; }
+  .compose { display: flex; flex-wrap: wrap; gap: 1.6rem; align-items: flex-start; margin-top: 2rem; }
+  .compose > main { flex: 999 1 34rem; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.4rem; }
+  .compose > aside { flex: 1 1 21rem; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  @media (min-width: 70rem) {
+    .compose > aside { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; overflow-x: hidden; }
+  }
+  .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1.1rem 1.2rem; }
+  .compose > aside .card, .compose > aside .cmd { min-width: 0; overflow-wrap: anywhere; }
+  .compose > aside .verdict div > span:last-child { min-width: 0; }
+  .card > h2 { margin: 0 0 .6rem; border: 0; padding: 0; font-size: 1.08rem; }
+  .card > p { margin: .3rem 0 0; color: var(--ink-soft); font-size: .92rem; }
+  .card .drop { padding: 1.2rem 1rem; margin-top: .6rem; }
+
+  .group-name { font-family: var(--mono); font-size: .7rem; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-soft); padding: .9rem 0 .3rem; }
+  .mod-row { display: flex; gap: .75rem; align-items: flex-start; padding: .65rem .4rem; border-top: 1px solid var(--rule); }
+  .mod-row input[type=checkbox] { width: 18px; height: 18px; margin-top: .2rem; accent-color: var(--accent); flex: none; }
+  .mod-row .glyph { --glyph-scale: 1.5; margin-top: .05rem; }
+  .mod-row .what { flex: 1; min-width: 0; display: grid; gap: .1rem; }
+  .mod-row label { font-weight: 500; cursor: pointer; }
+  .mod-row .id { font-family: var(--mono); font-size: .76rem; color: var(--ink-soft); font-weight: 400; margin-left: .3rem; }
+  .mod-row .blurb { font-size: .86rem; color: var(--ink-soft); }
+  .mod-row .why { font-size: .84rem; color: var(--warn); }
+  .mod-row.blocked label, .mod-row.blocked .blurb, .mod-row.blocked .glyph { opacity: .5; }
+  .mod-row .side { display: flex; flex-direction: column; align-items: flex-end; gap: .3rem; flex: none; }
+  .mod-row .manual { font-size: .84rem; white-space: nowrap; }
+  .pill { font-size: .76rem; white-space: nowrap; padding: .05rem .5rem; border-radius: 999px;
+    background: var(--accent-dim); color: var(--accent); }
+  .pill.needs { background: var(--accent-dim); color: var(--warn); }
+
+  .options { margin: 0 0 .7rem 2.1rem; background: var(--bg); border: 1px solid var(--rule); border-radius: 8px;
+    padding: 1rem; display: grid; gap: .8rem; }
+  .options h3 { margin: 0; font-size: .98rem; }
+  .options p { margin: 0; font-size: .88rem; color: var(--ink-soft); max-width: none; }
+  .options .head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; align-items: baseline; }
+  .options .links { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; font-size: .88rem; }
+  @media (max-width: 40rem) {
+    .options { margin-left: 0; }
+    .card { padding: 1rem .9rem; }
+    .mod-row { flex-wrap: wrap; }
+    .mod-row .side { flex-direction: row; width: 100%; justify-content: flex-start; padding-left: calc(18px + 1.5rem); }
+  }
+
+  .layout { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: .8rem .9rem;
+    display: grid; gap: .45rem; }
+  .layout > label { display: flex; gap: .5rem; align-items: flex-start; font-weight: 600; font-size: .92rem; cursor: pointer; }
+  .layout input { width: 18px; height: 18px; margin-top: .15rem; accent-color: var(--accent); flex: none; }
+  .layout strong { color: var(--ink); }
+
+  .strip { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 4px; }
+  @media (max-width: 48rem) { .strip { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
+  .strip button { font-family: var(--mono); font-size: .66rem; line-height: 1.2; padding: .35rem 0; min-height: 4.6rem;
+    border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    background: var(--panel); color: var(--ink); border: 1px solid var(--rule); }
+  .strip button .n { font-weight: 500; font-size: .74rem; }
+  .strip button .lenbar { display: block; width: 80%; height: 4px; border-radius: 2px; background: var(--rule); }
+  .strip button .lenbar i { display: block; height: 100%; border-radius: 2px; background: currentColor; }
+  .strip button .mark { font-weight: 600; color: var(--warn); min-height: 1.2em; font-size: .62rem; }
+  .strip button.changed { border: 1px dashed var(--accent); background: var(--accent-dim); }
+  .strip button.yours { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .strip button.yours .lenbar { background: rgb(255 255 255 / .3); }
+  .strip button.yours .mark { color: #fff; }
+  :root[data-theme="dark"] .strip button.yours,
+  :root[data-theme="dark"] .strip button.yours .mark { color: #16181c; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .strip button.yours,
+    :root:not([data-theme="light"]) .strip button.yours .mark { color: #16181c; }
+    :root:not([data-theme="light"]) .strip button.yours .lenbar { background: rgb(0 0 0 / .25); }
+  }
+  .strip button[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .legend { display: flex; flex-wrap: wrap; gap: .4rem 1rem; font-size: .78rem; color: var(--ink-soft); }
+  .legend span { display: inline-flex; gap: .35rem; align-items: center; }
+  .legend i { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--rule); background: var(--panel); }
+  .legend i.yours { background: var(--accent); border-color: var(--accent); }
+  .legend i.changed { background: var(--accent-dim); border: 1px dashed var(--accent); }
+
+  .editor { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: .8rem .9rem;
+    display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+  .editor.over { border-color: var(--accent); background: var(--accent-dim); }
+  .editor .wave { flex: 1 1 18rem; min-width: 0; display: grid; gap: .35rem; }
+  .editor .sel-head { display: flex; flex-wrap: wrap; gap: .3rem .7rem; align-items: baseline; }
+  .editor .sel-head b { font-family: var(--mono); font-size: .84rem; color: var(--accent); font-weight: 500; }
+  .editor .sel-head span { font-size: .9rem; font-weight: 500; overflow-wrap: anywhere; }
+  .editor canvas { width: 100%; height: 56px; display: block; border-radius: 4px; background: var(--bg); cursor: pointer; }
+  .editor .fit { font-family: var(--mono); font-size: .74rem; color: var(--ink-soft); }
+  .editor .fit.cut { color: var(--warn); }
+  .editor .side { flex: 1 1 13rem; min-width: 0; display: grid; gap: .5rem; }
+  .editor .row { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .editor .row button, .editor .row .filebtn { font-size: .84rem; padding: .3rem .7rem; }
+  .editor .hint { font-size: .8rem; color: var(--ink-soft); }
+  .tune { display: grid; grid-template-columns: max-content 1fr max-content; gap: .3rem .5rem; align-items: center; font-size: .76rem; }
+  .tune label { font-family: var(--mono); color: var(--ink-soft); text-transform: uppercase; letter-spacing: .06em; }
+  .tune output { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  .tune input[type=range] { width: 100%; accent-color: var(--accent); }
+  .tune button { font-size: .76rem; padding: .15rem .5rem; }
+
+  .tables { display: grid; gap: .7rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); }
+  .table { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: .7rem; display: grid; gap: .5rem; }
+  .table.custom { border: 2px solid var(--accent); }
+  .table h3 { margin: 0; font-size: .95rem; display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; }
+  .table h3 .src { font-family: var(--mono); font-size: .72rem; color: var(--ink-soft); font-weight: 400;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+  .table.custom h3 .src { color: var(--accent); }
+  .table canvas { width: 100%; height: auto; display: block; background: var(--bg); border: 1px solid var(--rule); border-radius: 6px; }
+  .table .pos { display: flex; align-items: center; gap: .6rem; font-family: var(--mono); font-size: .76rem; }
+  .table .pos input { flex: 1; accent-color: var(--accent); }
+  .table .pos output { width: 2.2rem; text-align: right; }
+  .table .row { display: flex; gap: .4rem; flex-wrap: wrap; }
+  .table .row button, .table .row .filebtn { font-size: .8rem; padding: .25rem .6rem; }
+  .table .err { color: #c33; font-size: .8rem; }
+  .table .err:empty { display: none; }
+
+  .boot { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+  .boot canvas { width: 256px; max-width: 100%; aspect-ratio: 2 / 1; image-rendering: pixelated; background: #000;
+    border-radius: 4px; flex: none; }
+  .boot .side { flex: 1 1 15rem; min-width: 0; display: grid; gap: .6rem; font-size: .9rem; }
+  .boot fieldset { border: 0; margin: 0; padding: 0; }
+  .boot legend { font-weight: 600; padding: 0 0 .3rem; }
+  .boot .choice { margin-top: 0; }
+  .boot .row { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .boot .row button, .boot .row .filebtn { font-size: .84rem; padding: .3rem .7rem; }
+  .boot select { font: inherit; font-size: .9rem; background: var(--panel); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 6px; padding: .35rem .5rem; max-width: 18rem; }
+
+  .order { margin: 0; padding: 0; list-style: none; display: grid; gap: .55rem; }
+  .order li { display: flex; gap: .6rem; align-items: baseline; }
+  .order .n { font-family: var(--mono); color: var(--accent); width: 1.2rem; flex: none; }
+  .order .what { display: grid; gap: 0; min-width: 0; font-size: .92rem; }
+  .order .detail { font-size: .8rem; color: var(--ink-soft); }
+  .order .detail.needs { color: var(--warn); }
+  .ok-line { font-size: .86rem; color: var(--ok); margin: .6rem 0 0; }
+  .wait-line { font-size: .86rem; color: var(--warn); background: var(--accent-dim); border-radius: 6px; padding: .5rem .7rem; margin: .6rem 0 0; }
+  .wait-line:empty { display: none; }
+  .small { font-size: .84rem; color: var(--ink-soft); margin: .6rem 0 0; }
+  .card label.name { display: block; font-size: .84rem; color: var(--ink-soft); margin-top: .8rem; }
+  .card input.name { width: 100%; font-family: var(--mono); font-size: .8rem; padding: .45rem .6rem; margin-top: .2rem;
+    background: var(--panel); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; }
+  .card button.primary { width: 100%; margin-top: .8rem; min-height: 44px; }
+  .card .status { display: block; font-size: .86rem; color: var(--ink-soft); margin-top: .5rem; }
+  .card .status:empty { display: none; }
+
+  .files { margin: 0; padding: 0; list-style: none; display: grid; gap: .35rem; font-size: .86rem; }
+  .files li { display: flex; justify-content: space-between; gap: .6rem; }
+  .files .fname { font-family: var(--mono); font-size: .78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .files .where { color: var(--ink-soft); white-space: nowrap; }
+  .files .where.off { opacity: .6; }
+
+  .cmd { background: #16181c; color: #e8e6e1; border-radius: 8px; padding: 1.1rem 1.2rem; display: grid; gap: .6rem; }
+  .cmd .head { display: flex; justify-content: space-between; align-items: center; gap: .8rem; }
+  .cmd h2 { margin: 0; border: 0; padding: 0; font-size: .98rem; color: #e8e6e1; }
+  .cmd button { flex: none; white-space: nowrap; background: transparent; color: #e8e6e1; border-color: #3a3d44; font-size: .84rem; padding: .3rem .8rem; }
+  .cmd button:hover { color: #ffd0a8; border-color: #ffd0a8; }
+  .cmd pre { margin: 0; background: transparent; border: 0; padding: 0; font-size: .78rem; line-height: 1.6;
+    white-space: pre-wrap; word-break: break-all; color: #ffd0a8; }
+  .cmd p { margin: 0; font-size: .8rem; color: #9aa0ab; }
+  .cmd p code { color: #e8e6e1; background: transparent; padding: 0; }
+
+  details.combine { margin-top: 2.5rem; }
+  details.combine summary { cursor: pointer; font-weight: 600; font-size: 1.05rem; }
+</style>
+<div class="wrap wide">
+
+<header class="top">
+  <p class="eyebrow"><a href="index.html">Digitone II Mods</a> / composer</p>
+  <h1>Mod Composer</h1>
+  <p class="lede">
+    Tick the mods that you want. The page checks which ones combine and builds one file. It also
+    shows the command that builds the same file from the repository. Three mods take your own files:
+    audio for the transients, wavetables for the LFO waves and a picture for the boot screen. When
+    you tick one of them, its files open below it. Each mod's own page is its manual.
+  </p>
+</header>
+
+<div class="note">
+  <p><strong>Make sure that you can go back to stock before you flash a modified file.</strong>
+  The Early Start-up Menu flashes the stock firmware over MIDI. Do this one time with the stock
+  file, <em>before</em> you flash a modified file. Back up your +Drive.</p>
+  <p><strong>Go to 1.11 from 1.10E.</strong> If your unit has OS 1.10D, install the stock OS 1.10E
+  first. Then install OS 1.11, stock or modified. Do not go from 1.10D directly to 1.11.</p>
+</div>
+
+<div class="compose">
+<main>
+  <section class="card">
+    <h2>1. Your firmware</h2>
+    <p>An unmodified Digitone&nbsp;II OS&nbsp;1.11 <code>.syx</code> from Elektron.</p>
+    <div class="drop" id="drop">
+      <p><label class="filebtn" for="syx">Choose a .syx file</label>
+        <input type="file" id="syx" accept=".syx,.SYX" hidden></p>
+      <p class="hint">or drag it here</p>
+    </div>
+    <div id="loaded" class="hidden">
+      <dl class="facts" id="facts"></dl>
+      <div class="verdict" id="verdict"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>2. Mods</h2>
+    <p>A mod that does not combine with one you ticked is greyed out, with the reason.</p>
+    <div id="mods"></div>
+    <p class="small">Mods that are still in progress are not here. The home page lists them under
+    <a href="index.html#in-progress">In progress</a>.</p>
+  </section>
+</main>
+
+<aside>
+  <section class="card">
+    <h2>3. Build</h2>
+    <p id="count">No mods ticked.</p>
+    <ol class="order" id="chosen"></ol>
+    <p class="small hidden" id="lastNote">A fourth LFO goes last. It copies the parameter table,
+    so the mods before it change the table first.</p>
+    <p class="ok-line hidden" id="okLine">Every pair combines. <code>dnfw mods matrix</code> checked
+    each pair on stock 1.11.</p>
+    <p class="wait-line" id="waitLine"></p>
+    <label class="name" for="outName">File name</label>
+    <input class="name" type="text" id="outName" value="modded.syx" spellcheck="false">
+    <button class="primary" id="buildBtn" type="button" disabled>Build firmware</button>
+    <span class="status" id="status" role="status"></span>
+    <div class="verdict" id="buildVerdict"></div>
+  </section>
+
+  <section class="card">
+    <h2>Your files</h2>
+    <ul class="files" id="files"></ul>
+    <p class="small">Each file stays with its mod and its slot. Untick a mod and its files stay here
+    until you close the tab. Nothing leaves this browser.</p>
+  </section>
+
+  <section class="cmd" aria-labelledby="cmdHead">
+    <div class="head">
+      <h2 id="cmdHead">The same build from the repository</h2>
+      <button type="button" id="copyBtn">Copy</button>
+    </div>
+    <pre id="cmd"></pre>
+    <p>Run it in a clone of the repository, with your stock file and your own files beside it.</p>
+    <p class="hidden" id="cmdTransients"><code>--from</code> takes a folder of WAV files. It fills
+    the slots from 00, in file name order. The command line has no option for one slot yet.</p>
+    <p class="hidden" id="cmdBoot"><code>--boot-image</code> takes a 128 × 64 PGM file. Save your
+    picture with <strong>Save as PGM</strong>.</p>
+  </section>
+</aside>
+</div>
+
+<div class="hidden" id="panels">
+
+<div class="options" id="panel-transients">
+  <div class="head">
+    <h3 id="trHead">Your transients: 0 of 32 slots replaced</h3>
+    <button type="button" id="trClear" disabled>Revert all to factory</button>
+  </div>
+  <p>Choose a slot, then drop audio on it or choose a file. You can use any format and rate that
+  your browser can play. The page mixes the audio to mono, resamples it to 48&nbsp;kHz and fits it
+  to the length of the slot. Click the waveform to hear it.</p>
+  <div class="layout">
+    <label><input type="checkbox" id="equalSlots">Equal slots: make every slot 107.6&nbsp;ms</label>
+    <p><strong>Off (the default):</strong> each slot keeps its factory length: 50, 100 or
+    150&nbsp;ms. Choose a slot that is long enough for your sample. The factory transients that you
+    do not replace sound exactly as before.</p>
+    <p><strong>On:</strong> every slot is 107.6&nbsp;ms, 5,164 samples. Every sample gets the same
+    space. But the build changes the factory transients that you do not replace. It cuts the 8 of
+    150&nbsp;ms to 107.6&nbsp;ms, with a short fade. It pads the other 24 with silence: the 3 of
+    50&nbsp;ms, and the 21 of 100&nbsp;ms by 7.6&nbsp;ms each. The slots below mark them.</p>
+    <p>You can change this before you build. The page fits your samples again to the new lengths.</p>
+  </div>
+  <div class="strip" id="strip" role="group" aria-label="The 32 transient slots"></div>
+  <div class="legend">
+    <span><i class="yours"></i>yours</span>
+    <span><i></i>factory</span>
+    <span><i class="changed"></i>cut or pad: a factory slot that equal slots change</span>
+    <span>Each slot shows its number, its TRAN value (4 × slot), a bar for its length and the
+    length in ms.</span>
+  </div>
+  <div class="editor" id="editor">
+    <div class="wave">
+      <div class="sel-head"><b id="selHead"></b><span id="selName"></span></div>
+      <canvas id="selWave" width="640" height="112" title="Click to hear this slot"></canvas>
+      <div class="fit" id="selFit"></div>
+      <div class="hint" id="selNote"></div>
+    </div>
+    <div class="side">
+      <div class="tune" id="selTune"></div>
+      <div class="row">
+        <button type="button" id="selPlay">Play</button>
+        <label class="filebtn" for="selFile" id="selFileLabel">Choose a file</label>
+        <input type="file" id="selFile" accept="audio/*" hidden>
+        <button type="button" id="selRevert">Revert to factory</button>
+      </div>
+      <div class="hint" id="selNext"></div>
+    </div>
+  </div>
+  <div class="links">
+    <a href="transients.html">All 32 slots at once on the Transient Swapper page</a>
+  </div>
+</div>
+
+<div class="options" id="panel-lfowaves">
+  <h3 id="lfoHead">Your wavetables: all 3 ours</h3>
+  <p><code>POS</code> sweeps a table of 7 frames, blended. Keep ours, or drop your own on a table:
+  a WAV wavetable as most wavetable editors export it, a single-cycle WAV or a JSON table. The page
+  reduces any table to 7 frames of 32 points.</p>
+  <div class="tables" id="tables"></div>
+  <div class="links">
+    <a href="bench.html">No wavetable? Draw one from a formula on the LFO Shape Bench</a>
+    <a href="lfo.html">All seven waves on the LFO Waves page</a>
+  </div>
+</div>
+
+<div class="options" id="panel-bootscreen">
+  <div class="boot">
+    <canvas id="bootFrame" width="128" height="64" role="img" aria-label="The mark on the 128 by 64 screen"></canvas>
+    <div class="side">
+      <fieldset>
+        <legend>The mark</legend>
+        <div class="choice">
+          <label><input type="radio" name="bootSrc" id="bootChimera" checked><span>Chimera (ours)</span></label>
+          <label><input type="radio" name="bootSrc" id="bootOwn"><span>Your picture</span></label>
+        </div>
+        <input type="file" id="bootFile" accept="image/*,.pgm" hidden>
+      </fieldset>
+      <label for="bootMode">Animation</label>
+      <select id="bootMode">
+        <option value="still">Tunnel, still mark</option>
+        <option value="flash" selected>Tunnel, flashing mark</option>
+        <option value="ascii">ASCII glitch</option>
+        <option value="spin">Spin (1966)</option>
+      </select>
+      <p id="bootNote">The build uses the chimera. Any picture works: the page fits it to
+      128 × 64 and cuts it to black and white at threshold 128.</p>
+      <div class="row hidden" id="bootSaveRow"><label class="filebtn" for="bootFile">Choose another picture</label>
+        <button type="button" id="bootSave">Save as PGM</button></div>
+      <div class="links"><a href="boot.html">Threshold, invert, timing and tunnel density on the Boot Screen page</a></div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<details class="combine" id="compatibility">
+  <summary>Which mods combine</summary>
+  <p>The table shows every pair of mods, tried in both orders on stock 1.11.
+  <code>dnfw mods matrix</code> generates it. The page reads it to grey out the mods that do not
+  combine. &#10003;: the two mods combine in either order. &#10003;*: they combine in one order only,
+  and the page uses that order. &#10007;: they cannot combine. To see the reason, put the pointer on
+  a cell. Some mods in the table are not on this page yet.</p>
+<!-- dnfw:matrix -->
+<div class="scroll">
+<table class="matrix">
+  <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>arpscale</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>degreetranspose</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfolength</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>reloadconfirm</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
+  <tbody>
+    <tr><th scope="row">Arpeggiator SHUF and RAND <code>arpmodes</code></th><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">Arpeggiator p-locks <code>arpplocks</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">Arp offsets in scale <code>arpscale</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">Boot screen <code>bootscreen</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">Degree transpose <code>degreetranspose</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">LFO modulation of the FX <code>fxmod</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-order" title="fxmod must be applied first">&#10003;*</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">Layering onto MIDI tracks <code>layermidi</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="refused by hand: they fight over one feature">&#10007;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">A fourth LFO <code>lfo4</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-order" title="fxmod must be applied first">&#10003;*</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-order" title="lfowaves must be applied first">&#10003;*</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-order" title="moddest must be applied first">&#10003;*</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">LFO ONE/HALF fix <code>lfolength</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">New LFO waveforms <code>lfowaves</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-order" title="lfowaves must be applied first">&#10003;*</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">Arpeggiator on MIDI tracks <code>midiarp</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="refused by hand: they fight over one feature">&#10007;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">More modulation destinations <code>moddest</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-order" title="moddest must be applied first">&#10003;*</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">Reload confirm <code>reloadconfirm</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">Song guard <code>songguard</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">FM drum transients <code>transients</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">USB SysEx probe (diagnostic) <code>usbprobe</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">Waverider, a sixth machine <code>waverider</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td></tr>
+  </tbody>
+</table>
+</div>
+<!-- /dnfw:matrix -->
+
+</details>
+
+<footer>
+  <p>
+    Part of <a href="https://github.com/angellinares/dn2_firmware_explore">dn2_firmware_explore</a>,
+    AGPL-3.0-or-later. Not affiliated with or endorsed by Elektron. The page applies each mod in
+    turn, as its own page does, and checks the file before it offers it.
+  </p>
+  <p>Site build <span data-site-build>web-local</span>. Quote it when you report a problem with a build.</p>
+  <script type="module" src="js/build.js"></script>
+</footer>
+
+</div>
+
+<script type="module" src="js/app/compose-page.js"></script>
+<script type="module" src="js/app/glyphs-page.js"></script>

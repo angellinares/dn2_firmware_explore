@@ -29,11 +29,14 @@ export const RUN = {
   waverider: async (f) => { const r = await waverider.apply(f); return new Map([[3, r.main], [7, r.dsp]]); },
 };
 
-/** STOCK (a loaded firmware) with MODS applied in order, page after page -> the built .syx bytes. */
-export async function applyInOrder(stock, mods) {
+/**
+ * STOCK (a loaded firmware) with MODS applied in order, page after page -> the built .syx bytes.
+ * RUN gives each mod's step. The composer passes its own for the mods that take the user's files.
+ */
+export async function applyInOrder(stock, mods, run = RUN) {
   let firmware = stock, bytes = null;
   for (const mod of mods) {
-    const sections = await RUN[mod](firmware);
+    const sections = await run[mod](firmware);
     bytes = await build(firmware, new Map([...sections].map(([id, c]) => [id, replacement(firmware, id, c, mod)])));
     firmware = await load(bytes);
   }

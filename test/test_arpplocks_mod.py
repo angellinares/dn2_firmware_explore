@@ -68,7 +68,22 @@ def test_a_knob_push_in_the_arp_menu_reaches_the_clear(dn2_111):
     stock = dn2_111.container.find(arpplocks.SECTION).unpack()
     assert stock[at:at + 6] == bytes.fromhex("0682ffffffd7")
     assert content[at:at + 6] == b"\x4e\xf9" + struct.pack(">I", push)
-    # push_hook comes after every earlier routine, so none of them moved
-    assert push == max(arpplocks.SPEC["code"]["labels"].values())
-    blob = arpplocks.BLOB
-    assert blob.rstrip(b"\x00")[-8:] == bytes([0, 2, 1, 3, 0xFF, 0xFF, 0xFF, 0xFF])
+    labels = arpplocks.SPEC["code"]["labels"]
+    # push_hook and its gates come after every earlier routine, so none of them moved
+    assert push > max(v for k, v in labels.items() if not k.startswith(("push", "pg_")))
+    # the knob table sits just before the first gate
+    at_k = labels["pg_ui_mode"] - arpplocks.CODE_VA - 8
+    assert arpplocks.BLOB[at_k:at_k + 8] == bytes([0, 2, 1, 3, 0xFF, 0xFF, 0xFF, 0xFF])
+
+
+def test_a_turn_while_the_knob_is_down_goes_through_the_gate(dn2_111):
+    """0.1.2 (#317 on the unit): a real knob turns a little while pushed, and that
+    turn locked the value again. Each arp setter call in the menu now goes to a gate
+    (pg_ui_*) that drops the turn while push_hook holds the knob's bit."""
+    import struct
+    labels = arpplocks.SPEC["code"]["labels"]
+    content = arpplocks.apply(dn2_111).payloads[arpplocks.SECTION]
+    for site, gate in ((0x40018EEE, "pg_ui_mode"), (0x40018F56, "pg_ui_spd"),
+                       (0x40018FBE, "pg_ui_rng"), (0x40019026, "pg_ui_nlen")):
+        at = site - arpplocks.BASE
+        assert content[at:at + 6] == b"\x4e\xb9" + struct.pack(">I", labels[gate]), gate

@@ -38,6 +38,18 @@ Otherwise it is stock. The code is added at the end of the chunk, so no earlier
 address moves. Measured in the emulator (`scripts/emu_arp_push_clear.py`, 11/11;
 the old build fails 6, and its stock HARM control passes on both).
 
+**Fixed 2026-11-01, 0.1.2: one push always removes the lock.** On the instrument
+(owner, 2026-11-01, build i317), a push sometimes left the lock in place until a
+second push. A real knob turns a little while it is pushed. The press cleared the
+lock, then that turn reached the ui_* setter and locked the value again (sound value
++ delta). A stock page ignores a turn while its knob is down. Now push_hook sets the
+knob's bit in `push_down` (a word in the CODE chunk, 0 at every start) on a press
+with a trig held, and clears it on the release. The menu's setter calls go through
+`pg_ui_*` gates, which drop a turn while the bit is set and a trig is held. A turn
+after the release locks again, as on a stock page. `scripts/emu_arp_push_clear.py`
+adds a one-count turn while the knob is down, for HARM and each arp knob: 23/23 on
+0.1.2; 0.1.1 fails the 4 arp nudge checks and passes the HARM ones.
+
 ## How it applies
 
 The code is assembled ahead of time (`scripts/gen_arpplocks_code.py` ->

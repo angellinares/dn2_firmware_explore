@@ -8,6 +8,7 @@
 
 import { build, load, replacement } from "../firmware.js";
 import * as arpmodes from "./arpmodes.js";
+import * as arpscale from "./arpscale.js";
 import * as fxmod from "./fxmod.js";
 import * as layermidi from "./layermidi.js";
 import * as lfo4 from "./lfo4.js";
@@ -22,9 +23,9 @@ const MAIN_OS = (mod) => async (f) => new Map([[3, mod.apply(f).content]]);
 
 /** id -> async (firmware) => Map(section id -> new content). */
 export const RUN = {
-  arpmodes: MAIN_OS(arpmodes), fxmod: MAIN_OS(fxmod), layermidi: MAIN_OS(layermidi), lfo4: MAIN_OS(lfo4),
-  lfolength: MAIN_OS(lfolength), lfowaves: MAIN_OS(lfowaves), midiarp: MAIN_OS(midiarp), moddest: MAIN_OS(moddest),
-  reloadconfirm: MAIN_OS(reloadconfirm),
+  arpmodes: MAIN_OS(arpmodes), arpscale: MAIN_OS(arpscale), fxmod: MAIN_OS(fxmod), layermidi: MAIN_OS(layermidi),
+  lfo4: MAIN_OS(lfo4), lfolength: MAIN_OS(lfolength), lfowaves: MAIN_OS(lfowaves), midiarp: MAIN_OS(midiarp),
+  moddest: MAIN_OS(moddest), reloadconfirm: MAIN_OS(reloadconfirm),
   waverider: async (f) => { const r = await waverider.apply(f); return new Map([[3, r.main], [7, r.dsp]]); },
 };
 

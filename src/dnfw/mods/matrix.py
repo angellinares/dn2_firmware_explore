@@ -43,6 +43,12 @@ NOTES: dict[frozenset, str] = {
         "Pentatonic Minor from a trig, the toggle off equal to stock, C major held live). "
         "arpmodes enters the arp step's tail at 0x4002a376, before arpscale's hook at "
         "0x4002a390, so SHUF and RAND offsets should move by degrees too; not run.",
+    frozenset(("arpplocks", "arpscale")):
+        "arpscale's marks (steps in semitones) are in each sound's value slot 100, and a trig with "
+        "arp locks plays a shadow that arpplocks copies from the whole sound (shadow_apply, 1,163 "
+        "bytes), so a locked trig keeps its sound's marks. The marks are not lockable. arpplocks' "
+        "--all build, which is not in the registry, would lock the mutes through the same call as "
+        "arpscale's [UP]/[DOWN] (0x400197e8) and would not apply with it. Not run.",
     frozenset(("arpscale", "reloadconfirm")):
         "emulator, 2026-10-13: each appends a PERSONALIZE item from its own site in the "
         "constructor (arpscale after the last stock item, 0x40098630; reloadconfirm at the "

@@ -111,7 +111,15 @@ def resolve(var: str, *defaults: pathlib.Path) -> pathlib.Path:
     """-> $VAR if set, else the first of DEFAULTS that exists, else the first."""
     if os.environ.get(var):
         return pathlib.Path(os.environ[var]).expanduser()
-    return next((d for d in defaults if d.exists()), defaults[0])
+    return next((d for d in defaults if _exists(d)), defaults[0])
+
+
+def _exists(path: pathlib.Path) -> bool:
+    """Path.exists, with a path we may not look at (/root as a normal user on Linux) as missing."""
+    try:
+        return path.exists()
+    except PermissionError:
+        return False
 
 
 def local(rel: str, root: pathlib.Path = ROOT, main: pathlib.Path = MAIN) -> list[pathlib.Path]:

@@ -15,13 +15,12 @@ import { VERSIONS } from "../mods/versions.js";
 import { flagFor } from "../mods/availability.js";
 import { COUNT, EQUAL_SAMPLES, extract, fit as fitEntry, lengths, toEntry, toFloat } from "../mods/transients.js";
 import { TABLES } from "../mods/lfowaves.js";
-import { H, W, markFromPixels } from "../mods/bootscreen.js";
+import { W, markFromPixels } from "../mods/bootscreen.js";
 import { fit } from "../audio.js";
 import { toBytes } from "../wavetable.js";
-import { toPgm } from "../pgm.js";
 import { fitText, ms, paint, play, readSample, tuning } from "./transient-view.js";
 import { freshSlots, tableCards } from "./lfo-tables.js";
-import { CHIMERA, chimera, drawFrame, loadPicture } from "./boot-picture.js";
+import { CHIMERA, chimera, drawFrame, loadPicture, savePgm } from "./boot-picture.js";
 
 /** id -> [name, what it does, its page]. */
 const MODS = {
@@ -480,12 +479,7 @@ $("bootFile").addEventListener("change", async (e) => {
   changed();
   status(note);
 });
-$("bootSave").addEventListener("click", () => {
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(new Blob([toPgm(lit(boot.own.luma), W, H)], { type: "image/x-portable-graymap" }));
-  link.download = pgmName();
-  link.click();
-});
+$("bootSave").addEventListener("click", () => savePgm(lit(boot.own.luma), pgmName()));
 
 changed();
 chimera().then((l) => { boot.chimera = l; changed(); }, () => status("The chimera picture did not load."));

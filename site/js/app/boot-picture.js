@@ -6,7 +6,7 @@
  */
 
 import { H, W, pixelOf } from "../mods/bootscreen.js";
-import { parsePgm } from "../pgm.js";
+import { parsePgm, toPgm } from "../pgm.js";
 
 /** The mark this site ships, and what the command line reads it from. */
 export const CHIMERA = "art/chimera.pgm";
@@ -63,4 +63,15 @@ export function drawFrame(canvas, image, upright = false) {
     }
   }
   ctx.putImageData(out, 0, 0);
+}
+
+/**
+ * Save LIT as a 128 x 64 PGM named NAME, the file `dnfw mods apply --boot-image` reads. A picture,
+ * not firmware, so it does not go through the notice before a download (notice.js).
+ */
+export function savePgm(lit, name) {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([toPgm(lit, W, H)], { type: "image/x-portable-graymap" }));
+  link.download = name;
+  link.click();
 }

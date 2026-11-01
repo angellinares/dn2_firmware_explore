@@ -218,8 +218,9 @@ def _short(pair: Pair) -> str:
         return why.split(" (")[0]
     if "candidate parameter tables" in why:
         return "moddest must be applied first"
-    if "parameter table has been moved" in why:
-        return "fxmod must be applied first"
+    m = re.search(r"parameter table has been moved.*apply (\w+) first", why)
+    if m:  # fxmod and lfowaves both refuse this way, each naming itself
+        return f"{m.group(1)} must be applied first"
     m = re.match(r"(\w+) refuses after (\w+)", why)
     if m:  # the full refusal, with its addresses, stays in the table cell's title
         return (f"{m.group(1)} must be applied first" if pair.order_only

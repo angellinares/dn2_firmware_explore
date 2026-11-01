@@ -58,3 +58,9 @@ def test_a_pages_row_is_that_row_of_the_table(found):
     assert len(rows) == 1 and "<code>lfo4</code>" in rows[0]
     assert rows[0] in full.splitlines()
     assert row.splitlines()[:3] == full.splitlines()[:3]
+
+
+def test_a_moved_table_refusal_names_the_mod_that_refused(found):
+    """fxmod and lfowaves both refuse after lfo4 has moved the parameter table; the
+    short reason names the mod in the refusal, not fxmod for both."""
+    assert matrix._short(found[("lfo4", "lfowaves")]) == "lfowaves must be applied first"

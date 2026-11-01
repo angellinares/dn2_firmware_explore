@@ -16,9 +16,15 @@ table (80 records of 258 B, the step lock counts at +22256) with `peek`:
    trig held: nothing changes.
 3. **Several held trigs.** MODE locked on TRIG 1, 2 and 3; TRIG 1 and 2 held, push
    A: their locks go, TRIG 3's stays.
+4. **A nudge while the knob is down** (on the unit, 2026-11-01: a real knob turns
+   a little when it is pushed). For HARM and for each arp knob A..D: TRIG 1 held,
+   the knob turned (a lock, and the knob's count filter awake), pushed, turned one
+   count while down, released. The lock must be gone. Then, with TRIG 1 held, a
+   turn after the release locks again, as on a stock page.
 
-`--expect-fail` is for a build without the fix: step 1 must still pass and the
-arp locks must survive every push.
+Builds without the fix: `--expect-fail` for 0.1.0 (no push clear) and
+`--expect-nudge-fail` for 0.1.1 (it clears on the press, and the nudge locks
+again). The HARM controls must pass on every build.
 """
 
 from __future__ import annotations
@@ -138,6 +144,32 @@ def main(argv: list[str]) -> int:
         check("MODE locked on steps 1..3", snap[0][0].get(mode, {}).keys() == {0, 1, 2}, snap[0][0])
         check("steps 1 and 2 cleared, step 3 kept", snap[1][0].get(mode, {}).keys() == {2}
               and snap[1][1][:3] == b"\x00\x00\x01", snap[1])
+
+    nudge_fail = "--expect-nudge-fail" in argv
+
+    def nudged(enc: int) -> str:
+        """ENC turned with TRIG 1 held, pushed, turned one count while down, released; PEEK;
+        then turned again with TRIG 1 held; PEEK."""
+        push = PUSH_A + enc - 1
+        return (f"{hold}{turn(enc)},press:{push},wait:20M,turn:{enc}:1,wait:20M,release:{push},"
+                f"wait:30M,{off},PEEK,{hold}{turn(enc)},{off},PEEK")
+
+    print("nudge: HARM pushed, turned one count while down, released")
+    snap = snapshots(image, f"tap:{RECORD},wait:40M,{nudged(5)}")
+    check("HARM: nudge while down, the lock is gone", not snap[0][0], snap[0])
+    check("HARM: a turn after the release locks again", (29, 0) in snap[1][0], snap[1][0])
+    if not broken:
+        print("nudge: each arp knob pushed, turned one count while down, released"
+              + ("  (0.1.1: expected to lock again)" if nudge_fail else ""))
+        snap = snapshots(image, f"tap:{RECORD},wait:40M,tap:{ARP},wait:40M,"
+                                + ",".join(nudged(enc) for enc in (1, 2, 3, 4)))
+        for n, rec in enumerate((mode, spd, rng, nlen)):
+            knob, gone, back = "ABCD"[n], snap[2 * n][0], snap[2 * n + 1][0]
+            if nudge_fail:
+                check(f"knob {knob}: the nudge locks again (the bug)", rec in gone, gone)
+            else:
+                check(f"knob {knob}: nudge while down, the lock is gone", rec not in gone, gone)
+                check(f"knob {knob}: a turn after the release locks again", rec in back, back)
 
     print(f"\n{'all passed' if not failures else str(len(failures)) + ' FAILED: ' + ', '.join(failures)}")
     return 1 if failures else 0

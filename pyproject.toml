@@ -13,7 +13,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "numpy", "pillow", "capstone"]
 
 [project.scripts]
 dnfw = "dnfw.cli.main:main"

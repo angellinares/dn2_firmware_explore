@@ -1,7 +1,8 @@
 """A website build is the CLI's build: the same mods give the same image.
 
-`js_build_check.mjs` builds each mod set the way the website's pages do, page after page.
-`dnfw mods apply` builds the same set. Every section must depack to the same bytes. The one
+`js_build_check.mjs` builds each mod set the way the Mod Composer does (site/js/mods/compose.js),
+which runs the website's pages one after the other. `dnfw mods apply` builds the same set, with the
+arguments the composer shows for it (compose.command). Every section must depack to the same bytes. The one
 allowed difference is the /modinfo record's build part (tag, commit, the mods list and its code
 hashes, the image id, the hash), and both records must pass DNX's check.
 
@@ -15,6 +16,8 @@ the fill that `dnfw mods apply` runs after the mods. The per-mod tests compared 
 payloads, before that step, so nothing saw it. A new mod or a new build step goes in ORDERS.
 """
 
+import json
+import math
 import os
 import pathlib
 import shutil
@@ -40,7 +43,15 @@ ORDERS = [
     # in the factory sizes and with equal slots (transients-equal = --equal-slots, 2026-10-24)
     ["transients"], ["transients", "waverider"], ["waverider", "transients"],
     ["transients-equal"], ["transients-equal", "waverider"], ["waverider", "transients-equal"],
+    # the Mod Composer's file options (2026-11-01): the boot screen's four animations on the chimera,
+    # a wavetable of the user's, and the composer's own sets with every mod that takes files
+    ["bootscreen"], ["bootscreen-still"], ["bootscreen-ascii"], ["bootscreen-spin"], ["lfowaves-custom"],
+    ["bootscreen", "lfo4"], ["waverider", "transients", "lfowaves-custom", "bootscreen", "lfo4"],
+    # and the most mods a build with Waverider holds: 11, the /modinfo record's limit
+    ["waverider", "transients-equal", "fxmod", "lfowaves", "moddest", "lfolength", "midiarp", "arpmodes",
+     "reloadconfirm", "bootscreen-spin", "lfo4"],
 ]
+CHIMERA = ROOT / "site" / "art" / "chimera.pgm"
 NAME = "-".join
 
 
@@ -54,24 +65,27 @@ def built(tmp_path_factory):
     tmp = tmp_path_factory.mktemp("js_build")
     (tmp / "web").mkdir()
     hits = _transients(tmp)
+    table = tmp / "table.json"
+    table.write_text(json.dumps({"frames": [[math.sin(2 * math.pi * (k + 1) * i / 64) for i in range(64)]
+                                            for k in range(5)]}), encoding="utf-8")
     with stage("website builds", total=1) as web:
         done = subprocess.run([node, str(HARNESS), "--syx", str(_stock_syx(tmp)), "--out", str(tmp / "web"),
-                               "--transients", str(tmp / "hits.bin"),
+                               "--transients", str(tmp / "hits.bin"), "--transients-dir", str(hits),
+                               "--wavetable", str(table), "--boot-image", str(CHIMERA),
                                *[a for o in ORDERS for a in ("--order", ",".join(o))]],
                               capture_output=True, text=True, cwd=ROOT)
         web.advance(detail=f"{len(ORDERS)} orders")
     assert done.returncode == 0, done.stderr
+    composer = json.loads((tmp / "web" / "args.json").read_text(encoding="utf-8"))
     # This checkout's dnfw, not an installed one: in a worktree, the editable install is the main checkout's.
     env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
     with stage("CLI builds", total=len(ORDERS)) as cli_stage:
         for order in ORDERS:
             cli_stage.update(step=NAME(order))
+            out = tmp / f"{NAME(order)}_DN2_1.11.syx"
+            argv = [{"STOCK": str(STOCK_111), "OUT": str(out)}.get(a, a) for a in composer[NAME(order)]]
             cli = subprocess.run([sys.executable, "-c", "import sys; from dnfw.cli.main import main; sys.exit(main(sys.argv[1:]))", "mods", "apply",
-                                  *[a for m in order for a in ("--mod", m.removesuffix("-equal"))],
-                                  *(["--from", str(hits)] if any(m.startswith("transients") for m in order) else []),
-                                  *(["--equal-slots"] if "transients-equal" in order else []), str(STOCK_111),
-                                  "-o", str(tmp / f"{NAME(order)}_DN2_1.11.syx")],
-                                 capture_output=True, text=True, cwd=ROOT, env=env)
+                                  *argv], capture_output=True, text=True, cwd=ROOT, env=env)
             assert cli.returncode == 0, f"{order}: {cli.stdout[-800:]}{cli.stderr[-800:]}"
             cli_stage.advance()
     return tmp

@@ -54,21 +54,22 @@ def test_the_fill_is_the_python_fill_byte_for_byte(run):
 def test_the_filled_record_passes_dnx_s_check(run):
     from dnfw.mods import modinfo
     from dnfw.waverider.store import xxh32
-    at = run["once"].find(modinfo.MAGIC + bytes([0, 1, 1, 0]))
-    rec = run["once"][at:at + modinfo.BYTES]
-    assert int.from_bytes(rec[252:256], "big") == xxh32(rec[:252])      # DNX's rule
+    at = modinfo.find(run["once"])
+    rec = modinfo.record(run["once"], at)
+    n = len(rec)
+    assert int.from_bytes(rec[n - 4:], "big") == xxh32(rec[:n - 4])     # DNX's rule: the hash at bytes - 4
     info = modinfo.parse(rec)
     assert info["ok"] and info["filled"], info
     zeroed = bytearray(run["once"])
     zeroed[at + 20:at + 24] = bytes(4)
-    zeroed[at + 252:at + 256] = bytes(4)
+    zeroed[at + n - 4:at + n] = bytes(4)
     assert info["image_id"] == xxh32(bytes(zeroed))
 
 
 def test_a_second_mod_keeps_the_list_and_refills(run):
     from dnfw.mods import modinfo
-    at = run["twice"].find(modinfo.MAGIC + bytes([0, 1, 1, 0]))
-    info = modinfo.parse(run["twice"][at:at + modinfo.BYTES])
+    at = modinfo.find(run["twice"])
+    info = modinfo.parse(modinfo.record(run["twice"], at))
     assert info["ok"], info
     assert [m for m, _ in info["mods"]] == ["waverider", "fxmod"]
     assert info["tag"] == "web-waverider-fxmod"

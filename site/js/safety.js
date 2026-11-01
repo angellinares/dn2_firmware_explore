@@ -271,12 +271,13 @@ function record(main) {
   const title = "The /modinfo record checks out";
   const at = modinfo.find(main);
   if (at === null) return [item("record", title, "skip", "this image has no /modinfo record"), [], ""];
-  const info = modinfo.parse(main.subarray(at, at + modinfo.BYTES));
+  const rec = modinfo.record(main, at);
+  const info = modinfo.parse(rec);
   if (!info.filled) return [item("record", title, "warn", "the record is present but was never filled"), [], ""];
   if (!info.ok) return [item("record", title, "fail", "the record's hash does not match its bytes"), [], ""];
   const zeroed = main.slice();
   zeroed.fill(0, at + 20, at + 24);
-  zeroed.fill(0, at + 252, at + 256);
+  zeroed.fill(0, at + rec.length - 4, at + rec.length);
   if (modinfo.xxh32(zeroed) !== info.imageId) {
     return [item("record", title, "fail", "the record's image id does not match MAIN OS: "
                  + "something changed MAIN OS after the record was written"), [], ""];
@@ -291,7 +292,7 @@ function canonical(main, baseLength) {
   const chunks = parseArea(main.subarray(baseLength)).map(([cid, data]) => {
     const at = modinfo.find(data);
     const out = data.slice();
-    if (at !== null) out.fill(0, at, at + modinfo.BYTES);
+    if (at !== null) out.fill(0, at, at + modinfo.sizeAt(data, at));
     return [cid, out];
   });
   const key = ([cid, data]) => cid + ":" + Array.from(data, (b) => b.toString(16).padStart(2, "0")).join("");

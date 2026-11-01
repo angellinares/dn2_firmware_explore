@@ -48,14 +48,14 @@ function codeChunks(main) {
 /** MAIN OS C with its record's mods list set to MODS, and its image id and hash written again: a
  * record that checks out but does not describe the image. */
 function relist(c, mods) {
-  const at = modinfo.find(c);
+  const at = modinfo.find(c), n = modinfo.sizeAt(c, at), slots = modinfo.modSlots(n);
   c[at + 68] = mods.length;
-  c.fill(0, at + 72, at + 248);
-  mods.forEach((m, k) => c.set(new TextEncoder().encode(m), at + 72 + 16 * k));
+  slots.forEach((p) => c.fill(0, at + p, at + p + 16));
+  mods.forEach((m, k) => c.set(new TextEncoder().encode(m), at + slots[k]));
   c.fill(0, at + 20, at + 24);
-  c.fill(0, at + 252, at + 256);
+  c.fill(0, at + n - 4, at + n);
   put32(c, at + 20, modinfo.xxh32(c));
-  put32(c, at + 252, modinfo.xxh32(c.subarray(at, at + 252)));
+  put32(c, at + n - 4, modinfo.xxh32(c.subarray(at, at + n - 4)));
 }
 
 const cases = {

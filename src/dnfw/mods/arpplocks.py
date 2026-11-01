@@ -27,6 +27,29 @@ stayed 1 after FUNC + TRIG before, and is 0 after, as with a stock p-lock (the
 control). `scripts/emu_arp_plocks.py` checks it (45/45; the old build fails the new
 check). A quick tap leaving a locked lock trig in place is stock behaviour.
 
+**Fixed 2026-11-01 (issue #317): a held trig plus a knob push removes an arp lock.**
+On the other pages, a push with a trig held removes that knob's lock (`0x40064f90`
+walks the held steps; `0x4003d00e` clears through the track's slot index). The
+ARPEGGIATOR menu's key handler (`0x40019716`) takes a push (codes 41..48, at
+`0x4001975c`) and does nothing with it, and an arp lock has no index entry, so the
+lock stayed. `push_hook` replaces that `addi.l #-41,%d2`: with a trig held, a press
+of A, B, C or D clears MODE, SPEED, RANGE or N.LEN on every held step and recounts.
+Otherwise it is stock. The code is added at the end of the chunk, so no earlier
+address moves. Measured in the emulator (`scripts/emu_arp_push_clear.py`, 11/11;
+the old build fails 6, and its stock HARM control passes on both).
+
+**Fixed 2026-11-01, 0.1.2: one push always removes the lock.** On the instrument
+(owner, 2026-11-01, build i317), a push sometimes left the lock in place until a
+second push. A real knob turns a little while it is pushed. The press cleared the
+lock, then that turn reached the ui_* setter and locked the value again (sound value
++ delta). A stock page ignores a turn while its knob is down. Now push_hook sets the
+knob's bit in `push_down` (a word in the CODE chunk, 0 at every start) on a press
+with a trig held, and clears it on the release. The menu's setter calls go through
+`pg_ui_*` gates, which drop a turn while the bit is set and a trig is held. A turn
+after the release locks again, as on a stock page. `scripts/emu_arp_push_clear.py`
+adds a one-count turn while the knob is down, for HARM and each arp knob: 23/23 on
+0.1.2; 0.1.1 fails the 4 arp nudge checks and passes the HARM ones.
+
 ## How it applies
 
 The code is assembled ahead of time (`scripts/gen_arpplocks_code.py` ->
@@ -115,4 +138,5 @@ def ram() -> list[Extent]:
 # cave; in the chunk it was at 0x467c8794 and, since efec5d7 (a lock trig with arp locks
 # can be removed again) moved the code, it is at 0x467c87bc: disassembled at 0x467c87b8.
 # The place shifts with the code, so a change to the chunk needs this checked again.
+# 2026-11-01: push_hook went after it, at 0x467c87c0, so the place is the same.
 NOT_RAM = (0x467C87BC,)

@@ -63,7 +63,16 @@ UNPUBLISHED = _first("0.1.0", "Not published on the site yet.")
 # Newest first.
 HISTORY: dict[str, tuple[Release, ...]] = {
     "arpmodes": PUBLISHED,
-    "arpplocks": UNPUBLISHED,
+    "arpplocks": (
+        Release("0.1.2", "2026-11-01", (
+            "In the ARPEGGIATOR menu, one push of a knob now always removes its p-lock. Before, a small "
+            "turn of the knob while you pushed it could lock the value again, so a second push was necessary.",
+        )),
+        Release("0.1.1", "2026-11-01", (
+            "In the ARPEGGIATOR menu, hold a trig and push a knob to remove that knob's p-lock "
+            "from the trig, as on the other pages. Before, the push did nothing and the lock stayed.",
+        )),
+    ) + UNPUBLISHED,
     "arpscale": UNPUBLISHED,
     "bootscreen": PUBLISHED,
     "degreetranspose": UNPUBLISHED,

@@ -64,6 +64,11 @@ playback, load and save routines directly:
 - The pastes read the clipboard's records: page (`0x40053246`), track
   (`0x4005389c`), and their UNDO PASTE paths (`0x40052634`, `0x40052948`); an arp
   record of the copied track goes into the destination through `paste_core`.
+- A held trig plus a knob push in the ARPEGGIATOR menu (`0x4001975c`, issue #317):
+  `push_hook` clears that knob's arp lock on every held step, as a parameter
+  page's push clears its lock. The stock menu takes a push and does nothing.
+  Until the knob's release, a turn of that knob does nothing (`pg_ui_*`): a real
+  knob turns a little while pushed, and that turn locked the value again.
 - Trig copy / paste keeps a clipboard of slot / value pairs only: `copy_hook`
   (`0x40053f48`) saves each copied trig's arp locks by entry number in RAM
   (`0x467c4920`), `paste_hook` (`0x40055440`) writes them onto the destination.
@@ -204,6 +209,16 @@ CAVE_TCOPY = (0x4028EA02 + 2, 168)     # dnfw cave scan: clean (both checks); ru
 CAVE_TPASTE = (0x4028D192 + 2, 136)    # likewise
 TRIG_CLIP, TRIG_CLIP_MAX, TRIG_CLIP_STRIDE = 0x467C4920, 64, 28  # RAM: copied trigs' arp locks
 CAVE_EDIT = (0x40295A30, 200)          # dnfw cave scan: clean, no code reference
+CAVE_PUSH = (0x402D08E4, 256)          # the rest of 0x402d0664's run, past CAVE_PASTE's 112 B
+
+# The ARPEGGIATOR menu's key handler (0x40019716, its frame live: a2 the view, d4 the
+# event, d2 the key). It takes an encoder push (41..48) and does nothing with it.
+MENU_PUSH = 0x4001975C                 # `addi.l #-41,%d2`: the push range starts here
+MENU_KEY_TAKEN = 0x4001984C            # `moveq #1,%d3`: taken, the frame restored
+MENU_KEY_STOCK = 0x4001982A            # any other key: the base view's handler
+KEY_PRESSED = 0x401160BC               # (event) -> a press, not a release
+VIEW_REDRAW = 0x4011C7BA               # (view): draw again
+VIEW_ARP_STEP = 556                    # the view's selected arp step
 
 LOOK = f"""
 | Pattern load, lock id -> slot, (table, id). An arp lock: 0x80 | k, which
@@ -625,7 +640,7 @@ disp_mask:
     rts
 """
 CORE_LABELS = ("note_hook", "build_hook", "sound_off",
-               "model_sound", "ext_get", "ext_put", "shadow_apply")
+               "model_sound", "ext_get", "ext_put", "shadow_apply", "ext_find")
 
 
 def ui_source() -> str:
@@ -1085,6 +1100,131 @@ paste_hook:
     rts
 """
 
+# A knob's k for an encoder push, A..H: MODE, SPEED, RANGE, N.LEN on the top row.
+# --all adds E (the selected arp step's offset, flagged 0x40) and H (LEN). 0xff: none.
+PUSH_K = [K_MODE, K_SPD, K_RNG, K_NLEN, 0xFF, 0xFF, 0xFF, 0xFF]
+if FULL:
+    PUSH_K[4], PUSH_K[7] = 0x40 | K_OFF, K_LEN
+PUSH_BYTES = ", ".join(str(k) for k in PUSH_K)
+PUSH_GATES = "".join(f"""pg_{e[2]}:
+    moveq   #{e[3]},%d0
+    lea     @{e[2]}@,%a0
+    bra     pg_gate
+""" for e in EDITS)
+PUSH_SRC = f"""
+| An encoder push in the ARPEGGIATOR menu, at its key handler's `addi.l #-41,%d2`
+| ({MENU_PUSH:#010x}). The stock menu takes a push and does nothing with it, so the
+| parameter pages' clear (trig held + push: 0x40064f90, through the track's slot
+| index, where an arp lock has no entry) never reached an arp lock (issue #317).
+| Now, with a trig held, a press clears that knob's arp lock on every held step
+| and recounts, as a parameter page clears its lock. Otherwise stock.
+| The press also sets the knob's bit in push_down until its release: a real knob
+| turns a little while it is pushed, and that turn must not lock the value again
+| (on the unit, 2026-11-01). A stock page also ignores a turn while its knob is down.
+push_hook:
+    subi.l  #41,%d2
+    moveq   #7,%d1
+    cmp.l   %d2,%d1
+    bcs     7f                          | not an encoder push
+    lea     %pc@(push_k),%a0
+    mvs.b   %a0@(0,%d2:l),%d6           | the knob's k
+    bmi     8f                          | none on this knob: taken, as stock
+    moveq   #0x3f,%d5
+    and.l   %d6,%d5                     | the knob's bit in push_down
+    move.l  %d4,%sp@-
+    jsr     {KEY_PRESSED:#010x}
+    addq.l  #4,%sp
+    tst.b   %d0
+    bne.s   0f
+    move.l  push_down,%d0               | a release: the knob's turns lock again
+    bclr    %d5,%d0
+    move.l  %d0,push_down
+    bra     8f
+0:  btst    #6,%d6
+    beq.s   1f
+    bclr    #6,%d6
+    add.l   %a2@({VIEW_ARP_STEP}),%d6   | an offset: k + the arp step
+1:  movea.l %a2,%a4                     | the view
+    jsr     @held_ctx@
+    beq.s   8f                          | no trig held: taken, as stock
+    move.l  push_down,%d0
+    bset    %d5,%d0
+    move.l  %d0,push_down
+    move.l  %a2@({CTX_TRACK}),%d7
+    ori.l   #{EXT_TAG},%d7
+    lsl.l   #8,%d6
+    or.l    %d6,%d7                     | the record header word
+    moveq   #0,%d2
+2:  jsr     @next_held@
+    beq.s   4f
+    jsr     @ctx_table@
+    move.l  %d7,%d1
+    bsr.s   ext_del
+    beq.s   3f
+    jsr     @recount@
+3:  addq.l  #1,%d2
+    bra.s   2b
+4:  move.l  %a4,%sp@-
+    jsr     {VIEW_REDRAW:#010x}
+    addq.l  #4,%sp
+8:  jmp     {MENU_KEY_TAKEN:#010x}       | restores d2-d7 / a2-a5
+7:  jmp     {MENU_KEY_STOCK:#010x}
+
+| Table a0, header word d1, step d2: the lock there cleared, its record freed
+| (ff ff) once every step is empty. d0 1 when one was cleared, else 0; Z follows.
+ext_del:
+    jsr     @ext_find@
+    beq.s   9f
+    move.l  %d2,%d0
+    add.l   %d0,%d0
+    mvs.w   %a1@(2,%d0:l),%d1
+    addq.l  #1,%d1
+    beq.s   9f                          | no lock on this step
+    moveq   #-1,%d1
+    move.w  %d1,%a1@(2,%d0:l)
+    moveq   #0,%d0
+1:  mvs.w   %a1@(2,%d0:l),%d1
+    addq.l  #1,%d1
+    bne.s   2f
+    addq.l  #2,%d0
+    cmpi.l  #256,%d0
+    bne.s   1b
+    moveq   #-1,%d1
+    move.w  %d1,%a1@                    | freed
+2:  moveq   #1,%d0
+    rts
+9:  moveq   #0,%d0
+    rts
+push_k:
+    .byte   {PUSH_BYTES}
+    .align  2
+
+| In front of each ui_* setter (the menu's turn): while push_hook holds the knob's
+| bit and a trig is held, the turn does nothing. With no trig held the bit is
+| stale (the knob was released outside the menu): it is cleared and the turn is stock.
+{PUSH_GATES}
+pg_gate:                                | d0 the bit, a0 the ui_* setter
+    move.l  push_down,%d1
+    btst    %d0,%d1
+    beq.s   1f
+    move.l  {HELD:#010x},%d1
+    beq.s   2f
+    movea.l %d1,%a1
+    tst.b   %a1@({HELD_ANY})
+    bne.s   9f
+2:  move.l  push_down,%d1
+    bclr    %d0,%d1
+    move.l  %d1,push_down
+1:  jmp     %a0@
+9:  rts                                 | the menu ignores the setter's d0
+
+| One bit per k whose knob is down after a press with a trig held. In the CODE
+| chunk, so the platform's loader writes it 0 at every start.
+    .align  4
+push_down:
+    .long   0
+"""
+
 CAVES = ((CAVE_LOOK, lambda: LOOK, LOOK_LABELS),
          (CAVE_CORE, lambda: CORE, CORE_LABELS),
          (CAVE_UI, lambda: ui_source() + UI_HELPERS + CLEAR_SRC,
@@ -1093,7 +1233,8 @@ CAVES = ((CAVE_LOOK, lambda: LOOK, LOOK_LABELS),
          (CAVE_EDIT, lambda: PASTE_CORE, ("paste_core", "paste_c", "paste_d")),
          (CAVE_PASTE, lambda: EDIT, EDIT_LABELS),
          (CAVE_TCOPY, lambda: TRIG_COPY, ("copy_hook",)),
-         (CAVE_TPASTE, lambda: TRIG_PASTE, ("paste_hook",))) + (
+         (CAVE_TPASTE, lambda: TRIG_PASTE, ("paste_hook",)),
+         (CAVE_PUSH, lambda: PUSH_SRC, ("push_hook",) + tuple("pg_" + e[2] for e in EDITS))) + (
         ((CAVE_MASK, lambda: UI_MASK + MASK_CORE, ("ui_mask", "disp_mask")),) if FULL else ())
 
 # (va, stock bytes, how, label) -- replaced by jmp / jsr / lea to the label.
@@ -1114,9 +1255,10 @@ HOOKS = [
     (0x40052948, bytes.fromhex("79338801223c0001799c"), "jsr", "paste_d"),
     (0x40053F48, bytes.fromhex("2f122f2b003c"), "jsr", "copy_hook"),
     (0x40055440, bytes.fromhex("71ab000449faf24a"), "jsr", "paste_hook"),
+    (MENU_PUSH, bytes.fromhex("0682ffffffd7"), "jmp", "push_hook"),
 ] + ([(MASK_EDIT, bytes.fromhex("4eb94004bd52"), "jsr", "ui_mask")] if FULL else [])
-HOOKS += [(va, bytes.fromhex("4eb9") + struct.pack(">I", setter), "jsr", label)
-          for va, setter, label, _, _ in EDITS]
+HOOKS += [(va, bytes.fromhex("4eb9") + struct.pack(">I", setter), "jsr", "pg_" + label)
+          for va, setter, label, _, _ in EDITS]   # through push_hook's gate
 HOOKS += [(va, bytes.fromhex({"jsr": "4eb9", "lea_a4": "49f9", "lea_a3": "47f9"}[how])
            + struct.pack(">I", getter), how, label) for va, getter, how, label in DRAWS]
 OPCODE = {"jmp": "4ef9", "jsr": "4eb9", "lea_a4": "49f9", "lea_a3": "47f9"}
@@ -1147,6 +1289,11 @@ CONTEXT = (
     (0x40055BBE, bytes.fromhex("10280268"), "held object: any trig held at +616"),
     (0x4005693C, bytes.fromhex("486b0258"), "held object: the held-step set at +600"),
     (0x40019734, bytes.fromhex("700d"), "arp menu keys: 11 UP (step on), 14 DOWN (off)"),
+    (0x40019762, bytes.fromhex("7207b2826400"), "arp menu keys: a push (0..7 past 41) is taken"),
+    (MENU_KEY_TAKEN, bytes.fromhex("760160000216"), "arp menu keys: taken, moveq #1,%d3"),
+    (MENU_KEY_STOCK, bytes.fromhex("2f042f0a4eb94011c674"), "arp menu keys: the base handler"),
+    (KEY_PRESSED, bytes.fromhex("206f000420280010"), "the event's flags at +16"),
+    (VIEW_REDRAW, bytes.fromhex("206f00044a280017"), "a view's redraw"),
     (0x4004BD98, bytes.fromhex("34280164"), "setStepOn edits the mask at +356"),
     # SET_MODE_CEILING is read, and arpmodes may have widened it, so the moveq
     # itself is not guarded: the instructions either side of it are.

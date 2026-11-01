@@ -27,7 +27,7 @@ before they merge. You do not have to.
 
 **Checks on GitHub:** every PR runs the fast tests and `scripts/site_check.py`
 (`.github/workflows/checks.yml`). The tests that need the stock firmware skip there, because the
-firmware is not in the repository. The writing check of section 6 runs on the changed Markdown files.
+firmware is not in the repository. The writing check of section 6 runs on the lines that a PR adds to Markdown files.
 It reports only, and it does not block the merge.
 
 **Labels:**

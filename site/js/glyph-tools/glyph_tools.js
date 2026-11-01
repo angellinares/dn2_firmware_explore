@@ -4,9 +4,10 @@
  * One subject: turning the pointer and the keyboard into frames. It holds the tool bar (icons
  * from glyph_icons.js, in groups), the context bar for the active tool, the shortcut help, the
  * selection (a 1-bit mask with its own small undo), the floating layer of a move and the
- * clipboard, and it draws the frame on a canvas that fills its column. The pixels come from
- * glyph_anim_core.js; this file holds no geometry. A classic script, so the pages also work
- * when opened from disk; it sets `GlyphTools`.
+ * clipboard, and it draws the frame on a canvas that fills its column. The Text and Controls
+ * tools show their rows under the pointer and stamp them on a click. The pixels come from
+ * glyph_anim_core.js, glyph_text.js and glyph_controls.js; this file holds no geometry. A
+ * classic script, so the pages also work when opened from disk; it sets `GlyphTools`.
  */
 (function (root) {
   "use strict";
@@ -22,19 +23,23 @@
     { id: "bucket", name: "Bucket fill", key: "G", group: "Fill" },
     { id: "pattern", name: "Pattern fill", key: "P", group: "Fill" },
     { id: "gradient", name: "Gradient", key: "D", group: "Fill" },
+    { id: "text", name: "Text", key: "T", group: "Stamp" },
+    { id: "control", name: "Controls", key: "K", group: "Stamp" },
   ];
   const TOGGLES = [
     { id: "erase", name: "Erase", key: "X", group: "Draw" },
     { id: "filled", name: "Filled shapes", key: "F", group: "Shapes" },
   ];
-  const GROUPS = ["Draw", "Shapes", "Select", "Fill"];
+  const GROUPS = ["Draw", "Shapes", "Select", "Fill", "Stamp"];
+  /** The tools that stamp rows on a click: the rows follow the pointer until then. */
+  const STAMPS = ["text", "control"];
   const PATTERNS = [["bayer", "Bayer"], ["checker", "Checker"], ["hatch", "Hatching"], ["crosshatch", "Cross-hatching"],
     ["halftone", "Halftone dots"], ["noise", "Noise"], ["blue", "Even noise"]];
   const SHORTCUTS = [
     ...TOOLS.map((t) => [t.key, t.name]), ...TOGGLES.map((t) => [t.key, t.name + " on or off"]),
     ["Shift-drag", "Square, circle or 45-degree line; with a select tool, add to the selection"],
     ["Alt-drag", "Subtract from the selection; with Move, copy"],
-    ["Right button", "Draw dark pixels"],
+    ["Right button", "Draw dark pixels; with Text or Controls, stamp dark"],
     ["Ctrl+A", "Select all"], ["Ctrl+D", "Deselect"], ["Ctrl+Shift+I", "Invert the selection"],
     ["Ctrl+Alt+Z", "Undo the selection"], ["Ctrl+X, C, V", "Cut, copy, paste"], ["Delete", "Clear the selection"],
     ["Arrow keys", "Move the selection one cell"], ["Enter", "Drop the moved pixels"], ["Escape", "Cancel the move, or deselect"],
@@ -82,6 +87,13 @@
     return { device, css: device / dpr, width: (device * cells) / dpr };
   }
 
+  /** Where a stamp's rows go for the cell under the pointer: text has its top left there, a
+   *  control its centre. Returns [x, y], the top left corner. */
+  function stampOrigin(tool, rows, x, y) {
+    if (tool !== "control" || !rows.length) return [x, y];
+    return [x - Math.floor((rows[0].length - 1) / 2), y - Math.floor((rows.length - 1) / 2)];
+  }
+
   /** The content width of an element: its width without padding. */
   function contentWidth(el) {
     const s = el.ownerDocument.defaultView.getComputedStyle(el);
@@ -115,8 +127,12 @@
     const G = root.GlyphAnim, I = root.GlyphIcons, doc = o.canvas.ownerDocument, win = doc.defaultView;
     const state = { tool: "pencil", erase: false, filled: false, connect: 4, mode: "replace",
       pattern: { kind: "bayer", density: 0.5, angle: 45, spacing: 4, cell: 4, size: 1, seed: 1 },
-      gradient: { kind: "linear", invert: false, start: 0, end: 1, curve: "linear" } };
-    let mask = null, maskUndo = [], float = null, gesture = null, lastCell = null, moved = false;
+      gradient: { kind: "linear", invert: false, start: 0, end: 1, curve: "linear" },
+      text: { text: "TEXT", font: "3x5", spacing: 1 }, opaque: false,
+      control: { kind: "knob", ...structuredClone(root.GlyphControls.DEFAULTS) } };
+    const T = root.GlyphText, C = root.GlyphControls;
+    const fonts = T.builtInFonts();               // a font file the user loads joins this list, in this page only
+    let mask = null, maskUndo = [], float = null, gesture = null, lastCell = null, moved = false, hover = null;
     const size = () => { const f = o.frame(); return [f[0].length, f.length]; };
     const css = (v) => win.getComputedStyle(doc.documentElement).getPropertyValue(v).trim();
 
@@ -177,6 +193,22 @@
       showFloat();
     }
 
+    /* -- the stamp tools: Text and Controls -- */
+    const fontNow = () => fonts.find((f) => f.id === state.text.font) ?? fonts[0];
+    /** The rows the active stamp tool places, or [] (no text, or another tool). */
+    function stampRows() {
+      if (state.tool === "text") return T.layout(state.text.text, fontNow(), { spacing: state.text.spacing }).rows;
+      if (state.tool === "control") return C.control(state.control.kind, state.control[state.control.kind]);
+      return [];
+    }
+    /** The frame a click at cell p gives: the rows placed at p, lit (or dark when erasing). */
+    function stamped(frame, p, dark) {
+      const rows = stampRows();
+      if (!rows.length) return frame;
+      const [x, y] = stampOrigin(state.tool, rows, p[0], p[1]);
+      return G.paste(frame, rows, x, y, { on: !dark, opaque: state.opaque });
+    }
+
     /* -- one-step edits -- */
     function edit(rows) {
       drop();
@@ -196,9 +228,18 @@
       canvas.width = w * s; canvas.height = h * s; canvas.style.width = `${fit.width}px`;
       const c = canvas.getContext("2d");
       c.fillStyle = css("--cell-off"); c.fillRect(0, 0, canvas.width, canvas.height);
-      const prev = o.onion ? o.onion() : null, ink = css("--ink");
+      const prev = o.onion ? o.onion() : null, ink = css("--ink"), accent = css("--accent"), off = css("--cell-off");
+      // a stamp tool shows what a click gives: the cells it lights in the accent colour, the
+      // cells it darkens in a faint accent
+      const preview = hover && !gesture && STAMPS.includes(state.tool) ? stamped(f, hover, state.erase) : null;
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
+          if (preview && preview[y][x] !== f[y][x]) {
+            const lights = preview[y][x] === "#";
+            c.globalAlpha = 1; c.fillStyle = lights ? accent : off; c.fillRect(x * s, y * s, s, s);
+            if (!lights) { c.globalAlpha = 0.35; c.fillStyle = accent; c.fillRect(x * s, y * s, s, s); }
+            continue;
+          }
           if (f[y][x] === "#") c.globalAlpha = 1;
           else if (prev && prev[y] && prev[y][x] === "#") c.globalAlpha = 0.22;
           else continue;
@@ -268,6 +309,10 @@
         o.begin();
         gesture = { kind: "gradient", from: p, start: o.frame(), startText: o.frame().join("\n") };
         showGradient(p);
+      } else if (STAMPS.includes(t)) {
+        hover = p;
+        edit(stamped(o.frame(), p, state.erase || e.button === 2));
+        return;
       }
       try { o.canvas.setPointerCapture(e.pointerId); } catch { /* a pointer that is not active */ }
     });
@@ -293,6 +338,14 @@
         showFloat();
       } else if (g.kind === "gradient") showGradient(p);
     }
+    // the stamp preview follows the pointer over the canvas, and leaves with it
+    o.canvas.addEventListener("pointermove", (e) => {
+      if (gesture || !STAMPS.includes(state.tool)) return;
+      const p = cellAt(e, false);
+      if (p?.[0] === hover?.[0] && p?.[1] === hover?.[1]) return;
+      hover = p; render();
+    });
+    o.canvas.addEventListener("pointerleave", () => { if (hover) { hover = null; render(); } });
     win.addEventListener("pointermove", (e) => {
       if (!gesture) return;
       const p = cellAt(e, true);
@@ -412,6 +465,77 @@
       return el("label", {}, label + " ", input, out);
     }
     const button = (text, fn, title) => { const b = el("button", { type: "button", textContent: text, onclick: fn }); if (title) b.title = title; return b; };
+    /** A small picture of the stamp's rows in the context bar, so they show before the pointer is on the canvas. */
+    function stampThumb() {
+      const cv = el("canvas", { className: "px stamp-thumb" });
+      cv.setAttribute("aria-hidden", "true");
+      return cv;
+    }
+    function drawThumb(cv) {
+      const rows = stampRows(), w = rows[0]?.length ?? 0, h = rows.length;
+      const sc = w ? Math.max(1, Math.min(4, Math.floor(160 / w), Math.floor(64 / h))) : 1;
+      cv.width = Math.max(1, w * sc); cv.height = Math.max(1, h * sc);
+      const x2 = cv.getContext("2d");
+      x2.fillStyle = css("--cell-off"); x2.fillRect(0, 0, cv.width, cv.height);
+      x2.fillStyle = css("--ink");
+      rows.forEach((r, y) => { for (let x = 0; x < w; x++) if (r[x] === "#") x2.fillRect(x * sc, y * sc, sc, sc); });
+    }
+    function textParts() {
+      const tx = state.text, thumb = stampThumb(), info = el("span", { className: "hint" });
+      const update = () => {
+        const l = T.layout(tx.text, fontNow(), { spacing: tx.spacing });
+        drawThumb(thumb);
+        info.textContent = (l.width ? `${l.width} x ${l.height} pixels.` : "Type the text.")
+          + (l.missing.length ? ` Not in the font: ${l.missing.join(" ")}` : "");
+        render();
+      };
+      const font = el("select", {}, ...fonts.map((f) => el("option", { value: f.id, textContent: f.name, selected: f.id === tx.font })));
+      font.setAttribute("aria-label", "Font"); font.dataset.ctx = "font";
+      font.onchange = () => { tx.font = font.value; update(); };
+      const input = el("input", { type: "text", value: tx.text, spellcheck: false });
+      input.setAttribute("aria-label", "Text"); input.dataset.ctx = "text";
+      input.oninput = () => { tx.text = input.value; update(); };
+      const load = button("Load font", async () => {
+        const f = await pickFile(doc, ".json,application/json");
+        if (!f) return;
+        try {
+          const font = { id: `file-${fonts.length}`, ...T.parseFont(await f.text(), f.name) };
+          fonts.push(font); tx.font = font.id; renderContext();
+        } catch (err) { info.textContent = `${f.name}: ${err.message}`; }
+      }, "A font file in the shape of font3x5.json. It stays in this page.");
+      const parts = [el("label", {}, "Font ", font), load, input,
+        number("Spacing", tx.spacing, { min: 0, max: 8 }, (v) => { tx.spacing = v; update(); }), thumb, info];
+      update();
+      return parts;
+    }
+    function controlParts() {
+      const k = state.control.kind, p = state.control[k], thumb = stampThumb();
+      const update = () => { drawThumb(thumb); render(); };
+      const set = (key) => (v) => { p[key] = v; update(); };
+      const seg = (label, key, options) => segmented(label, options, p[key], set(key));
+      const parts = [segmented("Control", C.KINDS, k, (v) => { state.control.kind = v; })];
+      if (k === "knob") {
+        parts.push(number("Size", p.size, { min: 5, max: 64 }, set("size")), range("Value", p.value, set("value"), "value"),
+          seg("Body", "body", [["ring", "Ring"], ["disc", "Disc"]]),
+          seg("Mark", "mark", [["line", "Line"], ["arc", "Arc"], ["both", "Line and arc"]]));
+      } else if (k === "slider") {
+        parts.push(seg("Direction", "orient", [["h", "Across"], ["v", "Upright"]]),
+          number("Length", p.length, { min: 5, max: 128 }, set("length")), number("Width", p.thick, { min: 3, max: 16 }, set("thick")),
+          range("Value", p.value, set("value"), "value"), seg("Style", "style", [["fill", "Fill"], ["handle", "Handle"]]));
+      } else if (k === "button") {
+        parts.push(number("W", p.w, { min: 3, max: 64 }, set("w")), number("H", p.h, { min: 3, max: 64 }, set("h")),
+          seg("State", "on", [[false, "Off"], [true, "On"]]), seg("Corners", "round", [[false, "Square"], [true, "Round"]]));
+      } else {
+        parts.push(seg("Style", "style", [["slide", "Slide"], ["box", "Check box"]]));
+        if (p.style === "slide") parts.push(number("W", p.w, { min: 7, max: 64 }, set("w")));
+        parts.push(number(p.style === "slide" ? "H" : "Size", p.h, { min: 5, max: 32 }, set("h")),
+          seg("State", "on", [[false, "Off"], [true, "On"]]));
+      }
+      parts.push(thumb);
+      drawThumb(thumb);
+      return parts;
+    }
+    const behind = () => segmented("Behind", [[false, "Keep behind"], [true, "Clear behind"]], state.opaque, (v) => { state.opaque = v; });
     function selectionButtons() {
       return [button("Select all", selectAll, "Ctrl+A"), button("Deselect", deselect, "Ctrl+D"),
         button("Invert", invertSel, "Ctrl+Shift+I"), button("Undo selection", undoSel, "Ctrl+Alt+Z")];
@@ -466,6 +590,14 @@
           }
           parts.push(el("span", { className: "hint", textContent: "Drag from the Start point to the End point. Past them the ends stay as they are. A click fills all of the selection." }));
           break;
+        case "text":
+          parts.push(...textParts(), behind(),
+            el("span", { className: "hint", textContent: "Click to place the text. The pointer is its top left corner. Erase or the right button stamps it dark." }));
+          break;
+        case "control":
+          parts.push(...controlParts(), behind(),
+            el("span", { className: "hint", textContent: "Click to place the control. The pointer is its centre. Erase or the right button stamps it dark." }));
+          break;
         default: break;
       }
       o.context.replaceChildren(...parts);
@@ -476,7 +608,7 @@
       for (const t of TOOLS) buttons[t.id].setAttribute("aria-pressed", String(state.tool === t.id));
       for (const t of TOGGLES) buttons[t.id].setAttribute("aria-pressed", String(state[t.id]));
     }
-    function setTool(id) { if (id !== "move") drop(); state.tool = id; sync(); renderContext(); render(); }
+    function setTool(id) { if (id !== "move") drop(); state.tool = id; if (!STAMPS.includes(id)) hover = null; sync(); renderContext(); render(); }
     function setToggle(id, on) { state[id] = on; sync(); renderContext(); }
     sync(); renderContext();
 
@@ -490,7 +622,9 @@
       get mask() { return mask; }, set mask(m) { setMask(m); },
       get floating() { return !!float; },
       /** Forget the selection and the move when the page shows another frame or glyph. */
-      reset() { float = null; gesture = null; mask = null; maskUndo = []; render(); },
+      reset() { float = null; gesture = null; mask = null; maskUndo = []; hover = null; render(); },
+      /** The rows the Text or Controls tool would place now ([] for another tool). */
+      stampRows,
     };
   }
 
@@ -612,7 +746,7 @@
     });
   }
 
-  const api = { TOOLS, TOGGLES, SHORTCUTS, PATTERNS, CURVE_NAMES, drag, fitCell, contentWidth, maskEdges, surface, sizePicker, download, pickFile,
+  const api = { TOOLS, TOGGLES, SHORTCUTS, PATTERNS, CURVE_NAMES, STAMPS, drag, stampOrigin, fitCell, contentWidth, maskEdges, surface, sizePicker, download, pickFile,
     stampName, stampNames, setStampNames, downloadName, stampOption, writeHandle,
     get clipboard() { return clipboard; } };
   if (typeof module === "object" && module.exports) module.exports = api;

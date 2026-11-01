@@ -421,6 +421,20 @@ export const ANIMS = {
     return { frame: rows.map((r) => r.join("")), mask: mask.map((r) => r.join("")) };
   }
 
+  /** Rows (text or a control) placed on the frame with their top left at (x, y): their lit
+   *  pixels set to `on`; `opaque` also sets their dark pixels to the other colour, so the box
+   *  covers what was under it. Pixels off the frame are dropped. */
+  function paste(frame, rows, x, y, { on = true, opaque = false } = {}) {
+    const out = frame.map((r) => [...r]), lit = on ? "#" : ".", dark = on ? "." : "#";
+    rows.forEach((r, dy) => [...r].forEach((c, dx) => {
+      const px = x + dx, py = y + dy;
+      if (py < 0 || py >= out.length || px < 0 || px >= out[py].length) return;
+      if (c === "#") out[py][px] = lit;
+      else if (opaque) out[py][px] = dark;
+    }));
+    return out.map((r) => r.join(""));
+  }
+
   /* ---- fills: patterns and gradients, the same pixels for the same settings ---- */
 
   // interleaved gradient noise (Jimenez 2014): a threshold with an even, blue-noise-like spread
@@ -633,7 +647,7 @@ export const ANIMS = {
     encode, decode, toHex, fromHex, OPS, dissolve, tween, resize, parseStill, rowsToHex, hexToRows,
     threshold, EASE, move, morph, line, rect, ellipse, constrain, shape, plot,
     maskNone, maskAll, maskEmpty, maskRect, maskInvert, maskCombine, maskBounds, wand, within, flood,
-    lift, stamp, FILLS, patternAt, gradientAt, gradientDensity, fill, rangeParams };
+    lift, stamp, paste, FILLS, patternAt, gradientAt, gradientDensity, fill, rangeParams };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.GlyphAnim = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

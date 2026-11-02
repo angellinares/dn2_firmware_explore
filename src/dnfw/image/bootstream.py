@@ -408,6 +408,13 @@ def insert_before_final(data: bytes, extra: bytes) -> bytes:
 
     Blocks load in stream order, so anything inserted here lands after the
     whole image and before the jump to the entry point.
+
+    The last FIRST block before the final one grows with it: a FIRST block's
+    ARGUMENT counts the bytes from the end of its header to the end of its
+    application (stock section 7: 0x2964 brings block 0 to the second FIRST
+    block at 10,612, and 0xC9BD8 brings that one to the stream's end, 836,956).
+    Its HDRCHK is recomputed. The unit's slave boot ignores the field, a strict
+    reader of the stream (digikit's boot check) does not.
     """
     result = walk(data)
     final = result.final
@@ -415,4 +422,17 @@ def insert_before_final(data: bytes, extra: bytes) -> bytes:
         raise ValueError(f"not a complete boot stream ({result.reason})")
     if walk(extra).stopped_at != len(extra):
         raise ValueError("the inserted bytes do not walk as whole blocks")
-    return data[:final.offset] + extra + data[final.offset:]
+    out = bytearray(data[:final.offset] + extra + data[final.offset:])
+    firsts = [b for b in result.blocks if b.offset < final.offset and b.code >> 8 & FLAG_FIRST]
+    if firsts:
+        first = firsts[-1]
+        if first.offset + HEADER + first.argument != len(data):
+            raise ValueError(f"the FIRST block at {first.offset} does not reach the stream's end "
+                             f"(ARGUMENT {first.argument:#x})")
+        struct.pack_into("<I", out, first.offset + 12, first.argument + len(extra))
+        out[first.offset + 2] = 0
+        check = 0
+        for byte in out[first.offset:first.offset + HEADER]:
+            check ^= byte
+        out[first.offset + 2] = check
+    return bytes(out)

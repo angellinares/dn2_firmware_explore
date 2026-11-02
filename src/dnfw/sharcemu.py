@@ -18,7 +18,11 @@ of ours (scripts/sharc_dn2_fixups.py G10, G11). From 2026-10-21, digikit-main at
 in place of 277760a and digikit-rust's 163a4e6. The Waverider gates give the same verdicts
 on both, on main's DSP and on the load plan's batch A: m5 47/47 (step 4 still needs the
 Python runner: fix-up G5), shape 21/21, sub 7/7, noise, pool 13/13, DCLK hold 4/4, and
-taming on all 16 voice slots.
+taming on all 16 voice slots. From 2026-11-03, digikit-main at 8b4c66c7: RECIPS and RSQRTS
+are exact there (its finding 102), so the gates pass `approx_recips` only to an older Runner
+(scripts/sharc_dn2_fixups.runner_options), and the m2 snapshot was rebuilt on it (a snapshot from
+3ff156f9 does not load). m5 gives 54/54 on decode, map, voice and stock. A 16-voice FM Tone render
+is bit-identical to 3ff156f9's. 3ff156f9 is kept in digikit-main-3ff156f9 for a rollback.
 """
 
 from __future__ import annotations
@@ -35,7 +39,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 # .claude/worktrees/NAME is three levels below the main checkout
 SIBLINGS = ROOT.parents[3] if ROOT.parent.name == "worktrees" else ROOT.parent
 DEFAULT = SIBLINGS / "digikit-main"
-HEAD = "3ff156f9"
+HEAD = "8b4c66c7"
 
 
 NATIVE = DEFAULT / "out/native/shared-core/target/release/sharc_native.dll"

@@ -1,7 +1,7 @@
 """Today's mods rebuild the last build that passed on the instrument.
 
-lfo4fix4 (Waverider 0.3.7, layermidi, arpmodes, lfowaves, bootscreen and lfo4 1.0.4) passed its
-device test on 2026-10-29 (#301). Before it, lfo4fix2 (2026-10-27), batcha1 (2026-10-22) and
+modinfo512 (12 mods, the 512-byte /modinfo record) passed its device test on 2026-11-02 (#322).
+Before it, lfo4fix4 (2026-10-29, #301), lfo4fix2 (2026-10-27), batcha1 (2026-10-22) and
 fmdepth2 (2026-10-20). `dnfw mods apply` of the same mods must give the same image. The one allowed
 difference is the /modinfo record's build part (commit, image id, hash). When a later build
 passes on the instrument, it replaces FLASHED here.
@@ -18,9 +18,10 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-FLASHED = ROOT / "00_Resources/02_Builds/lfo4fix4-waverider-layermidi-arpmodes-lfowaves-lfo4-bootscreen_DN2_1.11.syx"
-MODS = ["waverider", "layermidi", "arpmodes", "lfowaves", "bootscreen", "lfo4"]
-PROBE_TAG = "lfo4fix4-waverider-layermidi-arpmodes-lfowaves-lfo4-bootscreen"
+FLASHED = ROOT / "00_Resources/02_Builds/modinfo512-waverider-layermidi-arpmodes-lfowaves-bootscreen-lfo4-fxmod-lfolength-reloadconfirm-songguard-arpplocks-usbprobe_DN2_1.11.syx"
+MODS = ["waverider", "layermidi", "arpmodes", "lfowaves", "bootscreen", "lfo4", "fxmod", "lfolength", "reloadconfirm",
+        "songguard", "arpplocks", "usbprobe"]
+PROBE_TAG = "modinfo512"
 BOOT = ROOT / "00_Resources/08_MyBuilds/waverider_glyph_boot.pgm"
 
 
@@ -41,13 +42,14 @@ def test_the_flashed_build_rebuilds(tmp_path):
     assert done.returncode == 0, done.stdout[-800:] + done.stderr[-800:]
     want, got = _sections(FLASHED), _sections(out)
     assert sorted(want) == sorted(got)
-    at = want[3].find(modinfo.MAGIC + bytes([0, 1, 1, 0]))
-    assert at >= 0 and at == got[3].find(modinfo.MAGIC + bytes([0, 1, 1, 0]))
+    at = modinfo.find(want[3])
+    assert at is not None and at == modinfo.find(got[3])
+    size = modinfo.size_at(want[3], at)
     for sid in want:
         a, b = bytearray(want[sid]), bytearray(got[sid])
         if sid == 3:
             for x in (a, b):
                 x[at + 20:at + 24] = bytes(4)                 # the image id
                 x[at + 56:at + 68] = bytes(12)                # the commit
-                x[at + 252:at + 256] = bytes(4)               # the hash
+                x[at + size - 4:at + size] = bytes(4)         # the hash
         assert a == b, f"section {sid} differs from the flashed build"

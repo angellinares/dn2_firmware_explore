@@ -12,7 +12,8 @@ struct wr_events {
     unsigned char notes[16];               /* note-ons per voice */
     unsigned char shown_osc;               /* the oscillator of the SYN page last drawn (page.c) */
     unsigned char scope_track;             /* page 4's scope: the track to capture, 0..15; 0xFF none (page.c) */
-    unsigned char spare[2];
+    unsigned short unplayed;               /* bit v: voice v has not played a note as a Waverider since it last
+                                            * was another machine (or since boot); the page skips it (events.c) */
     volatile struct trace_ring *scope;     /* its samples, fed every frame (scope_feed.c) */
 };
 

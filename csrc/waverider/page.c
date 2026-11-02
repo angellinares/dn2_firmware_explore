@@ -396,11 +396,15 @@ static int voice(void)
     if (t > 15)
         return -1;
     forget_after_clear();
-    if (chosen >= 0 && OWNER(chosen) == t && MACHINE(chosen) == NEW_TYPE && !(stale >> chosen & 1))
+    /* a voice counts once it has played a note as a Waverider (events.c, `unplayed`) */
+    u32 skip = stale;
+    if (WR_DRIVE_HEAD->magic == WR_DRIVE_MAGIC)
+        skip |= WR_DRIVE_HEAD->events->unplayed;
+    if (chosen >= 0 && OWNER(chosen) == t && MACHINE(chosen) == NEW_TYPE && !(skip >> chosen & 1))
         return chosen;
     chosen = -1;
     for (int v = 0; v < 16; v++)
-        if (OWNER(v) == t && MACHINE(v) == NEW_TYPE && !(stale >> v & 1)) {
+        if (OWNER(v) == t && MACHINE(v) == NEW_TYPE && !(skip >> v & 1)) {
             chosen = v;
             break;
         }

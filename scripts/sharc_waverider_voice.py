@@ -88,8 +88,7 @@ class Machine:
     def runner(self, start: int, regs=None):
         base = {"I6": STACK, "I7": STACK}
         base.update(regs or {})
-        return fx.sr.Runner(self.memory, start, regs=base, explicit_memory_model=True,
-                            approx_recips=True, follow_loaded_calls=True, max_call_depth=64)
+        return fx.sr.Runner(self.memory, start, regs=base, **fx.runner_options())
 
     @staticmethod
     def fixups(accelerate: bool) -> fx.Fixups:

@@ -5,6 +5,7 @@ needs a real image skips cleanly when it is absent. A skipped corpus test says
 so; it does not quietly pass.
 """
 
+import os
 import pathlib
 import sys
 
@@ -12,6 +13,30 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
+
+# Child processes (`python -c "... dnfw.cli.main ..."`) import this checkout's dnfw, not the one
+# PYTHONPATH named before; the run refuses when they do not (dnfw.checkout)
+from dnfw import checkout  # noqa: E402
+
+os.environ.update(checkout.with_src_first(dict(os.environ), ROOT))
+_CHECKOUT = None
+
+
+def _checkout():
+    global _CHECKOUT
+    if _CHECKOUT is None:
+        _CHECKOUT = checkout.report(ROOT)
+    return _CHECKOUT
+
+
+def pytest_sessionstart(session):
+    bad = checkout.problems(_checkout())
+    if bad:
+        pytest.exit("the checkout under test: " + "; ".join(bad), returncode=4)
+
+
+def pytest_report_header(config):
+    return checkout.lines(_checkout())
 
 # Every run shows in the progress pane: tests done, the one running, the tally (dnfw.pytest_progress).
 from dnfw.pytest_progress import (  # noqa: E402,F401

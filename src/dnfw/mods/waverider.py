@@ -86,7 +86,13 @@ def extents(firmware=None, area_length: int = 0, stream_length: int = 0) -> list
     for what, load, length in dsp.site_loads():
         out += [Extent(DSP_STREAM, at, n, f"section 7: {what}")
                 for at, n in bootstream.spans(stream, load, length) if at is not None]
-    final = bootstream.walk(stream).final.offset
+    walked = bootstream.walk(stream)
+    final = walked.final.offset
+    # the FIRST header of the application the blocks join: its ARGUMENT grows by their length
+    # and its HDRCHK follows (bootstream.insert_before_final)
+    first = [x for x in walked.blocks if x.offset < final and x.code >> 8 & bootstream.FLAG_FIRST][-1]
+    out.append(Extent(DSP_STREAM, first.offset, bootstream.HEADER,
+                      "section 7: the second application's FIRST header, its ARGUMENT grown by Waverider's blocks"))
     # stream_length: section 7 as rebuilt, longer than stock by Waverider's blocks
     out.append(Extent(DSP_STREAM, final, max(stream_length, len(stream)) - final,
                       "section 7: Waverider's blocks, inserted before the final block, and "

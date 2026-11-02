@@ -191,3 +191,50 @@ def test_insert_before_final_lands_before_the_entry_jump():
     blocks = bootstream.walk(out).blocks
     assert [b.target for b in blocks] == [0x28000000, 0x28300000, 0x1C12E2]
     assert blocks[-1].flags & bootstream.FLAG_FINAL
+
+
+def _two_applications():
+    """two applications as stock section 7 has them: each FIRST block's ARGUMENT reaches its end"""
+    app2 = (bootstream.block(0x28000000, b"\x05" * 8) + bootstream.block(0x28100000, b"\x06" * 4)
+            + bootstream.block(0x1C12E2, flags=bootstream.FLAG_FINAL, count=0))
+    first2 = bootstream.block(0x0, flags=bootstream.FLAG_FIRST | bootstream.FLAG_IGNORE, count=0,
+                              argument=len(app2))
+    app1 = bootstream.block(0x30000000, b"\x07" * 4)
+    first1 = bootstream.block(0x0, flags=bootstream.FLAG_FIRST | bootstream.FLAG_IGNORE, count=0,
+                              argument=len(app1))
+    return first1 + app1 + first2 + app2
+
+
+def _checksums_ok(data):
+    for b in bootstream.walk(data).blocks:
+        x = 0
+        for byte in data[b.offset:b.offset + bootstream.HEADER]:
+            x ^= byte
+        if x:
+            return False
+    return True
+
+
+def test_insert_before_final_grows_the_last_first_blocks_argument():
+    """the stale ARGUMENT fix: the second application's FIRST block still reaches the stream's end"""
+    stream = _two_applications()
+    blocks = bootstream.walk(stream).blocks
+    firsts = [b for b in blocks if b.flags & bootstream.FLAG_FIRST]
+    assert firsts[-1].offset + bootstream.HEADER + firsts[-1].argument == len(stream)     # the control
+    extra = bootstream.block(0x28300000, b"\xaa" * 8) + bootstream.block(0x28400000, b"\xbb" * 4)
+    out = bootstream.insert_before_final(stream, extra)
+    after = [b for b in bootstream.walk(out).blocks if b.flags & bootstream.FLAG_FIRST]
+    assert after[-1].offset + bootstream.HEADER + after[-1].argument == len(out)
+    assert after[0].argument == firsts[0].argument                                       # the first application's is unchanged
+    assert _checksums_ok(out)
+    twice = bootstream.insert_before_final(out, bootstream.block(0x28500000, b"\xcc" * 4))
+    last = [b for b in bootstream.walk(twice).blocks if b.flags & bootstream.FLAG_FIRST][-1]
+    assert last.offset + bootstream.HEADER + last.argument == len(twice) and _checksums_ok(twice)
+
+
+def test_insert_before_final_refuses_a_first_block_that_does_not_reach_the_end():
+    stream = bytearray(_two_applications())
+    second = [b for b in bootstream.walk(bytes(stream)).blocks if b.flags & bootstream.FLAG_FIRST][-1]
+    struct.pack_into("<I", stream, second.offset + 12, second.argument + 4)
+    with pytest.raises(ValueError):
+        bootstream.insert_before_final(bytes(stream), bootstream.block(0x28300000, b"\xaa" * 8))

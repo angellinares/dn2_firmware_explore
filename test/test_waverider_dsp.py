@@ -104,6 +104,14 @@ def test_loaded_image_holds_our_bytes(built):
         assert bootstream.read_span(built, at, len(payload)) == payload, what
 
 
+def _first_header(stock7) -> set[int]:
+    """the bytes of the FIRST header that the inserted blocks join: its ARGUMENT grows with them
+    (bootstream.insert_before_final)"""
+    w = bootstream.walk(stock7)
+    first = [b for b in w.blocks if b.offset < w.final.offset and b.flags & bootstream.FLAG_FIRST][-1]
+    return set(range(first.offset, first.offset + bootstream.HEADER))
+
+
 def test_the_six_patches_and_nothing_else_in_the_stock_blocks(stock7, built):
     entry = bootstream.read_span(built, dsp.sw_to_load(dsp.ENTRY_SW), 8)
     assert entry == bytes.fromhex("3e06160000f60100")          # jump 0x16f600 (the block counter) ; nop
@@ -141,8 +149,12 @@ def test_the_six_patches_and_nothing_else_in_the_stock_blocks(stock7, built):
     bound_off = bootstream.spans(stock7, dsp.sw_to_load(dsp.BOUND_SITE_SW), 6)[0][0]
     allowed = (set(range(entry_off, entry_off + 8)) | set(range(look_off, look_off + 4))
                | set(range(idle_off, idle_off + 6)) | set(range(call_off, call_off + 6))
-               | set(range(table_off, table_off + 6)) | set(range(bound_off, bound_off + 6)))
+               | set(range(table_off, table_off + 6)) | set(range(bound_off, bound_off + 6))
+               | _first_header(stock7))
     assert diff and set(diff) <= allowed
+    w = bootstream.walk(built)
+    last_first = [b for b in w.blocks if b.offset < w.final.offset and b.flags & bootstream.FLAG_FIRST][-1]
+    assert last_first.offset + bootstream.HEADER + last_first.argument == len(built)
 
 
 def test_the_command_dispatch_takes_eight_commands_from_the_moved_table(stock7, built):
@@ -398,7 +410,7 @@ def test_the_idle_only_stream_is_stock_but_the_stub(stock7):
     final = bootstream.walk(stock7).final
     diff = [k for k in range(final.offset) if built[k] != stock7[k]]
     idle_off = bootstream.spans(stock7, site, 6)[0][0]
-    assert diff and set(diff) <= set(range(idle_off, idle_off + 6))
+    assert diff and set(diff) <= set(range(idle_off, idle_off + 6)) | _first_header(stock7)
 
 
 def test_the_idle_stub_is_placed_and_returns_where_its_source_says():

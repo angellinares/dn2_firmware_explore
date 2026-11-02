@@ -57,6 +57,8 @@ jobs:
       - name: Writing check on the changed lines of the Markdown files
         # Only the lines the PR adds: a PR that touches one line of an older file is not
         # charged with the rest of that file. Line numbers count within the added lines.
+        # Each part of the diff (each @@ hunk) starts after a blank line, so added lines from
+        # separate places in a file never join into one paragraph.
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           [ -n "$base" ] || base="$(git rev-parse HEAD~1)"
@@ -65,6 +67,6 @@ jobs:
           status=0
           for f in $files; do
             echo "== $f, added lines only"
-            git diff -U0 "$base" HEAD -- "$f" | grep '^+' | grep -v '^+++' | cut -c2-               | python scripts/ste_lint.py --mode descriptive - || status=1
+            git diff -U0 "$base" HEAD -- "$f" | grep -E '^(\+|@@)' | grep -v '^+++'               | sed -e 's/^@@.*$//' -e 's/^+//' | python scripts/ste_lint.py --mode descriptive - || status=1
           done
           exit $status

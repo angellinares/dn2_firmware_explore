@@ -66,6 +66,12 @@ FILTER = 180        # DSP: record +0x1dc, through FILTER_TO_DSP
 TRIG_NOTE = 34
 TRIG_MASKS = (34, 36, 38, 40)
 
+# the global word the frame builder stores at 0xa58 (the word at 0x42431c11 in OS 1.11,
+# docs/waverider-frame-words.md). Stock OS 1.11 sends 0x1130 (panel_drive capture,
+# 2026-11-02). With 0 there, FM Tone, WaveTone and FM Drum voices stay silent.
+GLOBAL_A58 = 0xA58
+GLOBAL_A58_STOCK = 0x1130
+
 # the four block copies of the frame builder 0x400274ba: (first index, last index,
 # offset of the first index inside a track slot)
 SLOT_BLOCKS = ((25, 65, 0), (66, 79, 82), (80, 92, 110), (95, 99, 136))
@@ -168,8 +174,8 @@ def init_frame(sound: dict[int, int], machine: int, *, cf_filter: int = 0, trigg
                track0: dict[int, int] | None = None) -> Frame:
     """A frame with every track on the init sound SOUND (index -> value): track 0 on
     MACHINE and CF_FILTER with TRACK0's overrides, tracks 1-15 MIDI (type 4, no render),
-    the Trig Note default 60 and Track Level default 100 everywhere. TRIGGER sets track
-    0's four trigger bits."""
+    the Trig Note default 60 and Track Level default 100 everywhere, and stock's global word
+    at 0xa58. TRIGGER sets track 0's four trigger bits."""
     f = Frame()
     for t in range(TRACKS):
         f.header(MACHINE, t, machine if t == 0 else 4)
@@ -178,6 +184,7 @@ def init_frame(sound: dict[int, int], machine: int, *, cf_filter: int = 0, trigg
         f.header(LEVEL, t, 0x6400)
         f.sound(t, sound)
     f.sound(0, dict(track0 or {}))
+    f.put(GLOBAL_A58, GLOBAL_A58_STOCK)
     if trigger:
         f.trigger(0)
     return f

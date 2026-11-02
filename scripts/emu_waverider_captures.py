@@ -128,6 +128,10 @@ def main() -> int:
 
     s = ["tap:12", "wait:30M", "press:17", "wait:20M", "tap:2", "wait:40M", "release:17", "wait:60M"]
     s += [x for _ in range(4) for x in ("tap:14", "wait:40M")] + ["tap:10", "wait:200M", "tap:2", "wait:60M"]
+    # voice 0 has played as a Waverider (events.c `unplayed`, bit 0 clear): the page shows a voice's
+    # modulation only then, and the emulator runs no frame hook to clear it
+    events = json.loads((ROOT / "src/dnfw/mods/waverider_code.json").read_text())["layout"]["wr_events"]
+    s += [f"poke:{events + 26:#x}:fffe"]
     # the sound: osc 1 Prim. at POS 40, osc 2 Harm. at POS 30; sub and noise up; Shape's knobs set
     s += [put(POS1, 40 << 8), put(TBL1, 0x0000), put(POS2, 30 << 8), put(TBL2, 0x0100),
           put(SUB_LEV, 100 << 8), put(SUB_WAVE, 1 << 8), put(NOIS_LEV, 60 << 8), put(NOIS_COL, 0x5000),

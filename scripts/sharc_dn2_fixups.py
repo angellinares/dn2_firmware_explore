@@ -104,6 +104,7 @@ from __future__ import annotations
 
 import collections
 import dataclasses
+import inspect
 import math
 import os
 import pathlib
@@ -115,6 +116,15 @@ ACCESS_WIDTHS = UREG_CODES = None
 TYPE4B_OWN_WIDTHS = False       # the bound core reads Type 4b's widths from its own table (277760a)
 _dm_read = _dm_write = _simd_active = None
 Const = _signed = None
+
+
+def runner_options() -> dict:
+    """The Runner options every gate uses. digikit's main removed `approx_recips` on 2026-10-31,
+    when RECIPS and RSQRTS became exact (its finding 102), so an older checkout alone takes it."""
+    options = {"explicit_memory_model": True, "follow_loaded_calls": True, "max_call_depth": 64}
+    if "approx_recips" in inspect.signature(sr.Runner.__init__).parameters:
+        options["approx_recips"] = True
+    return options
 
 
 def bind(tools_dir: str) -> None:
@@ -153,7 +163,7 @@ def _clip_fixed(ca):
     """G14: `Rn = CLIP Rx BY Ry` (fixed-point ALU opcode 0x63, PRM Table 18-5 and
     "RN = clip RX by RY"): Rx if |Rx| < |Ry|, else |Ry| with Rx's sign. AZ and AN follow
     the result, the other flags clear, as min/max (the PRM's flag table for both)."""
-    def alu_clip_fixed(rn, rx, ry, left, right, values, special, approx_recips):
+    def alu_clip_fixed(rn, rx, ry, left, right, values, special, approx_recips=None):
         if isinstance(left, ca.Const) and isinstance(right, ca.Const):
             a, b = ca._signed32(left.value), abs(ca._signed32(right.value))
             value = ca.Const((a if abs(a) < b else (b if a >= 0 else -b)) & 0xFFFFFFFF)

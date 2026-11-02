@@ -3,7 +3,7 @@
     python scripts/emu_modinfo.py BUILD.syx [--stock STOCK.syx] [--card out/dk-dn2-card.img]
 
 Through digikit's sysex_bridge, DNX's own frames (docs/for-dnx-modinfo.md):
-1. `/` lists `modinfo`, after `wavepool`; `/modinfo` lists index 0, `info`, used, 256 bytes;
+1. `/` lists `modinfo`, after `wavepool`; `/modinfo` lists index 0, `info`, used, 512 bytes;
 2. a read of `/modinfo/0` is the record the build wrote into the image, byte for byte
    (dnfw.mods.modinfo, from the build's own MAIN OS): magic, hash, the capabilities, the
    pool's 128 slots and record version 2, the mods, the tag, the image id;
@@ -33,7 +33,8 @@ from dnfw.mods import modinfo as MI                       # noqa: E402
 from emu_waverider_rename import ARGS, BRIDGE, Frames, crc0, dec   # noqa: E402
 from emu_waverider_wavepool import listing                # noqa: E402
 
-PIECES = 1 + (31 + MI.BYTES + 12 + 15) // 16
+SIZE = MI.SIZES[-1]                                       # the record this code's chunk carries
+PIECES = 1 + (31 + SIZE + 12 + 15) // 16
 STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
 
 
@@ -49,8 +50,8 @@ def built_record(build: pathlib.Path) -> bytes:
     with tempfile.TemporaryDirectory() as tmp:
         subprocess.run(["dnfw", "extract", str(build), "-o", tmp], capture_output=True, check=True, timeout=600)
         main = next(pathlib.Path(tmp).glob("section_3_*.bin")).read_bytes()
-    at = main.find(MI.MAGIC + struct.pack(">HH", MI.VERSION, MI.BYTES))
-    return main[at:at + MI.BYTES] if at >= 0 else b""
+    at = MI.find(main)
+    return MI.record(main, at) if at is not None else b""
 
 
 def run(build: str, card: str, f: Frames) -> dict:
@@ -74,7 +75,7 @@ def main() -> int:
     f.frame("root", 0x53, b"/\0")
     f.frame("list", 0x53, b"/modinfo\0")
     f.read("r0", "/modinfo/0", PIECES)
-    f.write("w0", "/modinfo/0", container(bytes(MI.BYTES), 0x4D))
+    f.write("w0", "/modinfo/0", container(bytes(SIZE), 0x4D))
     f.read("r1", "/modinfo/0", PIECES)
     f.frame("open1", 0x54, b"/modinfo/1\0")
     replies = run(a.build, a.card, f)
@@ -90,7 +91,7 @@ def main() -> int:
     def read_back(label):
         raw = b"".join(answer(replies, f"{label}:chunk{k}")[22:] for k in range(1, PIECES))
         at = raw.find(bytes.fromhex("ac11d303"))
-        return (raw[at:at + 31], raw[at + 31:at + 31 + MI.BYTES]) if at >= 0 else (b"", b"")
+        return (raw[at:at + 31], raw[at + 31:at + 31 + SIZE]) if at >= 0 else (b"", b"")
 
     ok = True
 
@@ -106,12 +107,12 @@ def main() -> int:
 
     want = built_record(pathlib.Path(a.build))
     head, rec = read_back("r0")
-    info = MI.parse(rec) if len(rec) == MI.BYTES else {}
+    info = MI.parse(rec) if len(rec) == SIZE else {}
     check("/modinfo/0 reads the record the build wrote, byte for byte", rec and rec == want,
           f"{len(rec)} B, {len(want)} B in the image")
-    check("its container: kind 0x4D, version 1, 256 bytes, raw",
+    check("its container: kind 0x4D, version 1, 512 bytes, raw",
           len(head) == 31 and struct.unpack(">III", head[13:25])[:2] == (0x4D, 1)
-          and struct.unpack(">I", head[25:29])[0] == MI.BYTES and head[29] == 0, head.hex())
+          and struct.unpack(">I", head[25:29])[0] == SIZE and head[29] == 0, head.hex())
     check("the record checks out and is filled: magic, version, hash", info.get("ok") and info.get("filled"), info)
     check("capabilities: store, pool, rename, pool_cas, page, playable, erase",
           info.get("capabilities") == ["store", "pool", "rename", "pool_cas", "page", "playable", "erase"], info.get("capabilities"))
@@ -123,6 +124,10 @@ def main() -> int:
     check("pool: 128 slots, record version 2; store: 256 slots",
           (info.get("pool_slots"), info.get("pool_version"), info.get("store_slots")) == (128, 2, 256))
     check("the mods include waverider", any(m == "waverider" for m, _ in info.get("mods", [])), info.get("mods"))
+    whole = MI.parse(want) if want else {}
+    check("every mod the build lists reads back, those past the 11th included",
+          info.get("mods") and info.get("mods") == whole.get("mods") and len(info["mods"]) == want[68],
+          f"{len(info.get('mods', []))} mods: {[m for m, _ in info.get('mods', [])]}")
 
     w_open, w_first = answer(replies, "w0:open"), answer(replies, "w0:chunk0")
     # the session itself refuses: the file is listed write-protected (0x12), so the

@@ -2,7 +2,7 @@
  * (docs/for-dnx-modinfo.md; the codec is dnfw.mods.modinfo).
  *
  * Built as /wavepool is (poolroute.c): `/` lists `modinfo` with one child; `/modinfo`
- * lists index 0 named `info`; `/modinfo/0` is a 256-byte file in the transfer container,
+ * lists index 0 named `info`; `/modinfo/0` is a 512-byte file in the transfer container,
  * content kind 0x4D, object version 1, raw. It is read-only: a write is refused at its
  * first chunk. Stock firmware has no such path, and answers its own "invalid path".
  *
@@ -18,7 +18,7 @@
 #include "../waverider/pool.h"
 
 #define INFO_KIND    0x4Du                  /* 'M' (a table is 0x57, a pool list 0x50) */
-#define INFO_BYTES   256u
+#define INFO_BYTES   512u                   /* 256 up to Waverider 0.3.7: 11 mods; 512: 26 */
 #define READ_ONLY    0x12u                  /* listed write-protected (route.c's note) */
 
 /* the capabilities, one bit per thing DNX branches on; unknown bits must be ignored */
@@ -38,9 +38,11 @@
 
 /* 0 magic, 4 version, 6 bytes, 8 caps, 12 pool slots, 14 pool record version,
  * 16 store slots, 18 the characters of a name the pool keeps, 19 those TBL's header
- * shows; from 20 the build's part, its marker at 24 until written; 248 the most waves
- * the pool plays, 249 and 250 log2 of the fewest and most points, 251 PLAY_POW2
- * (wr_store_playable's bounds). The hash is at bytes - 4 (252), over everything before it. */
+ * shows; from 20 the build's part, its marker at 24 until written (mods 1 to 11 at 72);
+ * 248 the most waves the pool plays, 249 and 250 log2 of the fewest and most points, 251
+ * PLAY_POW2 (wr_store_playable's bounds); 252 zero; mods 12 to 26 at 256. The hash is at
+ * bytes - 4 (508), over everything before it. A reader that knows only 256 bytes takes the
+ * hash from bytes - 4 and lists the first 11 mods. */
 u8 wr_modinfo[INFO_BYTES] __attribute__((section(".data"), aligned(4))) = {   /* .data: GCC puts no const there */
     'D', 'N', 'M', 'I', B16(1), B16(INFO_BYTES), B32(CAPS),
     B16(POOL_ENTRIES), B16(RECORD_VERSION), B16(SLOTS), POOL_NAME - 1, TBL_NAME_SHOWN,

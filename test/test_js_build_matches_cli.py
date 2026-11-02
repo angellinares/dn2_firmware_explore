@@ -132,8 +132,8 @@ def _sections(path: pathlib.Path) -> dict[int, bytes]:
 def _record_ok(main: bytes):
     """-> None without a /modinfo record, else whether it passes DNX's check."""
     from dnfw.mods import modinfo
-    at = main.find(modinfo.MAGIC + bytes([0, 1, 1, 0]))
-    return None if at < 0 else modinfo.parse(main[at:at + modinfo.BYTES])["ok"]
+    at = modinfo.find(main)
+    return None if at is None else modinfo.parse(modinfo.record(main, at))["ok"]
 
 
 def _canonical(main: bytes):
@@ -145,10 +145,11 @@ def _canonical(main: bytes):
     out = []
     for cid, data in area.parse(main[platform.STOCK_LENGTH:]):
         data = bytearray(data)
-        at = data.find(modinfo.MAGIC + bytes([0, 1, 1, 0]))
-        if at >= 0:
+        at = modinfo.find(bytes(data))
+        if at is not None:
+            n = modinfo.size_at(data, at)
             data[at + 20:at + 248] = bytes(228)
-            data[at + 252:at + 256] = bytes(4)
+            data[at + 252:at + n] = bytes(n - 252)        # the hash, and a 512-byte record's mods 12 and up
         out.append((cid, bytes(data)))
     return main[:platform.STOCK_LENGTH], sorted(out)
 

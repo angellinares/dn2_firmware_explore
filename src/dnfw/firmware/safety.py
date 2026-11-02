@@ -304,7 +304,7 @@ def _record(main: bytes) -> tuple[Item, list[str], str]:
         return Item("record", title, "fail", str(exc)), [], ""
     if at is None:
         return Item("record", title, "skip", "this image has no /modinfo record"), [], ""
-    rec = bytes(main[at:at + modinfo.BYTES])
+    rec = modinfo.record(main, at)
     info = modinfo.parse(rec)
     if not info["filled"]:
         return Item("record", title, "warn", "the record is present but was never filled"), [], ""
@@ -312,7 +312,7 @@ def _record(main: bytes) -> tuple[Item, list[str], str]:
         return Item("record", title, "fail", "the record's hash does not match its bytes"), [], ""
     zeroed = bytearray(main)
     zeroed[at + 20:at + 24] = bytes(4)
-    zeroed[at + 252:at + 256] = bytes(4)
+    zeroed[at + len(rec) - 4:at + len(rec)] = bytes(4)
     if modinfo.xxh32(bytes(zeroed)) != info["image_id"]:
         return Item("record", title, "fail", "the record's image id does not match MAIN OS: "
                     "something changed MAIN OS after the record was written"), [], ""
@@ -334,7 +334,8 @@ def _canonical(main: bytes, base_length: int):
     for cid, data in area.parse(bytes(main[base_length:])):
         at = modinfo.find(data)
         if at is not None:
-            data = data[:at] + bytes(modinfo.BYTES) + data[at + modinfo.BYTES:]
+            n = modinfo.size_at(data, at)
+            data = data[:at] + bytes(n) + data[at + n:]
         chunks.append((cid, data))
     return bytes(main[:base_length]), sorted(chunks)
 

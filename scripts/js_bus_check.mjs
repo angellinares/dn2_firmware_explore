@@ -15,24 +15,25 @@ import { build, load, replacement, verify } from "../site/js/firmware.js";
 import * as fxmod from "../site/js/mods/fxmod.js";
 import * as lfo4 from "../site/js/mods/lfo4.js";
 import * as waverider from "../site/js/mods/waverider.js";
-import { locate, xxh32 } from "../site/js/modinfo.js";
+import { locate, modSlots, sizeAt, xxh32 } from "../site/js/modinfo.js";
 
 const arg = (n) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 ? process.argv[i + 1] : null; };
 const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 const checks = [];
-// the /modinfo record's build part (20..247, the hash at 252): the browser fills it at every
+// the /modinfo record's build part (20..247, and 252 to the end: the hash, and a 512-byte
+// record's mods 12 and up): the browser fills it at every
 // build (modinfo.js); the Python payloads here are the mods' own, before `dnfw mods apply`'s fill
 const blank = (b) => {
   const out = b.slice(), at = locate(out);
-  if (at >= 0) { out.fill(0, at + 20, at + 248); out.fill(0, at + 252, at + 256); }
+  if (at >= 0) { out.fill(0, at + 20, at + 248); out.fill(0, at + 252, at + sizeAt(out, at)); }
   return out;
 };
 const listed = (b) => {
-  const at = locate(b), rec = b.subarray(at, at + 256);
-  const hash = (rec[252] << 24 | rec[253] << 16 | rec[254] << 8 | rec[255]) >>> 0;
-  const ids = [...Array(rec[68]).keys()].map((k) =>
-    new TextDecoder().decode(rec.subarray(72 + 16 * k, 84 + 16 * k)).replace(/\0.*$/s, ""));
-  return hash === xxh32(rec.subarray(0, 252)) ? ids : null;
+  const at = locate(b), n = sizeAt(b, at), rec = b.subarray(at, at + n);
+  const hash = (rec[n - 4] << 24 | rec[n - 3] << 16 | rec[n - 2] << 8 | rec[n - 1]) >>> 0;
+  const ids = modSlots(n).slice(0, rec[68]).map((p) =>
+    new TextDecoder().decode(rec.subarray(p, p + 12)).replace(/\0.*$/s, ""));
+  return hash === xxh32(rec.subarray(0, n - 4)) ? ids : null;
 };
 
 const run = {

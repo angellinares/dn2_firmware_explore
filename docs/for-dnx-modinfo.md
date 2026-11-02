@@ -23,18 +23,20 @@ DNX's rule, adopted here. **The root listing is the primary signal. The error st
 | path | answers |
 |---|---|
 | `/` | `modinfo` listed after `wavepool`, with one child |
-| `/modinfo` | one entry: index 0, `info`, used, 256 bytes, write-protected (permissions 0x12) |
-| `/modinfo/0` | the record, in the transfer container: content kind **0x4D**, object version **1**, raw, 256 bytes |
+| `/modinfo` | one entry: index 0, `info`, used, 512 bytes (256 up to Waverider 0.3.7), write-protected (permissions 0x12) |
+| `/modinfo/0` | the record, in the transfer container: content kind **0x4D**, object version **1**, raw, 512 bytes (256 up to Waverider 0.3.7) |
 | a write to `/modinfo/0` | refused by the session itself: `Write: Permission denied` |
 | `/modinfo/1` and up | refused: `modinfo: the only file is 0` |
 
-## The record (256 bytes, big-endian)
+## The record (512 bytes, big-endian)
+
+Builds up to Waverider 0.3.7 carry 256 bytes, and those hold 11 mods. Later builds carry 512 bytes, and those hold 26 mods. The version stays 1, because the record grows by appending.
 
 | at | bytes | field |
 |---|---|---|
 | 0 | 4 | magic `DNMI` |
 | 4 | 2 | record version, 1 |
-| 6 | 2 | record bytes, 256 |
+| 6 | 2 | record bytes: 512 (256 up to Waverider 0.3.7) |
 | 8 | 4 | capabilities (below) |
 | 12 | 2 | pool slots: **128**. Draw the grid from this before any pool record is read |
 | 14 | 2 | pool record version written: 2. Versions 1 and 2 are both read |
@@ -46,17 +48,21 @@ DNX's rule, adopted here. **The root listing is the primary signal. The error st
 | 32 | 24 | build tag, e.g. `wr-modinfo` |
 | 56 | 12 | commit, e.g. `a97b3ca08f`; a trailing `+` means it was built with uncommitted changes |
 | 68 | 1 | mod count, then 3 zero bytes |
-| 72 | 16 each | a mod: its id (12 bytes, NUL-padded), then the xxHash32 of its code (4 bytes; 0 when it has none). Up to 11 |
+| 72 | 16 each | mods 1 to 11: each its id (12 bytes, NUL-padded), then the xxHash32 of its code (4 bytes; 0 when it has none) |
 | 248 | 1 | with `playable` (0x40): the most waves a table the pool plays has, **64** |
 | 249 | 1 | with `playable`: log2 of the fewest points, **6** (64) |
 | 250 | 1 | with `playable`: log2 of the most points, **12** (4096) |
 | 251 | 1 | with `playable`: flags; 0x01 the points must be a power of two (set) |
-| `bytes - 4` | 4 | xxHash32 of everything before it, seed 0 (the hash the store and the pool records use): 252 in version 1 |
+| 252 | 4 | in a 512-byte record: zero. In a 256-byte record: the hash |
+| 256 | 16 each | in a 512-byte record: mods 12 to 26, laid out as at 72 |
+| `bytes - 4` | 4 | xxHash32 of everything before it, seed 0 (the hash the store and the pool records use): at 508 in a 512-byte record, at 252 in a 256-byte record |
 
 **The record grows by appending.** A reader:
 - takes the hash from `bytes - 4`.
 - accepts a `bytes` larger than it knows.
 - reads only the fields it knows.
+
+**For DNX: the mods past the 11th.** The count at 68 counts every mod. A reader that knows only 256 bytes reads mods 1 to 11 and checks the hash correctly, so today's DNX keeps working. To list mods 12 to 26, read them from 256 when `bytes` is 512 or more. Stop at the count, or at `bytes - 4`.
 
 This is unlike the pool record, whose size is fixed and whose hash sits at a constant.
 
@@ -107,5 +113,5 @@ Every build on the instrument before rev 1 lists `waverider` (and from the pool 
 
 | check | result |
 |---|---|
-| `scripts/emu_modinfo.py` | 15/15 checks, beside stock 1.11 as the control: root listing, the listing, the read byte for byte against the image, container, hash, capabilities, sizes, mods, write refused and the record unchanged, `/modinfo/1` refused, stock lists no `modinfo` and answers `Error: Could not resolve path` |
-| `test/test_mods_modinfo.py` | 9/9: fill, image id, two builds differ, unknown bits kept and ignored, a second marker or too many mods refused, a bad hash reads not ok, a 512-byte record reads with its hash at 508 |
+| `scripts/emu_modinfo.py` | 16/16 checks on a 12-mod build (2026-11-01), beside stock 1.11 as the control: root listing, the listing, the read byte for byte against the image, container, hash, capabilities, sizes, mods (the 12th read back from 256), write refused and the record unchanged, `/modinfo/1` refused, stock lists no `modinfo` and answers `Error: Could not resolve path` |
+| `test/test_mods_modinfo.py` | 13/13: fill, image id, two builds differ, unknown bits kept and ignored, a second marker or too many mods refused, a bad hash reads not ok, a 512-byte record reads with its hash at 508, a 512-byte record holds 26 mods and a 256-byte one 11, DNX's reading rule lists the first 11 of a 512-byte record |

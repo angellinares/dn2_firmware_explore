@@ -14,6 +14,7 @@
  */
 
 import { RUN, applyInOrder } from "./registry.js";
+import { MAX_MODS } from "../modinfo.js";
 import * as bootscreen from "./bootscreen.js";
 import * as lfowaves from "./lfowaves.js";
 import * as transients from "./transients.js";
@@ -41,8 +42,8 @@ export function order(ids) {
     ...APPLY_LAST.filter((id) => set.has(id))];
 }
 
-/** With Waverider, the /modinfo record lists every mod of the build, and it holds 11 (modinfo.js). */
-export const MAX_WITH_RECORD = 11;
+/** With Waverider, the /modinfo record lists every mod of the build, and it holds 26 (modinfo.js). */
+export const MAX_WITH_RECORD = MAX_MODS;
 const RECORD = "waverider";
 
 /**

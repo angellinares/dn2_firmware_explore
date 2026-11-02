@@ -87,3 +87,52 @@ def test_a_longer_record_reads_with_its_hash_at_bytes_minus_4():
     info = MI.parse(bytes(grown))
     assert info["ok"] and info["bytes"] == 512 and info["mods"] == [("waverider", 7)]
     assert not MI.parse(bytes(grown[:256]))["ok"]          # cut short: the stated length isn't there
+
+
+def big_payload() -> bytes:
+    """a 512-byte record, as the chunk carries it after Waverider 0.3.7"""
+    head = MI.MAGIC + struct.pack(">HHIHHHBB", MI.VERSION, 512, 0x37, 128, 2, 256, 15, 14) + bytes(4)
+    return b"\x11" * 1000 + (head + MI.MARKER).ljust(512, b"\0") + b"\x22" * 500
+
+
+def dnx_read(rec: bytes) -> list[str]:
+    """DNX's readModInfo (packages/core/src/waverider/modinfo.ts, a74ef6b): the hash at
+    bytes - 4, and the mods it knows, between 72 and 248"""
+    size = struct.unpack_from(">H", rec, 6)[0]
+    assert size == len(rec)
+    assert struct.unpack_from(">I", rec, size - 4)[0] == xxh32(rec[:size - 4])
+    room = (min(size, 248) - 72) // 16
+    return [rec[72 + 16 * k:84 + 16 * k].split(b"\0")[0].decode() for k in range(min(rec[68], room))]
+
+
+def test_a_512_byte_record_holds_26_mods():
+    mods = [(f"mod{k:02d}", k) for k in range(26)]
+    out = MI.fill(big_payload(), mods, "t", "c", "1.11")
+    assert len(out) == len(big_payload()) and out[1512:] == b"\x22" * 500
+    assert MI.find(out) == 1000 and MI.size_at(out, 1000) == 512
+    info = MI.parse(MI.record(out, 1000))
+    assert info["ok"] and info["bytes"] == 512 and info["mods"] == mods
+    with pytest.raises(MI.ModInfoError):
+        MI.fill(big_payload(), mods + [("one_more", 0)], "t", "c", "1.11")
+
+
+def test_a_256_byte_record_still_holds_11():
+    """an image whose chunk is from Waverider 0.3.7 or before"""
+    MI.fill(payload(), [(f"m{k}", 0) for k in range(11)], "t", "c", "1.11")
+    with pytest.raises(MI.ModInfoError):
+        MI.fill(payload(), [(f"m{k}", 0) for k in range(12)], "t", "c", "1.11")
+
+
+def test_dnx_today_reads_the_first_11_of_a_512_byte_record():
+    """the DNX in the field: the hash checks out, it lists the first 11, and the count is all 26"""
+    mods = [(f"mod{k:02d}", k) for k in range(26)]
+    rec = MI.record(MI.fill(big_payload(), mods, "t", "c", "1.11"), 1000)
+    assert dnx_read(rec) == [m for m, _ in mods[:11]] and rec[68] == 26
+
+
+def test_the_image_id_of_a_512_byte_record():
+    out = MI.fill(big_payload(), [("waverider", 1)], "t", "c", "1.11")
+    zeroed = bytearray(out)
+    zeroed[1000 + 20:1000 + 24] = bytes(4)
+    zeroed[1000 + 508:1000 + 512] = bytes(4)
+    assert MI.parse(MI.record(out, 1000))["image_id"] == xxh32(bytes(zeroed))

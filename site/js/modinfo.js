@@ -5,18 +5,31 @@
  * Waverider's chunk carries the record with its build part unfilled: the marker at 24 and a
  * zero image id and hash. `fill` writes the OS, the tag, the commit and the mods list, then the
  * image id (xxHash32 of the whole MAIN OS with the id and the hash zeroed), then the hash
- * (xxHash32 of the record's first 252 bytes, seed 0). Without a record, the content is
- * returned unchanged.
+ * (xxHash32 of the record's first `bytes - 4` bytes, seed 0). Without a record, the content is
+ * returned unchanged. The record is 256 bytes (11 mods) up to Waverider 0.3.7, and 512 bytes
+ * (26 mods: 11 at 72, then 15 at 256) after it. Every reader takes the length from byte 6.
  */
 
 import { indexOf } from "./bytes.js";
 import { SITE_BUILD } from "./build.js";
 
-const MAGIC = [0x44, 0x4e, 0x4d, 0x49, 0, 1, 1, 0];     // "DNMI", version 1, 256 bytes
-const BYTES = 256;
+const MAGIC = [0x44, 0x4e, 0x4d, 0x49, 0, 1];           // "DNMI", version 1; then the length
+const SIZES = [256, 512];
+const BYTES = 256;                                       // the smallest record
 const MARKER = new TextEncoder().encode("MODINFO-UNFILLED");
 const MARKER_AT = 24;
-const MOD_AT = 72, MOD_BYTES = 16, MAX_MODS = 11;
+const MOD_AT = 72, MOD_BYTES = 16, MOD_END = 248, MORE_AT = 256;
+
+/** -> where each mod sits in a record of SIZE bytes: `mod_slots` in src/dnfw/mods/modinfo.py. */
+export function modSlots(size) {
+  const out = [];
+  for (let at = MOD_AT; at + MOD_BYTES <= MOD_END; at += MOD_BYTES) out.push(at);
+  for (let at = MORE_AT; at + MOD_BYTES <= size - 4; at += MOD_BYTES) out.push(at);
+  return out;
+}
+
+/** The most mods a record from this code's Waverider chunk holds (26). */
+export const MAX_MODS = modSlots(SIZES[SIZES.length - 1]).length;
 
 export class ModInfoError extends Error {}
 
@@ -50,9 +63,23 @@ const put32 = (b, at, v) => b.set([v >>> 24, (v >>> 16) & 255, (v >>> 8) & 255, 
 
 /** -> where the record starts in CONTENT (MAIN OS), or -1 when it carries none. */
 export function locate(content) {
-  const at = indexOf(content, MAGIC);
-  if (at >= 0 && indexOf(content, MAGIC, at + 1) >= 0) throw new ModInfoError("the /modinfo record appears twice");
-  return at;
+  const found = [];
+  for (const size of SIZES) {
+    const head = [...MAGIC, size >> 8, size & 255];
+    for (let at = indexOf(content, head); at >= 0; at = indexOf(content, head, at + 1)) found.push(at);
+  }
+  if (found.length > 1) throw new ModInfoError("the /modinfo record appears twice");
+  return found.length ? found[0] : -1;
+}
+
+/** -> the length the record at START says it has (byte 6). */
+export function sizeAt(content, start) {
+  return content[start + 6] << 8 | content[start + 7];
+}
+
+/** -> the record at START, at its own length. */
+export function record(content, start) {
+  return content.subarray(start, start + sizeAt(content, start));
 }
 
 /** -> where a record starts in CONTENT, or null: `find` in src/dnfw/mods/modinfo.py. */
@@ -62,7 +89,7 @@ export function find(content) {
 }
 
 /**
- * A record (256 bytes) -> { ok, filled, imageId, os, tag, commit, mods }: the fields the
+ * A record (256 or 512 bytes) -> { ok, filled, imageId, os, tag, commit, mods }: the fields the
  * Check page reads, as `parse` in src/dnfw/mods/modinfo.py reads them. `ok` is the magic, the
  * version, the size and the hash over everything before it.
  */
@@ -73,11 +100,7 @@ export function parse(rec) {
   const end = sizeOk ? size : Math.min(Math.max(size, 4), rec.length);
   const magicOk = MAGIC.slice(0, 4).every((b, i) => rec[i] === b);
   const str = (a, b) => new TextDecoder("ascii").decode(rec.subarray(a, b)).replace(/\0.*$/s, "");
-  const mods = [];
-  for (let k = 0; k < Math.min(rec[68], MAX_MODS); k++) {
-    const at = MOD_AT + MOD_BYTES * k;
-    mods.push([str(at, at + 12), u32(rec, at + 12)]);
-  }
+  const mods = modSlots(sizeOk ? size : BYTES).slice(0, rec[68]).map((at) => [str(at, at + 12), u32(rec, at + 12)]);
   return {
     ok: magicOk && version >= 1 && sizeOk && u32(rec, end - 4) === xxh32(rec.subarray(0, end - 4)),
     filled: indexOf(rec.subarray(MARKER_AT, MARKER_AT + MARKER.length), MARKER) !== 0,
@@ -90,14 +113,10 @@ export { BYTES };
 /** The record's mods list, when it is filled and checks out; else []. */
 function listed(rec) {
   if (indexOf(rec.subarray(MARKER_AT, MARKER_AT + MARKER.length), MARKER) === 0) return [];
-  if (u32(rec, 252) !== xxh32(rec.subarray(0, 252))) return [];
-  const mods = [];
-  for (let k = 0; k < Math.min(rec[68], MAX_MODS); k++) {
-    const at = MOD_AT + MOD_BYTES * k;
-    const id = new TextDecoder("ascii").decode(rec.subarray(at, at + 12)).replace(/\0.*$/s, "");
-    mods.push([id, u32(rec, at + 12)]);
-  }
-  return mods;
+  const n = rec.length;
+  if (u32(rec, n - 4) !== xxh32(rec.subarray(0, n - 4))) return [];
+  return modSlots(n).slice(0, rec[68]).map((at) => [
+    new TextDecoder("ascii").decode(rec.subarray(at, at + 12)).replace(/\0.*$/s, ""), u32(rec, at + 12)]);
 }
 
 /** NUL-padded ASCII, at most N - 1 characters, as the Python `_text`. */
@@ -116,24 +135,27 @@ export function fill(content, mod = null, os = "1.11") {
   const start = locate(content);
   if (start < 0) return content;
   const out = content.slice();
-  const rec = out.subarray(start, start + BYTES);
+  const size = sizeAt(out, start);
+  const rec = out.subarray(start, start + size);
+  const slots = modSlots(size);
   const mods = listed(rec);
   for (const id of ["waverider", mod]) {
     if (id && !mods.some(([m]) => m === id)) mods.push([id, 0]);
   }
-  if (mods.length > MAX_MODS) throw new ModInfoError(`${mods.length} mods; the record holds ${MAX_MODS}`);
+  if (mods.length > slots.length) throw new ModInfoError(`${mods.length} mods; the record holds ${slots.length}`);
   rec.fill(0, 20, 24);
   rec.set(text(os, 8), 24);
   rec.set(text(`web-${mods.map(([m]) => m).join("-")}`, 24), 32);
   rec.set(text(SITE_BUILD, 12), 56);          // web-<the site's commit>, web-local in a checkout
   rec.set([mods.length, 0, 0, 0], 68);
-  rec.fill(0, MOD_AT, 248);
+  slots.forEach((at) => rec.fill(0, at, at + MOD_BYTES));
   mods.forEach(([id, code], k) => {
-    rec.set(text(id, 12), MOD_AT + MOD_BYTES * k);
-    put32(rec, MOD_AT + MOD_BYTES * k + 12, code);
+    rec.set(text(id, 12), slots[k]);
+    put32(rec, slots[k] + 12, code);
   });
-  rec.fill(0, 252, 256);                                // 248..251 are the chunk's: the playable bounds
+  rec.fill(0, 252, 256);                                // 256: the hash, 512: reserved (248..251: the playable bounds)
+  rec.fill(0, size - 4, size);                          // the hash
   put32(rec, 20, xxh32(out));                           // the id and the hash still zero
-  put32(rec, 252, xxh32(rec.subarray(0, 252)));
+  put32(rec, size - 4, xxh32(rec.subarray(0, size - 4)));
   return out;
 }

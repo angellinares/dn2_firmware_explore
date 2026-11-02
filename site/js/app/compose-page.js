@@ -10,7 +10,7 @@
  */
 
 import { $, offer, openFirmware, outputName, showChecks, status, wireDrop } from "./shell.js";
-import { GROUPS, TAKES_FILES, blocked, build, command, order } from "../mods/compose.js";
+import { GROUPS, MAX_WITH_RECORD, TAKES_FILES, blocked, build, command, order } from "../mods/compose.js";
 import { VERSIONS } from "../mods/versions.js";
 import { flagFor } from "../mods/availability.js";
 import { COUNT, EQUAL_SAMPLES, extract, fit as fitEntry, lengths, toEntry, toFloat } from "../mods/transients.js";
@@ -130,7 +130,7 @@ function drawRows() {
     row.classList.toggle("blocked", box.disabled);
     why.textContent = flag ? flag.title
       : hit?.with.length ? `Does not combine with ${hit.with.map(nameOf).join(" or ")}.`
-      : hit?.full ? "A build with Waverider holds at most 11 mods." : "";
+      : hit?.full ? `A build with Waverider holds at most ${MAX_WITH_RECORD} mods.` : "";
     why.classList.toggle("hidden", !why.textContent);
     const pill = row.querySelector(".pill");
     const tag = TAKES_FILES.includes(id) && state.on.has(id) ? pillFor(id) : null;

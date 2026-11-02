@@ -464,7 +464,7 @@ def _modinfo(payload: bytes, chosen, args) -> bytes:
     at = modinfo.locate(payload)
     filled = modinfo.fill(payload, mods, tag, commit, m.group(1) if m else "unknown")
     if at is not None:
-        info = modinfo.parse(filled[at:at + modinfo.BYTES])
+        info = modinfo.parse(modinfo.record(filled, at))
         print(f"  /modinfo: image id {info['image_id']:08x}, tag {info['tag']}, commit {info['commit']}, "
               f"{len(mods)} mods, capabilities {', '.join(info['capabilities'])}")
     return filled

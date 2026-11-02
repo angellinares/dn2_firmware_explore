@@ -6,6 +6,8 @@ Every number comes from the code that ships, never typed by hand:
 
 - the reader: `dnfw.waverider.render` (frames blended, then 4-point Hermite), its mip
   levels `dnfw.waverider.geometry` / `mip`, and the pool's layout `dnfw.waverider.table3`;
+- the signal path of one voice: the order of `dnfw.waverider.live.render_two`, with each knob
+  checked against its page in `dnfw.waverider.pages`;
 - the de-click, the glide and the noise: `dnfw.waverider.live`, which the DSP code is
   checked against bit for bit (`scripts/sharc_waverider_m5.py` and its siblings);
 - what DNX proposes for a file: DNX's own `proposeGeometry` (its built `fit.js`), run
@@ -157,6 +159,223 @@ def table_html(head: list[str], rows: list[list], cls: str = "") -> str:
     body = "".join("<tr>" + "".join(f'<td{" class=\"num\"" if isinstance(c, (int, float)) or re.fullmatch(r"[-+0-9.,% x]+( [a-zA-Z]+)?", str(c)) else ""}>{html.escape(str(c))}</td>' for c in r) + "</tr>"
                    for r in rows)
     return f'<div class="scroll"><table{" class=" + chr(34) + cls + chr(34) if cls else ""}><thead><tr>{th}</tr></thead><tbody>{body}</tbody></table></div>'
+
+
+# ---------------------------------------------------------------- 0. the signal path of one voice
+#
+# The order is `live.render_two`'s (and the DSP's, page5.asm's header): the two oscillators, osc 2
+# first under FM; the mix with Ring or AM; FOLD; the Formant; then the sub and the noise. Every knob
+# the figure and the table name is checked against the page it is on (`pages.PAGES`), so a renamed
+# or moved knob stops this script instead of leaving the figure stale.
+
+def _knob(page: int, label: str) -> str:
+    on_page = [pages.label(r) for r in pages.PAGES[page - 1] if r]
+    if label not in on_page:
+        raise SystemExit(f"signal path: page {page} has no knob {label} ({on_page})")
+    return label
+
+
+SIG_STAGES = (    # stage, the knobs as (pages, label), what it does
+    ("Phase", (((1,), "TUNE"), ((2,), "DETN"), ((4,), "PRST")),
+     "The phase of each oscillator moves at the pitch of the note. TUNE sets the pitch of the two "
+     "oscillators. DETN sets the difference of osc 2 from osc 1. PRST sets the phase at the start of a note."),
+    ("Table reader", (((1, 2), "TBL"), ((1, 2), "POS"), ((4,), "SLW1"), ((4,), "SLW2"), ((4,), "DCLK"),
+                      ((5,), "WARP")),
+     "Reads the frame at POS in the table. SLW slews the POS that you hear. DCLK crossfades a sudden "
+     "change of TBL, POS or level. WARP bends the phase that each oscillator reads at."),
+    ("MOVE", (((1, 2), "RATE"), ((1, 2), "MOVE"), ((1, 2), "MPOS"), ((1, 2), "MLEV"), ((4,), "SYN1"),
+              ((4,), "SYN2"), ((4,), "TRIG")),
+     "A shape for each oscillator. MPOS sets how much it moves POS. MLEV sets how much it decreases the "
+     "level. With TRIG at Retrig, each note starts the shape again."),
+    ("FM", (((5,), "FM"), ((5,), "FSRC")),
+     "The FM source changes the phase of osc 1, sample by sample. FSRC selects the source: OSC2, SUB or "
+     "NOIS. FM alone sets the depth. LEV2, SUB and NOIS set only how loud you hear the source."),
+    ("Level", (((1, 2), "LEV"), ((4,), "TRIM")),
+     "The level of each oscillator. TRIM sets the level of each oscillator before the shapers, and the "
+     "level of the sub and the noise."),
+    ("Mix, Ring, AM", (((5,), "TYPE"), ((5,), "AMT")),
+     "Adds the two oscillators. With TYPE at Ring, multiplies them. With TYPE at AM, osc 2 changes the "
+     "level of osc 1. AMT sets how much of the shaper you hear."),
+    ("Fold", (((5,), "FOLD"),),
+     "Folds the mix back on itself, after Ring or AM."),
+    ("Formant", (((5,), "TYPE"), ((5,), "AMT"), ((5,), "P1"), ((5,), "P2")),
+     "With TYPE at Formant, filters the mix after FOLD, so that it sounds like a vowel. AMT selects the "
+     "vowel. P1 moves the formants up. P2 sets the dry part."),
+    ("Sub", (((3,), "SUB"), ((3,), "OCT"), ((3,), "WAVE"), ((3,), "SRC")),
+     "A sub-oscillator 1 to 3 octaves below osc 1 or osc 2. The DSP adds the sub after the shapers, so they do "
+     "not change it. With FSRC at SUB, the sub follows osc 1."),
+    ("Noise", (((3,), "NOIS"), ((3,), "TYPE"), ((3,), "COLR"), ((3,), "DEC")),
+     "Noise with a tilt (COLR) and a decay that starts again on each note. The DSP adds the noise after "
+     "the shapers too."),
+)
+
+
+def signal_stages() -> str:
+    """The stages of the figure, in the DSP's order, with their knobs and pages."""
+    rows = []
+    for stage, knobs, what in SIG_STAGES:
+        on = sorted({p for ps, label in knobs for p in ps if _knob(p, label)})
+        rows.append(f"<tr><td>{html.escape(stage)}</td><td>{', '.join(map(str, on))}</td>"
+                    f"<td>{' '.join(f'<code>{html.escape(label)}</code>' for _, label in knobs)}</td>"
+                    f"<td>{html.escape(what)}</td></tr>")
+    return ('<div class="scroll"><table><thead><tr><th>Stage</th><th>Page</th><th>Knobs</th>'
+            f'<th>What it does</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>')
+
+
+def _slw_no_jump() -> int:
+    """The lowest SLW at which a full POS sweep moves less than DCLK's jump in one block."""
+    full = live.POS_MAX << live.POS_SHIFT
+    return next(v for v in range(1, live.SMTH_MAX + 1) if live.smth_table()[v] * full <= live.DCLK_JUMP_POS)
+
+
+def signal_notes() -> str:
+    """What the order of the stages means for the sound, from the same models."""
+    slw = _slw_no_jump()
+    items = (
+        "TRIM sets the level of each oscillator before the shapers. Thus TRIM also changes how much FOLD "
+        "folds, and the balance that AMT sets for Ring. TRIM does not change the FM depth.",
+        "FM reads osc 2 before LEV2, at a fixed level. LEV2 and MOVE's level on osc 2 change only how loud "
+        "you hear osc 2.",
+        "FOLD folds the sum of the two oscillators. With two different pitches, the fold adds tones at the "
+        "sum and the difference of their frequencies.",
+        "WARP and FM get softer on high notes. FOLD, Ring and AM do not. On high notes, a high FOLD can add "
+        "tones that do not belong to the note.",
+        "TYPE selects one shaper: Ring, AM or the Formant. Only one of them plays at a time.",
+        "MOVE changes only POS and the level. To move WARP, FOLD, FM or AMT, use an LFO. TYPE, P1 and P2 "
+        "cannot take an LFO.",
+        f"SLW and DCLK both act on a change of POS. DCLK crossfades a jump of more than "
+        f"{live.DCLK_JUMP_POS >> 16} frames in one block. From SLW {live.smth_names()[slw]} up, POS moves "
+        f"less than that, so DCLK then acts only on a change of TBL or of the level.",
+        "Each voice is mono. The pan of the track sets the stereo position.",
+    )
+    return "<ul>" + "".join(f"<li>{html.escape(t)}</li>" for t in items) + "</ul>"
+
+
+def signal_path() -> str:
+    """One voice, from the note to the track output: the figure. Classes are the page's `.sig` ones."""
+    o: list[str] = []
+
+    def box(x, y, w, h, title, sub="", cls="box"):
+        o.append(f'<rect class="{cls}" x="{x}" y="{y}" width="{w}" height="{h}" rx="3"/>')
+        ty = y + h / 2 + (-3 if sub else 5)
+        o.append(f'<text class="bt" x="{x + w / 2}" y="{ty:g}">{html.escape(title)}</text>')
+        if sub:
+            o.append(f'<text class="bs" x="{x + w / 2}" y="{ty + 16:g}">{html.escape(sub)}</text>')
+
+    def knobs(page_labels, xs, y, below=False):
+        """Knob labels at Y, each with a dashed arrow to the box edge."""
+        for (page, label), x in zip(page_labels, xs):
+            o.append(f'<text class="kn" x="{x}" y="{y}">{html.escape(_knob(page, label))}</text>')
+            if below:
+                o.append(f'<path class="k" d="M{x} {y - 14} V{y - 26}" marker-end="url(#sp-k)"/>')
+            else:
+                o.append(f'<path class="k" d="M{x} {y + 4} V{y + 15}" marker-end="url(#sp-k)"/>')
+
+    def line(cls, d):
+        o.append(f'<path class="{cls}" d="{d}" marker-end="url(#sp-{cls})"/>')
+
+    def node(x, y, plus=True):
+        o.append(f'<circle class="box" cx="{x}" cy="{y}" r="12"/>')
+        d = (f"M{x - 7} {y} H{x + 7} M{x} {y - 7} V{y + 7}" if plus
+             else f"M{x - 6} {y - 6} L{x + 6} {y + 6} M{x + 6} {y - 6} L{x - 6} {y + 6}")
+        o.append(f'<path class="a" d="{d}"/>')
+
+    o.append('<svg class="sig" viewBox="0 0 1240 590" role="img" aria-label="The signal path of one '
+             'Waverider voice, from the note to the track output">')
+    o.append("<defs>" + "".join(
+        f'<marker id="sp-{c}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" '
+        f'orient="auto-start-reverse"><path class="{c}h" d="M0 0 L10 5 L0 10 z"/></marker>'
+        for c in "amtk") + "</defs>")
+
+    # the note
+    o.append('<rect class="pill" x="10" y="230" width="92" height="50" rx="25"/>')
+    o.append('<text class="bt tt" x="56" y="252">Note</text><text class="bs tt" x="56" y="268">pitch, start</text>')
+    line("t", "M102 255 H116 V155 H127")
+    line("t", "M116 255 V355 H127")
+
+    # the two oscillators: osc 2 on top (its knobs above), osc 1 below (its knobs below)
+    for osc, y, page, below in ((2, 130, 2, False), (1, 330, 1, True)):
+        ky = y - 18 if not below else y + 78
+        box(130, y, 90, 50, "Phase", f"osc {osc}")
+        box(250, y, 190, 50, "Table reader", f"osc {osc}")
+        box(520, y, 80, 50, "Level", f"osc {osc}")
+        knobs(((page, "DETN" if osc == 2 else "TUNE"), (4, "PRST")), (152, 198), ky, below)
+        knobs(((page, "TBL"), (page, "POS"), (4, f"SLW{osc}"), (4, "DCLK"), (5, "WARP")),
+              (268, 307, 346, 385, 424), ky, below)
+        knobs(((page, "LEV"), (4, "TRIM")), (535, 585), ky, below)
+        line("a", f"M220 {y + 25} H247")
+        line("a", f"M440 {y + 25} H517")
+        line("a", f"M600 {y + 25} H640 V{245 if osc == 2 else 265} H647")
+        # MOVE: a shape that moves POS and the level; a note starts it again (TRIG)
+        my = 30 if osc == 2 else 440
+        mk = 14 if osc == 2 else 506
+        o.append(f'<rect class="modbox" x="450" y="{my}" width="240" height="34" rx="3"/>')
+        o.append(f'<text class="bt mt" x="570" y="{my + 22}">MOVE {osc}</text>')
+        knobs(((page, "RATE"), (page, "MOVE"), (page, "MPOS"), (page, "MLEV"), (4, f"SYN{osc}"), (4, "TRIG")),
+              (468, 508, 548, 588, 628, 670), mk, below=osc == 1)
+        if osc == 2:
+            line("m", "M470 64 V140 H443")
+            line("m", "M560 64 V127")
+        else:
+            line("m", "M470 440 V370 H443")
+            line("m", "M560 440 V383")
+        o.append(f'<rect class="pill" x="350" y="{my + 4}" width="80" height="26" rx="13"/>')
+        o.append(f'<text class="bs tt" x="390" y="{my + 21}">note start</text>')
+        line("t", f"M430 {my + 17} H447")
+
+    # FM: the source, before LEV2, into the phase of osc 1
+    line("m", "M462 155 V227")
+    o.append('<text class="kn mt lg" x="468" y="200">OSC2</text>')
+    box(430, 230, 120, 50, "FM source", "OSC2, SUB or NOIS")
+    knobs(((5, "FSRC"),), (525,), 214)
+    for y, label in ((250, "SUB"), (270, "NOIS")):
+        line("m", f"M610 {y} H553")
+        o.append(f'<text class="kn mt lg" x="566" y="{y - 4}">{label}</text>')
+    line("m", "M430 255 H335")
+    node(320, 255, plus=False)
+    knobs(((5, "FM"),), (320,), 296, below=True)
+    line("m", "M308 255 H175 V327")
+
+    # the mix and the shapers, in the DSP's order
+    box(650, 225, 110, 60, "Mix", "Ring or AM")
+    knobs(((5, "TYPE"), (5, "AMT")), (680, 730), 205)
+    line("a", "M760 255 H782")
+    box(785, 225, 70, 60, "Fold")
+    knobs(((5, "FOLD"),), (820,), 205)
+    line("a", "M855 255 H877")
+    box(880, 225, 120, 60, "Formant", "TYPE Formant")
+    knobs(((5, "TYPE"), (5, "AMT"), (5, "P1"), (5, "P2")), (897, 930, 960, 985), 205)
+    line("a", "M1000 255 H1015")
+    node(1030, 255)
+    line("a", "M1042 255 H1060")
+    node(1075, 255)
+    line("a", "M1087 255 H1097")
+
+    # the sub and the noise: added after the shapers, and a source for FM
+    for y, title, sub, labels, nx in ((330, "Sub", "follows osc 1 or 2", ("SUB", "OCT", "WAVE", "SRC"), 1030),
+                                      (440, "Noise", "decay on each note", ("NOIS", "TYPE", "COLR", "DEC"), 1075)):
+        box(800, y, 140, 46, title, sub)
+        knobs(tuple((3, k) for k in labels), (818, 852, 888, 922), y + 74, below=True)
+        line("a", f"M940 {y + 23} H{nx} V{268}")
+        line("m", f"M800 {y + 23} H722")
+        o.append(f'<text class="kn mt" x="752" y="{y + 17}">to FM</text>')
+    o.append('<text class="bs" x="870" y="560">TRIM sets the sub and the noise too</text>')
+
+    # the unit's own voice and the output
+    box(1100, 225, 135, 60, "Stock voice", "filter, amp, effects", cls="box stock")
+    line("a", "M1167 285 V327")
+    o.append('<rect class="out" x="1117" y="330" width="100" height="40" rx="20"/>')
+    o.append('<text class="bt" x="1167" y="355">Track out</text>')
+
+    # the legend
+    o.append('<rect class="legend" x="10" y="440" width="180" height="136" rx="6"/>')
+    o.append('<text class="bt lg" x="24" y="462">Legend</text>')
+    for k, (c, label) in enumerate((("a", "Audio"), ("m", "Modulation"), ("t", "Note"), ("k", "Knob"))):
+        y = 484 + 26 * k
+        line(c, f"M24 {y} H70")
+        o.append(f'<text class="bs lg" x="82" y="{y + 4}">{label}</text>')
+    o.append("</svg>")
+    return '<div class="scroll">' + "".join(o) + "</div>"
 
 
 # ---------------------------------------------------------------- 1. tables: what is stored, what the DSP holds
@@ -892,6 +1111,9 @@ def figures(dnx: pathlib.Path | None, unit_wav: pathlib.Path | None = None, writ
     blep_sqr, blep_pls, blep_table = sub_blep_alias()
     scan = _hr_scan()
     return {
+        "sigpath": signal_path(),
+        "sigstages": signal_stages(),
+        "signotes": signal_notes(),
         "hrlevels": high_range_levels(),
         "hrcliff": high_range_cliff(scan),
         "hrtable": high_range_table(scan),

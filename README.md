@@ -223,8 +223,8 @@ The USB SysEx probe adapts the design of
 frame-word census follows the method of the OS 1.12 notes of
 [naturarum/dn2-cfw](https://github.com/naturarum/dn2-cfw) (GPL-2.0, method only, no code
 taken). Its report on words 0xa54 and 0xa56 (issue #49) moved the song position of
-Waverider. The `arpscale` mod is the work of
-[w-winter](https://github.com/w-winter) (pull request #212). `docs/references.md` says
+Waverider. The `arpscale` and `degreetranspose` mods are the work of
+[w-winter](https://github.com/w-winter) (pull requests #212, #214 and #278). `docs/references.md` says
 what we took from each, and where this project does it differently on purpose.
 
 None of them is affiliated with Elektron, and neither is this project. We measured

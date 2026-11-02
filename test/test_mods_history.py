@@ -79,9 +79,10 @@ def test_every_link_in_a_changes_list_has_its_target_on_that_page():
     assert linked, "no change links to its page: the check checked nothing"
 
 
-def test_a_page_with_two_version_regions_gets_both(monkeypatch):
+def test_a_page_with_several_version_regions_gets_all(monkeypatch):
+    # Try it, What changes, and the documentation line of the manual and of the Technical tab
     text = (SITE / "waverider.html").read_text(encoding="utf-8")
-    assert text.count("<!-- dnfw:version waverider -->") == 2
+    assert text.count("<!-- dnfw:version waverider -->") == 4
     newer = history.Release("9.0.0", "2099-01-01", ("A later version.",))
     monkeypatch.setitem(history.HISTORY, "waverider", (newer,) + history.HISTORY["waverider"])
-    assert history.rewrite(text).count("<!-- dnfw:version waverider -->v9.0.0<!-- /dnfw:version -->") == 2
+    assert history.rewrite(text).count("<!-- dnfw:version waverider -->v9.0.0<!-- /dnfw:version -->") == 4

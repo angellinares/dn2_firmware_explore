@@ -233,7 +233,7 @@ def signal_notes() -> str:
     slw = _slw_no_jump()
     items = (
         "TRIM sets the level of each oscillator before the shapers. Thus TRIM also changes how much FOLD "
-        "folds, and the balance that AMT sets for Ring. TRIM does not change the FM depth.",
+        "folds, the balance that AMT sets for Ring, and the depth of AM. TRIM does not change the FM depth.",
         "FM reads osc 2 before LEV2, at a fixed level. LEV2 and MOVE's level on osc 2 change only how loud "
         "you hear osc 2.",
         "FOLD folds the sum of the two oscillators. With two different pitches, the fold adds tones at the "

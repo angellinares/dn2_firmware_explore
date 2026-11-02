@@ -124,16 +124,20 @@ NOT_RAM += (
     0x4670B32E,              # "ave Fold": the label text "Fold"
     # "Formant" (TYPE's fourth value) starts at 0x4670B4A3 in 0.3.8, an odd place: no aligned word reads "Form"
     0x4670B94A,              # notl %d3 ; andl %d3,%d2
-    0x4670BBDA,              # addil #0x469fe800,%d0: the pool spans' base 0x46a00000 less two
+    0x4670BBF6,              # addil #0x469fe800,%d0: the pool spans' base 0x46a00000 less two
                              # 3072 B entries, indexed by the table number (2 and up), declared
-    0x467F1B52, 0x467F27D4, 0x467F2D22,   # movel #0x467f46xx,(a0) ; clrl d(a0): read 2 bytes late
-    0x467F326A, 0x467F3270, 0x467F327A, 0x467F3280, 0x467F32CC, 0x467F32DC,
-                             # lea / movel of 0x467f46xx and 0x467f8e48: read 2 bytes late
-    0x467F4006,              # notl %d0 ; tstw %d0
-    0x467F4720, 0x467F472C, 0x467F4730, 0x467F4734,
-                             # a table of 0x467f46xx pointers: read 2 bytes late
+    # 2026-11-02, unplayed voices (events.c grew 0x46 bytes, page.c 0x1c): every drive place read
+    # again in the applied chunk with objdump -m m68k:cfv4e
+    0x467F0BB4,              # notl %d2 ; andl %d2,%d1 (wr_note_seen, the unplayed mask)
+    0x467F1B98, 0x467F281A,  # movel #0x467f46xx,(a0) ; clrl d(a0): read 2 bytes late
+    0x467F3234,              # pea 0x467f466b ; mov3ql #2,-(sp): reads 0x466ba567, inside stock's DMA
+                             # section by chance; nothing reads or writes there
+    0x467F404C,              # notl %d0 ; tstw %d0
+    0x467F474E, 0x467F4752, 0x467F4758, 0x467F4764, 0x467F4768, 0x467F476C,
+    0x467F4774, 0x467F4778, 0x467F477C, 0x467F4780,
+                             # a table of 0x467f46xx pointers and bytes: read 2 bytes out of step
 ) + (
-    0x4670C8E2, 0x4670CBCE, 0x467F3180)
+    0x4670C8E2, 0x4670CBCE)
 
 
 def ram() -> list[Extent]:

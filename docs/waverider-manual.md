@@ -1,6 +1,6 @@
 # Waverider, alpha
 
-Documentation version 1.6, 2026-10-17. It describes Waverider 0.3.1 (alpha 5).
+Documentation version 1.7, 2026-11-02. It describes Waverider 0.3.8 (alpha 5).
 
 Waverider is a sixth synth machine for the Digitone II. Waverider has two wavetable oscillators,
 a sub-oscillator, noise, FM, wave folding, phase warping and a collection of additional shapers
@@ -90,8 +90,8 @@ The middle of the page shows the sub-oscillator and the noise.
 |---|---|---|
 | A | PRST | The phase of the oscillators at the start of a note: Off, On or Random. With On, the phase starts at 0 and the same note has the same sound each time |
 | B | TRIG | With Retrig, MOVE starts again on each note. With Free, MOVE does not start again on a note |
-| C | DCLK | A crossfade when TBL or POS changes suddenly: Off, or 1 to 100 ms. A new sound starts at 3 ms |
-| D | TRIM | The output level of the whole machine, -15.0 to 0.0 dB. The default is -11.0 dB. At this value, the level is the same as a default WaveTone. When you turn TRIM, the level moves to the new value over up to 0.1 s |
+| C | DCLK | A crossfade when TBL, POS or the level changes suddenly: Off, or 1 to 100 ms. A new sound starts at 3 ms |
+| D | TRIM | The level of the two oscillators, the sub-oscillator and the noise, -15.0 to 0.0 dB. The default, -11.0 dB, gives the same level as a default WaveTone. TRIM sets the level before FOLD and the shaper on page 5. Thus TRIM also changes how much FOLD folds, the balance that AMT sets for Ring, and the depth of AM. TRIM does not change the FM depth. When you turn TRIM, the level moves to the new value over up to 0.1 s |
 | E | SYN1 | Off or On. With On, the MOVE of oscillator 1 follows the tempo. SYN does not change the LFOs, which have their own tempo settings |
 | F | SYN2 | The same as SYN1, for oscillator 2 |
 | G | SLW1 | Slew: the slew time of POS on oscillator 1. It slews the POS that you hear: the knob, p-locks, LFOs and MOVE together. A new note starts at its POS without a slew. At 0, the slew is off. The slew gets longer as you turn the knob to the right, up to 1 s at 127. The Technical tab of the Waverider page has the details |

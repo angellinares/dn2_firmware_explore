@@ -25,9 +25,13 @@ dispatch, per-track chain), as Milestone 4 does. Steps, each PASS/FAIL
    `dnfw.waverider.live` fed the DSP's own unpacked inputs, audible and correlated at
    the amp's output. Controls: POS 120 (darker), TBL1 1 (the other table, bit-exact),
    note 72 (an octave up), LEV1 50 and 0 (half and silent, M9a), no trigger (silent).
-4. **stock** -- types 0-4 are bit-identical: the same frames with no type-5 track on
-   the M5 and the stock image give identical buffers on all 16 tracks, and in a
-   type-5 run tracks 1-15 match a stock run.
+4. **stock** -- types 0-4 are bit-identical, on a frame captured from the stock OS in
+   panel_drive (tracks 2-5 WaveTone, FM Tone, FM Drum, Swarmer in MACHINE SEL, the rest
+   FM Tone, all 16 trig keys held: one voice per track): the M5 and the stock image give
+   identical buffers on all 16 tracks, and with track 0 made type 5, tracks 1-15 match
+   the stock run. Every track must sound in the stock run (a floor on each peak), and
+   the four machines must give four different buffers, so the step cannot pass on
+   silence. The frame is cached in out/waverider/ (never committed: stock OS state).
 5. **frame** (with --frame/--frame-be/--frames) -- a caller's frame(s), used verbatim
    every block; every type-5 track's buffer checked against the reference.
 
@@ -583,8 +587,7 @@ def main(argv=None):
 
         if "stock" in steps:
             print("\nstep 4: types 0-4 unchanged")
-            results["4_stock"] = step_stock(snap, m2mach, m5, stock_img, sound, machines,
-                                            max(3, a.blocks // 2))
+            results["4_stock"] = step_stock(snap, m2mach, m5, stock_img, max(3, a.blocks // 2))
             show(results["4_stock"])
 
         frames = load_frames(a)
@@ -1051,34 +1054,82 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
 
 # -- step 4 -------------------------------------------------------------------------------------------
 
-def step_stock(snap, m2mach, m5: Image, stock: Image, sound, machines, blocks) -> dict:
-    others = {1: 1, 2: 0, 3: 2, 4: 3}                       # WaveTone, FM Tone, FM Drum, Swarmer
+STOCK_SYX = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
+FRAME_AT = 0x80005E60                   # the ColdFire's frame buffer (16-bit big-endian there)
+STOCK_MACHINES = {1: 1, 2: 0, 3: 2, 4: 3}   # UI track 2..5: WaveTone, FM Tone, FM Drum, Swarmer
+SEL_DOWNS = {0: 0, 2: 1, 1: 2, 3: 3}    # MACHINE SEL: FM TONE, FM DRUM, WAVETONE, SWARMER
+STOCK_FLOOR = 1e-3                      # each track's peak in the stock run (all sit near 1e-2)
 
-    def frames(t0):
-        return lambda b: base_frame(sound, machines, t0=t0, others=others, trigger=(b == 1),
-                                    trigger_others=True).to_bytes()
 
-    a = run_blocks(init_on(snap, m2mach, m5), frames(4), blocks)        # no type-5 track, M5 image
-    b = run_blocks(init_on(snap, m2mach, stock), frames(4), blocks)     # the same, stock image
-    c = run_blocks(init_on(snap, m2mach, m5), frames(5), blocks)        # track 0 type 5, M5 image
+def stock_frame() -> tuple[bytes, list[int]]:
+    """A frame from the stock OS 1.11 in panel_drive, DSP order: tracks 2-5 set in MACHINE SEL
+    (STOCK_MACHINES), all 16 trig keys held, peeked from the ColdFire's buffer. -> (frame, the
+    machine word of each track index as read back). Cached by the image's and the script's hash."""
+    keys, nav, fd, trk = 25, 2, 12, 16              # TRIG 1, SYN, NO, TRK; FUNC 17, DOWN 14, YES 10
+    steps = ["wait:1100M", f"tap:{fd}", "wait:40M", f"tap:{fd}", "wait:60M"]   # the MMC popup
+    for track, m in STOCK_MACHINES.items():
+        steps += [f"press:{trk}", "wait:10M", f"tap:{keys + track}", f"release:{trk}", "wait:30M",
+                  "press:17", f"tap:{nav}", "release:17", "wait:60M"]
+        steps += [x for _ in range(SEL_DOWNS[m]) for x in ("tap:14", "wait:20M")]
+        steps += ["tap:10", "wait:300M", f"tap:{fd}", "wait:60M"]      # YES, then NO closes the list
+    for k in range(15, -1, -1):
+        steps += [f"press:{keys + k}", "wait:30M"]
+    steps += ["wait:30M", f"peek:{FRAME_AT:#x}:{FR.FRAME_BYTES}"]
+    key = hashlib.sha256(STOCK_SYX.read_bytes() + ",".join(steps).encode()).hexdigest()[:12]
+    cache = OUT / f"m5_stock_frame_{key}.bin"
+    if not cache.exists():
+        panel = sharcemu.path().parent / "digikit-wt-forced/out/target/release/examples/panel_drive.exe"
+        with tempfile.TemporaryDirectory(dir=OUT) as fd_dir:
+            done = subprocess.run([str(panel), str(STOCK_SYX), "--ssi-hz", "96000", "--out", fd_dir,
+                                   "--steps", ",".join(steps)], capture_output=True, text=True, timeout=900)
+        r = json.loads(done.stdout)
+        hexes = [x["hex"] for x in r.get("results", []) if isinstance(x, dict) and "hex" in x]
+        if not hexes:
+            raise SystemExit(f"step 4: the stock frame capture failed: {r.get('fault') or done.stderr[-300:]}")
+        cache.write_bytes(swap16(bytes.fromhex(hexes[-1])))
+    frame = cache.read_bytes()
+    return frame, [int.from_bytes(frame[FR.MACHINE + 2 * t:FR.MACHINE + 2 * t + 2], "little") for t in range(16)]
+
+
+def step_stock(snap, m2mach, m5: Image, stock: Image, blocks) -> dict:
+    captured, machines = stock_frame()
+    # the machine word's index is the track buffer's index; UI track N is index 16 - N
+    stock_tracks = {16 - (track + 1): m for track, m in STOCK_MACHINES.items()}
+
+    def frames(type5):
+        def at(b):
+            raw = bytearray(captured)
+            for off in FR.TRIG_MASKS:
+                raw[off:off + 2] = b"\0\0"
+            if b == 1:                                  # note-on for all 16 voices
+                for off in (FR.TRIG_NOTE, FR.TRIG_MASKS[2]):
+                    raw[off:off + 2] = b"\xff\xff"
+            if type5:
+                raw[FR.MACHINE:FR.MACHINE + 2] = (5).to_bytes(2, "little")
+            return bytes(raw)
+        return at
+
+    a = run_blocks(init_on(snap, m2mach, m5), frames(False), blocks)      # no type-5 track, M5 image
+    b = run_blocks(init_on(snap, m2mach, stock), frames(False), blocks)   # the same, stock image
+    c = run_blocks(init_on(snap, m2mach, m5), frames(True), blocks)       # track 0 type 5, M5 image
     ok_runs = a["ok"] and b["ok"] and c["ok"]
-    # compared as bit patterns: the runner's FM Tone voice can produce NaN, and NaN != NaN
+    # compared as bit patterns: a stock voice can produce NaN, and NaN != NaN
     all16 = ok_runs and a["buffer_bits"] == b["buffer_bits"]
     t1_15 = ok_runs and [blk[1:] for blk in c["buffer_bits"]] == [blk[1:] for blk in b["buffer_bits"]]
-    active = [t for t in range(1, 16) if ok_runs and any(any(blk[t]) for blk in b["buffer_bits"])]
-    nan = [t for t in range(16) if ok_runs and any(x != x for blk in b["buffers"] for x in blk[t])]
+    peaks = [max((V.peak([x for x in blk[t] if x == x]) for blk in b["buffers"]), default=0)
+             for t in range(16)] if ok_runs else [0] * 16
+    signal = {t: tuple(tuple(blk[t]) for blk in b["buffer_bits"]) for t in stock_tracks} if ok_runs else {}
     checks = {
+        "the capture has the four stock machines on tracks 2-5, FM Tone elsewhere":
+            all(machines[t] == stock_tracks.get(t, 0) for t in range(16)),
         "the three runs return every block": ok_runs,
         "no type-5 track: all 16 track buffers bit-identical, M5 image vs stock": all16,
         "track 0 type 5: tracks 1-15 bit-identical to the stock run": t1_15,
-        "stock machines wrote their tracks (non-zero bits on at least one of tracks 1-4)":
-            bool(set(active) & {1, 2, 3, 4}),
+        f"every track sounds in the stock run (peak >= {STOCK_FLOOR:g})": min(peaks) >= STOCK_FLOOR,
+        "the four stock machines give four different buffers": len(set(signal.values())) == 4,
     }
     return {"ok": all(checks.values()), "checks": checks,
-            "numbers": {"others": others, "tracks_with_nonzero_bits_stock": active,
-                        "tracks_with_nan_stock": nan,
-                        "peaks_stock": [max((V.peak([x for x in blk[t] if x == x]) for blk in b["buffers"]), default=0)
-                                        for t in range(16)] if ok_runs else None,
+            "numbers": {"machines": machines, "stock_tracks": stock_tracks, "peaks_stock": peaks,
                         "loop_entries": {"m5_no_type5": a.get("loop_entries"), "stock": b.get("loop_entries"),
                                          "m5_type5": c.get("loop_entries")},
                         "halts": {k: r.get("halt") for k, r in (("a", a), ("b", b), ("c", c)) if not r["ok"]}}}

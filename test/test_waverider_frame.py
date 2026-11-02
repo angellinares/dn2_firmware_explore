@@ -90,3 +90,4 @@ def test_init_frame_puts_track0_on_the_machine_and_the_rest_on_midi():
     assert f.get(F.slot_offset(0, 67)) == 0 and f.get(F.slot_offset(1, 67)) == 0x7F00
     assert f.get(F.header_offset(F.NOTE, 7)) == 0x3C00
     assert f.get(F.TRIG_NOTE) == 1
+    assert f.get(F.GLOBAL_A58) == F.GLOBAL_A58_STOCK      # 0 leaves the stock voices silent

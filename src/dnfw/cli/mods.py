@@ -72,6 +72,9 @@ def configure(parser) -> None:
                          "<!-- dnfw:changes ID -->) of these HTML files")
     cl.add_argument("--js", type=pathlib.Path, metavar="FILE",
                     help="write each mod's current version as a JS module (site/js/mods/versions.js)")
+    cl.add_argument("--fingerprint", type=pathlib.Path, metavar="STOCK_1.11",
+                    help="record the bytes each mod's version writes into this stock image "
+                         "(src/dnfw/mods/fingerprints.json); refuses new bytes under a recorded version")
 
     ex = sub.add_parser("extract", help="write a mod's factory content out")
     ex.add_argument("image", type=pathlib.Path)
@@ -600,6 +603,13 @@ def _changelog(args) -> int:
     if args.js:
         args.js.write_text(history.versions_js(), encoding="utf-8", newline=chr(10))
         print(f"  wrote {args.js}")
+    if args.fingerprint:
+        from ..mods import fingerprint
+        refused = fingerprint.record(load(read_image(args.fingerprint)), REGISTRY)
+        for line in refused:
+            print(f"  REFUSED: {line}")
+        print(f"  wrote {fingerprint.RECORD}")
+        return 1 if refused else 0
     return 0
 
 

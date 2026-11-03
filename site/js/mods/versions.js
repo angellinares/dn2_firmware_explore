@@ -2,10 +2,10 @@
 export const VERSIONS = {
   arpmodes: "1.0.0",
   arpplocks: "0.1.2",
-  arpscale: "0.2.0",
+  arpscale: "0.2.1",
   bootscreen: "1.0.0",
-  degreetranspose: "0.1.0",
-  fxmod: "1.0.1",
+  degreetranspose: "0.1.1",
+  fxmod: "1.0.2",
   layermidi: "1.0.0",
   lfo4: "1.0.4",
   lfolength: "1.0.1",
@@ -16,5 +16,5 @@ export const VERSIONS = {
   songguard: "0.1.0",
   transients: "2.0.0",
   usbprobe: "0.1.0",
-  waverider: "0.3.8",
+  waverider: "0.3.9",
 };

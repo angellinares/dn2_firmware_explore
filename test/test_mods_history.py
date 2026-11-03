@@ -1,10 +1,13 @@
 """Every mod has a version and a changelog, and the site's pages show them (`dnfw.mods.history`)."""
 
+import json
 import pathlib
 import re
 
+import pytest
+
 from dnfw.cli.mods import REGISTRY
-from dnfw.mods import history
+from dnfw.mods import fingerprint, history
 
 SITE = pathlib.Path(__file__).resolve().parent.parent / "site"
 PAGES = sorted(SITE.glob("*.html"))
@@ -86,3 +89,34 @@ def test_a_page_with_several_version_regions_gets_all(monkeypatch):
     newer = history.Release("9.0.0", "2099-01-01", ("A later version.",))
     monkeypatch.setitem(history.HISTORY, "waverider", (newer,) + history.HISTORY["waverider"])
     assert history.rewrite(text).count("<!-- dnfw:version waverider -->v9.0.0<!-- /dnfw:version -->") == 4
+
+
+STOCK_111 = SITE.parent / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+
+
+@pytest.fixture(scope="module")
+def stock_111():
+    from dnfw.cli.files import read_image
+    from dnfw.firmware.load import load
+    if not STOCK_111.exists():
+        pytest.skip("Digitone II 1.11 is not in 00_Resources")
+    return load(read_image(STOCK_111))
+
+
+def test_a_mod_that_writes_other_bytes_has_a_new_version(stock_111):
+    """arpscale, degreetranspose, fxmod and Waverider each shipped changed bytes under an old
+    version before this check (found 2026-11-03)."""
+    assert fingerprint.problems(stock_111, REGISTRY) == []
+
+
+def test_the_fingerprint_check_sees_a_change(stock_111, monkeypatch, tmp_path):
+    record = {m: dict(e) for m, e in fingerprint.recorded().items()}
+    record["lfolength"]["sha256"] = "0" * 64
+    monkeypatch.setattr(fingerprint, "RECORD", tmp_path / "fingerprints.json")
+    fingerprint.RECORD.write_text(json.dumps(record))
+    some = {m: REGISTRY[m] for m in ("lfolength", "reloadconfirm")}
+    assert fingerprint.problems(stock_111, some) == [
+        f"lfolength: writes other bytes than {history.version('lfolength')} did. Add a Release to "
+        "src/dnfw/mods/history.py, then run `dnfw mods changelog --fingerprint STOCK_1.11`"]
+    assert fingerprint.record(stock_111, some)[0].startswith("lfolength: writes other bytes")
+    assert json.loads(fingerprint.RECORD.read_text())["lfolength"]["sha256"] == "0" * 64

@@ -30,7 +30,8 @@
 #define CAP_PAGE     0x20u                  /* the instrument's wavetable page (PRESET/KIT page 2) */
 #define CAP_PLAYABLE 0x40u                  /* bytes 248..251 say which stored tables the pool plays */
 #define CAP_ERASE    0x80u                  /* /wavepool/129: erase the store and every pool list */
-#define CAPS (CAP_STORE | CAP_POOL | CAP_RENAME | CAP_CAS | CAP_PAGE | CAP_PLAYABLE | CAP_ERASE)
+#define CAP_POOL_ONLY 0x100u                /* no built-in tables: TBL item 0 is none, T:001 is item 1 */
+#define CAPS (CAP_STORE | CAP_POOL | CAP_RENAME | CAP_CAS | CAP_PAGE | CAP_PLAYABLE | CAP_ERASE | CAP_POOL_ONLY)
 #define PLAY_POW2    0x01u                  /* byte 251: the points must be a power of two */
 
 #define B16(v) (u8)((v) >> 8), (u8)(v)

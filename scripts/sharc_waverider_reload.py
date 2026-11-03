@@ -3,11 +3,11 @@
     python scripts/sharc_waverider_reload.py [--digikit DIR] [--lead 24] [--tail 24] [--per-call 7]
 
 Stage 3's load protocol drops an entry from build3's directory while its levels are rebuilt
-(`docs/waverider-stage3.md`, "The load"): a voice on that entry plays Prim. until the entry
-is whole again. That is two table switches in the middle of a note, at whatever phase the
+(`docs/waverider-stage3.md`, "The load"): a voice on that entry plays slot 0, silence since 2026-11-03
+(pool tables only), until the entry is whole again. That is two table switches in the middle of a note, at whatever phase the
 oscillator is in. This runs it in the runner and measures the step each switch makes.
 
-Per scenario, one held note (TBL1 slot 2 = pool entry 0, WAV1 mid-table, note 60, triggered
+Per scenario, one held note (TBL1 slot 1 = pool entry 0, WAV1 mid-table, note 60, triggered
 at block 1), then the reload's load frames, one to a block (a load frame takes the place of a
 parameter frame: the DSP renders the block on the frame it already holds), then build3's idle
 calls with `--per-call` render blocks between them (a call is a pair of frames, about 1.7 M
@@ -201,7 +201,7 @@ def main(argv=None) -> int:
     tab_b = [np.rint(16000 * np.sin(2 * np.pi * 3 * t)).astype(int).tolist()] * 16
 
     def frames(k):
-        over = {g.LEV2: 0, g.WAV1: 0x4000, g.TBL1: 2 * SLOT}
+        over = {g.LEV2: 0, g.WAV1: 0x4000, g.TBL1: len(dsp.TABLES_DM) * SLOT}
         if a.dclk_off:
             over[g.DCLK] = 0
         return g.base_frame(sound, machines, trigger=(k == 1), overrides=over).to_bytes()

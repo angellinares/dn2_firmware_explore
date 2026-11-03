@@ -25,7 +25,7 @@ unsigned int wt_pool_clear_many(const unsigned char *js, unsigned int n);
 unsigned int wt_tbl_load(unsigned int j, unsigned int osc);
 
 /* Store slot S deleted from the +Drive (its index entry freed; the table's sectors stay
- * until overwritten). Every pool list naming it keeps the slot, which plays Prim. and
+ * until overwritten). Every pool list naming it keeps the slot, which is silent and
  * reads MISSING, until CLEAR SLOT frees it. -> WT_* */
 unsigned int wt_store_delete(unsigned int s);
 

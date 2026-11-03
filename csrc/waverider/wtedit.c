@@ -148,7 +148,7 @@ u32 wt_store_delete(u32 s)
         entry[i] = 0;
     /* Pool lists naming it keep the slot (spec: warn, don't repair), record 0 too: ADD TO
      * POOL fills the first empty slot, so a cleared slot would hand every sound still on
-     * it an unrelated new table; a missing one plays Prim., and the lists say MISSING
+     * it an unrelated new table; a missing one is silent, and the lists say MISSING
      * (DNX, 2026-10-06). CLEAR SLOT frees it on purpose. */
     return wr_store_commit_entry(s, entry) ? WT_DONE : WT_FAILED;   /* it also marks the store changed */
 }

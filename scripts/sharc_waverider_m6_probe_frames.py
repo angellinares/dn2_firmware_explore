@@ -56,7 +56,7 @@ def main(argv=None) -> int:
     m5.fx.bind(str(a.digikit / "tools"))
     m5.m4.IMAGE = a.image
     stock = m5.m1.dn2_section7(a.image)
-    image = m5.Image(dk, dsp.section7(stock))
+    image = m5.Image(dk, dsp.with_preinstalled(stock))
     rb = {}
     with tempfile.TemporaryDirectory(dir=m5.OUT) as tmp:
         snap, m2mach = m5.snapshot_path(dk, stock, pathlib.Path(tmp))
@@ -75,8 +75,8 @@ def main(argv=None) -> int:
         "TUN1 -12 is exactly an octave down (half the step, within 1e-6)":
             bool(inc["tun0"]) and abs(inc["tunm12oct"] / inc["tun0"] - 0.5) < 1e-6,
         "WAV1 at its top is the last frame (POS = 15 << 16)": bool(rb["wav1max"]) and rb["wav1max"][3] == 15 << 16,
-        "TBL1 1 selects table 1": bool(rb["tbl1"]) and rb["tbl1"][0] == dsp.TABLES_DM[1],
-        "control: TBL1 0 selects table 0": bool(rb["wav1max"]) and rb["wav1max"][0] == dsp.TABLES_DM[0],
+        "TBL1 1 selects table 1 (Harm., pool entry 1 on the test image)": bool(rb["tbl1"]) and rb["tbl1"][0] == dsp.PRESET_DM[1],
+        "control: TBL1 0 selects table 0 (Prim., pool entry 0)": bool(rb["wav1max"]) and rb["wav1max"][0] == dsp.PRESET_DM[0],
     }
     for k, v in checks.items():
         print(f"  {'PASS' if v else 'FAIL'}  {k}")

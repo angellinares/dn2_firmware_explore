@@ -19,8 +19,9 @@ new project. Back up the +Drive first, and keep the stock 1.11 firmware file for
 - **Try it alone first:** use a file patched with Waverider only. If a problem occurs, we then know
   that the cause is Waverider and not a combination of mods. When you report a problem, tell us
   which mods are in your file.
-- **Wavetables:** Waverider has two built-in tables, Prim. and Harm. More tables come from DNX,
-  which writes them to the +Drive. Each project has a pool of up to 128 tables.
+- **Wavetables:** Waverider plays the tables in the project's pool. Tables come from DNX, which
+  writes them to the +Drive. DNX can also install Prim. and Harm., the two tables that earlier
+  versions had built in. Each project has a pool of up to 128 tables.
 - **Recovery:** if the unit does not start:
   1. Push and hold FUNC when you turn on the power.
   2. Open the Early Start-up Menu.
@@ -56,7 +57,7 @@ Page 1 is for oscillator 1. Page 2 is for oscillator 2. The two pages have the s
 | A | TUNE (osc 1) / DETN (osc 2) | The pitch in semitones. TUNE changes the pitch of the two oscillators. DETN is the difference from oscillator 1 |
 | B | LEV | The level, 0 to 127. At 100, the gain is 1 |
 | C | POS | The position in the table, 0 to 120 |
-| D | TBL | The table: Prim., Harm., then the pool tables from T:001 |
+| D | TBL | The table: "-" (no table, silence), then the pool tables from T:001 |
 | E | RATE | The speed of MOVE, 0 to 100. When SYN1 or SYN2 is on, RATE shows a note length |
 | F | MLEV | How much MOVE decreases the level, 0 to 127. At 0, MOVE does not change the level |
 | G | MPOS | How much MOVE changes the position, 0 to 100. At 50, MOVE does not change the position |
@@ -141,19 +142,19 @@ FOLD, WARP, FM, FSRC, TYPE, AMT, P1 and P2 change the sound.
 - **Names:** when you turn TBL, the header shows the table name, for example "T:004 name".
 - **Add and remove tables:** use DNX, or use the wavetable page on the unit. To open the wavetable
   page, push PRESET/KIT two times. Each project has its own pool.
-- **An empty pool:** a project with no pool has no pool tables. Its Waverider tracks play Prim.
-  until you add tables. A new project (CREATE NEW) has an empty pool. A project that you saved
+- **An empty pool:** a project with no pool has no pool tables. Its Waverider oscillators are
+  silent until you add tables. A new project (CREATE NEW) has an empty pool. A project that you saved
   before you installed Waverider also has an empty pool.
 - **Your project file is a normal project:** the pool is on the +Drive, next to the project and not
   in it. Because of this, the stock firmware can load a project that you saved. Its Waverider tracks
   show as FM Tone, and the stock firmware reads their settings as FM Tone settings. Thus they have a
   different sound. We examined this in the emulator only, not on an instrument.
-- **A deleted table:** its pool slot shows MISSING and plays Prim. The slot stays until you clear it
+- **A deleted table:** its pool slot shows MISSING and is silent. The slot stays until you clear it
   with CLEAR SLOT. Because the slot stays, a sound that uses the slot does not change to a different
   table.
 - **When you replace a table that plays:** the old table continues to play until the new table is
   ready. Then the old table crossfades into the new table, in the DCLK time. If the first table of a
-  slot is not ready, the slot plays Prim. until the table is ready.
+  slot is not ready, the slot is silent until the table is ready.
 
 ### The wavetable page
 

@@ -71,6 +71,7 @@ class Engine:
         self.library = self.core.info()
         self.decode = python_runner._decode
         self.host_fixups = host_fixups
+        self.preinstalled = getattr(python_runner, "preinstalled", False)   # m5.init_on's mark
         self.kind: dict = {}                    # pc -> None | pre(engine) -> post() | None
         self.counts = {"G2": 0, "G3 load": 0, "G3 store": 0, "G4": 0, "G11": 0}
         self.state = self

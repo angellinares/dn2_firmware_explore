@@ -74,7 +74,7 @@ def main(argv=None) -> int:
     g.m4.IMAGE = a.image
     stock = g.m1.dn2_section7(a.image)
     sound, machines = g.m4.init_sound(a.image)
-    wr = g.Image(dk, dsp.section7(stock))
+    wr = g.Image(dk, dsp.with_preinstalled(stock))
 
     def one(b):
         return {g.WAV1: 0x3000, g.TBL1: 0, g.LEV2: 0}

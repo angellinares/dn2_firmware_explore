@@ -58,7 +58,7 @@ def main():
     g.m4.IMAGE = image
     stock = g.m1.dn2_section7(image)
     sound, machines = g.m4.init_sound(image)
-    wr = g.Image(dk, dsp.section7(stock))
+    wr = g.Image(dk, dsp.with_preinstalled(stock))
     rows = []
     with tempfile.TemporaryDirectory(dir=g.OUT) as tmp:
         snap, m2mach = g.snapshot_path(dk, stock, pathlib.Path(tmp))

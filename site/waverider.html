@@ -320,7 +320,7 @@
       <tr><td class="num">A</td><td><code>TUNE</code> / <code>DETN</code></td><td>The pitch in semitones. TUNE changes the pitch of the two oscillators. DETN is the difference from oscillator 1</td></tr>
       <tr><td class="num">B</td><td><code>LEV</code></td><td>The level, 0 to 127. At 100, the gain is 1</td></tr>
       <tr><td class="num">C</td><td><code>POS</code></td><td>The position in the table, 0 to 120</td></tr>
-      <tr><td class="num">D</td><td><code>TBL</code></td><td>The table: Prim., Harm., then the pool tables from T:001</td></tr>
+      <tr><td class="num">D</td><td><code>TBL</code></td><td>The table: &quot;-&quot; (no table, silence), then the pool tables from T:001</td></tr>
       <tr><td class="num">E</td><td><code>RATE</code></td><td>The speed of MOVE, 0 to 100. When SYN1 or SYN2 is on, RATE shows a note length</td></tr>
       <tr><td class="num">F</td><td><code>MLEV</code></td><td>How much MOVE decreases the level, 0 to 127. At 0, MOVE does not change the level</td></tr>
       <tr><td class="num">G</td><td><code>MPOS</code></td><td>How much MOVE changes the position, 0 to 100. At 50, MOVE does not change the position</td></tr>
@@ -421,13 +421,13 @@
 
   <h2 id="pool">The wavetable pool</h2>
   <ul>
-    <li><strong>Tables:</strong> each table has 1 to 64 frames. Each frame has 64 to 4096 points, in powers of two. Waverider has two built-in tables: Prim. and Harm.</li>
+    <li><strong>Tables:</strong> each table has 1 to 64 frames. Each frame has 64 to 4096 points, in powers of two. Waverider plays the tables in the project&#x27;s pool. DNX can install Prim. and Harm., the two tables that earlier versions had built in.</li>
     <li><strong>Names:</strong> when you turn TBL, the header shows the table name, for example "T:004 name".</li>
     <li><strong>Add and remove tables:</strong> use DNX, or use the wavetable page on the unit. To open the wavetable page, push PRESET/KIT two times. Each project has its own pool of up to 128 tables.</li>
     <li><strong>Your project file is a normal project:</strong> the pool is on the +Drive, next to the project and not in it. Because of this, the stock firmware can load a project that you saved. Its Waverider tracks show as FM Tone, and the stock firmware reads their settings as FM Tone settings. Thus they have a different sound. We examined this in the emulator only, not on an instrument.</li>
-    <li><strong>An empty pool:</strong> a project with no pool has no pool tables. Its Waverider tracks play Prim. until you add tables. A new project (CREATE NEW) has an empty pool. A project that you saved before you installed Waverider also has an empty pool.</li>
-    <li><strong>A deleted table:</strong> its pool slot shows MISSING and plays Prim. The slot stays until you clear it with CLEAR SLOT. Because the slot stays, a sound that uses the slot does not change to a different table.</li>
-    <li><strong>When you replace a table that plays:</strong> the old table continues to play until the new table is ready. Then the old table crossfades into the new table, in the DCLK time. If the first table of a slot is not ready, the slot plays Prim. until the table is ready.</li>
+    <li><strong>An empty pool:</strong> a project with no pool has no pool tables. Its Waverider oscillators are silent until you add tables. A new project (CREATE NEW) has an empty pool. A project that you saved before you installed Waverider also has an empty pool.</li>
+    <li><strong>A deleted table:</strong> its pool slot shows MISSING and is silent. The slot stays until you clear it with CLEAR SLOT. Because the slot stays, a sound that uses the slot does not change to a different table.</li>
+    <li><strong>When you replace a table that plays:</strong> the old table continues to play until the new table is ready. Then the old table crossfades into the new table, in the DCLK time. If the first table of a slot is not ready, the slot is silent until the table is ready.</li>
   </ul>
 
   <h3>The wavetable page</h3>
@@ -622,7 +622,7 @@
   <ul>
     <li><strong>The DSP makes the sound.</strong> Waverider adds its code to the sound processor (DSP) of the Digitone II. The main processor runs the pages, the pool and the +Drive access.</li>
     <li><strong>The reader.</strong> The unit keeps each table in a set of versions (mip-maps). For higher notes, a version has fewer harmonics. The reader uses a smooth curve between the points (Hermite). Because of this, high notes have no aliasing.</li>
-    <li><strong>The unit builds the tables.</strong> When a pool loads, the DSP builds the versions of each table, in time that it does not use for the sound. A 64x2048 table takes about 0.16 s. Until the table is ready, its slot plays Prim.</li>
+    <li><strong>The unit builds the tables.</strong> When a pool loads, the DSP builds the versions of each table, in time that it does not use for the sound. A 64x2048 table takes about 0.16 s. Until the table is ready, its slot is silent.</li>
     <li><strong>The +Drive store.</strong> The tables are in a region of the +Drive that the factory firmware does not read or write. The store keeps two copies of its index. If a write stops before its end, the last good copy stays.</li>
     <li><strong>Level.</strong> The default TRIM is -11 dB. At this value, a new Waverider sound has the same loudness as a new WaveTone sound.</li>
   </ul>
@@ -672,12 +672,12 @@
     table to full scale (a peak of &plusmn;32,767) when it writes the table. The unit does not change
     the level back.</li>
     <li><strong>No sample rate.</strong> A frame is one cycle, so the note sets the pitch. The unit does
-    not resample a table. A table outside the limits above stays on the +Drive and plays Prim.</li>
-    <li><strong>The two built-in tables</strong>, Prim. and Harm., are 16 frames of 512 points. Prim. is a
+    not resample a table. A table outside the limits above stays on the +Drive and is silent.</li>
+    <li><strong>Prim. and Harm.</strong>, the two tables DNX can install, are 16 frames of 512 points. Prim. is a
     saw that becomes a sine. Harm. steps through the overtone series, partials 1 to 16.</li>
     <li><strong>In the DSP</strong>, each pool slot has its own memory region of 2,052 KiB. When a pool
     loads, the DSP makes the mip levels of each table in its spare time (below). A 64 &times; 2,048
-    table takes about 0.16 s. Until a table is ready, its slot plays Prim.</li>
+    table takes about 0.16 s. Until a table is ready, its slot is silent.</li>
   </ul>
   <div class="tech-fig"><!-- dnfw:tech geometry --><div class="scroll"><table><thead><tr><th>Points a frame</th><th>Mip levels</th><th>Harmonics in a frame</th><th>64 frames on the +Drive</th><th>64 frames in the DSP, with its levels</th><th>Of a pool slot&#x27;s DSP region</th></tr></thead><tbody><tr><td class="num">64</td><td class="num">5</td><td class="num">31</td><td class="num">8 KiB</td><td class="num">33 KiB</td><td class="num">2 %</td></tr><tr><td class="num">128</td><td class="num">6</td><td class="num">63</td><td class="num">16 KiB</td><td class="num">65 KiB</td><td class="num">3 %</td></tr><tr><td class="num">256</td><td class="num">7</td><td class="num">127</td><td class="num">32 KiB</td><td class="num">130 KiB</td><td class="num">6 %</td></tr><tr><td class="num">512</td><td class="num">8</td><td class="num">255</td><td class="num">64 KiB</td><td class="num">258 KiB</td><td class="num">13 %</td></tr><tr><td class="num">1,024</td><td class="num">9</td><td class="num">511</td><td class="num">128 KiB</td><td class="num">514 KiB</td><td class="num">25 %</td></tr><tr><td class="num">2,048</td><td class="num">10</td><td class="num">1,023</td><td class="num">256 KiB</td><td class="num">1,027 KiB</td><td class="num">50 %</td></tr><tr><td class="num">4,096</td><td class="num">11</td><td class="num">2,047</td><td class="num">512 KiB</td><td class="num">2,051 KiB</td><td class="num">100 %</td></tr></tbody></table></div><!-- /dnfw:tech -->
   <p class="small">A 64-frame table for each frame length: its size on the +Drive, and its size in the DSP

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Keep the site's common sections in step with the mods (scripts/site_check.py).
 #
-# Runs only when the commit touches the site, the README or a mod. The check is
+# The site check runs only when the commit touches the site, the README or a mod. The check is
 # fast; regenerating the compatibility table is not (~8 minutes), so a commit
 # that changes a mod only gets a reminder to rerun `dnfw mods matrix`, and the
 # check fails if the table no longer has every mod.
@@ -10,12 +10,27 @@
 # Bypass deliberately with --no-verify.
 
 staged=$(git diff --cached --name-only)
-echo "$staged" | grep -qE '^(site/|README\.md$|src/dnfw/mods/|src/dnfw/cli/mods\.py$)' || exit 0
-
-if echo "$staged" | grep -qE '^src/dnfw/(mods/|cli/mods\.py$)'; then
-    echo "pre-commit: a mod changed. If its bytes or its compatibility changed, rerun" >&2
-    echo "  python -m dnfw.cli.main mods matrix STOCK_1.11.syx --page site/<each page>.html --page docs/mods-compatibility.md" >&2
+if echo "$staged" | grep -qE '^(site/|README\.md$|src/dnfw/mods/|src/dnfw/cli/mods\.py$)'; then
+    if echo "$staged" | grep -qE '^src/dnfw/(mods/|cli/mods\.py$)'; then
+        echo "pre-commit: a mod changed. If its bytes or its compatibility changed, rerun" >&2
+        echo "  python -m dnfw.cli.main mods matrix STOCK_1.11.syx --page site/<each page>.html --page docs/mods-compatibility.md" >&2
+    fi
+    python scripts/site_check.py || exit 1
 fi
 
-python scripts/site_check.py || exit 1
+# A mod that writes other bytes needs a new version (dnfw.mods.fingerprint, about 40 s).
+# Needs stock 1.11 in 00_Resources; without it test_mods_history fails outside CI.
+stock=00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip
+if [ -f "$stock" ] && echo "$staged" | grep -qE '^(csrc/|src/dnfw/(mods|waverider|patch|image)/|src/dnfw/cli/mods\.py$)'; then
+    PYTHONPATH="$PWD/src" python -c "
+import pathlib, sys
+from dnfw.cli.files import read_image
+from dnfw.cli.mods import REGISTRY
+from dnfw.firmware.load import load
+from dnfw.mods import fingerprint
+wrong = fingerprint.problems(load(read_image(pathlib.Path('$stock'))), REGISTRY)
+for line in wrong:
+    print('pre-commit:', line, file=sys.stderr)
+sys.exit(1 if wrong else 0)" || exit 1
+fi
 exit 0

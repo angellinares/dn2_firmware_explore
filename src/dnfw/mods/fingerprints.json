@@ -1,0 +1,70 @@
+{
+ "arpmodes": {
+  "sha256": "0b9b6d391113218a01f08fe42dadb3647a8edb71ea38db66d3e32320542991c3",
+  "version": "1.0.0"
+ },
+ "arpplocks": {
+  "sha256": "1c3cd4eba26cd8a239bfafef51fe7f51d3d4921d5b35a547750b2f9b33e0fff9",
+  "version": "0.1.2"
+ },
+ "arpscale": {
+  "sha256": "849eeb225e67c0eb70c5855ee8e9ea48f0778c7b466c188591f3dd1352b22db4",
+  "version": "0.2.1"
+ },
+ "bootscreen": {
+  "sha256": "465bdc433e1dc788a9980a7477f7f1e8e84351ff6c348a1b8d2d29226e377c00",
+  "version": "1.0.0"
+ },
+ "degreetranspose": {
+  "sha256": "7cd0209ca3af86bcf81e6f70a24728a4aec0955b611c84eab42c3cd0a41a2b72",
+  "version": "0.1.1"
+ },
+ "fxmod": {
+  "sha256": "0e7fafb8dbba3929661a6386c5762524de2df21c6c4d6756715cf4e88e4dc9d7",
+  "version": "1.0.2"
+ },
+ "layermidi": {
+  "sha256": "27d71a86e6ab03f79d63e3448b58fbd8477ab8b5ed5f8094969719f9148c947d",
+  "version": "1.0.0"
+ },
+ "lfo4": {
+  "sha256": "46b7747a4571bb1a3d847d69c7223d5cab16cc6eb2c0681f970abf05201030ca",
+  "version": "1.0.4"
+ },
+ "lfolength": {
+  "sha256": "3bc6880f54d8abb1c4d5dde8a099a0f1cb8fc5920d57587c2f17f6cdfe1edb39",
+  "version": "1.0.1"
+ },
+ "lfowaves": {
+  "sha256": "9154eda8236c32065e37f3ea2f0b8c8c2a7367a29c04090f941a06a25fbb39e0",
+  "version": "1.0.1"
+ },
+ "midiarp": {
+  "sha256": "bdf6a6390aa3cc0381902540f6ec68d2a6932f0a1c6f7d12f0c0c475d043ccbf",
+  "version": "1.0.0"
+ },
+ "moddest": {
+  "sha256": "9d9705173553fd997b4fa213a885d5b334613363a0ce9b5b1d66247e234aacb7",
+  "version": "1.0.0"
+ },
+ "reloadconfirm": {
+  "sha256": "f4c15a961352952500964e807ff3af758ac242cf2294aed51a1d09c9e442de28",
+  "version": "1.0.0"
+ },
+ "songguard": {
+  "sha256": "2d53085a9c57e624a7e114675ac2671a89722bf86e0d96fa8273183e89d83173",
+  "version": "0.1.0"
+ },
+ "transients": {
+  "sha256": "0fea3104911bb3a5fb9ff3cedfe08fd675bdc2f53fa6d5ca019fe75ad643dd08",
+  "version": "2.0.0"
+ },
+ "usbprobe": {
+  "sha256": "06d9d926be7c3658740f28635526e96ab95b8b0fb88fe5bbea69acd6bb1611ac",
+  "version": "0.1.0"
+ },
+ "waverider": {
+  "sha256": "681ad917482fa1545a3675d37956b7582e432186cc1a503c6e22981ef314d49a",
+  "version": "0.3.9"
+ }
+}

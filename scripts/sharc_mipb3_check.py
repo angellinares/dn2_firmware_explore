@@ -36,16 +36,16 @@ from dnfw.waverider import dsp                                  # noqa: E402
 from dnfw.waverider import geometry as G                        # noqa: E402
 
 F, m5 = K.F, K.m5
-MIPB3_DM = dsp.MIPB3_DM
+MIPB3_LOAD = dsp.MIPB3_LOAD
 PB = 0x2E40C0                                    # mipb3.asm's parameter block
 GUARDS = 3
 
 
 def stream(stock: bytes) -> bytes:
     blocks = b""
-    for name, dm in (("fft3", K.FFT3_DM), ("spec3", V.SPEC3_DM), ("mipb3", MIPB3_DM)):
+    for name, at in (("fft3", K.FFT3_LOAD), ("spec3", V.SPEC3_LOAD), ("mipb3", MIPB3_LOAD)):
         code = sharc_object.load_bytes(bytes.fromhex(json.loads((K.SHARC / f"{name}.json").read_text())["object_parcels_be"]))
-        blocks += bootstream.block(dsp.dm_to_load(dm), code)
+        blocks += bootstream.block(at, code)
     return bootstream.insert_before_final(dsp.section7_idle_only(stock), blocks)
 
 

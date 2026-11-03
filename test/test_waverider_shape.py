@@ -60,7 +60,7 @@ def test_type_offers_only_what_plays_and_page5_fits_its_span():
     assert pages.RANGES[pages.SHAPE_TYPE] == (0, 3 << 8, 0)
     assert dsp.FORMANT_DM >= dsp.PHASE_DM and dsp.FORMANT_DDR_END <= dsp.DDR_REGION[1]
     assert len(dsp.objects()["formant"]) <= dsp.FORMANT_COEF_DM - dsp.FORMANT_DM - 64
-    assert dsp.PAGE5_DM >= dsp.BUILD3_END and dsp.PAGE5_END <= dsp.REGION[1]
+    assert dsp.PAGE5_DM >= dsp.L1_FREED[-1][1] and dsp.PAGE5_END <= dsp.REGION[1]
     assert len(dsp.objects()["page5"]) <= dsp.PAGE5_COPY_DM - dsp.PAGE5_DM - 64
 
 

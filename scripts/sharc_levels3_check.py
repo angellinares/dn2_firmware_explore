@@ -32,7 +32,7 @@ from dnfw.waverider import dsp                                  # noqa: E402
 from dnfw.waverider import geometry as G                        # noqa: E402
 
 F, m5 = K.F, K.m5
-SPEC3_SW, SPEC3_DM = dsp.SPEC3_SW, dsp.SPEC3_DM
+SPEC3_SW, SPEC3_LOAD = dsp.SPEC3_SW, dsp.SPEC3_LOAD
 PS = 0x2E40A0                                    # spec3.asm's parameter block
 
 
@@ -53,9 +53,9 @@ def labels(name: str) -> dict[str, int]:
 
 def stream(stock: bytes) -> bytes:
     blocks = b""
-    for name, dm in (("fft3", K.FFT3_DM), ("spec3", SPEC3_DM)):
+    for name, at in (("fft3", K.FFT3_LOAD), ("spec3", SPEC3_LOAD)):
         code = sharc_object.load_bytes(bytes.fromhex(json.loads((K.SHARC / f"{name}.json").read_text())["object_parcels_be"]))
-        blocks += bootstream.block(dsp.dm_to_load(dm), code)
+        blocks += bootstream.block(at, code)
     return bootstream.insert_before_final(dsp.section7_idle_only(stock), blocks)
 
 

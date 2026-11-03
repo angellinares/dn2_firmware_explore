@@ -91,6 +91,8 @@ def test_every_added_span_is_in_block_1s_free_tail_and_outside_every_stock_block
     for what, at, payload in dsp.spans():
         if at >= 0x80000000:                                    # the tables, in DDR above the image
             assert 0x8052FBE0 <= at and at + len(payload) <= 0x80A00000, what
+        elif at < dsp.LOAD_ALIAS:                               # the level builder's code, in L2
+            assert dsp.STOCK_L2_END < at and at + len(payload) <= dsp.STAGE3_L2[1] <= 0x200FA000, what
         else:
             lo, hi = at - dsp.LOAD_ALIAS, at - dsp.LOAD_ALIAS + len(payload)
             assert 0x2DD52C <= lo and hi <= 0x2E8000, what      # above stock, below a 32 KB DM cache
@@ -251,7 +253,8 @@ def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
     assert at == dsp.dm_to_load(dsp.MIP_LEVELS_DM) and at + len(p) == dsp.dm_to_load(dsp.MIP_DM)
     at, p = sp[{"hermite": "reader_miph.asm (wr_miph, Hermite)",
                  "hermite2": "reader_miph2.asm (wr_miph2, Hermite, 16-bit taps)"}.get(mip.INTERP, "reader_mip.asm (wr_mip)")]
-    assert at == dsp.dm_to_load(dsp.MIP_DM) and at + len(p) == dsp.dm_to_load(dsp.MIP_END)   # stage 3: fft3 follows
+    # stage 3's parameter blocks follow (its code moved to L2, 2026-11-01: 0x2e3800..0x2e4000 is free)
+    assert at == dsp.dm_to_load(dsp.MIP_DM) and at + len(p) == dsp.dm_to_load(dsp.STAGE3_PARAMS_DM if dsp.STAGE3 else dsp.MIP_END)
     assert struct.unpack_from("<128f", sp["the noise's decay factors, 128 float32"][1]) == live.noise_decay_table()
     assert struct.unpack_from("<128f", sp["SMTH's coefficients, 128 float32"][1]) == live.smth_table()
 
@@ -368,27 +371,33 @@ def test_tables_are_original_and_distinct():
 
 
 def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
-    sp = [x for x in dsp.spans() if x[1] < 0x80000000]       # L1 (the tables are in DDR)
+    sp = [x for x in dsp.spans() if dsp.LOAD_ALIAS <= x[1] < 0x80000000]   # L1 (the tables are in DDR, stage 3's code in L2)
     at = [a - dsp.LOAD_ALIAS for _, a, _ in sp]
     ends = [a - dsp.LOAD_ALIAS + len(p) for _, a, p in sp]
     assert at[0] == dsp.REGION[0] and ends[-1] == dsp.REGION[1]
     assert all(e == a for e, a in zip(ends, at[1:]))           # no unwritten gap
     obj = dsp.objects()
     code_spans = [x for x in sp if "asm (" in x[0]]
-    s3 = dsp.stage3_objects() if dsp.STAGE3 else {}
     # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm, sync/smooth/dclk.asm (M10b-2),
-    # trim.asm, sub/noise.asm (page 3), the mip reader, stage 3's fft3, spec3, mipb3 and build3, page5.asm, phase.asm
+    # trim.asm, sub/noise.asm (page 3), the mip reader, page5.asm, phase.asm
     # formant.asm, and fsrc.asm and fsrc_mix.asm (page 5's FSRC)
-    assert len(code_spans) == 21 + len(s3)
+    assert len(code_spans) == 21
     for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["fsrc"], obj["idle_load"],
                                                      obj["block_count"], obj["entry_mark"], obj["modulator"],
                                                      obj["shapes"], obj["fsrc_mix"], obj["load"], obj["pool"], obj["sync"], obj["trim"],
                                                      obj["smooth"], obj["dclk"], obj["sub"], obj["noise"],
                                                      obj[{"hermite": "reader_miph", "hermite2": "reader_miph2"}.get(mip.INTERP, "reader_mip")],
-                                                     *(s3[k] for k in ("fft3", "spec3", "mipb3", "build3") if k in s3),
                                                      obj["page5"], obj["phase"], obj["formant"])):
         assert payload[:len(code)] == code
         assert len(payload) - len(code) >= 64 and not any(payload[len(code):]), what
+    if dsp.STAGE3:                                              # stage 3's code: L2, end to end, NOP padded
+        l2 = [x for x in dsp.spans() if x[1] < dsp.LOAD_ALIAS]
+        s3 = dsp.stage3_objects()
+        assert [a for _, a, _ in l2][0] == dsp.STAGE3_L2[0] and l2[-1][1] + len(l2[-1][2]) == dsp.STAGE3_L2[1]
+        assert all(a + len(p) == b for (_, a, p), (_, b, _) in zip(l2, l2[1:]))
+        for (what, _, payload), k in zip(l2, ("fft3", "spec3", "mipb3", "build3"), strict=True):
+            assert payload[:len(s3[k])] == s3[k]
+            assert len(payload) - len(s3[k]) >= 64 and not any(payload[len(s3[k]):]), what
 
 
 def test_the_idle_only_stream_is_stock_but_the_stub(stock7):

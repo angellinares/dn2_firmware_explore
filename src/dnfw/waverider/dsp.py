@@ -97,6 +97,7 @@ DIRECTORY_MAGIC = 0x57525431                 # 'WRT1'
 # above it and below 0x80a00000, where the Digitakt II, on the same board, keeps its
 # sample pool. DDR has no 0x28 load alias: a block's target is the address itself.
 STOCK_DDR_END = 0x8052FBE0
+STOCK_L2_END = 0x2008823C                    # the stock stream's last L2 byte (DN2 1.11)
 DDR_REGION = (0x80600000, 0x80A00000)
 TABLE_BYTES = 0x4000                         # 16 frames x 512 int16 (a pool table, without levels)
 # The baked tables are mip-mapped (dnfw.waverider.mip): eight levels, 65,024 B each, 64 KB
@@ -204,20 +205,25 @@ MIP_SW = MIP_DM // 2                         # 0x171a00
 MIP_END = 0x2E3800                           # the reader's 1 KB
 STAGE3 = mip.INTERP == "hermite2"            # the pool's tables get levels built on the DSP (build3.asm)
 SHARC_SRC = pathlib.Path(__file__).resolve().parents[3] / "csrc" / "waverider" / "sharc"
-# Stage 3 (dnfw.waverider.table3): the pool's levels, built on the DSP in its idle time
-FFT3_DM = 0x2E3800                           # fft3.asm
-FFT3_SW = FFT3_DM // 2                       # 0x171c00
+# Stage 3 (dnfw.waverider.table3): the pool's levels, built on the DSP in its idle time.
+# Its code runs only in the idle task, so it sits in L2 (owner, 2026-10-21: the first L2 move);
+# its data (parameter blocks, directory, state) stays in L1 block 1 at the same addresses.
+L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
+STAGE3_L2 = (0x200B0000, 0x200B1900)         # above Bloom's 0x200a0000..0x200a1000, below 0x200fa000
+FFT3_LOAD = STAGE3_L2[0]                     # fft3.asm (its jumps are PC-relative)
+FFT3_SW = L2_SW + (FFT3_LOAD - L2_LOAD) // 2     # 0xbd8000
 STAGE3_PARAMS_DM = 0x2E4000                  # fft3's, spec3's and mipb3's parameter blocks and scratch (fixed in them)
 BUILT_DM = 0x2E4100                          # build3.asm's directory: pool entry j's table (| 1), or 0
 BUILD_STATE_DM = 0x2E4300                    # its state, the level rows' pointers and its save area
 BUILD_STATE_END = 0x2E4500
-SPEC3_DM = 0x2E4500                          # spec3.asm
-SPEC3_SW = SPEC3_DM // 2                     # 0x172280
-MIPB3_DM = 0x2E4800                          # mipb3.asm
-MIPB3_SW = MIPB3_DM // 2                     # 0x172400
-BUILD3_DM = 0x2E4B00                         # build3.asm, the idle loop's back edge jumps here
-BUILD3_SW = BUILD3_DM // 2                   # 0x172580
-BUILD3_END = 0x2E5600
+SPEC3_LOAD = STAGE3_L2[0] + 0x800            # spec3.asm
+SPEC3_SW = L2_SW + (SPEC3_LOAD - L2_LOAD) // 2   # 0xbd8400
+MIPB3_LOAD = STAGE3_L2[0] + 0xB00            # mipb3.asm
+MIPB3_SW = L2_SW + (MIPB3_LOAD - L2_LOAD) // 2   # 0xbd8580
+BUILD3_LOAD = STAGE3_L2[0] + 0xE00           # build3.asm, the idle loop's back edge jumps here
+BUILD3_SW = L2_SW + (BUILD3_LOAD - L2_LOAD) // 2  # 0xbd8700
+# L1 block 1 that the move freed: 0x2e3800..0x2e4000 and 0x2e4500..0x2e5600 (zeros in the stream)
+L1_FREED = ((0x2E3800, 0x2E4000), (0x2E4500, 0x2E5600))
 # Page 5, the shape (page5.asm): FOLD, and TYPE Ring / AM with AMT, after build3
 PAGE5_DM = 0x2E5600                          # page5.asm
 PAGE5_SW = PAGE5_DM // 2                     # 0x172b00
@@ -243,7 +249,6 @@ FORMANT_LEVELS_AT = 0x8070A400               # the level table, 33 x 9 float32
 FORMANT_VOICES_AT = 0x8070AC00               # the voices' state, 16 x 8 words (position, set, P1, 1 / C x 5)
 FORMANT_DDR_END = 0x8070B000
 FILL_MIN = 32                                # a shorter tail of zeros stays in its payload (a fill block's header is 16 bytes)
-L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 
 # stock sites
 ENTRY_SW = 0x1C9448                          # i5=dm(-0x18,i6); r10=dm(-0x22,i6)
@@ -424,12 +429,8 @@ def spans() -> list[tuple[str, int, bytes]]:
     ]
     if STAGE3:
         s3 = stage3_objects()
-        raw += [("fft3.asm (wr_fft3)", FFT3_DM, s3["fft3"]),
-                ("stage 3 parameter blocks and scratch (zeros)", STAGE3_PARAMS_DM, bytes(BUILT_DM - STAGE3_PARAMS_DM)),
-                ("build3's directory and state (zeros: nothing built)", BUILT_DM, bytes(BUILD_STATE_END - BUILT_DM)),
-                ("spec3.asm (wr_spec3_split, wr_spec3_join)", SPEC3_DM, s3["spec3"]),
-                ("mipb3.asm (wr_mipb3_in, wr_mipb3_out)", MIPB3_DM, s3["mipb3"]),
-                ("build3.asm (wr_build3)", BUILD3_DM, s3["build3"])]
+        raw += [("stage 3 parameter blocks and scratch (zeros)", STAGE3_PARAMS_DM, bytes(BUILT_DM - STAGE3_PARAMS_DM)),
+                ("build3's directory and state (zeros: nothing built)", BUILT_DM, bytes(BUILD_STATE_END - BUILT_DM))]
     raw += [("page5.asm (wr_p5_mid, wr_p5_ran, wr_p5_skip)", PAGE5_DM, obj["page5"]),
             ("page 5's copy of osc 1 (zeros)", PAGE5_COPY_DM, bytes(PAGE5_FLAG_DM - PAGE5_COPY_DM)),
             ("page 5's flag and state (zeros)", PAGE5_FLAG_DM, bytes(PAGE5_END - PAGE5_FLAG_DM)),
@@ -449,6 +450,8 @@ def spans() -> list[tuple[str, int, bytes]]:
         if "asm" in what and end - at - len(payload) < 64:
             raise DspError(f"{what} leaves fewer than 64 bytes of NOP padding")
         out.append((what, dm_to_load(at), payload + bytes(end - at - len(payload))))
+    if STAGE3:
+        out += l2_spans()
     for what, at, table in ((f"table 0: saw{' (255 harmonics)' if BRIGHT else ''} -> sine (testtable reversed), mip-mapped", TABLES_AT[0], t[0]),
                             ("table 1: the overtone series (harmonics), mip-mapped", TABLES_AT[1], t[1])):
         payload = table.dsp_bytes() if isinstance(table, mip.MipTable) else reference.dsp_bytes(table)
@@ -504,6 +507,23 @@ def stage3_objects() -> dict[str, bytes]:
     return out
 
 
+def l2_spans() -> list[tuple[str, int, bytes]]:
+    """The idle-time level builder's code in L2 (STAGE3_L2), each object zero-padded up to the
+    next, the last to the range's end, with at least 64 bytes of NOPs after its code."""
+    s3 = stage3_objects()
+    raw = [("fft3.asm (wr_fft3), L2", FFT3_LOAD, s3["fft3"]),
+           ("spec3.asm (wr_spec3_split, wr_spec3_join), L2", SPEC3_LOAD, s3["spec3"]),
+           ("mipb3.asm (wr_mipb3_in, wr_mipb3_out), L2", MIPB3_LOAD, s3["mipb3"]),
+           ("build3.asm (wr_build3), L2", BUILD3_LOAD, s3["build3"])]
+    out = []
+    for k, (what, at, payload) in enumerate(raw):
+        end = raw[k + 1][1] if k + 1 < len(raw) else STAGE3_L2[1]
+        if end - at - len(payload) < 64:
+            raise DspError(f"{what} ({len(payload)} bytes) leaves fewer than 64 bytes of NOPs before {end:#x}")
+        out.append((what, at, payload + bytes(end - at - len(payload))))
+    return out
+
+
 def build3_jump() -> bytes:
     """The idle loop's back edge to build3.asm: `JUMP 0x172500`, the committed idle JUMP's
     encoding (Type 8a, 063e00 + the address) with build3's address."""
@@ -537,7 +557,8 @@ def _check_free(stock: bytes, span_list) -> None:
         lo, hi = at, at + len(payload)
         in_l1 = dm_to_load(REGION[0]) <= lo and hi <= dm_to_load(REGION[1])
         in_ddr = DDR_REGION[0] <= lo and hi <= DDR_REGION[1]
-        if not (in_l1 or in_ddr):
+        in_l2 = STAGE3_L2[0] <= lo and hi <= STAGE3_L2[1]
+        if not (in_l1 or in_ddr or in_l2):
             raise DspError(f"{what} at {lo:#x} leaves the block-1 region {REGION} "
                            f"and the DDR region {DDR_REGION}")
         for b in blocks:
@@ -546,6 +567,8 @@ def _check_free(stock: bytes, span_list) -> None:
                                f"block at {b.target:#x}+{b.count:#x}")
     if not (STOCK_BLOCK1_END <= REGION[0] and REGION[1] <= DM_CACHE_32K):
         raise DspError(f"the region {REGION} is not between block 1's last stock byte and a 32 KB DM cache")
+    if STAGE3_L2[0] <= STOCK_L2_END:
+        raise DspError(f"the L2 range {STAGE3_L2} starts below stock's last L2 byte {STOCK_L2_END:#x}")
     if DDR_REGION[0] < STOCK_DDR_END:
         raise DspError(f"the DDR region {DDR_REGION} starts below the stock image's last DDR byte")
     ordered = sorted((at, at + len(p), w) for w, at, p in span_list)

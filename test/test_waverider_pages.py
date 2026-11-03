@@ -59,9 +59,12 @@ def test_the_strings_carry_an_unshareable_header():
         assert struct.unpack(">IIi", CHUNK[at - 12:at]) == (len(text), len(text), -1)
 
 
-def test_the_spans_are_the_tables_the_sharc_plays():
+def test_the_spans_are_the_two_original_tables():
+    # Prim. and Harm. (no longer baked: DNX installs them, 2026-11-03); TBL's one item
+    # before the pool is item 0, no table
+    assert wave.TABLES == 1
     got = wave.spans()
-    assert len(got) == len(dsp.tables()) == wave.TABLES
+    assert len(got) == len(dsp.tables()) == 2
     for table in got:
         assert len(table) == wave.FRAMES
         for lo, hi in table:
@@ -101,9 +104,11 @@ def test_the_renderer_sits_between_the_assembly_and_the_runtime():
     assert pages.LOAD + len(CHUNK) <= pages.C_END
 
 
-def test_the_display_data_is_in_the_chunk():
-    data = bytes(v & 0xFF for table in wave.spans() for lo, hi in table for v in lo + hi)
-    assert data in CHUNK
+def test_no_baked_display_data_is_in_the_chunk():
+    # the page draws only pool tables (pool.c makes their spans as they load)
+    for table in wave.spans():
+        data = bytes(v & 0xFF for lo, hi in table for v in lo + hi)
+        assert data not in CHUNK
 
 
 def test_the_dest_cell_tells_the_two_oscillators_apart():

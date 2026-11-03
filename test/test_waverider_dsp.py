@@ -205,30 +205,28 @@ def test_the_loader_renders_through_case_3_from_the_frame_copy():
     assert dsp.LOAD_STATE_DM >= dsp.CMD_TABLE_DM + 32
 
 
-def test_directory_names_both_tables():
+def test_directory_names_only_the_silent_slot():
+    # pool tables only (owner, 2026-11-03): slot 0 is the table of zeros an empty TBL plays
     d = dsp.directory()
-    assert struct.unpack_from("<4I", d) == (0x57525431, 2, dsp.TABLES_AT[0] | 1, dsp.TABLES_AT[1] | 1)   # bit 0: mip-mapped
-    assert dsp.TABLES_AT == ((0x80600000, 0x80611000) if mip.guarded() else (0x80600000, 0x80610000))
+    assert struct.unpack_from("<3I", d) == (0x57525431, 1, dsp.TABLES_AT[0] | 1)   # bit 0: mip-mapped
+    assert dsp.TABLES_AT == (0x80600000,)
 
 
-def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
-    # the stock stream's last DDR byte is 0x8052fbe0; the tables sit above it, below
-    # the Digitakt II's pool at 0x80a00000, at their own addresses (no load alias)
+def test_the_silent_table_loads_into_ddr_above_the_stock_image(stock7, built):
+    # the stock stream's last DDR byte is 0x8052fbe0; slot 0 sits above it, below the
+    # Digitakt II's pool at 0x80a00000, at its own address (no load alias). It is zeros,
+    # so the stream carries it as one fill block, and the two original tables are gone
     last = max(b.target + b.count for b in bootstream.walk(stock7).blocks
                if b.count and b.target >= 0x80000000)
     assert last == dsp.STOCK_DDR_END
-    for k, at in enumerate(dsp.TABLES_AT):
-        assert dsp.TABLES_DM[k] == at | dsp.MIP_FLAG
-        assert last < at and at + dsp.MIP_TABLE_BYTES <= 0x80A00000
-        if mip.guarded():                                        # table3's layout: a header, then guarded rows
-            stride = table3.row_bytes(mip.POINTS, 0)
-            lead = table3.level_offset(16, mip.POINTS, 0) + 2 * mip.GUARD_BEFORE
-        else:
-            stride, lead = 2 * mip.row_points(0), 0
-        for f, frame in enumerate(dsp.tables()[k]):              # level 0: the frames as today
-            assert bootstream.read_span(built, at + f * stride + lead, 1024) == reference.dsp_bytes([frame])
-        assert bootstream.read_span(built, at, len(dsp.tables()[k].dsp_bytes())) == \
-            dsp.tables()[k].dsp_bytes()
+    at = dsp.TABLES_AT[0]
+    assert dsp.TABLES_DM[0] == at | dsp.MIP_FLAG
+    assert last < at and at + dsp.MIP_TABLE_BYTES <= 0x80A00000
+    assert bootstream.read_span(built, at, dsp.MIP_TABLE_BYTES) == bytes(dsp.MIP_TABLE_BYTES)
+    blocks = [b for b in bootstream.walk(built).blocks if at <= b.target < at + dsp.MIP_TABLE_BYTES]
+    assert [(b.target, b.count, b.has_payload) for b in blocks] == [(at, dsp.MIP_TABLE_BYTES, False)]
+    for k in range(2):
+        assert dsp.tables()[k].dsp_bytes() not in built
     # L1 keeps only code and state: MOVE's shapes and their random state (M10b-4) sit
     # where table 0 began; after them the loader, its command table and its state, the
     # pool lookup, then SYNC, SMTH and DCLK (M10b-2), their tables, and their state, which

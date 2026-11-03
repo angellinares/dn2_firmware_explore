@@ -48,15 +48,14 @@ typedef unsigned short u16;
 /* {min, max, default}: the record's, or Waverider's own for the controls it steps
  * itself (M10b, `pages.RANGES`: MOVE 0..4, TRIG 0..1), as wr_range answers the
  * firmware's limits getter on a Waverider track */
-/* TBL's steps and names, past the two baked tables the +Drive pool's (pool.c): the
+/* TBL's steps and names: item 0 is no table (silence, the DSP's slot 0 of zeros; pool
+ * tables only, owner 2026-11-03), then the +Drive pool's (pool.c): the
  * firmware's limits getter (wr_range) and value text (wr_fmt) read these, so they are
  * mutable, and kept by drive_poll. A slot the pool does not have reads "-" (and plays
  * slot 0, as pool.asm falls back). */
 int wr_tbl_range[3] __attribute__((section(".data"))) = { 0, (WR_TABLES - 1) << 8, 0 };
 static const char dash[] = "-";
-const char *wr_tbl_names[WR_TABLES + POOL_SLOTS] __attribute__((section(".data"))) = {
-    (const char *)0x4021CA14u, (const char *)0x4021CA1Au   /* the stock "Prim.", "Harm." */
-};
+const char *wr_tbl_names[WR_TABLES + POOL_SLOTS] __attribute__((section(".data"))) = { dash };
 
 static u32 pool_count(void)
 {
@@ -65,13 +64,12 @@ static u32 pool_count(void)
 }
 
 /* Does pool entry j hold a table? (a cleared slot, or one whose table was deleted, plays
- * Prim., as the DSP does for an empty directory entry; the owner, wtpool1: the page drew
- * an empty wave there) -1 or less: a built-in, which always does */
+ * silence, as the DSP does for an empty directory entry) -1 or less: item 0, no table */
 static int pool_has(int j)
 {
     const struct wr_drive_head *h = WR_DRIVE_HEAD;
     if (j < 0)
-        return 1;
+        return 0;
     return h->magic == WR_DRIVE_MAGIC && j < POOL_SLOTS && h->pool->slot_of[j] != 0xFF;
 }
 
@@ -135,8 +133,8 @@ static void dclk_text(char *buf, int value)
 }
 
 /* TBL's value text (owner, tbl128b on the instrument): the pool position, numbered as
- * the counter numbers it (T:001 = pool entry 0), and the table's name; Prim. and Harm.
- * by name. The header shows only this for TBL (wr_head drops "Osc1 Table="). The value
+ * the counter numbers it (T:001 = pool entry 0, item 1), and the table's name; item 0,
+ * no table, as "-". The header shows only this for TBL (wr_head drops "Osc1 Table="). The value
  * comes sign-extended (0x8000 up: the pool's last tables), so it is read as a word. */
 static void tbl_text(char *buf, int value)
 {
@@ -799,8 +797,7 @@ static void span(int tbl, int pos, int x, int *lo, int *hi)
     int f = fx >> 8, frac = fx & 0xFF;
     int g = f < WR_FRAMES - 1 ? f + 1 : f;
     /* a baked table's spans, or a pool table's, made as it was loaded (pool.c) */
-    const signed char (*t)[2][WR_WIDTH] = tbl < WR_TABLES ? wr_spans[tbl]
-        : (const signed char (*)[2][WR_WIDTH])WR_POOL_SPANS[tbl - WR_TABLES];
+    const signed char (*t)[2][WR_WIDTH] = (const signed char (*)[2][WR_WIDTH])WR_POOL_SPANS[tbl - WR_TABLES];
     int l = t[f][0][x] + (((t[g][0][x] - t[f][0][x]) * frac) >> 8);
     int h = t[f][1][x] + (((t[g][1][x] - t[f][1][x]) * frac) >> 8);
     *lo = WAVE_CY + l * WAVE_AMP / 127;
@@ -855,7 +852,7 @@ static void wave(void *c, void *view, int page)
     (void)sw;
 #endif
     if (tbl < 0 || tbl >= (int)(WR_TABLES + pool_count()) || !pool_has(tbl - WR_TABLES))
-        tbl = 0;                            /* what the DSP plays for a slot it has not */
+        tbl = 0;                            /* no table: the DSP plays silence, no wave drawn */
     pos = clamp_pos(pos);
 
 #if WR_MARKERS
@@ -875,9 +872,11 @@ static void wave(void *c, void *view, int page)
             from = clamp_pos(set_pos + lfo + (e0 < e1 ? e0 : e1));
             to = clamp_pos(set_pos + lfo + (e0 < e1 ? e1 : e0));
         }
-        curve(c, tbl, from);
-        curve(c, tbl, to);
-        for (int x = 0; x < WR_WIDTH; x += 3) {
+        if (tbl) {
+            curve(c, tbl, from);
+            curve(c, tbl, to);
+        }
+        for (int x = 0; tbl && x < WR_WIDTH; x += 3) {
             int alo, ahi, blo, bhi;
             span(tbl, from, x, &alo, &ahi);
             span(tbl, to, x, &blo, &bhi);
@@ -903,7 +902,8 @@ static void wave(void *c, void *view, int page)
     }
 #endif
 
-    curve(c, tbl, pos);
+    if (tbl)
+        curve(c, tbl, pos);
 
     for (int x = 0; x < WR_WIDTH; x += 2)
         canvas_px(c, WAVE_X + x, POS_Y);
@@ -1088,15 +1088,15 @@ void wr_page_draw(void *view, void *canvas)
         u32 id = wr_ids[page][i];
         if (id == WR_TBL_ID || id == WR_TBL2_ID) {
             /* TBL is a counter: the table loaded, by its number, on the label row, and its
-             * modulation on the bar row (the owner's option A, 2026-10-06). The built-ins by
-             * name, a pool table by its shown slot 001.. (coarse c >= 2 is shown slot c - 1) */
+             * modulation on the bar row (the owner's option A, 2026-10-06). Item 0, no table,
+             * as "-", a pool table by its shown slot 001.. (coarse c >= 1 is shown slot c) */
             u8 flag = 0;
             int set = GET_VALUE(view, id, &flag) & 0xFFFF, c = set >> 8;   /* the getter sign-extends: 0x8000 and up read negative */
             int y = top ? TOP_LABEL_Y : BOT_LABEL_Y;       /* level with the other labels */
             if (c < WR_TABLES)
-                TEXT(canvas, FONT, cx, y, CENTRED, c ? "HARM" : "PRIM");
+                TEXT(canvas, FONT, cx, y, CENTRED, "-");
             else
-                TEXT(canvas, FONT, cx, y, CENTRED, "T:%03d", c - 1);
+                TEXT(canvas, FONT, cx, y, CENTRED, "T:%03d", c - WR_TABLES + 1);
 #if WR_MARKERS
             /* the modulation on the bar row, in line with the other controls' bars */
             modulation(canvas, cx, top ? TOP_BAR_Y : BOT_BAR_Y + 1, y, id, set, now);

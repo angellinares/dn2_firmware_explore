@@ -644,7 +644,5 @@ def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
     if pages.SET_CTX != drive.SPANS + drive.SPANS_BYTES:
         raise ComposeError("the setter's mark is not right after the pool's display spans")
     layout["set_ctx"] = pages.SET_CTX
-    layout["wr_spans"] = csyms["wr_spans"]
-    layout["wr_spans_end"] = csyms["wr_spans"] + wave.TABLES * wave.FRAMES * 2 * wave.WIDTH
     return {"content": bytes(content), "edits": edits, "layout": layout,
             "chunk": {"load": pages.LOAD, "code": chunk}, "drive": dchunk}

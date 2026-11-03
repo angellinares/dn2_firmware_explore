@@ -106,7 +106,11 @@ TABLE_BYTES = 0x4000                         # 16 frames x 512 int16 (a pool tab
 # hermite2's guarded rows (mip.row_points) make a table 65,792 B: its slots are 68 KB apart
 MIP_TABLE_BYTES = 0x11000 if mip.guarded() else 0x10000
 MIP_FLAG = 1
-TABLES_AT = (0x80600000, 0x80600000 + MIP_TABLE_BYTES)
+# Pool tables only (owner, 2026-11-03): the directory keeps one slot, 0, a table of zeros
+# (a 16-byte fill block in the stream), so TBL's item 0, an empty pool slot, a missing table
+# and one still building all play silence (pool.asm falls back to slot 0). The two original
+# tables (`tables()`) are no longer in the stream: DNX installs them in the store.
+TABLES_AT = (0x80600000,)
 # DNFW_WAVERIDER_NOMIP=1 (the comparison set's control, 2026-10-08): the tables load plain
 # (16 KB, no levels) and the directory holds their addresses without the flag, so the reader
 # plays them as it plays a pool table: level 0, today's reader on the same table
@@ -286,9 +290,10 @@ BRIGHT_HARMONICS = 255
 
 
 def tables() -> list[list[list[int]]]:
-    """The two original tables, in slot order: 0 = a 32-harmonic saw darkening to a
+    """The two original tables, Prim. and Harm.: 0 = a 32-harmonic saw darkening to a
     sine (`testtable`'s frames reversed; 255 harmonics with BRIGHT), 1 = the overtone
-    series (`harmonics`)."""
+    series (`harmonics`). Not in the stream since 2026-11-03: DNX installs them in the
+    store, and the gates load them as pool tables."""
     t0 = (reduce.to_int16(testtable.source_frames(harmonics=BRIGHT_HARMONICS)) if BRIGHT
           else testtable.table())
     if NOMIP:
@@ -388,7 +393,6 @@ def spans() -> list[tuple[str, int, bytes]]:
     end), so the region is written end to end and every code object is followed by
     at least 64 bytes of zeros (a zero word is a NOP)."""
     obj = objects()
-    t = tables()
     raw = [
         ("reader_m5.asm (wr_render5)", READER_DM, obj["reader"]),
         ("machine5_live.asm (wr_type5v)", LOOP_DM, obj["machine5_live"]),
@@ -452,12 +456,7 @@ def spans() -> list[tuple[str, int, bytes]]:
         out.append((what, dm_to_load(at), payload + bytes(end - at - len(payload))))
     if STAGE3:
         out += l2_spans()
-    for what, at, table in ((f"table 0: saw{' (255 harmonics)' if BRIGHT else ''} -> sine (testtable reversed), mip-mapped", TABLES_AT[0], t[0]),
-                            ("table 1: the overtone series (harmonics), mip-mapped", TABLES_AT[1], t[1])):
-        payload = table.dsp_bytes() if isinstance(table, mip.MipTable) else reference.dsp_bytes(table)
-        if len(payload) > MIP_TABLE_BYTES:
-            raise DspError(f"{what} is {len(payload)} bytes, more than {MIP_TABLE_BYTES}")
-        out.append((what, at, payload))                  # DDR: the target is the address
+    out.append(("table 0: silence (zeros), what an empty TBL plays", TABLES_AT[0], bytes(MIP_TABLE_BYTES)))
     if STAGE3:
         wr, wi = twiddles(table3.MAX_POINTS)
         out += [("build3's templates, 1 KB per N (table3.templates)", TEMPLATES_AT, table3.templates()),
@@ -656,6 +655,32 @@ def _finish(out: bytearray) -> bytes:
     return result
 
 
+# The state after DNX installed the two original tables and the DSP built their levels,
+# for the gates (never in a build): pool entries 0 and 1, TBL slots 1 and 2.
+PRESET_SLOTS = (1, 2)
+PRESET_AT = (LEVELS_AT, LEVELS_AT + LEVELS_SLOT)
+PRESET_DM = tuple(a | MIP_FLAG for a in PRESET_AT)
+
+
+def with_preinstalled(stock: bytes) -> bytes:
+    """`section7(stock)` plus Prim. and Harm. as built pool entries 0 and 1: their levels
+    in their regions and their names in BUILT, as build3 leaves them. A test image for the
+    runner, not for the instrument."""
+    return section7(stock, preinstalled=True)
+
+
+def _preinstall(added: list[tuple[str, int, bytes]]) -> list[tuple[str, int, bytes]]:
+    out = []
+    for what, at, payload in added:
+        if at == dm_to_load(BUILT_DM):
+            payload = struct.pack("<2I", *PRESET_DM) + payload[8:]
+        out.append((what, at, payload))
+    if len(out) == len(added) and not any(at == dm_to_load(BUILT_DM) for _, at, _ in added):
+        raise DspError("no BUILT span to name the preinstalled tables in")
+    return out + [(f"preinstalled table {k} (test image)", at, table.dsp_bytes())
+                  for k, (at, table) in enumerate(zip(PRESET_AT, tables()))]
+
+
 def section7_idle_only(stock: bytes) -> bytes:
     """Stock DN2 1.11's section 7 plus the idle-time stub and nothing else: the stock
     engine, measured. Refuses anything but stock."""
@@ -670,9 +695,10 @@ def section7_idle_only(stock: bytes) -> bytes:
     return _finish(out)
 
 
-def section7(stock: bytes) -> bytes:
+def section7(stock: bytes, preinstalled: bool = False) -> bytes:
     """DN2 1.11's section 7 -> Waverider's. Refuses anything else but stock with its transient
-    bank replaced (`_check_stock`), whose bank it keeps."""
+    bank replaced (`_check_stock`), whose bank it keeps. PREINSTALLED: the gates' test
+    image (`with_preinstalled`)."""
     _check_stock(stock)
     obj = objects()
     entry = obj["entry_jump"] + NOP16
@@ -699,6 +725,8 @@ def section7(stock: bytes) -> bytes:
         raise DspError(f"the machine lookup is {lookup}, not stock {LOOKUP_STOCK}")
     added = spans()
     _check_free(stock, added)
+    if preinstalled:                   # the pool's level regions, above DDR_REGION: as build3 fills them
+        added = _preinstall(added)
 
     out = bytearray(bootstream.insert_before_final(
         stock, b"".join(stream_blocks(at, payload) for _, at, payload in added)))

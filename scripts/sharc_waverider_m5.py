@@ -526,6 +526,8 @@ def wav(name, samples, seconds, wavs, what, normalise=False, source="the runner"
 
 
 def preview(tables, note, wav1_from, wav1_to, tbl1, seconds):
+    """The model alone. TABLES by slot: the previews named by the original tables pass
+    tables[1:] (Prim. as slot 0), a frame's preview the slots the frame names."""
     blocks = int(seconds * RATE) // BLOCK
     seq = [(note, round(wav1_from + (wav1_to - wav1_from) * k / max(blocks - 1, 1)), tbl1)
            for k in range(blocks)]
@@ -611,7 +613,7 @@ def main(argv=None):
                     "the same, scaled to 0.9 peak for listening", normalise=True)
                 wav("m5_voice_machine.wav", track_series(runs["init"], 0), a.seconds, wavs,
                     "track 0's buffer after the type-5 loop, bit-exact to the reference (init sound)")
-                wav("m5_preview_init_sound.wav", preview(tables, 60.0, 0, 0, 0, a.seconds), a.seconds, wavs,
+                wav("m5_preview_init_sound.wav", preview(tables[1:], 60.0, 0, 0, 0, a.seconds), a.seconds, wavs,
                     "PREVIEW, not the runner: the reference for the init sound, note 60, POS 0, slot 0 (the saw)", source="the model")
             for key, what, pv in (
                     ("pos120", "POS (WAV1) 120: slot 0's last frame, the sine", (60.0, 0x7800, 0x7800, 0)),
@@ -620,15 +622,15 @@ def main(argv=None):
                 if runs[key]["ok"]:
                     wav(f"m5_{key}_machine.wav", track_series(runs[key], 0), a.seconds, wavs,
                         f"track 0's buffer, {what}")
-                    wav(f"m5_preview_{key}.wav", preview(tables, *pv[:1], pv[1], pv[2], pv[3], a.seconds),
+                    wav(f"m5_preview_{key}.wav", preview(tables[1:], *pv[:1], pv[1], pv[2], pv[3], a.seconds),
                         a.seconds, wavs, f"PREVIEW, not the runner: the reference for {what}", source="the model")
             if runs["silent"]["ok"]:
                 wav("m5_no_trigger.wav", runs["silent"]["amp_out"], a.seconds, wavs,
                     "control: no trigger, amp output (silent)")
-            wav("m5_demo_pos_sweep_preview.wav", preview(tables, 48.0, 0, 0x7800, 0, 4.0), 4.0, wavs,
+            wav("m5_demo_pos_sweep_preview.wav", preview(tables[1:], 48.0, 0, 0x7800, 0, 4.0), 4.0, wavs,
                 "DEMO PREVIEW, not the runner: slot 0 at note 48, POS swept 0 -> 120 over 4 s: "
                 "a buzzy saw darkening to a sine", source="the model")
-            wav("m5_demo_harmonic_climb_preview.wav", preview(tables, 48.0, 0, 0x7800, 0x100, 4.0), 4.0, wavs,
+            wav("m5_demo_harmonic_climb_preview.wav", preview(tables[1:], 48.0, 0, 0x7800, 0x100, 4.0), 4.0, wavs,
                 "DEMO PREVIEW, not the runner: slot 1 at note 48, POS swept 0 -> 120 over 4 s: "
                 "the overtone series climbing, partial 1 to 16", source="the model")
 

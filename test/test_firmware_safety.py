@@ -165,3 +165,21 @@ def test_the_failures_say_what_they_found(cases):
 def test_text_that_looks_like_an_address_is_not_one(cases):
     main = compare.content(load((cases["dir"] / "good.syx").read_bytes()).container.find(3))[0]
     assert b"Fold" in main and EXPECT["good"]["dma"] == "pass"
+
+
+def test_half_an_operand_is_not_an_address():
+    """`pea 0x467f466b ; mov3ql #2,-(sp)` reads 0x466ba567 (inside stock's DMA section) at its
+    second word: Waverider's drive code after #329. It stays half an operand when the chunk loads
+    elsewhere (the overlap case). A pointer to the section, and `cmpi.l #0x4e6e08ff,%d1`
+    (waverider-scope1), still count."""
+    import struct
+    from dnfw.mods import ramcheck
+    from dnfw.patch import area
+    image = (bytes(0x4670) + struct.pack(">HIH", 0x4879, 0x467F466B, 0xA567) + struct.pack(">I", 0x466C0000)
+             + struct.pack(">HI", 0x0C81, 0x4E6E08FF))
+    for load_at in (0x467F0000, 0x467D8000):
+        chunks = [(area.CODE, area.CodeChunk(load_at, image).pack())]
+        lo, hi = ramcheck.STOCK_DMA
+        found = (safety._named(b"", b"", chunks, lo, hi)
+                 + safety._named(b"", b"", chunks, lo + ramcheck.WINDOW, hi + ramcheck.WINDOW))
+        assert found == [(load_at + 0x4678, 0x466C0000), (load_at + 0x467E, 0x4E6E08FF)], hex(load_at)

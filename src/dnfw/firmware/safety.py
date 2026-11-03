@@ -27,7 +27,9 @@ The items, in order:
 - **dma**: the addresses in stock's DMA section that the new bytes name, under either
   address (as `mods.ramcheck` scans them). Writing there damages saved projects (docs/lfo4-state-memory.md).
   A mod may read stock's buffer on purpose, so this warns and does not fail. A word of four
-  printable ASCII characters is text, not an address, and is left out.
+  printable ASCII characters is text, not an address, and is left out. So is a word in a CODE
+  chunk that starts 2 bytes into an address in mod RAM: it is half an operand and the next
+  instruction, or two pointers of a table.
 - **dsp**: the changed runs of the DSP image (info): nothing here checks the DSP's memory.
 - **record**: the /modinfo record, when there is one: its hash, and its image id against
   MAIN OS.
@@ -278,8 +280,16 @@ def _named(base: bytes, main: bytes, chunks, lo: int, hi: int) -> list[tuple[int
         if cid == area.CODE:
             code = area.CodeChunk.unpack(data)
             found += [(code.load + at, v) for at in range(0, len(code.image) - 3, 2)
-                      if lo <= (v := struct.unpack_from(">I", code.image, at)[0]) < hi]
+                      if lo <= (v := struct.unpack_from(">I", code.image, at)[0]) < hi
+                      and not _own_tail(code, at)]
     return found
+
+
+def _own_tail(code, at: int) -> bool:
+    """The word at AT is the low half of an address in mod RAM plus the next word
+    (`pea 0x467f466b ; mov3ql #2,-(sp)` reads 0x466ba567 at its second word)."""
+    # shortcut: a real DMA pointer is skipped too if the word before it is 0x4670..0x47ff; record the chunk's code/data boundary and decode instructions if that ever happens
+    return at >= 2 and STOCK_RAM_END <= _cached(struct.unpack_from(">I", code.image, at - 2)[0]) < STACK_FLOOR
 
 
 def _dma(main: bytes, base: bytes, chunks) -> Item:

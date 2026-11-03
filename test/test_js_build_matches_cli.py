@@ -16,6 +16,7 @@ the fill that `dnfw mods apply` runs after the mods. The per-mod tests compared 
 payloads, before that step, so nothing saw it. A new mod or a new build step goes in ORDERS.
 """
 
+import concurrent.futures
 import json
 import math
 import os
@@ -79,15 +80,18 @@ def built(tmp_path_factory):
     composer = json.loads((tmp / "web" / "args.json").read_text(encoding="utf-8"))
     # This checkout's dnfw, not an installed one: in a worktree, the editable install is the main checkout's.
     env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
-    with stage("CLI builds", total=len(ORDERS)) as cli_stage:
-        for order in ORDERS:
-            cli_stage.update(step=NAME(order))
-            out = tmp / f"{NAME(order)}_DN2_1.11.syx"
-            argv = [{"STOCK": str(STOCK_111), "OUT": str(out)}.get(a, a) for a in composer[NAME(order)]]
-            cli = subprocess.run([sys.executable, "-c", "import sys; from dnfw.cli.main import main; sys.exit(main(sys.argv[1:]))", "mods", "apply",
-                                  *argv], capture_output=True, text=True, cwd=ROOT, env=env)
+    def build(order):
+        out = tmp / f"{NAME(order)}_DN2_1.11.syx"
+        argv = [{"STOCK": str(STOCK_111), "OUT": str(out)}.get(a, a) for a in composer[NAME(order)]]
+        return order, subprocess.run([sys.executable, "-c", "import sys; from dnfw.cli.main import main; sys.exit(main(sys.argv[1:]))", "mods", "apply",
+                                      *argv], capture_output=True, text=True, cwd=ROOT, env=env)
+
+    # Each build is one Python process (about 78 s) that writes only its own -o file, so they run side by side.
+    with stage("CLI builds", total=len(ORDERS)) as cli_stage, \
+            concurrent.futures.ThreadPoolExecutor(max(1, (os.cpu_count() or 2) // 2)) as pool:
+        for order, cli in pool.map(build, ORDERS):
             assert cli.returncode == 0, f"{order}: {cli.stdout[-800:]}{cli.stderr[-800:]}"
-            cli_stage.advance()
+            cli_stage.advance(detail=NAME(order))
     return tmp
 
 

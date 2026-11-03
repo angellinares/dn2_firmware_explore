@@ -9,6 +9,7 @@ shipped JSON still does, and what each edit means. `scripts/emu_layer_midi.py`
 is the behavioural evidence (the ISR's own note and release loops).
 """
 
+import hashlib
 import pathlib
 import struct
 
@@ -20,7 +21,8 @@ from dnfw.patch import area
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-BUILT = ROOT / "out/layer-midi7/section_3_MAIN_OS.aplib.bin"
+# section 3 of scripts/build_layer_midi.py's layer-midi7_DN2_1.11.syx, unpacked (2026-11-03)
+BUILT_SHA256 = "e47a6e7b12e180b7aaa5da343a8fcc2561f0521ea43847d619bd95fe6da28615"
 BASE = layermidi.BASE
 NOTE_SITE, RELEASE_SITE = 0x40026980, 0x40026D32
 OLD_CAVE = (0x402D0664, 324)               # layer-midi1..6's cave, before the platform
@@ -97,11 +99,9 @@ def test_the_cave_stays_stock(stock, applied):
 
 
 def test_is_the_build_script_output(applied):
-    """Byte equality with `scripts/build_layer_midi.py`'s layer-midi7. Skips
-    when it is absent: `out/` is scratch."""
-    if not BUILT.exists():
-        pytest.skip("out/layer-midi7 is not extracted; run scripts/build_layer_midi.py")
-    assert applied == BUILT.read_bytes()
+    """Byte equality with `scripts/build_layer_midi.py`'s layer-midi7. Its output is
+    scratch, so the test keeps the hash."""
+    assert hashlib.sha256(applied).hexdigest() == BUILT_SHA256, "run scripts/build_layer_midi.py and compare"
 
 
 def test_ram_is_its_own():

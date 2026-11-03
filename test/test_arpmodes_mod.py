@@ -9,6 +9,7 @@ shipped JSON still does, and what each edit means.
 `scripts/emu_arp_modes.py` is the behavioural evidence (SHUF, RAND, the bounds).
 """
 
+import hashlib
 import pathlib
 import struct
 
@@ -19,7 +20,8 @@ from dnfw.mods import arpmodes, arpplocks, bootscreen, fxmod, lfowaves, midiarp,
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-BUILT = ROOT / "out/arpmodes/section_3_MAIN_OS.bin"
+# scripts/build_arpmodes.py's out/arpmodes/section_3_MAIN_OS.bin (2026-09-26), which the emulator gates ran
+BUILT_SHA256 = "f9fc321a5b69f6a94bbd1706451a9e1da1a84112454cca7b4276882c847de4e1"
 BASE = arpmodes.BASE
 BOUNDS = (0x4004BEFA, 0x4004BF00, 0x4004BFB4, 0x4004BFC6, 0x400DD530)
 DISPATCH = 0x4002A13C
@@ -78,10 +80,8 @@ def test_changes_nothing_else(stock, applied):
 
 def test_is_the_build(applied):
     """Byte equality with `scripts/build_arpmodes.py`'s output, which the
-    emulator gates ran. Skips when it is absent: `out/` is scratch."""
-    if not BUILT.exists():
-        pytest.skip("out/arpmodes is not built; run scripts/build_arpmodes.py")
-    assert applied == BUILT.read_bytes()
+    emulator gates ran. `out/` is scratch, so the test keeps the output's hash."""
+    assert hashlib.sha256(applied).hexdigest() == BUILT_SHA256, "run scripts/build_arpmodes.py and compare"
 
 
 def test_every_bound_is_six(stock, applied):

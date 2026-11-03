@@ -662,6 +662,12 @@ PRESET_AT = (LEVELS_AT, LEVELS_AT + LEVELS_SLOT)
 PRESET_DM = tuple(a | MIP_FLAG for a in PRESET_AT)
 
 
+def model_tables() -> list:
+    """The model's tables by TBL slot on the test image: 0, silence; 1 and 2, Prim. and Harm."""
+    silent = mip.MipTable([[0] * mip.POINTS for _ in range(16)])
+    return [silent, *tables()]
+
+
 def with_preinstalled(stock: bytes) -> bytes:
     """`section7(stock)` plus Prim. and Harm. as built pool entries 0 and 1: their levels
     in their regions and their names in BUILT, as build3 leaves them. A test image for the
@@ -669,7 +675,7 @@ def with_preinstalled(stock: bytes) -> bytes:
     return section7(stock, preinstalled=True)
 
 
-def _preinstall(added: list[tuple[str, int, bytes]]) -> list[tuple[str, int, bytes]]:
+def preinstall_spans(added: list[tuple[str, int, bytes]]) -> list[tuple[str, int, bytes]]:
     out = []
     for what, at, payload in added:
         if at == dm_to_load(BUILT_DM):
@@ -726,7 +732,7 @@ def section7(stock: bytes, preinstalled: bool = False) -> bytes:
     added = spans()
     _check_free(stock, added)
     if preinstalled:                   # the pool's level regions, above DDR_REGION: as build3 fills them
-        added = _preinstall(added)
+        added = preinstall_spans(added)
 
     out = bytearray(bootstream.insert_before_final(
         stock, b"".join(stream_blocks(at, payload) for _, at, payload in added)))

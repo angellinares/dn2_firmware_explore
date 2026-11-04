@@ -158,7 +158,7 @@
 
 <!-- ================================================================= Try it -->
 <section id="try" role="tabpanel" aria-labelledby="tab-try">
-  <p class="version-line">This tab builds Waverider <strong><!-- dnfw:version waverider -->v0.4.0<!-- /dnfw:version --></strong> (alpha).
+  <p class="version-line">This tab builds Waverider <strong><!-- dnfw:version waverider -->v0.4.1<!-- /dnfw:version --></strong> (alpha).
   <a href="#changes">See what changed</a>.</p>
   <div class="note">
     <p><strong>Make sure that you can go back to stock before you flash a modified file.</strong>
@@ -261,11 +261,13 @@
 
   <section class="changes" id="changes">
     <h3>Version and changes</h3>
-    <p>The version of Waverider is <strong><!-- dnfw:version waverider -->v0.4.0<!-- /dnfw:version --></strong> (alpha).
+    <p>The version of Waverider is <strong><!-- dnfw:version waverider -->v0.4.1<!-- /dnfw:version --></strong> (alpha).
     The list shows the changes in each version, with the newest first. A link in the list
     opens the part of this page about the change.</p>
 <!-- dnfw:changes waverider -->
 <dl class="changes">
+  <dt><span class="version">v0.4.1</span> <time datetime="2026-11-04">2026-11-04</time></dt>
+  <dd><ul><li>TBL item -, an empty pool slot and a table that is still loading stay silent while a note plays. In 0.4.0 they could play another table after a moment.</li></ul></dd>
   <dt><span class="version">v0.4.0</span> <time datetime="2026-11-04">2026-11-04</time></dt>
   <dd><ul><li>Waverider has no built-in tables. Every table comes from the pool. DNX can install Prim. and Harm. on the +Drive, as it adds any table.</li><li>TBL&#x27;s first item is -, no table: it plays silence, and the page draws no wave. Pool tables start at T:001. A new Waverider sound starts with TBL1 and TBL2 on -.</li><li>An empty pool slot, a table that is not on the +Drive, and a table that is still loading play silence. Before, they played Prim.</li><li>A sound saved with an older Waverider plays another table. Set TBL1 and TBL2 again, or let DNX move the old TBL values for you.</li></ul></dd>
   <dt><span class="version">v0.3.9</span> <time datetime="2026-11-03">2026-11-03</time></dt>
@@ -307,7 +309,7 @@
 
 <!-- ================================================================= The manual -->
 <section id="manual" role="tabpanel" aria-labelledby="tab-manual" hidden>
-  <p class="small">Documentation version 1.10, 2026-11-02. It describes Waverider <!-- dnfw:version waverider -->v0.4.0<!-- /dnfw:version --> (alpha 5).</p>
+  <p class="small">Documentation version 1.10, 2026-11-02. It describes Waverider <!-- dnfw:version waverider -->v0.4.1<!-- /dnfw:version --> (alpha 5).</p>
   <h2>Select Waverider</h2>
   <p>WAVERIDER is in MACHINE SEL, after SWARMER. A Waverider track has five SYN pages. The
   header shows Waverider (1/5) to Waverider (5/5).</p>
@@ -650,7 +652,7 @@
 </section>
 
 <section id="tech" role="tabpanel" aria-labelledby="tab-tech" hidden>
-  <p class="small">Documentation version 1.10, 2026-11-02. It describes Waverider <!-- dnfw:version waverider -->v0.4.0<!-- /dnfw:version --> (alpha 5).</p>
+  <p class="small">Documentation version 1.10, 2026-11-02. It describes Waverider <!-- dnfw:version waverider -->v0.4.1<!-- /dnfw:version --> (alpha 5).</p>
   <h2>Technical</h2>
   <p>This tab is for people who make wavetables, and for people who want to know how Waverider makes its
   sound. A script computes every figure and every table on this tab from the code that runs on the

@@ -221,6 +221,10 @@ def main(argv=None) -> int:
         checks[f"slot {B + 1}, {'%d x %d' % geometry[1]}: its levels, bit-exact (POS scaled to its frames)"] = (
             pointer(play3) == levels_at[1] | 1 and mism3 == 0)
         ctrl = g.run_blocks(built, frames(0), a.blocks)
+        series0 = g.track_series(ctrl, 0) if ctrl["ok"] else []
+        report["slot0"] = {"pointer": f"{pointer(ctrl):#x}", "want": f"{dsp.TABLES_DM[0]:#x}", "ok": ctrl["ok"],
+                           "peak": max((abs(x) for x in series0), default=None),
+                           "first_nonzero": next((i for i, x in enumerate(series0) if x), None)}
         checks["slot 0, the same pool: the silent table, and silence"] = (
             pointer(ctrl) == dsp.TABLES_DM[0] and ctrl["ok"]
             and max((abs(x) for x in g.track_series(ctrl, 0)), default=1) == 0)

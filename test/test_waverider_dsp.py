@@ -214,17 +214,19 @@ def test_directory_names_only_the_silent_slot():
 
 def test_the_silent_table_loads_into_ddr_above_the_stock_image(stock7, built):
     # the stock stream's last DDR byte is 0x8052fbe0; slot 0 sits above it, below the
-    # Digitakt II's pool at 0x80a00000, at its own address (no load alias). It is zeros,
-    # so the stream carries it as one fill block, and the two original tables are gone
+    # Digitakt II's pool at 0x80a00000, at its own address (no load alias). It is the
+    # silent table: a real table3 header and zero rows, so the reader stays inside it
+    # (0.4.0's 16 zero bytes read as a header sent the reader past the table)
     last = max(b.target + b.count for b in bootstream.walk(stock7).blocks
                if b.count and b.target >= 0x80000000)
     assert last == dsp.STOCK_DDR_END
     at = dsp.TABLES_AT[0]
     assert dsp.TABLES_DM[0] == at | dsp.MIP_FLAG
+    silent = dsp.silent_table()
+    assert len(silent) == table3.size_bytes(*dsp.SILENT_GEOMETRY)
+    assert silent.startswith(table3.header(*dsp.SILENT_GEOMETRY)) and silent[0] == 1
     assert last < at and at + dsp.MIP_TABLE_BYTES <= 0x80A00000
-    assert bootstream.read_span(built, at, dsp.MIP_TABLE_BYTES) == bytes(dsp.MIP_TABLE_BYTES)
-    blocks = [b for b in bootstream.walk(built).blocks if at <= b.target < at + dsp.MIP_TABLE_BYTES]
-    assert [(b.target, b.count, b.has_payload) for b in blocks] == [(at, dsp.MIP_TABLE_BYTES, False)]
+    assert bootstream.read_span(built, at, len(silent)) == silent
     for k in range(2):
         assert dsp.tables()[k].dsp_bytes() not in built
     # L1 keeps only code and state: MOVE's shapes and their random state (M10b-4) sit

@@ -111,6 +111,17 @@ MIP_FLAG = 1
 # and one still building all play silence (pool.asm falls back to slot 0). The two original
 # tables (`tables()`) are no longer in the stream: DNX installs them in the store.
 TABLES_AT = (0x80600000,)
+SILENT_GEOMETRY = (1, 64)                    # the smallest table the reader plays
+
+
+def silent_table() -> bytes:
+    """Slot 0: a table3 table of SILENT_GEOMETRY whose rows are zeros. The header must be real:
+    the reader takes the levels, the thresholds and each level's offset and shifts from it, and
+    with a header of zeros it read past the table into other DDR once it left level 0 (the long
+    pool gate, 2026-11-04: silent for 1,728 samples, then a table at peak 0.28)."""
+    frames, points = SILENT_GEOMETRY
+    head = table3.header(frames, points)
+    return head + bytes(table3.size_bytes(frames, points) - len(head))
 # DNFW_WAVERIDER_NOMIP=1 (the comparison set's control, 2026-10-08): the tables load plain
 # (16 KB, no levels) and the directory holds their addresses without the flag, so the reader
 # plays them as it plays a pool table: level 0, today's reader on the same table
@@ -456,7 +467,7 @@ def spans() -> list[tuple[str, int, bytes]]:
         out.append((what, dm_to_load(at), payload + bytes(end - at - len(payload))))
     if STAGE3:
         out += l2_spans()
-    out.append(("table 0: silence (zeros), what an empty TBL plays", TABLES_AT[0], bytes(MIP_TABLE_BYTES)))
+    out.append(("table 0: silence, what an empty TBL plays", TABLES_AT[0], silent_table()))
     if STAGE3:
         wr, wi = twiddles(table3.MAX_POINTS)
         out += [("build3's templates, 1 KB per N (table3.templates)", TEMPLATES_AT, table3.templates()),

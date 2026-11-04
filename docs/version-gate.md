@@ -246,6 +246,28 @@ by the one-instruction accessor `0x40122294`:
 by the ELE3 container. The validator is handed `state + 32`, so its `%a2@` is
 the length, `%a2@(8)` is the container, and `%a2@(16)` is the build string.
 
+## 5b. The receive buffer holds 2 MiB, and nothing checks it (2026-11-04)
+
+The data packet handler (`0x4012232a`, DN2 1.11) writes packet *n* at
+`state + 20 + 101 × n`. The state accessor `0x40122294` returns `0x4038aec0`.
+The handler compares the packet count with the header's count only, so a large
+header count is accepted.
+
+The buffer ends where the next object starts. Over all 32-bit words of MAIN OS
+that hold an address above the state, the first one at or past `state + 2 MiB`
+is `0x4058aee0`, which is `state + 0x20 + 0x200000`. The words inside the
+buffer are data constants. So the buffer holds 2,097,164 bytes from `state + 20`,
+which is exactly **20,764 data packets** of 101 bytes.
+
+A bigger image writes past the buffer while the OS still runs.
+`digitone-2-modding-skill` reports that an oversized image stalls at the end and
+writes nothing. We have not tested that.
+
+`dnfw.firmware.verify` (and `site/js/firmware.js`) refuse a Digitone II image
+of more than 20,764 data packets. cocktail1, the biggest build so far, has
+20,142: 622 packets (62,822 bytes) are left. The check is measured on 1.11.
+Measure the buffer again before the 1.12 port.
+
 ## 6. What this changes for us
 
 - **DN2 1.11 will accept an older stock image.** Nothing in its upgrade path

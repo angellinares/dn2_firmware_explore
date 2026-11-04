@@ -178,8 +178,26 @@ export async function verify(firmware) {
     });
   }
 
+  if (u32(firmware.container.head, 4) === DIGITONE_II) {
+    const left = UPDATE_PACKETS - firmware.packets;
+    checks.push({
+      name: "fits the OS's 2 MiB update buffer",
+      ok: left >= 0,
+      detail: `${firmware.packets.toLocaleString()} of ${UPDATE_PACKETS.toLocaleString()} data packets, `
+            + (left >= 0 ? `${(left * UPDATE_PACKET_BYTES).toLocaleString()} bytes left`
+                         : `${(-left * UPDATE_PACKET_BYTES).toLocaleString()} bytes too many`),
+    });
+  }
+
   return checks;
 }
+
+// Port of dnfw.firmware.verify's update-buffer check: the running Digitone II
+// 1.11 OS takes an update into a static buffer of 20,764 packets of 101 bytes
+// and never checks the size (docs/version-gate.md section 5b).
+const DIGITONE_II = 52;
+const UPDATE_PACKET_BYTES = 101;
+const UPDATE_PACKETS = 20764;
 
 /**
  * Recover the signing key, or null when the image is unsigned.

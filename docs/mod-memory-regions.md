@@ -22,21 +22,29 @@ its DMA section through the second (`0x4e......`). Every scan below covers all n
 
 ## What the mods use
 
-From each mod's own declaration (`ram()`), 2026-10-11:
+From each mod's own declaration (`ram()`), in region A, 2026-11-04:
 
 | mod | bytes | where |
 |---|---|---|
-| waverider | 435,692 | `0x4670c000`, `0x467f0000`, `0x46a00000` |
-| lfo4 | 30,664 | `0x46800000`, `0x46900000` (its state arrays, 7,680 bytes, are now in the heap) |
-| arpplocks | 20,612 | `0x467c0000`, `0x467c8000` |
-| lfowaves | 11,660 | `0x46740000`, `0x46750000`, `0x46780000` |
+| waverider | 458,144 | `0x4670a000`, `0x467f0000`, `0x46a00000`, `0x46a60000` |
+| the platform | 196,854 | `0x46710000` (its data window), `0x46e00000` |
+| lfo4 | 30,724 | `0x46800000`, `0x468fffcc` (its state arrays, 7,680 bytes, are in the heap) |
+| arpplocks | 20,936 | `0x467c0000`, `0x467c4900`, `0x467c8000` |
+| lfowaves | 11,716 | `0x46740000`, `0x46750000`, `0x46780000` |
 | arpmodes | 2,320 | `0x467a0000` |
 | usbprobe | 2,304 | `0x46f00000` |
-| reloadconfirm, midiarp, lfolength, layermidi, bootscreen | 2,801 | `0x46708000`, `0x467b0000` (lfolength; `0x467f8000` until 2026-10-15), `0x467d0000..0x467e04b8` |
-| degreetranspose (2026-10-14) | 1,668 | `0x467b8000` |
-| arpscale (2026-10-25) | 1,673 | `0x467a8000`, and one byte of the settings block; its marks are in each sound |
-| the platform's data window | 196,608 | `0x46710000` |
-| **all** | **706,002** | 0.67 MiB of the 24.9 MB |
+| arpscale | 1,672 | `0x467a8000` |
+| degreetranspose | 1,668 | `0x467b8000` |
+| reloadconfirm | 1,208 | `0x467e0000` |
+| midiarp | 592 | `0x467d0000` |
+| layermidi | 324 | `0x467d8000` |
+| bootscreen | 320 | `0x46708000` |
+| lfolength | 260 | `0x467b0000` (`0x467f8000` until 2026-10-15) |
+| **all** | **729,042** | 0.70 MiB of the 24.9 MB |
+
+Three mods also declare bytes in stock's data, outside region A. lfolength declares 96 bytes, one per sound slot. arpscale declares one byte of the settings block, and its marks are in each sound. reloadconfirm declares one byte.
+
+The table of 2026-10-11 gave Waverider 435,692 bytes from `0x4670c000`. Waverider's pages chunk moved to `0x4670a000` with pages 3 and 4 (`docs/waverider-pages34.md`), and the mark at `0x46a60000` came later.
 
 ### Pattern data a mod stores
 

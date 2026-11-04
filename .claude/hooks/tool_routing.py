@@ -128,6 +128,17 @@ Flashing costs a ten-minute MIDI transfer and a recovery if it fails. The gate
 costs wall-clock on a machine that is otherwise idle.
 </shipping-gate>"""
 
+# A licence's name is not an answer. Added 2026-11-04, after "AGPL, so methods only" about a project under
+# our own licence. A link fires this too: that prompt held a GitHub link and no word about licences.
+LICENCE_TRIGGERS = re.compile(r"\b(licen[cs]\w*|a?gpl[-\w.]*|copyleft)\b|github\.com/", re.IGNORECASE)
+
+LICENCE = """<licence-check>
+This prompt names a licence or another project. Before you state what a licence allows, run
+`python tools/licence_check.py <local checkout>` and give its verdict and evidence with the claim.
+Do not answer from the licence's name or from a saved note. If no checkout exists, say that the claim is unverified.
+</licence-check>"""
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -141,6 +152,8 @@ def main() -> int:
         blocks.append(ROUTING)
     if SHIPPING_TRIGGERS.search(prompt):
         blocks.append(SHIPPING)
+    if LICENCE_TRIGGERS.search(prompt):
+        blocks.append(LICENCE)
     if not blocks:
         return 0
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",

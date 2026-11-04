@@ -123,5 +123,7 @@ reader follows while reading. Errors are rules. Warnings are advice.
 - Do not add Elektron material: firmware bytes, logos, artwork or manual text. A mod changes the
   firmware at apply time, on the user's own copy.
 - Code from an MIT project keeps its notice in [THIRD-PARTY.md](THIRD-PARTY.md).
-- `docs/references.md` gives the licence of each reference project. Do not copy code under
-  GPL-2.0-only into this repository.
+- Before you copy code from another project, run `python tools/licence_check.py <checkout>`. It reads the
+  project's licence and statements, and it gives a verdict from one fixed table, with its evidence.
+- `docs/references.md` gives the licence of each reference project, as checked on its date. Do not copy
+  code under GPL-2.0-only into this repository.

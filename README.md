@@ -221,7 +221,7 @@ come from the sibling project DNX.
 The USB SysEx probe adapts the design of
 [irpina/digihealth](https://github.com/irpina/digihealth) (GPL-2.0-or-later). The
 frame-word census follows the method of the OS 1.12 notes of
-[naturarum/dn2-cfw](https://github.com/naturarum/dn2-cfw) (GPL-2.0, method only, no code
+[naturarum/dn2-cfw](https://github.com/naturarum/dn2-cfw) (GPL-2.0-or-later, method only, no code
 taken). Its report on words 0xa54 and 0xa56 (issue #49) moved the song position of
 Waverider. The `arpscale` and `degreetranspose` mods are the work of
 [w-winter](https://github.com/w-winter) (pull requests #212, #214 and #278). `docs/references.md` says

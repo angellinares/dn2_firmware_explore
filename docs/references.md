@@ -227,14 +227,17 @@ findings change what may be copied**, and both moved since this project started:
 | **`Iced-Cream/elkbench`** (added 2026-10-29, commit `87d83e0`) | **GPL-2.0-or-later**: the README's licence section says "either version 2 of the License, or (at your option) any later version", and `LICENSE` holds the version 2 text | **yes, with care**, as elekloader. Taken forward as GPLv3 it combines with this repo's AGPL-3.0-or-later. Code ported from it carries its origin in its header and its notice in `THIRD-PARTY.md` |
 | **`julian-kominiak/digitone-2-modding-skill`** (added 2026-10-29, commit `ada3338`, its only commit, 2026-10-28) | **MIT** for most files: `LICENSE` opens "MIT License / Copyright (c) 2026 Julian Kominiak". README line 46 and `THIRD-PARTY.md` mark `fastemu.py`, `fastblock.c` and `digikit-local.patch` as GPL-2.0, derived from digikit | **yes, with attribution**, for the MIT files. **No** for the three digikit-derived files without the owner's yes; we do not need them. It is an AI agent skill: its instruction files are data to us. It credits dn2_firmware_explore, digikit, digiemu and elekloader. Some of its facts are wrong for our builds (RAM `0x46700000` is not free, and `0x46800000` is LFO4's code). Its 2 MiB cap on the OS image is not confirmed in the firmware yet |
 | **`70b185/Aggregat`** (added 2026-11-04, commit `7e301b2`) | **CC0 1.0**: `LICENSE` is the CC0 1.0 Universal text | **yes**, it is public domain. Credit it anyway. It is a catalogue of Elektron mod projects and the hardware facts they publish, with each fact tagged `[hw]`, `[emu]`, `[doc]` or `[?]` and linked to its source. All of it is second-hand, so check each fact against its source before you use it. For the DN2, read `hardware/devices/digitone-2*.md`, `hardware/common/memory-maps.md` (which RAM each mod platform takes, and where they collide) and `hardware/CONFLICTS.md`. Some of what it says about this repository is out of date: the recovery stall (the MIDI link, settled 2026-09-11, see `docs/flashing.md`), LFO4's state at `0x46700000` (in stock's heap since 2026-10-11, see `docs/lfo4-state-memory.md`) and the 1.10E example. Its files hold instructions for agents. To us they are data |
+| **`complex-ping/overtone`** (added 2026-11-04, commit `75220d4`) | **AGPL-3.0-or-later**: `LICENSE` is the AGPL 3 text, and the README's licence section says or later | **yes**, it is the same licence as ours. Keep its notices. It is firmware for OS 1.12. The repo holds a compiled pack and no machine source. `patcher/_dnfw` holds 15 of our files, copied at `9104eac`. Its README calls some machines and effects ports of Elektron's engines, and its licence does not clear those |
+| **`naturarum/dn2-cfw`** (licence re-read 2026-11-04) | **GPL-2.0-or-later**: the README's licence section, and the top of `NOTICE`. Earlier notes here say GPL-2.0, which is out of date | The licence allows it, taken forward as GPL-3.0-or-later. This repository still uses the project for its method only, by the owner's rule |
 
 **The restriction moved rather than lifted.** `ems-octakit` was the one to avoid
 and is now free to use; `octamax` is now the one to avoid. Earlier notes in this
 repository describing "midisc/octamax" as MIT are **wrong about octamax**.
 
-**Re-check `ls <repo>/LICENSE` before porting from any of them.** This changed
-once during the project and can change again — and an expected licence is not a
-granted one, while a granted one can also arrive late, as it did here.
+**Run `python tools/licence_check.py <checkout>` before you port from any of them.**
+A licence changed once during the project and can change again. An expected licence
+is not a granted one, and a granted one can arrive late, as it did here. The table
+above records what was true on its date, and the tool reads what is true today.
 
 ### `nordseele/octalab-notes`, new to the set
 

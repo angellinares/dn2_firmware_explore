@@ -9,6 +9,7 @@ skip for a missing file is a failure there (MISSING).
 import os
 import pathlib
 import re
+import subprocess
 import sys
 
 import pytest
@@ -22,6 +23,22 @@ from dnfw import checkout  # noqa: E402
 
 os.environ.update(checkout.with_src_first(dict(os.environ), ROOT))
 _CHECKOUT = None
+
+# A node child with no timeout of its own gets NODE_TIMEOUT seconds. On 2026-11-04 two runs of
+# js_codec_check.mjs wrote their output and never exited, and the suite waited 3.5 hours. With
+# the limit, subprocess.run kills the child and the test fails with TimeoutExpired.
+NODE_TIMEOUT = 900
+_run = subprocess.run
+
+
+def _run_with_node_timeout(args, *rest, **kwargs):
+    first = args[0] if isinstance(args, (list, tuple)) and args else args
+    if "timeout" not in kwargs and pathlib.Path(str(first)).stem.lower() == "node":
+        kwargs["timeout"] = NODE_TIMEOUT
+    return _run(args, *rest, **kwargs)
+
+
+subprocess.run = _run_with_node_timeout
 
 
 def _checkout():

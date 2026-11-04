@@ -80,7 +80,7 @@ def main(argv=None) -> int:
     m4.IMAGE = a.image
     stock = m1.dn2_section7(a.image)
     sound, machines = m4.init_sound(a.image)
-    wr_img, stock_img = g.Image(dk, dsp.section7(stock)), g.Image(dk, stock)
+    wr_img, stock_img = g.Image(dk, dsp.with_preinstalled(stock)), g.Image(dk, stock)
     dclk = {g.DCLK: 0x7F00}
     cases = {
         "stock_wavetone": (stock_img, all_tracks(sound, machines, 1)),

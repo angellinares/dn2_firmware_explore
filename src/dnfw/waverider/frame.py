@@ -170,6 +170,25 @@ class Frame:
         return bytes(self.data)
 
 
+WAVERIDER = 5                  # MACHINE's value on a Waverider track
+TABLE_PARAMS = (27, 33)        # TBL1 and TBL2 (WaveTone's slots)
+
+
+def preinstalled(frame: bytes) -> bytes:
+    """FRAME as a pool-tables-only build sends it for the same sound (2026-11-03): with
+    Prim. and Harm. installed as pool entries 0 and 1, the table the frame named as slot k
+    is slot k + 1 (slot 0 is no table). Only Waverider tracks change; a value at the top
+    of the range stays there."""
+    f = Frame(bytearray(frame))
+    for t in range(TRACKS):
+        if f.get(header_offset(MACHINE, t)) != WAVERIDER:
+            continue
+        for index in TABLE_PARAMS:
+            at = slot_offset(t, index)
+            f.put(at, min(0xFFFF, f.get(at) + 0x100))
+    return f.to_bytes()
+
+
 def init_frame(sound: dict[int, int], machine: int, *, cf_filter: int = 0, trigger: bool = False,
                track0: dict[int, int] | None = None) -> Frame:
     """A frame with every track on the init sound SOUND (index -> value): track 0 on

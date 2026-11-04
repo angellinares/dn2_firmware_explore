@@ -36,7 +36,7 @@ image = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
 g.m4.IMAGE = image
 stock = g.m1.dn2_section7(image)
 sound, machines = g.m4.init_sound(image)
-wr = g.Image(dk, dsp.section7(stock))
+wr = g.Image(dk, dsp.with_preinstalled(stock))
 
 results = {}
 with tempfile.TemporaryDirectory(dir=g.OUT) as tmp:

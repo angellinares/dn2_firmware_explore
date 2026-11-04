@@ -131,6 +131,12 @@ class Image:
         self.stream = stream
         self.memory = dk.ldr.LoadedMemory.from_stream(stream)
         self.sha = hashlib.sha256(stream).hexdigest()
+        # dsp.with_preinstalled's test image: Prim. and Harm. named as built pool entries 0, 1
+        try:
+            built = bootstream.read_span(stream, dsp.dm_to_load(dsp.BUILT_DM), 4)
+        except bootstream.SpanError:                     # stock: no Waverider spans
+            built = b""
+        self.preinstalled = built == struct.pack("<I", dsp.PRESET_DM[0])
 
 
 def snapshot_path(dk, stock: bytes, work: pathlib.Path) -> pathlib.Path:
@@ -149,6 +155,7 @@ def init_on(snap, m2mach, image: Image):
     runner = fx.sr.load_snapshot(str(snap), m2mach.memory)
     runner.data = image.memory
     runner.state = dataclasses.replace(runner.state, concrete=image.memory)
+    runner.preinstalled = getattr(image, "preinstalled", False)
     return runner
 
 
@@ -158,8 +165,10 @@ def native_on(init, image: Image, library=None, host_fixups: bool = True, periph
     PERIPHERALS: IIR0 runs in the engine (the Formant), on by default.
     One engine holds one run's state: make a new one for each series of blocks."""
     import sharc_native  # noqa: PLC0415  (digikit's binding is importable only after fx.bind)
-    return sharc_native.Engine(library or sharcemu.native_library(), image.memory, init, host_fixups,
-                               peripherals)
+    engine = sharc_native.Engine(library or sharcemu.native_library(), image.memory, init, host_fixups,
+                                 peripherals)
+    engine.preinstalled = getattr(image, "preinstalled", False)
+    return engine
 
 
 def fixups(hooks=None) -> fx.Fixups:
@@ -213,6 +222,11 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
     A Python runner INIT runs in digikit's Rust engine (a new engine each call), the default for
     every gate (owner, 2026-10-17). DNFW_WAVERIDER_PYTHON=1 runs the Python runner instead, as a
     second opinion: where the two differ, the Python runner decides (scripts/sharc_native.py)."""
+    if getattr(init, "preinstalled", False):
+        # the test image with Prim. and Harm. as pool entries 0 and 1 (dsp.with_preinstalled):
+        # the frames name their tables one slot up, as the build's ColdFire sends them
+        given = frames
+        frames = lambda b: FR.preinstalled(given(b))  # noqa: E731
     if os.environ.get("DNFW_WAVERIDER_PYTHON") != "1" and not hasattr(init, "block_call"):
         import sharc_native  # noqa: PLC0415  (digikit's binding is importable only after fx.bind)
         init = sharc_native.Engine(sharcemu.native_library(), init.data, init)
@@ -345,6 +359,36 @@ def frame_word(state, offset: int) -> int:
     a = FRAME_COPY + offset
     w = m2.word(state, a & ~3) or 0
     return (w >> 16) & 0xFFFF if a & 2 else w & 0xFFFF
+
+
+def step_empty(snap, m2mach, plain: Image, pre: Image, sound, machines, blocks: int) -> dict:
+    """Pool tables only (owner, 2026-11-03): the build itself has no table, so a Waverider
+    note on TBL item 0, on a pool slot with nothing loaded, or past the pool plays silence.
+    The control: the same frames on the test image with Prim. and Harm. as pool entries 0
+    and 1 sound (TBL 1 there is Prim.)."""
+    def frames(tbl):
+        def fb(b):
+            f = base_frame(sound, machines, trigger=(b == 1))
+            f.param(0, TBL1, tbl)
+            f.param(0, TBL2, tbl)
+            return f.to_bytes()
+        return fb
+
+    runs = {k: run_blocks(init_on(snap, m2mach, plain), frames(v), blocks)
+            for k, v in (("item0", 0x0000), ("slot1", 0x0100), ("slot127", 0x7F00))}
+    control = run_blocks(init_on(snap, m2mach, pre), frames(0x0100), blocks)
+    ok = all(r["ok"] for r in runs.values()) and control["ok"]
+    peaks = {k: max((abs(x) for x in track_series(r, 0)), default=None) if r["ok"] else None
+             for k, r in runs.items()}
+    cpeak = max((abs(x) for x in track_series(control, 0)), default=0) if control["ok"] else 0
+    checks = {
+        "every run returns every block": ok,
+        "TBL item 0 is silent: the machine tap is 0 in every block": peaks["item0"] == 0,
+        "TBL 1 with an empty pool is silent": peaks["slot1"] == 0,
+        "TBL 127, past the pool, is silent": peaks["slot127"] == 0,
+        "control: TBL 1 on the test image (Prim. as pool entry 0) sounds (peak > 0.02)": cpeak > 0.02,
+    }
+    return {"ok": all(checks.values()), "checks": checks, "numbers": {"peaks": peaks, "control_peak": cpeak}}
 
 
 def track_series(run, t) -> list[float]:
@@ -482,6 +526,8 @@ def wav(name, samples, seconds, wavs, what, normalise=False, source="the runner"
 
 
 def preview(tables, note, wav1_from, wav1_to, tbl1, seconds):
+    """The model alone. TABLES by slot: the previews named by the original tables pass
+    tables[1:] (Prim. as slot 0), a frame's preview the slots the frame names."""
     blocks = int(seconds * RATE) // BLOCK
     seq = [(note, round(wav1_from + (wav1_to - wav1_from) * k / max(blocks - 1, 1)), tbl1)
            for k in range(blocks)]
@@ -503,7 +549,7 @@ def main(argv=None):
     p.add_argument("--frame-be", help="a frame as the ColdFire holds it at 0x80005e60 (16-bit BE)")
     p.add_argument("--frames", help="a glob of per-block frames (DSP order), sorted")
     p.add_argument("--no-selmap", action="store_true", help="skip selmap (no WSL)")
-    p.add_argument("--steps", default="decode,map,voice,stock,frame")
+    p.add_argument("--steps", default="decode,map,voice,stock,empty,frame")
     p.add_argument("--tag", default="", help="names this run's frame WAVs and report: m5_frame_TAG_*.wav, m5_report_TAG.json")
     a = p.parse_args(argv)
     if a.seconds < 2:
@@ -517,10 +563,13 @@ def main(argv=None):
     stock = m1.dn2_section7(a.image)
     sound, machines = m4.init_sound(a.image)
     m5 = Image(dk, dsp.section7(stock))
+    # the voice and frame steps play Prim. and Harm. as the pool's first two tables
+    # (pool tables only, 2026-11-03): the build's stream plus them, built
+    m5p = Image(dk, dsp.with_preinstalled(stock))
     stock_img = Image(dk, stock)
     s7 = OUT / "m5_section7_waverider.bin"
     s7.write_bytes(m5.stream)
-    tables = dsp.tables()
+    tables = dsp.model_tables()
     report = {"digikit": {"path": str(a.digikit), "head": dk.head}, "section7_sha256": m5.sha,
               "section7_bytes": len(m5.stream), "section7_file": str(s7),
               "placements": dsp.placements(), "blocks": a.blocks}
@@ -544,10 +593,10 @@ def main(argv=None):
                 for d in s1["detail"][n]["disagreements"][:20]:
                     print("     ", n, d)
 
-        init = init_on(snap, m2mach, m5)
+        init = init_on(snap, m2mach, m5p)
         if "map" in steps:
             print("\nstep 2: map")
-            results["2_map"] = step_map(dk, snap, m2mach, m5, stock, init, sound, machines)
+            results["2_map"] = step_map(dk, snap, m2mach, m5p, stock, init, sound, machines)
             show(results["2_map"])
 
         if "voice" in steps:
@@ -564,7 +613,7 @@ def main(argv=None):
                     "the same, scaled to 0.9 peak for listening", normalise=True)
                 wav("m5_voice_machine.wav", track_series(runs["init"], 0), a.seconds, wavs,
                     "track 0's buffer after the type-5 loop, bit-exact to the reference (init sound)")
-                wav("m5_preview_init_sound.wav", preview(tables, 60.0, 0, 0, 0, a.seconds), a.seconds, wavs,
+                wav("m5_preview_init_sound.wav", preview(tables[1:], 60.0, 0, 0, 0, a.seconds), a.seconds, wavs,
                     "PREVIEW, not the runner: the reference for the init sound, note 60, POS 0, slot 0 (the saw)", source="the model")
             for key, what, pv in (
                     ("pos120", "POS (WAV1) 120: slot 0's last frame, the sine", (60.0, 0x7800, 0x7800, 0)),
@@ -573,15 +622,15 @@ def main(argv=None):
                 if runs[key]["ok"]:
                     wav(f"m5_{key}_machine.wav", track_series(runs[key], 0), a.seconds, wavs,
                         f"track 0's buffer, {what}")
-                    wav(f"m5_preview_{key}.wav", preview(tables, *pv[:1], pv[1], pv[2], pv[3], a.seconds),
+                    wav(f"m5_preview_{key}.wav", preview(tables[1:], *pv[:1], pv[1], pv[2], pv[3], a.seconds),
                         a.seconds, wavs, f"PREVIEW, not the runner: the reference for {what}", source="the model")
             if runs["silent"]["ok"]:
                 wav("m5_no_trigger.wav", runs["silent"]["amp_out"], a.seconds, wavs,
                     "control: no trigger, amp output (silent)")
-            wav("m5_demo_pos_sweep_preview.wav", preview(tables, 48.0, 0, 0x7800, 0, 4.0), 4.0, wavs,
+            wav("m5_demo_pos_sweep_preview.wav", preview(tables[1:], 48.0, 0, 0x7800, 0, 4.0), 4.0, wavs,
                 "DEMO PREVIEW, not the runner: slot 0 at note 48, POS swept 0 -> 120 over 4 s: "
                 "a buzzy saw darkening to a sine", source="the model")
-            wav("m5_demo_harmonic_climb_preview.wav", preview(tables, 48.0, 0, 0x7800, 0x100, 4.0), 4.0, wavs,
+            wav("m5_demo_harmonic_climb_preview.wav", preview(tables[1:], 48.0, 0, 0x7800, 0x100, 4.0), 4.0, wavs,
                 "DEMO PREVIEW, not the runner: slot 1 at note 48, POS swept 0 -> 120 over 4 s: "
                 "the overtone series climbing, partial 1 to 16", source="the model")
 
@@ -589,6 +638,11 @@ def main(argv=None):
             print("\nstep 4: types 0-4 unchanged")
             results["4_stock"] = step_stock(snap, m2mach, m5, stock_img, max(3, a.blocks // 2))
             show(results["4_stock"])
+
+        if "empty" in steps:
+            print("\nstep 4b: no table is silence")
+            results["4b_empty"] = step_empty(snap, m2mach, m5, m5p, sound, machines, max(3, a.blocks // 2))
+            show(results["4b_empty"])
 
         frames = load_frames(a)
         if frames and "frame" in steps:
@@ -672,7 +726,7 @@ def step_map(dk, snap, m2mach, m5: Image, stock: bytes, init, sound, machines) -
     type_ctl = m2.word(unpack(ctl, base_frame(sound, machines).to_bytes()).state, rec0 + V.TRACK_MACHINE)
     # our spans, as the runner's memory holds them after init
     spans = {}
-    for what, at, payload in dsp.spans():
+    for what, at, payload in (dsp.preinstall_spans(dsp.spans()) if m5.preinstalled else dsp.spans()):
         dm = at if at >= 0x80000000 or at < dsp.LOAD_ALIAS else at - dsp.LOAD_ALIAS   # DDR and L2 have no load alias
         words = [m2.word(init.state, dm + 4 * k) for k in range(len(payload) // 4)]
         want = [struct.unpack_from("<I", payload, 4 * k)[0] for k in range(len(payload) // 4)]
@@ -900,7 +954,7 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
     n = {"float32_mismatches_machine_tap": mism,
          "loop_entries_init_run": i.get("loop_entries"),
          "reader_block_last": rb,
-         "expected_reader_block_init": [dsp.TABLES_DM[0], None, live.increment(60.0), live.position(0), BLOCK],
+         "expected_reader_block_init": [dsp.PRESET_DM[0], None, live.increment(60.0), live.position(0), BLOCK],
          "machine_peak": V.peak(track_series(i, 0)) if i["ok"] else None,
          "amp_in_peak": V.peak(i["amp_in"]) if i["ok"] else None,
          "amp_out_peak": V.peak(i["amp_out"][settle:]) if i["ok"] else None,
@@ -929,14 +983,14 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
         "the machine tap is bit-exact to dnfw.waverider.live in every run":
             ok_runs and all(v == 0 for v in mism.values()),
         "the loop's reader block matches the contract (table, inc, pos, count)":
-            bool(rb["init"]) and rb["init"][0] == dsp.TABLES_DM[0] and rb["init"][2] == live.increment(60.0)
+            bool(rb["init"]) and rb["init"][0] == dsp.PRESET_DM[0] and rb["init"][2] == live.increment(60.0)
             and rb["init"][3] == 0 and rb["init"][4] == BLOCK,
         "audible at the amp's output (peak > 0.02)": bool(n["amp_out_peak"]) and n["amp_out_peak"] > 0.02,
         "correlated with the ideal reference through the chain (r > 0.9; the PRST Off run)":
             bool(fit) and fit.correlation > 0.9,
         "POS 120 is darker than POS 0 (spectral centroid)": 0 < c120 < c0,
-        "TBL1 1 plays the other table (reader block table pointer = dsp.TABLES_DM[1])":
-            bool(rb["slot1"]) and rb["slot1"][0] == dsp.TABLES_DM[1],
+        "TBL1 1 plays the other table (reader block table pointer = dsp.PRESET_DM[1])":
+            bool(rb["slot1"]) and rb["slot1"][0] == dsp.PRESET_DM[1],
         "note 72 is an octave above note 60 (the DSP's increment ratio is 2 within 1e-6; "
         "more zero crossings in the same blocks)":
             bool(inc60) and abs(inc72 / inc60 - 2.0) < 1e-6 and zc72 > zc60 > 0,
@@ -964,9 +1018,9 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
         "osc 2 has its own reader block (0x2de800): TBL2 1 -> table 1, TUN2 +12 -> 2 x the increment, "
         "WAV2 0x4000 -> its pos; osc 1's block keeps table 0 and POS 120 (M9b)":
             bool(rb2["osc2_mix"]) and bool(rb["osc2_mix"]) and bool(inc60)
-            and rb2["osc2_mix"][0] == dsp.TABLES_DM[1] and abs(rb2["osc2_mix"][2] / inc60 - 2.0) < 1e-6
+            and rb2["osc2_mix"][0] == dsp.PRESET_DM[1] and abs(rb2["osc2_mix"][2] / inc60 - 2.0) < 1e-6
             and rb2["osc2_mix"][3] == live.position(0x4000)
-            and rb["osc2_mix"][0] == dsp.TABLES_DM[0] and rb["osc2_mix"][3] == live.position(0x7800),
+            and rb["osc2_mix"][0] == dsp.PRESET_DM[0] and rb["osc2_mix"][3] == live.position(0x7800),
         "MOVE moves POS: a fast ramp with MPOS +50 sweeps osc 1's reader position block by block "
         "(at least 3 distinct positions, rising) (M10a)":
             len(set(pos_seq("move_pos", rb_all))) >= 3 and pos_seq("move_pos", rb_all) == sorted(pos_seq("move_pos", rb_all)),

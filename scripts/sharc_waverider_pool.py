@@ -15,15 +15,15 @@ blocks, as `scripts/sharc_waverider_m5.py` step 3 runs them:
 
 | case | must hold |
 |---|---|
-| no pool (the boot stream's zeros) | TBL1 slot 2 plays slot 0 (the reader's table pointer = baked table 0) |
+| no pool (the boot stream's zeros) | TBL1 slot 1 plays slot 0 (the reader's table pointer = the silent table) |
 | the pool's frames | every load frame accepted (reply word 6 = its sequence); DDR holds each table as stored and the request directory |
-| before the idle task builds | slot 2 still plays slot 0 |
+| before the idle task builds | slot 1 still plays slot 0 |
 | built | build3's directory names entry 0's levels; they are `table3`'s layout of the stored table's levels (header exact, rows within 1 LSB: sharc_build3_check.py) |
-| slot 2 | plays them: the pointer = entry 0's levels, the machine tap bit-exact to `dnfw.waverider.live` with the levels the DSP built as slot 2 (`table3.read`) |
-| slot 3 | entry 1, 5 frames of 1024 points: bit-exact the same way (POS scaled to its frames) |
-| slot 1, the same pool | still baked table 1 (the control) |
-| slot 4, an empty entry | slot 0 |
-| the 128th entry | its table ends at the load area's last byte; slot 129 plays its levels |
+| slot 1 | plays them: the pointer = entry 0's levels, the machine tap bit-exact to `dnfw.waverider.live` with the levels the DSP built as slot 1 (`table3.read`) |
+| slot 2 | entry 1, 5 frames of 1024 points: bit-exact the same way (POS scaled to its frames) |
+| slot 0, the same pool | the silent table (the control: pool tables only, 2026-11-03) |
+| slot 3, an empty entry | slot 0 |
+| the 128th entry | its table ends at the load area's last byte; slot 128 plays its levels |
 
 Writes out/waverider/pool_*.wav (48 kHz, 16-bit mono, >= 2 s; LOOPED from the runner's
 blocks, with a PREVIEW from the reference beside it) and pool_report.json. Exit 0 when
@@ -53,6 +53,7 @@ from dnfw.waverider import loadframes as LF    # noqa: E402
 from dnfw import sharcemu  # noqa: E402
 
 SLOT = 0x0100                                  # TBL1 per slot: slot = TBL1 >> 8
+B = len(dsp.TABLES_DM)                         # pool entry j is slot B + j (B = 1: slot 0 is silence)
 REPLY_ACK = lc.REPLY_BASE + 0x18                # reply word 6, load.asm's answer
 
 
@@ -131,7 +132,7 @@ def main(argv=None) -> int:
     stock = g.m1.dn2_section7(a.image)
     sound, machines = g.m4.init_sound(a.image)
     wr = g.Image(dk, dsp.section7(stock))
-    baked = dsp.tables()
+    baked = dsp.model_tables()[:B]                # the directory's slots: slot 0, silence
     pool = testtable.pool_table()                       # entry 0: 16 x 512
     odd = table(5, 1024, 7)                             # entry 1: 5 x 1024
     geometry = {0: (16, 512), 1: (5, 1024)}             # entry 2: empty
@@ -167,8 +168,8 @@ def main(argv=None) -> int:
             rb = run["reader_blocks"][-1].get(0) if run["ok"] and run["reader_blocks"] else None
             return rb[0] if rb else None
 
-        none = g.run_blocks(init, frames(2 * SLOT), a.blocks)
-        checks["no pool: slot 2 plays slot 0"] = pointer(none) == dsp.TABLES_DM[0]
+        none = g.run_blocks(init, frames(B * SLOT), a.blocks)
+        checks[f"no pool: slot {B} plays slot 0"] = pointer(none) == dsp.TABLES_DM[0]
 
         loaded, sent = send_loads(init, loads)
         report["sent"] = sent
@@ -186,8 +187,8 @@ def main(argv=None) -> int:
             ddr(loaded, dsp.POOL_DIR, 16) == struct.pack("<4I", dsp.POOL_MAGIC, dsp.POOL_SLOTS, 1, 0)
             and all(struct.unpack("<I", ddr(loaded, dsp.POOL_GEOMETRY + 4 * j, 4))[0] == f | n << 16
                     for j, (f, n) in geometry.items()))
-        early = g.run_blocks(loaded, frames(2 * SLOT), a.blocks)
-        checks["before the idle task builds: slot 2 plays slot 0"] = pointer(early) == dsp.TABLES_DM[0]
+        early = g.run_blocks(loaded, frames(B * SLOT), a.blocks)
+        checks[f"before the idle task builds: slot {B} plays slot 0"] = pointer(early) == dsp.TABLES_DM[0]
 
         built, calls = build(loaded)
         report["build_calls"] = calls
@@ -209,21 +210,23 @@ def main(argv=None) -> int:
         checks["the levels built are the model's within 1 LSB"] = worst <= 1
         tables = [*baked] + [got.get(j, baked[0]) for j in range(max(got) + 1)]   # the reference: the pool as built
 
-        play = g.run_blocks(built, frames(2 * SLOT), a.blocks)
+        play = g.run_blocks(built, frames(B * SLOT), a.blocks)
         mism = g.mismatches(g.track_series(play, 0), g.reference_for(play, 0, tables)) if play["ok"] else -1
         report["pool_mismatches"] = mism
-        checks["slot 2 plays entry 0's levels (the reader's table pointer)"] = pointer(play) == levels_at[0] | 1
-        checks["slot 2 is bit-exact to dnfw.waverider.live with the levels built"] = mism == 0
-        play3 = g.run_blocks(built, frames(3 * SLOT, wav1=0x5a00), a.blocks)
+        checks[f"slot {B} plays entry 0's levels (the reader's table pointer)"] = pointer(play) == levels_at[0] | 1
+        checks[f"slot {B} is bit-exact to dnfw.waverider.live with the levels built"] = mism == 0
+        play3 = g.run_blocks(built, frames((B + 1) * SLOT, wav1=0x5a00), a.blocks)
         mism3 = g.mismatches(g.track_series(play3, 0), g.reference_for(play3, 0, tables)) if play3["ok"] else -1
         report["odd_mismatches"] = mism3
-        checks[f"slot 3, {'%d x %d' % geometry[1]}: its levels, bit-exact (POS scaled to its frames)"] = (
+        checks[f"slot {B + 1}, {'%d x %d' % geometry[1]}: its levels, bit-exact (POS scaled to its frames)"] = (
             pointer(play3) == levels_at[1] | 1 and mism3 == 0)
-        ctrl = g.run_blocks(built, frames(1 * SLOT), a.blocks)
-        checks["slot 1 still plays baked table 1"] = pointer(ctrl) == dsp.TABLES_DM[1]
+        ctrl = g.run_blocks(built, frames(0), a.blocks)
+        checks["slot 0, the same pool: the silent table, and silence"] = (
+            pointer(ctrl) == dsp.TABLES_DM[0] and ctrl["ok"]
+            and max((abs(x) for x in g.track_series(ctrl, 0)), default=1) == 0)
         empty = next(j for j in range(dsp.POOL_SLOTS) if j not in geometry)
-        gone = g.run_blocks(built, frames((2 + empty) * SLOT), a.blocks)
-        checks[f"slot {2 + empty}, an empty entry: slot 0"] = pointer(gone) == dsp.TABLES_DM[0]
+        gone = g.run_blocks(built, frames((B + empty) * SLOT), a.blocks)
+        checks[f"slot {B + empty}, an empty entry: slot 0"] = pointer(gone) == dsp.TABLES_DM[0]
 
         # the 128th entry: its table ends at the load area's last byte
         last = dsp.POOL_SLOTS - 1
@@ -233,16 +236,16 @@ def main(argv=None) -> int:
         tail += LF.directory_frames({last: (16, 512)}, 2, 301 + len(tail))
         full, sent4 = send_loads(built, tail)
         full, _ = build(full)
-        top = g.run_blocks(full, frames((2 + last) * SLOT), a.blocks)
+        top = g.run_blocks(full, frames((B + last) * SLOT), a.blocks)
         at_last = (lc.word_at(full, dsp.BUILT_DM + 4 * last) or 0) & ~1
-        checks[f"the 128th entry: slot {2 + last} (TBL1 {(2 + last) * SLOT:#06x}) plays its levels"] = (
+        checks[f"the 128th entry: slot {B + last} (TBL1 {(B + last) * SLOT:#06x}) plays its levels"] = (
             all(s.get("acked") for s in sent4) and LF.pool_address(last) + dsp.POOL_RAW_BYTES == dsp.LOAD_AREA[1]
             and pointer(top) == at_last | 1)
 
         series = g.track_series(play, 0) if play["ok"] else []
-        g.wav("pool_slot2_runner.wav", series, a.seconds, wavs,
-              "the runner: TBL1 slot 2 = the pool table loaded through command 4, WAV1 64, note 60")
-        g.wav("pool_slot2_preview.wav", g.preview(tables, 60.0, 0, 0x7800, 2 * SLOT, a.seconds),
+        g.wav("pool_slot1_runner.wav", series, a.seconds, wavs,
+              "the runner: TBL1 slot 1 = the pool table loaded through command 4, WAV1 64, note 60")
+        g.wav("pool_slot1_preview.wav", g.preview(tables, 60.0, 0, 0x7800, B * SLOT, a.seconds),
               a.seconds, wavs, "PREVIEW (the reference, not the runner): the pool table swept "
                                "POS 0 -> 120, note 60", source="the model")
     report["checks"] = checks

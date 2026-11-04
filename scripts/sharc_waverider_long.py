@@ -120,8 +120,8 @@ def main(argv=None) -> int:
     g.m4.IMAGE = a.image
     stock = g.m1.dn2_section7(a.image)
     sound, machines = g.m4.init_sound(a.image)
-    wr = g.Image(dk, dsp.section7(stock))
-    tables = dsp.tables()
+    wr = g.Image(dk, dsp.with_preinstalled(stock))
+    tables = dsp.model_tables()
     case = CASES[a.case]
     g.OUT.mkdir(parents=True, exist_ok=True)
     what = f"Waverider, table 0, note {a.note}, case {a.case}"

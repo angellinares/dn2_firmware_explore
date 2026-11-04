@@ -60,8 +60,8 @@ def main(argv=None) -> int:
     g.m4.IMAGE = a.image
     stock = g.m1.dn2_section7(a.image)
     sound, machines = g.m4.init_sound(a.image)
-    wr = g.Image(dk, dsp.section7(stock))
-    tables = dsp.tables()
+    wr = g.Image(dk, dsp.with_preinstalled(stock))
+    tables = dsp.model_tables()
 
     cases = [
         ("control: SUB 0", {SUB: 0}, False),

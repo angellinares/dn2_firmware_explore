@@ -32,7 +32,7 @@ from . import dsp
 POS_ID, TBL_ID = 239, 247         # WAV1 (POS) and TBL1 (TBL)
 POS2_ID, TBL2_ID = 243, 251       # WAV2 and TBL2: osc 2's, on page 2 (Milestone 9b)
 POS_MAX = 0x7800                  # the reader's clamp on WAV1
-TABLES = 2
+TABLES = 1                        # TBL items before the pool: item 0, no table (2026-11-03)
 FRAMES = 16
 WIDTH = 96                        # screen columns the strip spans
 
@@ -62,19 +62,12 @@ def spans(width: int = WIDTH) -> list[list[tuple[list[int], list[int]]]]:
 
 
 def c_source() -> str:
-    """The spans and the reader's constants, as C for `wr_gen.h`."""
-    rows = []
-    for table in spans():
-        frames = []
-        for lo, hi in table:
-            frames.append("  {{" + ",".join(map(str, lo)) + "},\n   {" + ",".join(map(str, hi)) + "}}")
-        rows.append(" {\n" + ",\n".join(frames) + "\n }")
+    """The reader's constants, as C for `wr_gen.h`. No baked spans since 2026-11-03: the
+    page draws only pool tables, from the spans pool.c makes as they load."""
     return (f"#define WR_POS_ID {POS_ID}\n#define WR_TBL_ID {TBL_ID}\n"
             f"#define WR_POS2_ID {POS2_ID}\n#define WR_TBL2_ID {TBL2_ID}\n"
             f"#define WR_POS_MAX {POS_MAX:#x}\n#define WR_TABLES {TABLES}\n"
-            f"#define WR_FRAMES {FRAMES}\n#define WR_WIDTH {WIDTH}\n"
-            f"static const signed char wr_spans[WR_TABLES][WR_FRAMES][2][WR_WIDTH] = {{\n"
-            + ",\n".join(rows) + "\n};\n")
+            f"#define WR_FRAMES {FRAMES}\n#define WR_WIDTH {WIDTH}\n")
 
 
 def _byte_c(v: int) -> int:

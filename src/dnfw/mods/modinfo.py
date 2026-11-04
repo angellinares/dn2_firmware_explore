@@ -63,7 +63,7 @@ def mod_slots(size: int) -> list[int]:
 
 MAX_MODS = len(mod_slots(SIZES[-1]))   # 26, in a record this code's chunk builds
 CAPS = {0x01: "store", 0x02: "pool", 0x04: "rename", 0x10: "pool_cas", 0x20: "page",
-        0x40: "playable", 0x80: "erase"}   # 0x08 unused
+        0x40: "playable", 0x80: "erase", 0x100: "pool_only"}   # 0x08 unused
 
 
 class ModInfoError(Exception):

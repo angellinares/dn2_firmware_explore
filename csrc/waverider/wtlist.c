@@ -5,7 +5,7 @@
  *
  * - LOAD and POOL: the working project's pool, shown slots 001..128. A slot names its
  *   table, reads as a row of slashes when it has none, as an empty preset slot does, or
- *   MISSING when its table was deleted (it plays Prim. until CLEAR SLOT frees it).
+ *   MISSING when its table was deleted (it is silent until CLEAR SLOT frees it).
  * - MANAGE: every table in the +Drive store, in store order; a + marks the tables
  *   already in the working project's pool.
  * The rows are built when a list opens, from one read of the store index and of record

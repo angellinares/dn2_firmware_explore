@@ -10,7 +10,7 @@
  *    store-order pool, every playable slot in slot order, up to POOL_SLOTS;
  * 2. pool entry j is the list's entry j, when that store slot holds a table the DSP
  *    plays (wr_store_playable: 1..64 waves of 64..4096 int16); otherwise entry j is
- *    empty and plays Prim. (pool.asm), as a slot past the count does;
+ *    empty and silent (pool.asm plays slot 0, zeros), as a slot past the count is;
  * 3. clears the request directory's magic, so the DSP stops building from tables
  *    about to be rewritten;
  * 4. sends each table as stored, slot n's sectors, to entry j's place in the load area
@@ -19,7 +19,7 @@
  * 5. sends the request directory (count, generation, each entry's frames and points),
  *    its magic last. The DSP then builds each entry's levels in its idle time
  *    (build3.asm) and names an entry for pool.asm only once it is whole; an entry being
- *    rebuilt plays Prim. meanwhile, never half a table.
+ *    rebuilt is silent meanwhile, never half a table.
  * The page then offers TBL slots 2 .. 1 + count (wr_pool.count, once ready): count is
  * the last entry in use + 1, so a gap shows as an unnamed slot.
  *

@@ -158,6 +158,16 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     ) + PUBLISHED,
     "usbprobe": UNPUBLISHED,
     "waverider": (
+        Release("0.4.0", "2026-11-04", (
+            "Waverider has no built-in tables. Every table comes from the pool. DNX can install Prim. and Harm. "
+            "on the +Drive, as it adds any table.",
+            "TBL's first item is -, no table: it plays silence, and the page draws no wave. Pool tables start "
+            "at T:001. A new Waverider sound starts with TBL1 and TBL2 on -.",
+            "An empty pool slot, a table that is not on the +Drive, and a table that is still loading play "
+            "silence. Before, they played Prim.",
+            "A sound saved with an older Waverider plays another table. Set TBL1 and TBL2 again, or let DNX "
+            "move the old TBL values for you.",
+        )),
         Release("0.3.9", "2026-11-03", (
             "Page 1 of a track you just made a Waverider in MACHINE SEL no longer shows the old "
             "machine's modulation on POS. A voice shows its modulation from its first note on.",

@@ -100,22 +100,20 @@ def extents(firmware=None, area_length: int = 0, stream_length: int = 0) -> list
     return out
 
 
-# The wave spans (`wr_spans`, dnfw.waverider.wave) are signed sample bytes, and any
-# four in a row can read as an address above BSS: 2026-10-01, `46 d6 a7 12` inside
-# them did, once the page code before them grew. They are data by construction, so
-# every word place inside them is declared not to hold an address; the code around
-# them is still checked.
+# Until 2026-11-03 the baked wave spans (`wr_spans`) were declared here too, as data; the
+# page has none now (pool tables only).
 #
-# Three more places in the code, each disassembled in the applied chunk (2026-10-11); the
+# Three places in the code, each disassembled in the applied chunk (2026-10-11); the
 # places move whenever the code before them does, so a change to a chunk needs them
 # checked again:
 #  - two instructions read as one word: `notl %d3 ; andl %d3,%d2` (46 83 c4 83), and
 #    `notl %d0 ; tstw %d0` (46 80 4a 40);
-#  - `addil #0x469fe800,%d0` (06 80 46 9f e8 00): the pool's display spans at 0x46a00000
-#    less WR_TABLES (4) tables of 1,536 bytes. `WR_POOL_SPANS[tbl - WR_TABLES]` folds the
-#    subtraction into the base, so the value is an address, biased 0x1800 below the
-#    declared range and past the checker's 64-byte slack. Nothing is read at it.
-NOT_RAM = tuple(range(SPEC["layout"]["wr_spans"] & ~1, SPEC["layout"]["wr_spans_end"], 2))
+#  - the pool's display spans at 0x46a00000 less WR_TABLES entries of 3,072 bytes
+#    (2026-11-03: `addal #0x469ff400,%a0`, one entry; two before, 0x469fe800).
+#    `WR_POOL_SPANS[tbl - WR_TABLES]` folds the subtraction into the base, so the value
+#    is an address below the declared range and past the checker's 64-byte slack.
+#    Nothing is read at it.
+NOT_RAM = ()
 
 # Word places that read as an address above BSS and are not one, each disassembled on
 # 2026-10-16 (the label texts read again after the bus moved them 10 bytes down, 4 bytes up when SMT1/SMT2
@@ -129,9 +127,10 @@ NOT_RAM += (
     0x4670B310,              # "Noise Colour": the label text "Nois" (the uncached window's 0x4e...)
     0x4670B32E,              # "ave Fold": the label text "Fold"
     # "Formant" (TYPE's fourth value) starts at 0x4670B4A3 in 0.3.8, an odd place: no aligned word reads "Form"
-    0x4670B94A,              # notl %d3 ; andl %d3,%d2
-    0x4670BBF6,              # addil #0x469fe800,%d0: the pool spans' base 0x46a00000 less two
-                             # 3072 B entries, indexed by the table number (2 and up), declared
+    # 2026-11-03, pool tables only (page.c lost the baked spans): read again in the applied chunk
+    0x4670B936,              # notl %d3 ; andl %d3,%d1 (46 83 c2 83)
+    0x4670BB5C,              # addal #0x469ff400,%a0: the pool spans' base 0x46a00000 less one
+                             # 3072 B entry, indexed by the table number (1 and up), declared
     # 2026-11-02, unplayed voices (events.c grew 0x46 bytes, page.c 0x1c): every drive place read
     # again in the applied chunk with objdump -m m68k:cfv4e
     0x467F0BB4,              # notl %d2 ; andl %d2,%d1 (wr_note_seen, the unplayed mask)

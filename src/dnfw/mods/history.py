@@ -20,7 +20,9 @@ uses to put the version in the name of the file a user downloads.
 
 To release a change: add a `Release` at the top of the mod's tuple, in words a
 user reads (what they see or do differently), then run
-`dnfw mods changelog --write site/*.html --js site/js/mods/versions.js`.
+`dnfw mods changelog --write site/*.html --js site/js/mods/versions.js --fingerprint STOCK_1.11`.
+A mod that writes other bytes needs a new `Release`: `test/test_mods_history.py` compares
+each mod's bytes with the ones recorded for its version (`dnfw.mods.fingerprint`).
 
 A change may link a few words to a part of the mod's own page: `[page 5](#page-5)`.
 The page's list shows a link (`<a href="#page-5">page 5</a>`), the terminal shows the
@@ -74,6 +76,10 @@ HISTORY: dict[str, tuple[Release, ...]] = {
         )),
     ) + UNPUBLISHED,
     "arpscale": (
+        Release("0.2.1", "2026-11-03", (
+            "With ARP OFS IN SCALE off, UP and DOWN in the ARPEGGIATOR menu keep a step's mark. "
+            "Before, muting a step there removed its mark.",
+        )),
         Release("0.2.0", "2026-10-25", (
             "With ARP OFS IN SCALE on, you can mark an arp step to move in semitones, for a note outside "
             "the scale. In the ARPEGGIATOR menu, press UP on an active step: the step shows a plus. Press "
@@ -84,8 +90,16 @@ HISTORY: dict[str, tuple[Release, ...]] = {
         )),
     ) + UNPUBLISHED,
     "bootscreen": PUBLISHED,
-    "degreetranspose": UNPUBLISHED,
+    "degreetranspose": (
+        Release("0.1.1", "2026-11-03", (
+            "You can now combine this mod with lfolength.",
+        )),
+    ) + UNPUBLISHED,
     "fxmod": (
+        Release("1.0.2", "2026-11-03", (
+            "Nothing changes when you use it. A part it shares with Waverider changed for Waverider's "
+            "MIDI control.",
+        )),
         Release("1.0.1", "2026-10-15", (
             "You can now combine this mod with Waverider, in either order. The FX destinations in "
             "the DEST list operate as before.",
@@ -144,6 +158,21 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     ) + PUBLISHED,
     "usbprobe": UNPUBLISHED,
     "waverider": (
+        Release("0.4.0", "2026-11-04", (
+            "Waverider has no built-in tables. Every table comes from the pool. DNX can install Prim. and Harm. "
+            "on the +Drive, as it adds any table.",
+            "TBL's first item is -, no table: it plays silence, and the page draws no wave. Pool tables start "
+            "at T:001. A new Waverider sound starts with TBL1 and TBL2 on -.",
+            "An empty pool slot, a table that is not on the +Drive, and a table that is still loading play "
+            "silence. Before, they played Prim.",
+            "A sound saved with an older Waverider plays another table. Set TBL1 and TBL2 again, or let DNX "
+            "move the old TBL values for you.",
+        )),
+        Release("0.3.9", "2026-11-03", (
+            "Page 1 of a track you just made a Waverider in MACHINE SEL no longer shows the old "
+            "machine's modulation on POS. A voice shows its modulation from its first note on.",
+            "Changes inside the mod leave room on the DSP for later features. The sound stays the same.",
+        )),
         Release("0.3.8", "2026-10-26", (
             "Knob D on [page 5](#page-5) is now FSRC, the FM source: OSC2, SUB or NOIS. OSC2 is FM as before. "
             "SUB and NOIS let the sub-oscillator or the noise of [page 3](#page-3) change osc 1.",

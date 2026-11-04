@@ -80,6 +80,17 @@ checks.push({
   failed: original.filter((c) => !c.ok).map((c) => `${c.name}: ${c.detail}`),
 });
 
+// 3b. The update-buffer check: present on a Digitone II, and it refuses one packet too many.
+const fits = (checks_) => checks_.find((c) => c.name === "fits the OS's 2 MiB update buffer");
+const buffer = fits(original);
+const over = fits(await verify({ ...firmware, packets: 20765 }));
+checks.push({
+  check: "update buffer check",
+  ok: buffer !== undefined && buffer.ok && over !== undefined && !over.ok,
+  detail: buffer?.detail ?? "missing",
+  over: over?.detail ?? "missing",
+});
+
 // 4. A repacked rebuild of one section, reloaded and re-verified.
 const target = firmware.container.find(sectionId);
 if (target === null || target.unpack() === null) {

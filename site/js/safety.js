@@ -226,6 +226,13 @@ function ram(list) {
 
 const isText = (v) => [24, 16, 8, 0].every((s) => { const b = (v >>> s) & 0xff; return b >= 0x20 && b <= 0x7e; });
 
+// The word at AT is the low half of an address in mod RAM plus the next word (safety.py, _own_tail).
+function ownTail(code, at) {
+  if (at < 2) return false;
+  const p = cached(u32(code.image, at - 2));
+  return STOCK_RAM_END <= p && p < STACK_FLOOR;
+}
+
 function named(base, main, chunks, lo, hi) {
   const found = [];
   const n = base.length;
@@ -246,7 +253,7 @@ function named(base, main, chunks, lo, hi) {
     const code = unpackCode(data);
     for (let at = 0; at < code.image.length - 3; at += 2) {
       const v = u32(code.image, at);
-      if (lo <= v && v < hi) found.push([code.load + at, v]);
+      if (lo <= v && v < hi && !ownTail(code, at)) found.push([code.load + at, v]);
     }
   }
   return found;

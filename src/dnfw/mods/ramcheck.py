@@ -43,6 +43,9 @@ from ..patch import area
 LO, HI = 0x466B74D0, 0x47000000
 SLACK = 64
 STOCK_DMA = (0x466B8000, 0x46701340)     # stock's uncached DMA section, as cached addresses
+# 1.11 only. On 1.12 the DMA buffers run to 0x46709340 (docs/os-versions.md, "Before the 1.12
+# port"), over bootscreen's 0x46708000 and next to Waverider's 0x4670a000: measure 1.12's range
+# and make this per OS before any mod builds for 1.12.
 WINDOW = 0x08000000                      # the uncached window: the same RAM at address + WINDOW
 # sp0 (`moveal #0x48000000,%sp` at 0x400004f2) and the 128 KiB below it that digikit's port
 # files keep for the stack, whose depth is unmeasured

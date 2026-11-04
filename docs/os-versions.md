@@ -129,3 +129,27 @@ that is positional evidence. It is **not** new in 1.11.
 **The owner confirms: 1.11's "Outbox" is the breakout box, and has nothing to do
 with the FM drum transients.** Recorded so the next person who greps `Outbox`
 while hunting audio content stops here rather than following it.
+
+## Before the 1.12 port: mod RAM that 1.12's DMA buffers take (2026-11-04)
+
+On 1.11, stock's DMA section runs `0x466b8000..0x46701340`. In 1.12 it moved
++0x8000. Our static read of 1.12 (2026-10-18) puts the eMMC bounce buffer at
+`0x4e6f9300`, which is RAM `0x466f9300..0x46709300`, from the same six sites at
+code +0x2e0. Digiwerk and elekloader's DN2 1.12 profile give `0x46709340` as the
+end (static, as collected in Aggregat's `hardware/common/memory-maps.md`). Nobody
+has measured it on a 1.12 unit or in a 1.12 emulator run.
+
+Two of our chunks are free on 1.11 and inside or beside that range on 1.12:
+
+| mod | chunk | on 1.12 |
+|---|---|---|
+| bootscreen | `0x46708000` | inside the DMA buffers |
+| waverider | `0x4670a000` (the SYN pages) | 3,264 bytes above their end (3,328 by our read) |
+
+The RAM check (`dnfw.mods.ramcheck.STOCK_DMA`) holds the 1.11 range only.
+Before any mod builds for 1.12:
+
+1. Measure 1.12's DMA range in both windows, as `docs/lfo4-state-memory.md` did for 1.11.
+2. Make `STOCK_DMA` per OS version.
+3. Move each chunk that the 1.12 range covers, and give the mod a new version.
+4. Measure the OS update buffer again (`docs/version-gate.md` section 5b).

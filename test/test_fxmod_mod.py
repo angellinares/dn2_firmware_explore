@@ -10,6 +10,7 @@ which is a stronger statement than "the mod does what its own data says".
 `docs/fx-master-modulation.md` §12, §15, §18 and §23 carry the evidence.
 """
 
+import hashlib
 import pathlib
 
 import pytest
@@ -19,7 +20,10 @@ from dnfw.mods import fxmod, lfowaves, moddest, platform
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-GATED = ROOT / "out/fxbrowser3/section_3_MAIN_OS.bin"
+# out/fxbrowser3/section_3_MAIN_OS.bin (2026-09-23, scripts/build_fxbrowser3.py), 3,192,192 B, with the
+# hook bus's regions set to zero (test_is_the_image_that_was_gated)
+GATED_LENGTH = 3192192
+GATED_SHA256 = "5875db503304dfd1df4742d96f5d1655eb361609980e5bbd02fcb5ad3c142ca8"
 
 BASE = fxmod.BASE
 CHORUS_SLOT = 0x401F7720          # the group -> short-name table, group 16
@@ -68,25 +72,21 @@ def test_changes_nothing_else(dn2_111, applied):
 def test_is_the_image_that_was_gated(applied):
     """Byte equality with `fxbrowser3`, whose predecessor was flashed.
 
-    Skips rather than passing when the build output is absent: `out/` is
-    scratch and is not in the repository, so a missing file here means the
-    check did not run, not that it succeeded.
+    `out/` is scratch and is not in the repository, so the test keeps the
+    gated image's hash with the hook bus's regions set to zero.
     """
-    if not GATED.exists():
-        pytest.skip(f"{GATED.relative_to(ROOT)} not present; "
-                    "run scripts/build_fxbrowser3.py to regenerate it")
-    gated = GATED.read_bytes()
     # The hook bus (dnfw.mods.bus) changes four things, and only those: the platform's
     # loader and its call, the bus's jump at 0x400dc02a in place of the build's, the
     # handler's last instructions in the cave, and the appended area.
     cave_end = fxmod.SPEC["cave_va"] - BASE + fxmod.SPEC["cave_used"]
     bus_regions = [(x.start, x.end) for x in platform.loader_extents()]
     bus_regions += [(0x400DC02A - BASE, 0x400DC032 - BASE), (cave_end - 4, cave_end + 10)]
-    stray = [i for i in range(len(gated)) if applied[i] != gated[i]
-             and not any(lo <= i < hi for lo, hi in bus_regions)]
-    assert stray == []
+    masked = bytearray(applied[:GATED_LENGTH])
+    for lo, hi in bus_regions:
+        masked[lo:hi] = bytes(hi - lo)
+    assert hashlib.sha256(masked).hexdigest() == GATED_SHA256, "run scripts/build_fxbrowser3.py and compare"
     assert applied[cave_end - 4:cave_end] == bytes.fromhex("70004e75")    # moveq #0,%d0 ; rts
-    assert len(applied) > len(gated) == platform.STOCK_LENGTH
+    assert len(applied) > GATED_LENGTH == platform.STOCK_LENGTH
 
 
 def test_names_chorus_and_leaves_its_neighbours(dn2_111, applied):

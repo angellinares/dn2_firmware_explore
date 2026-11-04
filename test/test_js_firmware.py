@@ -117,3 +117,21 @@ def test_agrees_with_python(js_report, dn2, tmp_path):
     python_bytes = build(dn2, {7: section})
     assert len(js_bytes) == len(python_bytes)
     assert js_bytes == python_bytes
+
+
+def test_update_buffer_check_matches_python(js_report, dn2):
+    """The website and dnfw report the same update-buffer line, and both refuse one packet over."""
+    import dataclasses
+
+    from dnfw.firmware import verify as v
+
+    report, _ = js_report
+    js = next(c for c in report["checks"] if c["check"] == "update buffer check")
+    assert js["ok"], js
+
+    def line(firmware):
+        return next(c for c in v.verify(firmware).checks if c.name == "fits the OS's 2 MiB update buffer")
+
+    assert js["detail"] == line(dn2).detail
+    over = line(dataclasses.replace(dn2, packets=v.UPDATE_PACKETS + 1))
+    assert not over.ok and js["over"] == over.detail

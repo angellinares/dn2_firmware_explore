@@ -41,7 +41,29 @@ def verify(firmware: Firmware) -> Report:
     checks += [_padded(section) for section in firmware.container.sections]
     checks += [_limits(section) for section in firmware.container.sections]
     checks.append(_trailer(firmware))
+    if firmware.container.product == DIGITONE_II:
+        checks.append(_update_buffer(firmware))
     return Report(tuple(checks))
+
+
+# The running OS takes an update into a static buffer and never checks the size
+# (Digitone II 1.11, docs/version-gate.md section 5b). Packet n is written at
+# state + 20 + 101 n, and the next object starts at state + 0x200020, so 20,764
+# data packets of 101 bytes fill it exactly. A bigger image writes past the end.
+DIGITONE_II = 52
+UPDATE_PACKET_BYTES = 101
+UPDATE_PACKETS = 20_764
+
+
+def _update_buffer(firmware: Firmware) -> Check:
+    left = UPDATE_PACKETS - firmware.packets
+    return Check(
+        "fits the OS's 2 MiB update buffer",
+        left >= 0,
+        f"{firmware.packets:,} of {UPDATE_PACKETS:,} data packets, "
+        + (f"{left * UPDATE_PACKET_BYTES:,} bytes left" if left >= 0
+           else f"{-left * UPDATE_PACKET_BYTES:,} bytes too many"),
+    )
 
 
 def _packets(firmware: Firmware) -> Check:

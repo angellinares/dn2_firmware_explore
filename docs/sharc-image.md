@@ -97,6 +97,9 @@ in the stream. An ignore block carries its payload, and the loader skips it.
 Section 7 has two `FIRST`+`IGNORE` blocks and one `INIT` block, all with a byte
 count of 0.
 
+So a walk of section 7 cannot check these positions. An earlier reading here had
+`IGNORE 0x08` and `INDIRECT 0x10`, and it walked the same 95 blocks.
+
 The load addresses are SHARC memory, not ColdFire: L2 at `0x20000000`, L1 at
 `0x28240000` and `0x28380000`, and 5.4 MB of DDR at `0x80000000` (almost all of
 it a zero fill, which is why the section is under a megabyte).

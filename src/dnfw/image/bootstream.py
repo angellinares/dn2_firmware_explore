@@ -30,8 +30,9 @@ SIGNATURE = 0xAD
 HEADER = 16
 
 # Flags live in bits 8..15 of the block code (ADSP-2156x HRM, Table 40-27,
-# "Block Code Flags"); bit 9 is reserved. A walk of section 7 that consumes the
-# chain exactly, 95 blocks over all 836,956 bytes, agrees with these positions.
+# "Block Code Flags"); bit 9 is reserved. A walk of section 7 cannot check these
+# positions: its IGNORE and INIT blocks all have count 0, so an earlier reading
+# with IGNORE at 0x08 and INDIRECT at 0x10 walked the same 95 blocks.
 FLAG_FILL = 0x01      # BFLAG_FILL:     fill the target range; no payload in the stream
 FLAG_CALLBACK = 0x04  # BFLAG_CALLBACK: call the registered callback
 FLAG_INIT = 0x08      # BFLAG_INIT:     call the function at `target`, after loading any payload

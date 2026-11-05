@@ -122,7 +122,7 @@ def loaded_bytes(stream: bytes, address: int, length: int) -> int:
     """How many bytes of [address, address+length) any block of STREAM loads (fills included)."""
     total = 0
     for blk in bootstream.walk(stream).blocks:
-        if not blk.count:
+        if not blk.loads:
             continue
         lo, hi = max(address, blk.target), min(address + length, blk.target + blk.count)
         total += max(0, hi - lo)

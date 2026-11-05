@@ -6,6 +6,7 @@ test here asks whether the parser can tell a stream from bytes that merely look
 like one.
 """
 
+import pathlib
 import struct
 
 import pytest
@@ -180,6 +181,48 @@ def test_bootstream_block_walks_and_checksums():
     head = bootstream.header_at(blk, 0)
     assert head is not None and head.target == 0x28300000 and head.count == 12
     assert bootstream.walk(blk).stopped_at == len(blk)
+
+
+def test_an_init_block_carries_its_payload_and_walks_back():
+    payload = bytes(range(8))
+    data = bootstream.block(0x1000, payload, flags=bootstream.FLAG_INIT)
+    head = bootstream.header_at(data, 0)
+    assert head.flags == bootstream.FLAG_INIT and head.flag_names == ("init",)
+    assert head.has_payload and head.end == len(data)
+    assert bootstream.walk(data).stopped_at == len(data)
+    assert bootstream.load_regions(data) == [(0x1000, payload)]
+
+
+def test_an_ignore_block_with_a_payload_is_stepped_over_and_not_loaded():
+    skipped = bytes([0xEE]) * 8
+    data = stream(
+        bootstream.block(0x2000, skipped, flags=bootstream.FLAG_IGNORE),
+        bootstream.block(0x1000, bytes([1, 2, 3, 4])),
+    )
+    result = bootstream.walk(data)
+    assert len(result.blocks) == 2 and result.stopped_at == len(data)
+    assert result.blocks[0].has_payload and not result.blocks[0].loads
+    assert bootstream.load_regions(data) == [(0x1000, bytes([1, 2, 3, 4]))]
+    assert result.regions() == [(0x1000, 0x1004)]
+
+
+STOCK_ZIP = pathlib.Path(__file__).resolve().parents[1] / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+
+
+def test_stock_section_7_has_two_first_ignore_blocks_and_one_init_block():
+    """HRM Table 40-27 flag positions: the stock chain walks whole, and its three
+    flagged blocks are the two application starts and the INIT call."""
+    if not STOCK_ZIP.exists():
+        pytest.skip(f"{STOCK_ZIP.name} not present")
+    from dnfw.cli.files import read_image
+    from dnfw.firmware.load import load
+    section = load(read_image(STOCK_ZIP)).container.find(7)
+    result = bootstream.walk(section.unpack() or section.raw_payload)
+    assert result.complete and len(result.blocks) == 95
+    first_ignore = bootstream.FLAG_FIRST | bootstream.FLAG_IGNORE
+    assert [b.flags for b in result.blocks if b.flags & first_ignore == first_ignore] == [first_ignore] * 2
+    assert [b.offset for b in result.blocks if b.flags & bootstream.FLAG_INIT] == [10596]
+    assert not any(b.has_payload for b in result.blocks if b.flags & (first_ignore | bootstream.FLAG_INIT))
 
 
 def test_insert_before_final_lands_before_the_entry_jump():

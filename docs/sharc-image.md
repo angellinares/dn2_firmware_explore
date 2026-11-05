@@ -90,10 +90,15 @@ the entry point. A wrong rule for which blocks carry payload desynchronises
 within two or three blocks and then either overruns the end or stops early;
 landing precisely on the last byte after 95 steps is not something chance does.
 
-The flag assignment was **derived by walking** — it is the only one under which
-the section is consumed exactly — and only then checked against ADI's published
-boot-stream flags, which it matches: `FILL 0x01`, `IGNORE 0x08`, `INDIRECT 0x10`,
-`FIRST 0x40`, `FINAL 0x80`. Derivation first, corroboration second.
+The flags sit in bits 8 to 15 of the block code (ADSP-2156x HRM, Table 40-27):
+`FILL 0x01`, `CALLBACK 0x04`, `INIT 0x08`, `IGNORE 0x10`, `INDIRECT 0x20`,
+`FIRST 0x40`, `FINAL 0x80`. Bit 9 is reserved. Only a fill block has no payload
+in the stream. An ignore block carries its payload, and the loader skips it.
+Section 7 has two `FIRST`+`IGNORE` blocks and one `INIT` block, all with a byte
+count of 0.
+
+So a walk of section 7 cannot check these positions. An earlier reading here had
+`IGNORE 0x08` and `INDIRECT 0x10`, and it walked the same 95 blocks.
 
 The load addresses are SHARC memory, not ColdFire: L2 at `0x20000000`, L1 at
 `0x28240000` and `0x28380000`, and 5.4 MB of DDR at `0x80000000` (almost all of

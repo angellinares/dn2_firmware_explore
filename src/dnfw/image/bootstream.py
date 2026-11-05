@@ -29,19 +29,22 @@ from dataclasses import dataclass
 SIGNATURE = 0xAD
 HEADER = 16
 
-# Flags live in bits 8..15 of the block code. These values were derived by
-# walking -- the only assignment under which the chain consumes section 7
-# exactly, 95 blocks over all 836,956 bytes with nothing left over -- and they
-# then turn out to match ADI's documented boot-stream flags, which is the
-# corroboration rather than the source.
-FLAG_FILL = 0x01      # BFLAG_FILL:   zero the target range; no payload in the stream
-FLAG_IGNORE = 0x08    # BFLAG_IGNORE: skip the payload
-FLAG_INDIRECT = 0x10  # BFLAG_INDIRECT
-FLAG_FIRST = 0x40     # BFLAG_FIRST:  first block of a stream
-FLAG_FINAL = 0x80     # BFLAG_FINAL:  last block; `target` is the entry point
+# Flags live in bits 8..15 of the block code (ADSP-2156x HRM, Table 40-27,
+# "Block Code Flags"); bit 9 is reserved. A walk of section 7 cannot check these
+# positions: its IGNORE and INIT blocks all have count 0, so an earlier reading
+# with IGNORE at 0x08 and INDIRECT at 0x10 walked the same 95 blocks.
+FLAG_FILL = 0x01      # BFLAG_FILL:     fill the target range; no payload in the stream
+FLAG_CALLBACK = 0x04  # BFLAG_CALLBACK: call the registered callback
+FLAG_INIT = 0x08      # BFLAG_INIT:     call the function at `target`, after loading any payload
+FLAG_IGNORE = 0x10    # BFLAG_IGNORE:   the payload is in the stream but not loaded
+FLAG_INDIRECT = 0x20  # BFLAG_INDIRECT: boot the payload to intermediate storage
+FLAG_FIRST = 0x40     # BFLAG_FIRST:    first block of an application
+FLAG_FINAL = 0x80     # BFLAG_FINAL:    last block; `target` is the entry point
 
 FLAG_NAMES = (
     (FLAG_FILL, "fill"),
+    (FLAG_CALLBACK, "callback"),
+    (FLAG_INIT, "init"),
     (FLAG_IGNORE, "ignore"),
     (FLAG_INDIRECT, "indirect"),
     (FLAG_FIRST, "first"),
@@ -71,11 +74,18 @@ class Block:
     def has_payload(self) -> bool:
         """Whether `count` bytes follow the header in the stream.
 
-        A fill block declares a target range to zero and carries nothing, so it
+        A fill block declares a target range to fill and carries nothing, so it
         advances the load address without advancing the file -- which is exactly
         why a walk that ignores the distinction desynchronises immediately.
+        Every other block carries `count` bytes, an ignore block included: the
+        loader skips them, the walk steps over them.
         """
-        return not (self.flags & (FLAG_FILL | FLAG_IGNORE)) and self.count > 0
+        return not (self.flags & FLAG_FILL) and self.count > 0
+
+    @property
+    def loads(self) -> bool:
+        """Whether the loader writes `count` bytes at `target`: fills do, ignored payloads do not."""
+        return self.count > 0 and not (self.flags & FLAG_IGNORE)
 
     @property
     def payload_at(self) -> int:
@@ -99,7 +109,7 @@ class Walk:
     @property
     def transitions(self) -> int:
         """How many block-to-block target comparisons were possible."""
-        return max(len([b for b in self.blocks if b.count]) - 1, 0)
+        return max(len([b for b in self.blocks if b.loads]) - 1, 0)
 
     @property
     def contiguous(self) -> int:
@@ -110,7 +120,7 @@ class Walk:
         """
         agreed, previous = 0, None
         for block in self.blocks:
-            if not block.count:
+            if not block.loads:
                 continue
             if previous is not None and block.target == previous:
                 agreed += 1
@@ -164,7 +174,7 @@ class Walk:
 
     def regions(self) -> list[tuple[int, int]]:
         """Contiguous load spans, merged -- which memories the image fills."""
-        spans = sorted((b.target, b.target + b.count) for b in self.blocks if b.count)
+        spans = sorted((b.target, b.target + b.count) for b in self.blocks if b.loads)
         merged: list[tuple[int, int]] = []
         for lo, hi in spans:
             if merged and lo <= merged[-1][1]:
@@ -175,7 +185,7 @@ class Walk:
 
     @property
     def target_range(self) -> tuple[int, int] | None:
-        loaded = [b for b in self.blocks if b.count]
+        loaded = [b for b in self.blocks if b.loads]
         if not loaded:
             return None
         return (min(b.target for b in loaded),
@@ -229,7 +239,7 @@ def load_regions(data: bytes, start: int = 0) -> list[tuple[int, bytes]]:
     result = walk(data, start)
     pieces: list[tuple[int, bytes]] = []
     for block in result.blocks:
-        if block.has_payload:
+        if block.has_payload and not block.flags & FLAG_IGNORE:
             pieces.append((block.target, data[block.payload_at:block.payload_at + block.count]))
         elif block.flags & FLAG_FILL and block.count:
             pieces.append((block.target, bytes(block.count)))
@@ -309,7 +319,7 @@ def spans(data: bytes, address: int, length: int) -> list[tuple[int | None, int]
     guessing an offset there corrupts a region nobody was looking at.
     """
     pieces: list[tuple[int | None, int]] = []
-    blocks = sorted((b for b in walk(data).blocks if b.count),
+    blocks = sorted((b for b in walk(data).blocks if b.loads),
                     key=lambda b: b.target)
     at, remaining = address, length
     progressed = True
@@ -385,15 +395,16 @@ def block(target: int, payload: bytes = b"", flags: int = 0, argument: int = 0,
 
     The header's byte 2 (HDRCHK) is chosen so the XOR of all 16 header bytes is
     zero, as every block in a shipped section 7 has it. `count` defaults to the
-    payload length; a fill block passes `count` and no payload.
+    payload length; a fill block passes `count` and no payload. Any other
+    block, an init or ignore block included, may carry a payload.
     """
     if count is None:
         count = len(payload)
-    if flags & (FLAG_FILL | FLAG_IGNORE):
+    if flags & FLAG_FILL:
         if payload:
-            raise ValueError("a fill or ignore block carries no payload")
+            raise ValueError("a fill block carries no payload")
     elif count != len(payload):
-        raise ValueError("a payload block's count must be its payload length")
+        raise ValueError("a block's count must be its payload length")
     header = bytearray(struct.pack("<IIII", (SIGNATURE << 24) | ((flags & 0xFF) << 8) | DMA_CODE,
                                    target, count, argument))
     check = 0

@@ -126,7 +126,9 @@
     <dt>Where</dt><dd>On a synth track: <code>[MOD]</code>, the fourth page. Its <code>DEST</code> browser works like LFO1-3's</dd>
     <dt>Plays</dt><dd>Modulates on every voice, so polyphonic tracks and tracks that move between voices are modulated too</dd>
     <dt>Keeps</dt><dd>Its settings are stored with the sound by SAVE PROJECT, and survive a power-cycle even without a save, like any stock parameter</dd>
-    <dt>Not included</dt><dd>MIDI: LFO4 has no NRPN numbers, so it cannot be set or recorded over MIDI</dd>
+    <dt>Not included</dt><dd>MIDI: LFO4 has no NRPN numbers, so it cannot be set or recorded over MIDI.
+      P-locks: you can't lock an LFO4 parameter to a trig yet. When you try, the firmware shows
+      <q>Lock mem full!</q>. P-locks are planned for 1.1.0 (<a href="https://github.com/angellinares/dn2_firmware_explore/issues/350">issue #350</a>).</dd>
     <dt>Writes</dt><dd id="writes">&mdash;</dd>
   </dl>
 

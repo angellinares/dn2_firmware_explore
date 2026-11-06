@@ -158,6 +158,10 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     ) + PUBLISHED,
     "usbprobe": UNPUBLISHED,
     "waverider": (
+        Release("0.4.2", "2026-11-06", (
+            "Fixes one part of the DSP data in 0.4.1 that had a length the DSP may not load at start-up. "
+            "Waverider sounds the same.",
+        )),
         Release("0.4.1", "2026-11-04", (
             "TBL item -, an empty pool slot and a table that is still loading stay silent while a note plays. "
             "In 0.4.0 they could play another table after a moment.",

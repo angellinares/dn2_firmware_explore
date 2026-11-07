@@ -139,22 +139,34 @@ and the MAC evidence carries the argument alone.
 | PLL VCO | 240 MHz | 500 MHz |
 | FlexBus | | 100 MHz |
 
-**An open question about the clock.** The unit's DMA timer 0 counts at
-132.00 MHz (`docs/usbprobe.md`). The reference manual says the timer counts the
-bus clock, divided by 1 or 16, and then by its prescaler. A 132 MHz bus clock means
-a 264 MHz core, 5.6 % above the rated 250 MHz.
+**The bus runs at 132 MHz, above its rating.** Three facts agree:
 
-digikit's emulator notes agree
-(`emu/pit.py`). MAIN OS holds a 132 MHz bus constant of its own and never writes
-`PLL_CR` or `PLL_DR`, so the reset configuration sets the PLL. Two other readings exist: the timer
-counts an external pin or the Ethernet timebase, or the measurement is off by
-5.6 %. Neither is likely.
+- The unit's DMA timer 0 counts at 132.00 MHz (`docs/usbprobe.md`). The
+  reference manual says the timer counts the bus clock, divided by 1 or 16, and
+  then by its prescaler.
+- MAIN OS holds a 132 MHz bus constant of its own: 132,000,000 in the panel UART
+  init at `0x4000243e`. All four PIT timers land on round rates at 132 MHz
+  (digikit finding 07, `emu/pit.py`).
+- DIN MIDI works on stock units. Stock's MIDI UART init (`0x40002844`, UART9) sets
+  the divider for 31,250 baud as 132,000,000 / (32 × 31,250) = 132. At a 125 MHz
+  bus that divider gives 29,593 baud, 5.3 % slow, against MIDI's 1 % tolerance
+  (digikit PR #330).
 
-Four reads settle it: `PLL_CR` (`0xFC0C0000`), `PLL_DR`
-(`0xFC0C0004`), `DTMR0` (`0xFC070000`) and `DTXMR0` (`0xFC070002`). The manual
-gives no side effect for a read of these four. USB PEEK refuses all of
-`0xFC000000` today, so the reads need a probe build that allows these addresses
-by name.
+So the bus is about 132 MHz, 5.6 % above the rated 125 MHz, and timer 0 counts it
+divided by 1. MAIN OS never writes `PLL_CR` or `PLL_DR`. The bootstrap section
+writes only OUTDIV3 (the SD clock). So the reset configuration sets the PLL, and
+the update file does not contain it.
+
+**Still an inference: the 264 MHz core.** The reference manual says the bus
+"must be" half the core clock. If the reset configuration keeps that 2:1 ratio,
+the core runs at 264 MHz. Five reads would settle it: `PLL_CR` (`0xFC0C0000`),
+`PLL_DR` (`0xFC0C0004`), `PLL_SR` (`0xFC0C0008`, whose LOCK bit shows a locked
+PLL), `DTMR0` (`0xFC070000`, 16-bit) and `DTXMR0` (`0xFC070002`, 8-bit).
+
+The chip ID register `CIR` (`0xEC09000A`, 16-bit) would also confirm the part. All six
+reads are free of side effects: `PLL_SR`'s flags clear only on a write of 1. USB
+PEEK refuses the `0xFC000000` and `0xEC000000` ranges today, so the reads need a
+probe build that allows these addresses by name.
 
 **Errata that touch this project.** None of the 28 errata covers the DMA
 timers, the eDMA or the DSPI. These do apply:
@@ -171,8 +183,8 @@ timers, the eDMA or the DSPI. These do apply:
 - **Correct the CPU at source** in `mainos-image.md`, `memory-map.md`,
   `references.md` and `ideas-backlog.md`. They still say ColdFire V4e. The part
   is the MCF54415, with a V4 core and no FPU.
-- **Read the PLL and timer 0 settings on the unit**, as above, to settle the
-  132 MHz clock.
+- **Read the PLL, timer 0 and CIR registers on the unit**, as above, to settle
+  the core clock and the part.
 - **Where in the 16 MB SPI NOR the ELE3 payload lands**, and what else occupies
   it. That would settle the DSP-image question outright and is also the
   groundwork for anything that ever wants to write flash directly.

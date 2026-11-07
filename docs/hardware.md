@@ -10,7 +10,7 @@ the repository had wrong.
 
 | Ref | Part | What it is |
 |---|---|---|
-| — | **`COLDFIRE MCF5441SCMJ250`** | the main CPU — the **MCF54415CMJ250**, 250 MHz (see §"The exact part, from NXP's documents") |
+| U1 | **`COLDFIRE MCF54415CMJ250`**, mask `0N51E` | the main CPU — an **MCF5441x**, 250 MHz (first read as `MCF5441SCMJ250`; see §"The exact part, from NXP's documents") |
 | — | **NANYA `NT5TU128M8HE-AC`** | **DDR2 SDRAM, 128M×8 = 128 MB** — the ColdFire's RAM |
 | — | **Winbond `25Q128JVFQ`** | **W25Q128JV — 128 Mbit = 16 MB SPI NOR flash** |
 | U8 | Kingston `EMMC32G-TX29` | eMMC — mass storage, the +Drive |
@@ -112,12 +112,15 @@ The sources are four NXP documents:
 
 They are not in this repository.
 
-**The part is the MCF54415CMJ250.** The data sheet's orderable parts include one
-MCF54415 in the 256-ball package: `MCF54415CMJ250`. It is a 256 MAPBGA part,
-rated 250 MHz, for −40 to +85 °C. No "S" variant exists. The MCF54416, MCF54417
-and MCF54418 also end in `CMJ250`, but an "S" looks most like a "5". So the
-photograph's `MCF5441SCMJ250` is most likely the MCF54415. The other sibling
-boards have the same part (§"The rest of the family").
+**The part is the MCF54415CMJ250.** The owner's close photograph of U1
+(2026-11-07) reads `COLDFIRE`, `MCF54415CMJ250`, `0N51E` and `CTEE2415B`. The
+first photographs read `MCF5441SCMJ250`, with the "5" taken for an "S". The data
+sheet lists it as an orderable part. It is a 256 MAPBGA part, rated 250 MHz, for
+−40 to +85 °C. A third party reports the same part on the sibling boards (§"The
+rest of the family").
+
+`0N51E` is the mask set, the latest of the family. It decides which errata
+apply. `CTEE2415B` is probably the lot and date code.
 
 The reference manual
 covers all five members of the family (MCF54410, MCF54415, MCF54416, MCF54417 and
@@ -164,13 +167,16 @@ the core runs at 264 MHz. digikit's cycle model already uses a 264 MHz core
 `PLL_DR` (`0xFC0C0004`), `PLL_SR` (`0xFC0C0008`, whose LOCK bit shows a locked
 PLL), `DTMR0` (`0xFC070000`, 16-bit) and `DTXMR0` (`0xFC070002`, 8-bit).
 
-The chip ID register `CIR` (`0xEC09000A`, 16-bit) would also confirm the part. All six
+The chip ID register `CIR` (`0xEC09000A`, 16-bit) would show the part number
+and revision from the silicon itself. All six
 reads are free of side effects: `PLL_SR`'s flags clear only on a write of 1. USB
 PEEK refuses the `0xFC000000` and `0xEC000000` ranges today, so the reads need a
 probe build that allows these addresses by name.
 
-**Errata that touch this project.** None of the 28 errata covers the DMA
-timers, the eDMA or the DSPI. These do apply:
+**Errata that touch this project.** The errata list 28 items. Two of them do not
+affect mask `0N51E`: SECF171 (an ADC and DAC pin) and SECF205 (the DDR2
+controller). None of the 28 covers the DMA timers, the eDMA or the DSPI. These do
+apply:
 
 - SECF180 (interrupt controller): in a narrow window, a spurious interrupt can
   fetch the wrong vector. Code that masks an interrupt should raise `SR[I]`

@@ -159,7 +159,8 @@ the update file does not contain it.
 
 **Still an inference: the 264 MHz core.** The reference manual says the bus
 "must be" half the core clock. If the reset configuration keeps that 2:1 ratio,
-the core runs at 264 MHz. Five reads would settle it: `PLL_CR` (`0xFC0C0000`),
+the core runs at 264 MHz. digikit's cycle model already uses a 264 MHz core
+(`devices/cycle-factors.json`), but no one has read it on a unit. Five reads would settle it: `PLL_CR` (`0xFC0C0000`),
 `PLL_DR` (`0xFC0C0004`), `PLL_SR` (`0xFC0C0008`, whose LOCK bit shows a locked
 PLL), `DTMR0` (`0xFC070000`, 16-bit) and `DTXMR0` (`0xFC070002`, 8-bit).
 

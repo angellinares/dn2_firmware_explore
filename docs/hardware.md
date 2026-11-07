@@ -115,8 +115,8 @@ They are not in this repository.
 **The part is the MCF54415CMJ250.** The owner's close photograph of U1
 (2026-11-07) reads `COLDFIRE`, `MCF54415CMJ250`, `0N51E` and `CTEE2415B`. The
 first photographs read `MCF5441SCMJ250`, with the "5" taken for an "S". The data
-sheet lists it as an orderable part. It is a 256 MAPBGA part, rated 250 MHz, for
-−40 to +85 °C. A third party reports the same part on the sibling boards (§"The
+sheet lists it as an orderable part. It is a 256 MAPBGA part rated 250 MHz. Its
+temperature range is −40 to +85 degrees C. A third party reports the same part on the sibling boards (§"The
 rest of the family").
 
 `0N51E` is the mask set, the latest of the family. It decides which errata

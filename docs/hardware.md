@@ -10,7 +10,7 @@ the repository had wrong.
 
 | Ref | Part | What it is |
 |---|---|---|
-| — | **`COLDFIRE MCF5441SCMJ250`** | the main CPU — an **MCF5441x**, 250 MHz |
+| — | **`COLDFIRE MCF5441SCMJ250`** | the main CPU — the **MCF54415CMJ250**, 250 MHz (see §"The exact part, from NXP's documents") |
 | — | **NANYA `NT5TU128M8HE-AC`** | **DDR2 SDRAM, 128M×8 = 128 MB** — the ColdFire's RAM |
 | — | **Winbond `25Q128JVFQ`** | **W25Q128JV — 128 Mbit = 16 MB SPI NOR flash** |
 | U8 | Kingston `EMMC32G-TX29` | eMMC — mass storage, the +Drive |
@@ -101,11 +101,91 @@ because it is not in the update file — whether or not it is in the device's
 flash. Changing it would mean writing to the SPI NOR directly, which is a
 different project with a different risk profile and no recovery path proven.
 
+## The exact part, from NXP's documents (2026-11-07)
+
+The sources are four NXP documents:
+
+- the MCF5441x Reference Manual (MCF54418RM, Rev 5, 05/2018)
+- the MCF5441x Data Sheet (Rev 8)
+- the MCF54418 Chip Errata (MCF54418DE, Rev 9, 09/2014)
+- the ColdFire Family Programmer's Reference Manual (CFPRM, Rev 3, 03/2005)
+
+They are not in this repository.
+
+**The part is the MCF54415CMJ250.** The data sheet's orderable parts include one
+MCF54415 in the 256-ball package: `MCF54415CMJ250`. It is a 256 MAPBGA part,
+rated 250 MHz, for −40 to +85 °C. No "S" variant exists. The MCF54416, MCF54417
+and MCF54418 also end in `CMJ250`, but an "S" looks most like a "5". So the
+photograph's `MCF5441SCMJ250` is most likely the MCF54415. The other sibling
+boards have the same part (§"The rest of the family").
+
+The reference manual
+covers all five members of the family (MCF54410, MCF54415, MCF54416, MCF54417 and
+MCF54418). Within the family, the MCF54415 differs only in that it has no
+cryptography unit.
+
+**The core has no FPU.** The core is a Version 4 ColdFire with an EMAC and an
+MMU. Its reset configuration bit for the FPU reads 0 on this device: no
+floating-point engine (reference manual, page 107). So §"What it invalidates"
+stands. A zero count of floating-point instructions proves nothing on this part,
+and the MAC evidence carries the argument alone.
+
+**The rated clocks.** The data sheet's PLL table gives these limits:
+
+| Clock | Minimum | Maximum |
+|---|---|---|
+| Core (fsys) | 120 MHz | 250 MHz |
+| Bus (fsys/2) | 60 MHz | 125 MHz |
+| PLL VCO | 240 MHz | 500 MHz |
+| FlexBus | | 100 MHz |
+
+**The bus runs at 132 MHz, above its rating.** Three facts agree:
+
+- The unit's DMA timer 0 counts at 132.00 MHz (`docs/usbprobe.md`). The
+  reference manual says the timer counts the bus clock, divided by 1 or 16, and
+  then by its prescaler.
+- MAIN OS holds a 132 MHz bus constant of its own: 132,000,000 in the panel UART
+  init at `0x4000243e`. All four PIT timers land on round rates at 132 MHz
+  (digikit finding 07, `emu/pit.py`).
+- DIN MIDI works on stock units. Stock's MIDI UART init (`0x40002844`, UART9) sets
+  the divider for 31,250 baud as 132,000,000 / (32 × 31,250) = 132. At a 125 MHz
+  bus that divider gives 29,593 baud, 5.3 % slow, against MIDI's 1 % tolerance
+  (digikit PR #330).
+
+So the bus is about 132 MHz, 5.6 % above the rated 125 MHz, and timer 0 counts it
+divided by 1. MAIN OS never writes `PLL_CR` or `PLL_DR`. The bootstrap section
+writes only OUTDIV3 (the SD clock). So the reset configuration sets the PLL, and
+the update file does not contain it.
+
+**Still an inference: the 264 MHz core.** The reference manual says the bus
+"must be" half the core clock. If the reset configuration keeps that 2:1 ratio,
+the core runs at 264 MHz. digikit's cycle model already uses a 264 MHz core
+(`devices/cycle-factors.json`), but no one has read it on a unit. Five reads would settle it: `PLL_CR` (`0xFC0C0000`),
+`PLL_DR` (`0xFC0C0004`), `PLL_SR` (`0xFC0C0008`, whose LOCK bit shows a locked
+PLL), `DTMR0` (`0xFC070000`, 16-bit) and `DTXMR0` (`0xFC070002`, 8-bit).
+
+The chip ID register `CIR` (`0xEC09000A`, 16-bit) would also confirm the part. All six
+reads are free of side effects: `PLL_SR`'s flags clear only on a write of 1. USB
+PEEK refuses the `0xFC000000` and `0xEC000000` ranges today, so the reads need a
+probe build that allows these addresses by name.
+
+**Errata that touch this project.** None of the 28 errata covers the DMA
+timers, the eDMA or the DSPI. These do apply:
+
+- SECF180 (interrupt controller): in a narrow window, a spurious interrupt can
+  fetch the wrong vector. Code that masks an interrupt should raise `SR[I]`
+  first, then mask, then restore.
+- SECF181 to SECF183: the SSI, the audio port.
+- SECF184 and SECF199 to SECF204: USB host and OTG.
+- SECF210 to SECF218: the SD host controller, which the eMMC uses.
+
 ## Open
 
-- **Confirm the exact MCF5441x variant and its FPU/core** from NXP's datasheet,
-  then correct `mainos-image.md`, `memory-map.md`, `references.md` and
-  `ideas-backlog.md` at source.
+- **Correct the CPU at source** in `mainos-image.md`, `memory-map.md`,
+  `references.md` and `ideas-backlog.md`. They still say ColdFire V4e. The part
+  is the MCF54415, with a V4 core and no FPU.
+- **Read the PLL, timer 0 and CIR registers on the unit**, as above, to settle
+  the core clock and the part.
 - **Where in the 16 MB SPI NOR the ELE3 payload lands**, and what else occupies
   it. That would settle the DSP-image question outright and is also the
   groundwork for anything that ever wants to write flash directly.

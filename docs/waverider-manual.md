@@ -1,4 +1,4 @@
-# Waverider, alpha
+# Waverider, beta
 
 Documentation version 1.7, 2026-11-02. It describes Waverider 0.3.8 (alpha 5).
 
@@ -7,7 +7,7 @@ a sub-oscillator, noise, FM, wave folding, phase warping and a collection of add
 like AM, ring modulation and formant. The tables are on the +Drive. Its own modulator (MOVE)
 sweeps each oscillator through its table.
 
-This is an alpha. Sounds that you save may not load the same way in a later version. Try it on a
+Waverider is a beta. Sounds that you save may not load the same way in a later version. Try it on a
 new project. Back up the +Drive first, and keep the stock 1.11 firmware file for recovery.
 
 ## Before you start

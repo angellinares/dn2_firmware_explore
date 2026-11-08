@@ -53,10 +53,10 @@ passed on the instrument:
 even stock 1.11 on load (`EXCEPTION DS0059`). The `songguard` mod limits the count.
 It passed on the instrument (`docs/old-project-load.md`).
 
-**Waverider is an alpha.** It is a wavetable machine for the Digitone II, after the
+**Waverider is a beta.** It is a wavetable machine for the Digitone II, after the
 Wavefinder of Tonverk (`docs/waverider-feasibility.md`). It is a sixth machine in MACHINE
 SEL. It has two wavetable oscillators, a sub-oscillator, noise and its own modulator. Page 5
-(Shape) does not change the sound yet. Our own SHARC reader runs inside a real DN2 voice.
+(Shape) has FM, wave folding, phase warping and more shapers. Our own SHARC reader runs inside a real DN2 voice.
 
 Its tables are in the wavetable pool of the project, on the +Drive. You put them there with
 DNX. The manual is `docs/waverider-manual.md`, and the measurements are in
@@ -185,7 +185,7 @@ something absent (the OS images in `00_Resources/`, objdump or Node) skips, and 
 | `docs/instruments.md` | which tool answers which question |
 | `docs/lfo4-build-plan.md` | the whole LFO4 story, including the dead ends |
 | `docs/waverider-feasibility.md` | Waverider, milestone by milestone |
-| `docs/waverider-manual.md` | Waverider as the alpha behaves: pages, controls, wavetable pool |
+| `docs/waverider-manual.md` | Waverider as the beta behaves: pages, controls, wavetable pool |
 | `docs/waverider-frame-words.md` | which frame words stock writes and the DSP reads, and where Waverider's position moved |
 | `docs/drive-storage-research.md` | the +Drive, and where a sample library could live |
 | `docs/ideas-backlog.md` | ideas, costed, with their state |

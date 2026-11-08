@@ -141,8 +141,9 @@ NOT_RAM += (
     0x467F474E, 0x467F4752, 0x467F4758, 0x467F4764, 0x467F4768, 0x467F476C,
     0x467F4774, 0x467F4778, 0x467F477C, 0x467F4780,
                              # a table of 0x467f46xx pointers and bytes: read 2 bytes out of step
-) + (
-    0x4670C8E2, 0x4670CBCE)
+)
+# 0x4670C8E2 and 0x4670CBCE (2026-10-11) left the list in 0.5.0: no word there reads as an
+# address any more, and the RAM check passes without them
 
 
 def ram() -> list[Extent]:

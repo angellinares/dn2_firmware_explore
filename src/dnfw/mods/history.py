@@ -156,7 +156,12 @@ HISTORY: dict[str, tuple[Release, ...]] = {
             "Works on a firmware with Waverider, in either order.",
         )),
     ) + PUBLISHED,
-    "usbprobe": UNPUBLISHED,
+    "usbprobe": (
+        Release("0.1.1", "2026-11-08", (
+            "A new command, REGS, reads the chip's part number and its clock settings: the PLL and DMA "
+            "timer 0. It reads only a fixed list of six registers. `python tools/dn2probe.py regs` shows them.",
+        )),
+    ) + UNPUBLISHED,
     "waverider": (
         Release("0.4.1", "2026-11-04", (
             "TBL item -, an empty pool slot and a table that is still loading stay silent while a note plays. "

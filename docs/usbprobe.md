@@ -11,7 +11,7 @@ reads of the SHARC's reply page located Waverider's DSP stop
 ## What it is
 
 A mod (`dnfw mods apply --mod usbprobe`, `src/dnfw/mods/usbprobe.py`) that
-makes a Digitone II answer three read-only SysEx commands over USB, and a
+makes a Digitone II answer four read-only SysEx commands over USB, and a
 Windows client (`tools/dn2probe.py`) that asks them. Nothing on the instrument
 changes unless a request arrives, apart from a few counter increments per audio
 frame and per context switch.
@@ -21,6 +21,7 @@ frame and per context switch.
 | `HELLO` 0x01 | - | u16 protocol (2 since 2026-09-27; 1 before), u32 audio frames since boot, the build's tag (NUL-terminated) |
 | `STATS` 0x02 | - | 80 bytes (layout 2; 60 in layout 1), below |
 | `PEEK` 0x03 | u32 addr, u16 len (1..1024) | u32 addr, the bytes |
+| `REGS` 0x04 (protocol 4) | - (arguments are ignored) | for each register of a fixed list: u32 address, u32 width in bytes, u32 value. Below |
 
 There is **no write command**. Any other command byte, including every one the
 stock Elektron protocols use, draws status 2.
@@ -141,6 +142,27 @@ average) is the headroom to watch -- over 100 % of a frame, audio is late.
 Refused, and tested refused: `0xfc000000` (the MCF5441x peripherals, where a read
 can clear a status bit), `0xec000000` (the FPGA register file and the DSPI boot
 channel), anything straddling a range's end, length 0 or above 1024.
+
+### REGS: a fixed list of clock registers (protocol 4, 2026-11-08)
+
+REGS reads six peripheral registers that PEEK refuses. The list is in the
+build (`csrc/usbprobe/ext.S`, `regs_list`), so a request cannot name an address.
+The MCF5441x Reference Manual gives each one no read side effect:
+
+| register | address | width | what it gives | read side effect |
+|---|---|---|---|---|
+| CIR | `0xec09000a` | 16 | PIN (part) and PRN (mask revision), section 10.3.3 | none: read-only |
+| PLL_CR | `0xfc0c0000` | 32 | REFDIV and FBKDIV: fVCO = fREF x (FBKDIV + 1) / 2^REFDIV, section 8.2.1 | none |
+| PLL_DR | `0xfc0c0004` | 32 | OUTDIV1..5: the core, bus, eSDHC, USB and NAND dividers, section 8.2.2 | none |
+| PLL_SR | `0xfc0c0008` | 32 | lock, loss-of-lock and loss-of-clock flags, mode, section 8.2.3 | none: the flags clear only on a write of 1 |
+| DTMR0 | `0xfc070000` | 16 | DMA timer 0's clock source (CLK) and prescaler (PS), section 39.2.1 | none |
+| DTXMR0 | `0xfc070002` | 8 | DMA timer 0's extended mode, EN1588 among them, section 39.2.2 | none |
+
+`python tools/dn2probe.py regs` reads them, decodes each field, and measures
+DTCN0's rate over one second. With the bus clock from that rate it gives fVCO,
+fREF and the core clock. The command for REGS fits in the second cave. In the
+first cave, the dispatcher's "unknown command" path became a `jsr` to it, with
+the same length, so the first cave stays 896 B.
 
 ## The clash check
 

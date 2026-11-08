@@ -23,10 +23,12 @@
 | - HELLO carries the build's tag, so the host can say which image answers.
 |
 | There is no write command, and none can be added by a request: the
-| dispatcher only knows the three below.
+| dispatcher only knows the three below, and ext.S's REGS. REGS reads only
+| the fixed register list in ext.S. A request cannot give it an address.
 
-        .equ PROTO,       3                | 2: STATS layout 2 appends ext.S's fields
+        .equ PROTO,       4                | 2: STATS layout 2 appends ext.S's fields
                                            | 3: idle is the prio-1 task: CPU is right
+                                           | 4: REGS (ext.S), a fixed register list
         .equ C_HELLO,     1
         .equ C_STATS,     2
         .equ C_PEEK,      3
@@ -101,8 +103,7 @@ diag_rx:
         beq.s   20f
         subq.l  #C_PEEK - C_STATS, %d2
         beq.s   30f
-        moveq   #2, %d0                 | unknown command
-        move.b  %d0, 3(%a2)
+        jsr     EXT_CMD                 | REGS, or status 2: unknown (ext.S)
         bra.w   80f
 
 10:     moveq   #PROTO, %d0             | HELLO: u16 proto, u32 frames, the tag

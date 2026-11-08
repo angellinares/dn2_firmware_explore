@@ -53,9 +53,13 @@ import dn2probe as proto                        # noqa: E402  the host's codec, 
 
 ROOT = str(paths.ROOT)
 ROUTER, SENDER = 0x4012166E, 0x401233F2
-FRAMES, IDLE_TCB, IDLE_PC, CUR_TCB = 0x4058E8D4, 0x424388AC, 0x400CEBE2, 0x4664ACDC
+# The idle task is the prio-1 task since probe protocol 3 (csrc/usbprobe/dn2_111.inc).
+FRAMES, IDLE_TCB, IDLE_PC, CUR_TCB = 0x4058E8D4, 0x4243C900, 0x400CF0E2, 0x4664ACDC
 USB, DIN = 2, 8
 PROBE_RAM = 0x46F00000                          # scripts/gen_usbprobe_code.py's RAM
+# REGS's list in csrc/usbprobe/ext.S: (address, width in bytes).
+REGS_LIST = ((0xEC09000A, 2), (0xFC0C0000, 4), (0xFC0C0004, 4), (0xFC0C0008, 4),
+             (0xFC070000, 2), (0xFC070002, 1))
 
 
 class Rig:
@@ -210,8 +214,19 @@ def build(results, image, sym):
     # ---- unknown and malformed -------------------------------------------
     replies, _ = rig.ask(proto.request(4, 0x44))
     check(results, replies and replies[0]["status"] == 2, "an unknown command: status 2")
-    replies, _ = rig.ask(proto.request(4, 0x04, b"\x01\x02"))
-    check(results, replies and replies[0]["status"] == 2, "no write command exists: 0x04 is unknown")
+    replies, _ = rig.ask(proto.request(4, 0x05, b"\x01\x02"))
+    check(results, replies and replies[0]["status"] == 2, "no write command exists: 0x05 is unknown")
+
+    # ---- REGS: the fixed list, and arguments change nothing ----------------
+    want = [(a, w) for a, w in REGS_LIST]
+    for what, args in (("no arguments", b""), ("an address as an argument", struct.pack(">IH", 0x40000000, 4))):
+        replies, _ = rig.ask(proto.request(10, proto.REGS, args))
+        r = replies[0] if replies else None
+        regs = proto.decode_regs(r["payload"]) if r and r["status"] == 0 else []
+        check(results, [(a, w) for a, w, _v in regs] == want
+              and all(v < 1 << (8 * w) for _a, w, v in regs),
+              f"REGS, {what}: the six registers of the list, each value inside its width")
+    print("  REGS in the snapshot: " + ", ".join(f"0x{a:08x}=0x{v:x}" for a, _w, v in regs))
     hello = proto.req_hello(5)
     for what, sx, src in (("from DIN, not USB", hello, DIN),
                           ("from DIN port 0x10", hello, 0x10),
@@ -316,6 +331,12 @@ def from_reset(results, image, sym, limit, label, fast=False):
           "PEEK of the SHARC reply's words 0-1 (dn2probe stage) after a real boot: the bytes in memory")
     got = route(proto.request(0x7A, proto.PEEK, struct.pack(">IH", 0xFC045640, 4)))
     check(results, len(got) == 1 and got[0]["status"] == 1, "PEEK of a peripheral register after a real boot: refused")
+    got = route(proto.req_regs(0x7C))
+    regs = proto.decode_regs(got[0]["payload"]) if got and got[0] and got[0]["status"] == 0 else []
+    check(results, [(a, w) for a, w, _v in regs] == list(REGS_LIST),
+          "REGS after a real boot: the six registers of the list")
+    for line in proto.explain_regs(regs):
+        print(line)
 
 
 def main() -> int:

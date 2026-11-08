@@ -8,6 +8,7 @@
     python tools/dn2probe.py watch [SECONDS] [--symbols out/<build>/symbols.json]
                                                 10 readings a second: frames, ISR, lfo4's pieces
     python tools/dn2probe.py stacks             every task's stack high-water mark (docs/coldfire-tasks.md)
+    python tools/dn2probe.py regs               the clock registers (probe protocol 4): CIR, PLL, DMA timer 0
     python tools/dn2probe.py selftest           the codec, with no device
 
     options: --port "Digitone II" (a substring of the port name), or --in N --out N
@@ -17,7 +18,8 @@ derived from irpina/digihealth (tools/digiusb.py), GPL-2.0-or-later, used here u
 The probe answers its own SysEx channel: Elektron's manufacturer header with a
 device byte (0x7D) no Elektron machine uses, so stock firmware drops the
 messages and talking to it does nothing. Every command only reads; the probe
-has no command that writes.
+has no command that writes. REGS reads a fixed list of registers that the
+build holds: a request cannot name an address.
 
     request  F0 00 20 3C 7D 00 <pack7: u16 seq, u8 cmd, payload> F7
     reply    F0 00 20 3C 7D 00 <pack7: u16 seq, u8 cmd | 0x80, u8 status, payload> F7
@@ -37,7 +39,7 @@ import sys
 import time
 
 HEADER = bytes([0xF0, 0x00, 0x20, 0x3C, 0x7D, 0x00])
-HELLO, STATS, PEEK = 0x01, 0x02, 0x03
+HELLO, STATS, PEEK, REGS = 0x01, 0x02, 0x03, 0x04
 STATUS = {0: 'ok', 1: 'refused', 2: 'unknown command'}
 PEEK_MAX = 1024
 # DN2 1.11: DDR (ACR0 maps 0x40000000-0x47ffffff), the 64 KB on-chip SRAM, and
@@ -65,6 +67,23 @@ ISR_OVER_TICKS = 87708        # ext.S: one frame at 132.00 MHz / 1505 frames/s
 # pieces of five u32 (count, ticks, max, window, window_max), then the fast
 # path counts, from the build's symbols.json.
 LFO4_PIECES = ('on_save', 'on_load', 'memcpy', 'memset', 'refresh')
+# REGS's list (csrc/usbprobe/ext.S), with each register's fields as (name, high
+# bit, low bit), from the MCF5441x Reference Manual: CIR 10.3.3, PLL 8.2,
+# DTMRn and DTXMRn 39.2.
+REG_FIELDS = {
+    0xEC09000A: ('CIR', [('PIN', 15, 6), ('PRN', 5, 0)]),
+    0xFC0C0000: ('PLL_CR', [('LOCIRQ', 18, 18), ('LOCRE', 17, 17), ('LOCEN', 16, 16),
+                            ('LOLIRQ', 14, 14), ('LOLRE', 13, 13), ('LOLEN', 12, 12),
+                            ('REFDIV', 10, 8), ('FBKDIV', 5, 0)]),
+    0xFC0C0004: ('PLL_DR', [('OUTDIV5', 25, 21), ('OUTDIV4', 20, 16), ('OUTDIV3', 14, 10),
+                            ('OUTDIV2', 9, 5), ('OUTDIV1', 4, 0)]),
+    0xFC0C0008: ('PLL_SR', [('LOCF', 9, 9), ('LOC', 8, 8), ('LOLF', 6, 6), ('LOCKS', 5, 5),
+                            ('LOCK', 4, 4), ('MODE', 2, 0)]),
+    0xFC070000: ('DTMR0', [('PS', 15, 8), ('CE', 7, 6), ('OM', 5, 5), ('ORRI', 4, 4),
+                           ('FRR', 3, 3), ('CLK', 2, 1), ('RST', 0, 0)]),
+    0xFC070002: ('DTXMR0', [('DMAEN', 7, 7), ('HALTED', 6, 6), ('EN1588', 5, 5), ('EPD', 4, 4),
+                            ('MODE16', 0, 0)]),
+}
 
 
 def pack7(data):
@@ -414,8 +433,79 @@ def cmd_stacks(pr, args):
         print('  %08x   %08x   %2d   %6d  %6d  %5.1f %%  %s' % (tcb, entry, prio, size, used, 100 * used / size, state))
 
 
+def req_regs(seq):
+    return request(seq, REGS)
+
+
+def decode_regs(p):
+    """-> [(address, width in bytes, value)], one per register in the probe's list."""
+    if len(p) % 12:
+        raise ValueError('a REGS reply of %d bytes: not whole entries of 12' % len(p))
+    return [struct.unpack_from('>3I', p, i) for i in range(0, len(p), 12)]
+
+
+def fields(v, spec):
+    """spec: [(name, high bit, low bit)] -> 'NAME=value ...' for value v."""
+    return ' '.join('%s=%d' % (n, (v >> lo) & ((1 << (hi - lo + 1)) - 1)) for n, hi, lo in spec)
+
+
+def explain_regs(regs, bus_hz=None):
+    """The fields of each register (MCF5441x Reference Manual, chapters 8, 10 and 39), and the
+    clocks they give. With bus_hz (DTCN0's measured rate), the PLL's reference and core too."""
+    by = {a: v for a, _w, v in regs}
+    out = []
+    for a, w, v in regs:
+        name, spec = REG_FIELDS.get(a, ('?', []))
+        out.append('  0x%08x %-7s %d B  0x%0*x  %s' % (a, name, w, 2 * w, v, fields(v, spec)))
+    cir = by.get(0xEC09000A)
+    if cir is not None:
+        out.append('  CIR: PIN 0x%03x, PRN %d (an MCF54415 is expected to give PIN 0x0A0)'
+                   % (cir >> 6, cir & 0x3F))
+    cr, dr = by.get(0xFC0C0000), by.get(0xFC0C0004)
+    if cr is not None and dr is not None:
+        mult = ((cr & 0x3F) + 1) / (1 << ((cr >> 8) & 7))
+        div = [((dr >> lo) & 0x1F) + 1 for lo in (0, 5, 10, 16, 21)]
+        out.append('  PLL: fVCO = fREF x %g. Core fVCO/%d, bus fVCO/%d, eSDHC fVCO/%d, USB fVCO/%d, NAND fVCO/%d'
+                   % (mult, *div))
+        if bus_hz:
+            vco = bus_hz * div[1]
+            out.append('  with the bus at %.2f MHz: fVCO %.1f MHz, fREF %.3f MHz, core %.2f MHz'
+                       % (bus_hz / 1e6, vco / 1e6, vco / mult / 1e6, vco / div[0] / 1e6))
+    dtmr = by.get(0xFC070000)
+    if dtmr is not None:
+        clk = ('stopped', 'the bus clock / 1', 'the bus clock / 16', 'the DT0IN pin')[(dtmr >> 1) & 3]
+        out.append('  DMA timer 0 counts %s, prescaler / %d%s'
+                   % (clk, ((dtmr >> 8) & 0xFF) + 1,
+                      '' if by.get(0xFC070002, 0) & 0x20 == 0 else ' (EN1588 set: the 1588 timebase instead)'))
+    return out
+
+
+def cmd_regs(pr, args):
+    """The probe's fixed register list (protocol 4), and DTCN0's rate over one second."""
+    h = decode_hello(pr.call(req_hello))
+    print('%s  (probe protocol %d)' % (h['tag'], h['proto']))
+    if h['proto'] < 4:
+        print('this build has no REGS command: it needs probe protocol 4')
+        return
+    a = decode_stats(pr.call(req_stats))
+    regs = decode_regs(pr.call(req_regs))
+    time.sleep(1.0)
+    b = decode_stats(pr.call(req_stats))
+    d = delta(a, b)
+    bus = d.get('ticks_per_s')
+    if bus:
+        print('  DTCN0 over %d frames: %.3f MHz' % (d['frames'], bus / 1e6))
+    for line in explain_regs(regs, bus):
+        print(line)
+
+
 def selftest():
     assert irptl_names(0x100) == 'ILADI' and irptl_names(0) == 'none'
+    regs = decode_regs(struct.pack('>9I', 0xEC09000A, 2, 0x0A0 << 6 | 1,
+                                   0xFC0C0000, 4, 0x0000001D, 0xFC0C0004, 4, 0x1 | 3 << 5))
+    assert regs[0] == (0xEC09000A, 2, 0x2801)
+    text = '\n'.join(explain_regs(regs, 132e6))
+    assert 'PIN 0x0a0, PRN 1' in text and 'fREF x 30' in text and 'core 264.00 MHz' in text, text
     assert decode_stage(0x57520013) == 19 and decode_stage(0x00065752) == 6 and decode_stage(0x12345678) is None
     sx = req_peek(7, 0x80005e60, 20)
     assert sx[:6] == HEADER and all(b < 0x80 for b in sx[1:-1])
@@ -523,7 +613,7 @@ def cmd_watch(pr, args):
 
 
 COMMANDS = {'stacks': cmd_stacks, 'hello': cmd_hello, 'stats': cmd_stats, 'dsp': cmd_dsp, 'peek': cmd_peek, 'stage': cmd_stage, 'irptl': cmd_irptl,
-            'watch': cmd_watch}
+            'watch': cmd_watch, 'regs': cmd_regs}
 
 
 def main(argv=None):

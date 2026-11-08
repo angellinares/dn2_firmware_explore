@@ -58,7 +58,8 @@ def test_lfo4_alone_is_the_gated_build(stock):
     1.0.3's three stride edits and its table chunk 8 bytes longer (the last stock
     record's tail, issue #293). 1.0.4's table chunk starts with stock's 52 bytes before
     the table (entry 0). The bus writes its 55 bounds; the area also carries
-    its count and its four hooks' displaced copies, which nothing reads at run time."""
+    its count and a displaced copy for each of its hooks (five since 1.0.5, which hooks
+    the frame send), which nothing reads at run time."""
     from dnfw.mods import bus, lfo4
     from dnfw.patch import paramtable
     spec = lfo4.SPEC
@@ -80,7 +81,7 @@ def test_lfo4_alone_is_the_gated_build(stock):
     assert out[:platform.STOCK_LENGTH] == bytes(image[:platform.STOCK_LENGTH])
     chunks = area.parse(out[platform.STOCK_LENGTH:])
     assert [d for c, d in chunks if c == area.CODE] == expected
-    assert [c for c, _ in chunks if c != area.CODE] == [platform.DISP] * 4 + [bus.ADDS]
+    assert [c for c, _ in chunks if c != area.CODE] == [platform.DISP] * len(lfo4.HOOKS) + [bus.ADDS]
     assert bus.totals(chunks) == {b"PARM": 10}
 
 

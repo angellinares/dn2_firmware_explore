@@ -107,6 +107,16 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     ) + PUBLISHED,
     "layermidi": PUBLISHED,
     "lfo4": (
+        Release("1.0.5", "2026-11-08", (
+            "A busy pattern with LFO4 could drop a beat, and a note could then keep sounding after "
+            "STOP. LFO4 now uses much less processor time during playback, and a beat is no longer "
+            "dropped.",
+            "LFO4 now runs on a voice only while the voice can be heard: until its AMP envelope has "
+            "ended. A voice with REL or DEC at INF keeps LFO4. An LFO4 aimed at an FX parameter "
+            "always runs.",
+            "LFO4 keeps its phase while a voice is silent, so a note without an LFO trig carries on "
+            "from where the LFO would be.",
+        )),
         Release("1.0.4", "2026-10-28", (
             "A parameter the firmware does not know now gets stock's fallback settings again. Two "
             "more places in the firmware now read LFO4's settings from its own records. LFO4 "

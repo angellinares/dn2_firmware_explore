@@ -23,6 +23,7 @@
  * reason a fully working page modulated nothing.
  */
 #include "ext.h"
+#include "amp_times.h"
 #ifdef LFO4_TELEMETRY
 #include "tlm.h"
 #endif
@@ -45,7 +46,8 @@
  * Owning them here also deletes a build-time constant: the stubs get the
  * address from `lfo4_refresh`'s return value, so nothing has to agree about a
  * number in two places. */
-u16 lfo4_rows[TRACKS][EXT_PARAMS];
+u16 lfo4_rows[TRACKS][EXT_PARAMS] __attribute__((aligned(4)));
+typedef char lfo4_row_is_16_bytes[(EXT_PARAMS == 8) ? 1 : -1];   /* lfo4_refresh copies 4 longs */
 
 u32 lfo4_refreshes, lfo4_copies_in;
 
@@ -107,7 +109,42 @@ u32 lfo4_row_dest;
  * this whole bug is made of. */
 u32 lfo4_out_of_range;
 static u32 seen_sound[TRACKS];
-static u32 seen_generation[TRACKS];
+u32 lfo4_seen_generation[TRACKS];     /* `a4_top` compares these and `lfo4_owner_raw` itself */
+
+/* **The audio frame's cost, 2026-11-05.** On a project with LFO4 in use, the fourth LFO and
+ * this bridge took the ColdFire audio interrupt from a 97 % peak to 118 %, frames ran late, and
+ * a late frame can miss the DSP: lost notes and a voice stuck at STOP (`diag4`, `diag5`). So:
+ *
+ * - `a4_top` (`scripts/build_lfo4_bridge.py`) asks the C only when a voice's sound or the table
+ *   has changed.
+ * - A voice with no note and no release left sleeps its fourth LFO. On its next note the LFO
+ *   wakes and catches up the phase it missed, so it reads as if it had run.
+ *   One with an FX destination (over 100) never sleeps: those cells do not depend on a note.
+ *
+ * A voice sleeps only once its AMP envelope has ended, read from the voice's own mirror block
+ * (`amp_ended`). REL or DEC at 127 (INF) never ends, so that voice stays awake. The owner,
+ * 2026-11-06, on fix1's fixed 10 s: "sometimes you set release to infinite even".
+ *
+ * What sleeping gives up: a page that shows an idle voice's modulation holds still. */
+#define LFO_PERIOD     1382400000u    /* the evaluators' phase wraps here */
+#define LFO_RATE       (*(volatile u32 *)0x402A0DECu)   /* the frame's rate, the evaluators' 2nd argument */
+#define LFO_LIVE_STATE 0x4464ABF0u    /* `build_lfo4_tick.py`: 160 bytes a voice, 40 an LFO */
+#define LFO4_STATE     120u           /* the fourth LFO's record; its phase is its first word */
+
+u8  lfo4_awake[TRACKS];               /* read by `a4_top` */
+/* **fix3 (2026-11-06): a sleeping voice costs `a4_top` one test.** fix2 still ran the row checks
+ * for every voice, about 39 instructions a voice over stock, and the unit's peak stayed 11 points
+ * above a build without LFO4. Now `a4_top` goes past a voice that is asleep and has no LFO trig,
+ * unless some sound aims LFO4 at an FX parameter: those cells do not wait for a note, so with
+ * `lfo4_fx` set every voice takes the full path, as in fix2. `lfo4_fx` is read again each time
+ * the table's generation moves. */
+u8  lfo4_fx;
+u32 lfo4_fx_generation = 0xFFFFFFFFu;
+u32 lfo4_now;                         /* frames, while any LFO4 exists */
+u32 lfo4_held;                        /* bit v: voice v holds a note */
+u32 lfo4_runs, lfo4_wakes;            /* fourth-LFO iterations run, and sleeping voices woken */
+static u32 asleep_since[TRACKS], on_at[TRACKS], off_at[TRACKS];
+static u32 seen_container;
 
 /* -> where the firmware keeps this track's live sound, or 0 before there is
  * one.
@@ -160,7 +197,7 @@ u32 lfo4_sound_of(u32 track)
  * 23,500 times a second, and sixteen compares per tick would be the cost of
  * not caching it. */
 u32 lfo4_owner[TRACKS];
-static u32 owner_raw[TRACKS];
+u32 lfo4_owner_raw[TRACKS];
 static u32 owner_sound[TRACKS];
 /* Checked once per change, not once per tick. The first version re-ran
  * all sixteen compares on every call whenever the entry was not a live
@@ -171,20 +208,22 @@ static u32 lfo4_voice_sound(u32 v)
 {
     u32 raw = *(volatile u32 *)(DN2_VOICE_SOUND + 4u * v);
 
-    if (!owner_seen[v] || raw != owner_raw[v]) {
-        u32 t;
+    if (!owner_seen[v] || raw != lfo4_owner_raw[v]) {
+        /* A+ (2026-11-07): the track by arithmetic, not by sixteen compares. The live sounds sit
+         * at `base + DN2_SOUND_AT + t * DN2_SOUND_STRIDE` (`lfo4_sound_of`), so this gives the
+         * search's answer. The search was about 230 instructions on each note that moves a voice
+         * to another track, and those land in the key-down frames that run late. */
+        u32 base = *(volatile u32 *)DN2_LIVE_CONTAINER;
+        u32 d = raw - (base + DN2_SOUND_AT), t = d / DN2_SOUND_STRIDE;
 
         owner_seen[v] = 1;
-        owner_raw[v] = raw;
+        lfo4_owner_raw[v] = raw;
         owner_sound[v] = 0;
         lfo4_owner[v] = raw ? 127u : 126u;
-        if (raw)
-            for (t = 0; t < TRACKS; t++)
-                if (lfo4_sound_of(t) == raw) {
-                    owner_sound[v] = raw;
-                    lfo4_owner[v] = t;
-                    break;
-                }
+        if (raw && base && t < TRACKS && d == t * DN2_SOUND_STRIDE) {
+            owner_sound[v] = raw;
+            lfo4_owner[v] = t;
+        }
     }
     return owner_sound[v];
 }
@@ -206,6 +245,237 @@ u32 lfo4_word;                       /* the frame word currently being reported 
 u32 lfo4_block_base = 0xFFFFFFFFu;   /* the lowest block seen = track 0's */
 
 u32 lfo4_refresh(u32 track);
+
+/* The phase LFO4 would have reached in the frames voice V slept: what the evaluator adds each
+ * frame (`0x40137726`), times those frames, modulo the period. Every mode runs its phase when
+ * idle, and a note with no LFO trig carries on from it. */
+#define PHASE(v) ((u32 *)(LFO_LIVE_STATE + 160u * (v) + LFO4_STATE))
+
+/* -> R plus N steps of STEP, modulo the period. The period is under 2^31, so the sums fit. */
+static u32 advance(u32 r, u32 step, u32 n)
+{
+    for (; n; n >>= 1) {
+        if (n & 1u) {
+            r += step;
+            if (r >= LFO_PERIOD)
+                r -= LFO_PERIOD;
+        }
+        step += step;
+        if (step >= LFO_PERIOD)
+            step -= LFO_PERIOD;
+    }
+    return r;
+}
+
+/* -> the phase step a frame of voice V's row, or 0 if the row has no destination (nothing reads
+ * the phase then). */
+static u32 phase_step(u32 v)
+{
+    const u16 *row = lfo4_rows[v];
+    u32 f = LFO_RATE;
+    int mult = (signed char)(row[1] >> 8), inc = ((int)(short)row[0] - 16384) * 2;
+
+    if (!(row[3] >> 8))
+        return 0;
+    if (mult < 0) {
+        mult = 0;
+    } else if (mult > 11) {
+        mult = (mult > 23 ? 23 : mult) - 12;
+        f = 14400u;
+    }
+    inc = (inc * (int)f) >> (11 - mult);
+    return inc < 0 ? LFO_PERIOD - (u32)(-inc) % LFO_PERIOD : (u32)inc % LFO_PERIOD;
+}
+
+/* **A+ (2026-11-07): the phase is kept current while a voice sleeps.** A voice with a destination
+ * goes to sleep only in `lfo4_on_frame`'s every-256th-frame check, so it keeps its step and the
+ * step of 256 frames, and each later check adds that. A wake then adds fewer than 256 frames: 8
+ * doublings at most, where the catch-up over the whole sleep took about 9.5 instructions for each
+ * doubling of its length (99 after 16 frames, 220 after a minute, emulator, 2026-11-07). The
+ * phase runs at the rate of the row the voice slept with. */
+static u32 sleep_step[TRACKS], sleep_step256[TRACKS];
+
+static void doze(u32 v)
+{
+    u32 step = phase_step(v);
+
+    lfo4_awake[v] = 0;
+    asleep_since[v] = lfo4_now;
+    sleep_step[v] = step;
+    if (step) {
+        sleep_step256[v] = advance(0, step, 256u);
+        *PHASE(v) %= LFO_PERIOD;
+    }
+}
+
+/* The phase LFO4 would have reached in the frames voice V slept: what the evaluator adds each
+ * frame (`0x40137726`), times those frames, modulo the period. Every mode runs its phase when
+ * idle, and a note with no LFO trig carries on from it. */
+static void catch_up(u32 v)
+{
+    if (sleep_step[v])
+        *PHASE(v) = advance(*PHASE(v), sleep_step[v], lfo4_now - asleep_since[v]);
+}
+
+void lfo4_wake(u32 v)
+{
+    if (lfo4_awake[v])
+        return;
+    catch_up(v);
+    sleep_step[v] = 0;
+    lfo4_awake[v] = 1;
+    lfo4_wakes++;
+}
+
+/* The AMP page's parameters (ids 81..92 in the parameter table), as voice V's mirror block holds
+ * them after modulation and p-locks: the value the DSP gets this frame, 0..127. */
+#define AMP_ATK  81u
+#define AMP_HOLD 82u                  /* 127 is NOTE: hold while the note is held */
+#define AMP_DEC  83u
+#define AMP_REL  85u
+#define AMP_MODE 91u                  /* AMP_MODE_ADSR or AHD */
+#define AMP_INF  127u                 /* REL or DEC: the envelope never ends */
+
+static u32 amp(u32 v, u32 id)
+{
+    return *(volatile u16 *)(MIRROR_BASE + MIRROR_STRIDE * v + MIRROR_AT + 2u * id) >> 8;
+}
+
+/* -> 1 if voice V's AMP envelope has ended. `amp_times.h` holds each segment's stock DSP time for
+ * each value, in 256-frame units rounded up, from the DSP's own amp stage (`gen_amp_times.py`).
+ * Every test adds the segments that could still be running, so an end is never early. */
+static int amp_ended(u32 v)
+{
+    u32 off = (lfo4_now - off_at[v]) >> 8, on = (lfo4_now - on_at[v]) >> 8;
+    u32 a = amp(v, AMP_ATK), h = amp(v, AMP_HOLD), d = amp(v, AMP_DEC), r = amp(v, AMP_REL);
+
+    if (amp(v, AMP_MODE) == AMP_MODE_ADSR)  /* the release starts at note-off from any level */
+        return r < AMP_INF && off > amp_rel[r];
+    if (d >= AMP_INF)
+        return 0;
+    /* AHD: a fixed HOLD ignores note-off, HOLD at NOTE decays from note-off */
+    return on > amp_atk[a] + (h < 127u ? amp_hold[h] : 0u) + amp_dec[d] && off > amp_dec[d];
+}
+
+/* From `a4_top`, when an awake voice's row has no destination: it sleeps at once. A note, or a
+ * change to the table while the voice can still be heard, wakes it again. */
+/* **The frame send's guard (fix4, a test build, 2026-11-07).** A frame sent late is lost when it
+ * was sent 0.739 to 0.772 ms after the one before (diag4: 24 of 65 late frames, on the unit). A
+ * late transfer is still running when the next frame's turn comes, so the stock send skips that
+ * one (DSPI2 SR bit 28, 0x400cf7fc), and the late frame alone spans two DSP blocks. So this holds
+ * any frame that is late, and adds its note masks to the next frame instead. That frame goes out
+ * on time and reaches the DSP one block later than a kept late frame would. One hold at a time,
+ * so a run of late frames still sends every second one. Waverider's other frames (its table
+ * chunks) are sent as stock and only move the clock on. */
+#define DTCN0       (*(volatile u32 *)0xFC07000Cu)    /* DMA timer 0, 132 MHz (diag4's clock) */
+#define DSPI_SR     (*(volatile u32 *)0xEC03802Cu)
+#define DSPI_EOQ    0x10000000u                       /* the last transfer has ended */
+#define FRAME_TX    0x80005E60u
+#define NOTE_ON     (*(volatile u16 *)0x80005E82u)
+#define NOTE_OFF    (*(volatile u16 *)0x80005E84u)
+#define LATE_TICKS  91080u                            /* 0.690 ms: on-time gaps are 0.664 to 0.670 */
+u32 lfo4_guard_holds, lfo4_guard_carried;
+static u32 last_send;
+static u16 carry_on, carry_off;
+static u8 held;
+
+u32 lfo4_send_guard(u32 frame)
+{
+    u32 now = DTCN0;
+
+    if (!(DSPI_SR & DSPI_EOQ))            /* the link is busy: the stock send skips this itself */
+        return 1;
+    if (frame == FRAME_TX) {
+        if (!held && now - last_send > LATE_TICKS) {
+            carry_on |= NOTE_ON;
+            carry_off |= NOTE_OFF;
+            held = 1;
+            lfo4_guard_holds++;
+            return 0;
+        }
+        if (held) {
+            NOTE_ON |= carry_on;
+            NOTE_OFF |= carry_off;
+            carry_on = carry_off = 0;
+            held = 0;
+            lfo4_guard_carried++;
+        }
+    }
+    last_send = now;
+    return 1;
+}
+
+static u32 parked;                    /* bit v: slept by lfo4_sleep, its note may still sound */
+
+void lfo4_sleep(u32 v)                 /* its row has no destination, so `doze` keeps no step */
+{
+    doze(v);
+    parked |= 1u << v;
+}
+
+/* The table changed: is any sound's LFO4 aimed at an FX parameter now, and does a parked voice
+ * that can still be heard have to look at its row again? Only a parked voice: a voice that went
+ * to sleep because its envelope ended, or that never played, stays asleep until its next note. */
+static void table_changed(void)
+{
+    u32 i, v;
+
+    lfo4_fx_generation = ext_generation;
+    lfo4_fx = 0;
+    for (i = 0; i < EXT_SLOTS; i++)
+        if (ext_key[i] && (ext_val[i][3] >> 8 & 0x7Fu) > 100u) {
+            lfo4_fx = 1;
+            break;
+        }
+    for (v = 0; v < TRACKS; v++)
+        if (parked >> v & 1u) {
+            parked &= ~(1u << v);
+            if ((lfo4_held >> v & 1u) || !amp_ended(v))
+                lfo4_wake(v);
+        }
+}
+
+/* From `a4_top`, on voice 0: a frame with note masks (`on << 16 | off`, as the last frame was
+ * built), a frame after the table changed, and every 256th frame to put voices to sleep. */
+void lfo4_on_frame(u32 masks)
+{
+    u32 v;
+
+    if (ext_generation != lfo4_fx_generation)
+        table_changed();
+    if (masks) {
+        u32 on = masks >> 16, off = masks & 0xFFFFu;
+
+        lfo4_held = (lfo4_held & ~off) | on;
+        for (v = 0; v < TRACKS; v++) {
+            if (off >> v & 1u)
+                off_at[v] = lfo4_now;
+            if (on >> v & 1u) {
+                on_at[v] = lfo4_now;
+                parked &= ~(1u << v);
+                lfo4_wake(v);
+            }
+        }
+    }
+    if (lfo4_now & 255u)
+        return;
+    for (v = 0; v < TRACKS; v++)
+        if (lfo4_awake[v]) {
+            if (!(lfo4_held >> v & 1u) && amp_ended(v))
+                doze(v);
+        } else if (sleep_step[v]) {        /* asleep since a check: exactly 256 frames on */
+            u32 r = *PHASE(v) + sleep_step256[v];
+
+            *PHASE(v) = r >= LFO_PERIOD ? r - LFO_PERIOD : r;
+            asleep_since[v] = lfo4_now;
+        }
+    /* A project load moves the live sounds, and a voice with no sound reads them by position */
+    v = *(volatile u32 *)DN2_LIVE_CONTAINER;
+    if (v != seen_container) {
+        seen_container = v;
+        ext_generation++;
+    }
+}
 
 /* -> the row for the track whose mirror block this is.
  *
@@ -610,7 +880,9 @@ u32 lfo4_refresh(u32 track)
     u32 row = (u32)lfo4_rows + track * ROW_BYTES;
     u32 sound, generation;
     u16 *values;
+#ifdef LFO4_FORCE_ROW
     u32 k;
+#endif
 
     if (track >= TRACKS) {
         lfo4_out_of_range++;
@@ -638,11 +910,11 @@ u32 lfo4_refresh(u32 track)
     sound = lfo4_sound_of(track);   /* treats the index as a track -- it is a voice */
 #endif
     generation = ext_generation;
-    if (sound == seen_sound[track] && generation == seen_generation[track])
+    if (sound == seen_sound[track] && generation == lfo4_seen_generation[track])
         return row;
 
     seen_sound[track] = sound;
-    seen_generation[track] = generation;
+    lfo4_seen_generation[track] = generation;
     lfo4_copies_in++;
     values = ext_find(sound);
     if (values) {
@@ -653,8 +925,16 @@ u32 lfo4_refresh(u32 track)
         lfo4_last_lookup = -1;
     }
     lfo4_row_dest = (u32)(((u16 *)row)[3] >> 8) & 0x7Fu;
-    for (k = 0; k < EXT_PARAMS; k++)
-        ((u16 *)row)[k] = values ? values[k] : ext_default[k];
+    {
+        /* A+ (2026-11-07): four long moves, not eight halfword moves through a test each (about
+         * 56 instructions on each reload). Both arrays are 4-aligned and a row is 16 bytes. */
+        const u32 *from = (const u32 *)(values ? values : ext_default);
+        u32 *to = (u32 *)row;
+        to[0] = from[0];
+        to[1] = from[1];
+        to[2] = from[2];
+        to[3] = from[3];
+    }
 #ifdef LFO4_FORCE_ROW
     /* **A bisect switch, off in every shipped build.**
      *

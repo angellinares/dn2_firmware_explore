@@ -464,13 +464,16 @@ def explain_regs(regs, bus_hz=None):
     cr, dr = by.get(0xFC0C0000), by.get(0xFC0C0004)
     if cr is not None and dr is not None:
         mult = ((cr & 0x3F) + 1) / (1 << ((cr >> 8) & 7))
-        div = [((dr >> lo) & 0x1F) + 1 for lo in (0, 5, 10, 16, 21)]
-        out.append('  PLL: fVCO = fREF x %g. Core fVCO/%d, bus fVCO/%d, eSDHC fVCO/%d, USB fVCO/%d, NAND fVCO/%d'
-                   % (mult, *div))
-        if bus_hz:
-            vco = bus_hz * div[1]
-            out.append('  with the bus at %.2f MHz: fVCO %.1f MHz, fREF %.3f MHz, core %.2f MHz'
-                       % (bus_hz / 1e6, vco / 1e6, vco / mult / 1e6, vco / div[0] / 1e6))
+        # An OUTDIVn of 0 turns that clock off (Reference Manual, table 8-4).
+        raw = [(dr >> lo) & 0x1F for lo in (0, 5, 10, 16, 21)]
+        names = ('core', 'bus', 'eSDHC', 'USB', 'NAND')
+        out.append('  PLL: fVCO = fREF x %g. ' % mult + ', '.join(
+            '%s %s' % (n, 'off' if r == 0 else 'fVCO/%d' % (r + 1)) for n, r in zip(names, raw)))
+        if bus_hz and raw[1]:
+            vco = bus_hz * (raw[1] + 1)
+            out.append('  with the bus at %.2f MHz: fVCO %.1f MHz, fREF %.3f MHz, ' % (bus_hz / 1e6, vco / 1e6, vco / mult / 1e6)
+                       + ', '.join('%s %.2f MHz' % (n, vco / (r + 1) / 1e6)
+                                   for n, r in zip(names, raw) if r and n != 'bus'))
     dtmr = by.get(0xFC070000)
     if dtmr is not None:
         clk = ('stopped', 'the bus clock / 1', 'the bus clock / 16', 'the DT0IN pin')[(dtmr >> 1) & 3]
@@ -506,6 +509,7 @@ def selftest():
     assert regs[0] == (0xEC09000A, 2, 0x2801)
     text = '\n'.join(explain_regs(regs, 132e6))
     assert 'PIN 0x0a0, PRN 1' in text and 'fREF x 30' in text and 'core 264.00 MHz' in text, text
+    assert 'NAND off' in text and 'core fVCO/2' in text, text
     assert decode_stage(0x57520013) == 19 and decode_stage(0x00065752) == 6 and decode_stage(0x12345678) is None
     sx = req_peek(7, 0x80005e60, 20)
     assert sx[:6] == HEADER and all(b < 0x80 for b in sx[1:-1])

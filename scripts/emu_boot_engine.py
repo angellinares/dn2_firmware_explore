@@ -288,9 +288,12 @@ def main() -> int:
     # the intro called the stamp. So after the engine, compare every chunk's
     # image against the image file; one with an init may rewrite its own data,
     # so its difference is reported but not failed on.
+    # The chunks as built: platform.split would put the bus's bytes back to stock,
+    # also inside another mod's displaced copy, so a raised bound there (cmpi.l
+    # #331 for #321) would read as overwritten, though the loader placed it so.
     image = open(f"{build}/section_3_MAIN_OS.bin", "rb").read()
     clobbered = []
-    for cid, data in platform.split(image)[1]:
+    for cid, data in area.parse(image[platform.STOCK_LENGTH:]):
         if cid != area.CODE:
             continue
         code = area.CodeChunk.unpack(data)

@@ -20,7 +20,8 @@ applies the hooks, and `compile_drive` (here) builds the bytes.
     (wr_frame_src) and goes back to 0x40025eb2.
   - The UI pass needs no hook: the page's `wr_poll`, already on the UI loop, calls
     the head's poll.
-- **RAM:** the chunk, and the pool's display spans at `SPANS` (pool.h).
+- **RAM:** the chunk, the pool's display spans at `SPANS` (pool.h), and the loader's chunk
+  queue at `QUEUE_AT` (loader.c's own `QUEUE_AT` and `QUEUE`, read from the source).
 
 For 1.12 (`os-112-support`): each site is recorded with its shape in `GUARDS`.
 """
@@ -28,12 +29,17 @@ For 1.12 (`os-112-support`): each site is recorded with its shape in `GUARDS`.
 from __future__ import annotations
 
 import pathlib
+import re
 
 LOAD = 0x467F0000                 # above reloadconfirm's chunk and the route test's, below lfo4's C
 LIMIT = 0x46800000
 SPANS = 0x46A00000                # pool.h: WR_POOL_SPANS
 SPANS_BYTES = 128 * 16 * 2 * 96     # POOL_SLOTS (pool.h) x 16 frames x min/max x 96 columns
 ROOT = pathlib.Path(__file__).resolve().parents[3]
+_LOADER = (ROOT / "csrc/waverider/loader.c").read_text(encoding="utf-8")
+QUEUE_AT = int(re.search(r"#define QUEUE_AT\s+(0x[0-9A-Fa-f]+)u", _LOADER)[1], 16)
+CHUNK_BYTES = 2688                  # loader.c's FRAME_WORDS x 2: one frame
+QUEUE_BYTES = int(re.search(r"#define QUEUE\s+(\d+)", _LOADER)[1]) * CHUNK_BYTES
 SOURCES = (ROOT / "csrc/waverider/pool.c", ROOT / "csrc/waverider/loader.c",
            ROOT / "csrc/waverider/events.c", ROOT / "csrc/waverider/scope_feed.c",
            ROOT / "csrc/dn2/audio_tap.c",

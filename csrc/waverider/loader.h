@@ -18,6 +18,7 @@ struct wr_load {
     u32 done_bytes;                       /* of it, read into the queue: NOT acknowledged (acked counts that) */
     u32 failed;                           /* 1: the DSP stopped answering; so did the loader */
     u32 queue, queue_chunks;              /* where the chunks are (2,688 B each), and how many */
+    u32 starved;                          /* exchanges with an extent loading but no chunk ready to send */
 };
 extern volatile struct wr_load wr_load;
 

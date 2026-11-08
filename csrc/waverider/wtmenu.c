@@ -109,7 +109,7 @@ static void count_tables(void)
         DELETE(index);
 }
 
-u32 wr_wt_key(void *view, void *event)
+static u32 key_body(void *view, void *event)
 {
     u32 code = KEY_CODE(event);
     freshen();
@@ -168,7 +168,7 @@ u32 wr_wt_key(void *view, void *event)
  * Stock's handler moves the menu's cursor by the steps the firmware's accumulator makes of
  * the turn; the same call here, its steps going to this page's cursor or the list's. Called
  * through the thunk's replacement below, with the view as stock's thunk would hand it. */
-u32 wr_wt_enc(void *view, void *event)
+static u32 enc_body(void *view, void *event)
 {
     freshen();
     if (!wr_wtmenu.page || ENC_WHICH(event) != ENC_LEVEL)
@@ -205,7 +205,7 @@ static void number_right(void *canvas, int right, int y, u32 n)
     TEXT(canvas, FONT, right - digits * DIGIT_W, y, 0, "%u", n);
 }
 
-void wr_wt_draw(void *view, void *canvas)
+static void draw_body(void *view, void *canvas)
 {
     u32 used;
     freshen();
@@ -256,3 +256,28 @@ __asm__(
 "	subq.l	#4,4(%sp)\n"
 "	jmp	wr_wt_enc\n"
 "	.text\n");
+
+/* Each handler runs only while the PRESET/KIT menu is on screen, so each one marks the menu open
+ * when it is done (the LED callback does the same every frame). freshen's gap then counts only the
+ * time none of them ran, which is what a closed menu looks like. Before, a handler's own card reads
+ * counted too: a list of 300+ samples, or quick DOWN presses in a long list, ran past GAP and the
+ * menu went back to stock (owner, cocktail1 to cocktail3, 2026-11-04). */
+u32 wr_wt_key(void *view, void *event)
+{
+    u32 r = key_body(view, event);
+    wr_wtmenu.seen = TICKS;
+    return r;
+}
+
+u32 wr_wt_enc(void *view, void *event)
+{
+    u32 r = enc_body(view, event);
+    wr_wtmenu.seen = TICKS;
+    return r;
+}
+
+void wr_wt_draw(void *view, void *canvas)
+{
+    draw_body(view, canvas);
+    wr_wtmenu.seen = TICKS;
+}

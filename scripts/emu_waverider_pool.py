@@ -62,7 +62,7 @@ PANEL = ROOT.parent / "digikit-rust/out/native/target-host/release/examples/pane
 POOL_FIELDS = "magic state count fills generation changes_seen spare".split()
 POOL_NAME = 16                    # csrc/waverider/pool.h: a pool name's bytes
 LOAD_FIELDS = ("magic queued sent resent acked refused timeouts held read_errors last_rc "
-               "want_sector want_bytes want_dest done_bytes failed queue queue_chunks").split()
+               "want_sector want_bytes want_dest done_bytes failed queue queue_chunks starved").split()
 STORE_FIELDS = "magic group generation read_errors reads changes".split()
 FRAME = LF.FRAME_BYTES
 UI_LOOP = 0x4002E464              # coldfire.POLL_SITE: the UI loop, where our calls are made

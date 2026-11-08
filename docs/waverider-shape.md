@@ -3,7 +3,7 @@
 Owner's order (2026-10-12): wavefolder, phase warp, ring and AM, osc 2 modulates osc 1, noise
 into POS, formant or comb bank. The layout is option 4 of the layout page: four live knobs and
 one typed shaper slot. This page reserves its eight records before any of the features land,
-so a saved sound's record layout does not move when they do. Waverider is an alpha: a layout
+so a saved sound's record layout does not move when they do. Waverider is a beta: a layout
 that proves wrong in testing can still change.
 
 ## The page

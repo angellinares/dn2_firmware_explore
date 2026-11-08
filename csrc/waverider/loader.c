@@ -34,7 +34,12 @@
 #define HEADER_WORDS  8                   /* 4 DSP words: command|count, dest, seq, sum */
 #define CHUNK_SECTORS 5
 #define PAYLOAD_BYTES (CHUNK_SECTORS * 512)   /* 2,560 B, 640 DSP words (the DSP takes 668) */
-#define QUEUE         3
+/* The queue sits in RAM of its own (dnfw.waverider.drive.QUEUE_AT, declared in the mod's ram()),
+ * not in the drive chunk. With 3 chunks a load ran at 90 a second on the instrument (2026-10-25,
+ * 5.76 MB in 25 s): the ISR drains them in a dozen frames, then waits for the next UI pass. 16
+ * cover a UI pass at the exchange's own pace, one chunk every three or four frames. */
+#define QUEUE_AT      0x46B00000u
+#define QUEUE         16
 #define TIMEOUT       24                  /* frames, 16 ms: the reply trails by two or three */
 #define GIVE_UP       8                   /* timeouts in a row */
 #define SEQ_TAG       0x4C440000u         /* 'LD': no stock reply value looks like it */
@@ -52,10 +57,10 @@ static const u8 *want_memory __attribute__((section(".data"))) = 0;   /* 0: the 
 static wr_load_seen want_seen __attribute__((section(".data"))) = 0;
 static u32 timeouts_in_a_row __attribute__((section(".data"))) = 0;
 
-static struct chunk queue[QUEUE] __attribute__((section(".data"), aligned(16))) = { { { 0 } } };
-/* after the queue, which it names for the probe */
+static struct chunk *const queue = (struct chunk *)QUEUE_AT;
+/* it names the queue for the probe */
 volatile struct wr_load wr_load __attribute__((section(".data"))) =
-    { 0x57524C44u, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (u32)queue, QUEUE };
+    { 0x57524C44u, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, QUEUE_AT, QUEUE, 0 };
 static volatile u32 head __attribute__((section(".data"))) = 0;    /* UI task: next to fill */
 static volatile u32 tail __attribute__((section(".data"))) = 0;    /* ISR: the oldest */
 static u32 seq __attribute__((section(".data"))) = 0;
@@ -111,7 +116,8 @@ void *wr_frame_src(void *frame)
             return &queue[tail % QUEUE];              /* the DSP still holds the last frame */
         }
         wr_load.held++;
-    }
+    } else if (!in_flight && tail == head && wr_load.done_bytes < wr_load.want_bytes)
+        wr_load.starved++;
     last_clear = clear;
     return frame;
 }

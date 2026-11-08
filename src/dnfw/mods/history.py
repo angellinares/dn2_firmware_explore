@@ -159,7 +159,10 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "usbprobe": UNPUBLISHED,
     "waverider": (
         Release("0.5.0", "2026-11-08", (
-            "Beta 1. Waverider is now a beta. It sounds and operates as in 0.4.2.",
+            "Beta 1. Waverider is now a beta. The sound is the same as in 0.4.2.",
+            "Tables load from the +Drive about four times as fast.",
+            "The WAVETABLE page of PRESET/KIT stays open when you press DOWN quickly in a long list. "
+            "Before, it could go back to the presets.",
         )),
         Release("0.4.2", "2026-11-06", (
             "Fixes one part of the DSP data in 0.4.1 that had a length the DSP may not load at start-up. "

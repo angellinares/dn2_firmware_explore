@@ -48,7 +48,7 @@
 #define KEY_FUNC    17
 #define VISIBLE     7
 #define ROW_H       8
-#define NAME_LEN    16
+#define NAME_LEN    23          /* 22 characters: "000 + " and the name fill the row to the cursor bar's edge, x 120 */
 #define PANEL_X     60          /* the side panel's left edge, as stock's */
 
 struct row { u8 slot; u8 in_pool; char name[NAME_LEN]; };    /* slot 0xff: none; in_pool 2: its table is gone */
@@ -373,7 +373,7 @@ void wt_list_draw(void *canvas)
         if (ticked[top + i])
             tick(canvas, 3, y);
         if (kind == WL_MANAGE)
-            TEXT(canvas, ROW_FONT, 9, y, 0, "%c %s", r->in_pool ? '+' : ' ', r->name);
+            TEXT(canvas, ROW_FONT, 9, y, 0, "%03u %c %s", r->slot, r->in_pool ? '+' : ' ', r->name);   /* the +Drive slot, 0..255 (owner) */
         else if (r->in_pool == 2)
             TEXT(canvas, ROW_FONT, 9, y, 0, "%03u MISSING", top + i + 1);
         else if (r->slot == 0xff)

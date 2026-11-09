@@ -132,14 +132,16 @@ NOT_RAM += (
     0x4670B936,              # notl %d3 ; andl %d3,%d1 (46 83 c2 83)
     0x4670BB5C,              # addal #0x469ff400,%a0: the pool spans' base 0x46a00000 less one
                              # 3072 B entry, indexed by the table number (1 and up), declared
-    # 2026-11-08, 0.5.0 (the loader queue moved out of the drive chunk, the menu's handlers gained
-    # their stamps): every drive place read again in the applied chunk with objdump -m m68k:cfv4e
+    # 2026-11-09, 0.5.1 (the manager's longer names and slot numbers moved the drive chunk's text):
+    # every drive place read again in the applied chunk with objdump -m m68k:cfv4e
     0x467F0BD2,              # notl %d2 ; andl %d2,%d1 (wr_note_seen, the unplayed mask)
-    0x467F3260,              # pea 0x467f4693 ; mov3ql #2,-(sp): the operand read 2 bytes late
-    0x467F3F08, 0x467F3F1C,  # pea 0x467f46xx ; braw: the operand read 2 bytes late
-    0x467F4074,              # notl %d0 ; tstw %d0
-    0x467F4772, 0x467F4776, 0x467F477A, 0x467F4780, 0x467F4784, 0x467F478C,
-    0x467F4790, 0x467F4794, 0x467F479C, 0x467F47A0, 0x467F47A4, 0x467F47A8,
+    0x467F3266,              # pea 0x467f46bc ; mov3ql #2,-(sp): the operand read 2 bytes late
+    0x467F33CE, 0x467F3D38, 0x467F3D7C, 0x467F3E44,
+                             # pea 0x467f46xx ; clrl -(sp): the operand read 2 bytes late
+    0x467F3D6A,              # pea 0x467f469f ; bras: the operand read 2 bytes late
+    0x467F3CF0,              # movel #0x467f466f,%d0 ; movel %d0,-(sp): the immediate read 2 bytes late
+    0x467F4098,              # notl %d0 ; the next instruction
+    0x467F479A, 0x467F479E, 0x467F47A2, 0x467F47A8, 0x467F47AC,
                              # a table of 0x467f46xx pointers and bytes: read 2 bytes out of step
 )
 # 0x4670C8E2 and 0x4670CBCE (2026-10-11) left the list in 0.5.0: no word there reads as an

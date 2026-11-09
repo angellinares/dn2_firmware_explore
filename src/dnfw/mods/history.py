@@ -113,7 +113,7 @@ HISTORY: dict[str, tuple[Release, ...]] = {
             "project, can hold such settings.",
             "When you open the LFO4 page and a track has such a sound, a box names the track: "
             "\"T3: LFO4 AREA HOLDS DATA LFO4 DIDN'T WRITE :)\". Press YES or NO to close it. The box "
-            "shows until you save the sound.",
+            "shows until you save the project and load it again.",
         )),
         Release("1.0.5", "2026-11-08", (
             "A busy pattern with LFO4 could drop a beat, and a note could then keep sounding after "

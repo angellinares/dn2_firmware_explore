@@ -37,8 +37,8 @@ u32 lfo4_loads, lfo4_loads_carrying, lfo4_saves, lfo4_saves_carrying;
 u32 lfo4_loads_refused;
 
 /* The sounds whose last load was refused, by live address, so the LFO4 page
- * can say so (`note.c`). A clean load or a save of the sound clears its mark:
- * the save writes zeros in LFO4's ids, so the next load is clean too. When all
+ * can say so (`note.c`). A clean load of the sound clears its mark. A save
+ * writes zeros in LFO4's ids, so the load after it is clean. When all
  * MARKS are taken, a new one replaces the oldest. */
 #define MARKS 32u
 u32 lfo4_marked[MARKS];
@@ -224,7 +224,10 @@ void lfo4_on_save(void *stored, const void *live)
     extern u32 lfo4_pending_sound;
 
     lfo4_saves++;
-    mark((u32)live, 0);              /* the zeros below replace the refused bytes */
+    /* A save does not clear a mark. Opening a project saves every sound many
+     * times (lfo4note1 on the unit, 2026-11-09: 21,504 saves), so a mark
+     * cleared here was gone before the page could show it. The zeros below
+     * make the next load clean, and that load clears the mark. */
     /* The re-serialise an LFO4 edit asked for has run (setter.c, `announce`). */
     if ((u32)live == lfo4_pending_sound)
         lfo4_pending_sound = 0;

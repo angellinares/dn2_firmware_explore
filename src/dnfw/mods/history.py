@@ -107,6 +107,14 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     ) + PUBLISHED,
     "layermidi": PUBLISHED,
     "lfo4": (
+        Release("1.0.6", "2026-11-09", (
+            "A sound with LFO4 settings that are out of range now loads without an LFO4. Before, "
+            "LFO4 used such settings as they were. A sound saved by another firmware, or a damaged "
+            "project, can hold such settings.",
+            "When you open the LFO4 page and a track has such a sound, a box names the track: "
+            "\"T3: LFO4 AREA HOLDS DATA LFO4 DIDN'T WRITE :)\". Press YES or NO to close it. The box "
+            "shows until you save the sound.",
+        )),
         Release("1.0.5", "2026-11-08", (
             "A busy pattern with LFO4 could drop a beat, and a note could then keep sounding after "
             "STOP. LFO4 now uses much less processor time during playback, and a beat is no longer "

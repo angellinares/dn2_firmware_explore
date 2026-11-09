@@ -7,7 +7,7 @@ export const VERSIONS = {
   degreetranspose: "0.1.1",
   fxmod: "1.0.2",
   layermidi: "1.0.0",
-  lfo4: "1.0.5",
+  lfo4: "1.0.6",
   lfolength: "1.0.1",
   lfowaves: "1.0.1",
   midiarp: "1.0.0",

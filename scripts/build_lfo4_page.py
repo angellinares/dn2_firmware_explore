@@ -48,15 +48,19 @@ BASE = 0x40000400
 OUT = ROOT / "out/lfo4-page"
 SYX = ROOT / "00_Resources/02_Builds/lfo4-page_DN2_1.11.syx"
 
-SOURCES = table.SOURCES + ("page.c", "pagehooks.S")
+SOURCES = table.SOURCES + ("page.c", "pagehooks.S", "note.c", "note.S")
 ENTRIES = table.ENTRIES + ["lfo4_pages", "lfo4_page_for",
-                           "lfo4_page_stub", "lfo4_mode_stub"]
+                           "lfo4_page_stub", "lfo4_mode_stub", "lfo4_key_stub", "lfo4_setpage_stub"]
 
 # (name, the site, the stub, the symbol holding the bytes it replays, width).
 # The same shape as `build_lfo4_ext.SITES`, and checked the same way: a stub
 # that does not replay exactly what its jump displaces is refused.
 SITES = (("page record", 0x400C2474, "lfo4_page_stub", "lfo4_page_displaced", 6),
-         ("mode header", 0x40063F5C, "lfo4_mode_stub", "lfo4_mode_displaced", 6))
+         ("mode header", 0x40063F5C, "lfo4_mode_stub", "lfo4_mode_displaced", 6),
+         # the page keys, no FUNC: the note opens after the page select (note.S)
+         ("page key", 0x4005F32A, "lfo4_key_stub", "lfo4_key_displaced", 6),
+         # [MOD] within the mode: the page setter, after its clamp (note.S)
+         ("page set", 0x40063B00, "lfo4_setpage_stub", "lfo4_setpage_displaced", 6))
 
 
 def hooks(content, code):

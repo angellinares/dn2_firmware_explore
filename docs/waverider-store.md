@@ -20,6 +20,13 @@ yet.
 - It is not at the Digitakt II's `0x5D8000`, where Elektron would put a sample store on
   this family.
 
+**A different start does not make the stores disjoint.** Waverider's full
+`[0x600000, 0x641000)` range lies inside the permitted filesystem write range of
+an experimental native-ekFS DN2 port. Those stock-slot bounds do not constrain
+the port's separate filesystem writer. See [external hardware results and the overlap analysis](dn2-ekfs-hardware-results.md#storage-compatibility-waverider-overlaps).
+Coexistence or migration requires an explicit storage design; this report does
+not change Waverider's format or document observed corruption on an upstream unit.
+
 ## Layout (sectors of 512 bytes; every multi-byte field big-endian)
 
 | sectors | what |

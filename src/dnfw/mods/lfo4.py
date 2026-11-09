@@ -69,10 +69,10 @@ _CODE = pathlib.Path(__file__).with_name("lfo4_code.json")
 SPEC = json.loads(_CODE.read_text()) if _CODE.exists() else None
 
 
-# `lfo4_on_frame`, disassembled: `not.l %d0` (4680) then `and.l <abs>,%d0` (c0b9), not an address.
-# 1.0.5's sleep and wake code, disassembled, has the same pair three times: `not.l %d0` then
-# `and.l %d1,%d0` (c081), `and.l <abs>,%d0` (c0b9) and `and.l %d0,<abs>` (c1b9).
-NOT_RAM = (0x46800932, 0x46800C4C, 0x46800CB0, 0x46800CDC)
+# The sleep and wake code (1.0.5), disassembled: `not.l %d0` (4680) then `and.l %d1,%d0` (c081),
+# `and.l <abs>,%d0` (c0b9) and `and.l %d0,<abs>` (c1b9), not addresses. 1.0.6's load check moved
+# the three. `lfo4_on_frame`'s pair at 0x46800932 is gone: no word there reads as an address now.
+NOT_RAM = (0x46800D46, 0x46800DAA, 0x46800DD6)
 
 
 def _spec() -> dict:

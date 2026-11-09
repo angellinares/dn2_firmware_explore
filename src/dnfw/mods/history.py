@@ -163,6 +163,16 @@ HISTORY: dict[str, tuple[Release, ...]] = {
         )),
     ) + UNPUBLISHED,
     "waverider": (
+        Release("0.5.0", "2026-11-08", (
+            "Beta 1. Waverider is now a beta. The sound is the same as in 0.4.2.",
+            "Tables load from the +Drive about four times as fast.",
+            "The WAVETABLE page of PRESET/KIT stays open when you press DOWN quickly in a long list. "
+            "Before, it could go back to the presets.",
+        )),
+        Release("0.4.2", "2026-11-06", (
+            "Fixes one part of the DSP data in 0.4.1 that had a length the DSP may not load at start-up. "
+            "Waverider sounds the same.",
+        )),
         Release("0.4.1", "2026-11-04", (
             "TBL item -, an empty pool slot and a table that is still loading stay silent while a note plays. "
             "In 0.4.0 they could play another table after a moment.",

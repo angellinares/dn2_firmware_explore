@@ -482,7 +482,10 @@ def spans() -> list[tuple[str, int, bytes]]:
 def stream_blocks(at: int, payload: bytes) -> bytes:
     """A span as boot-stream blocks: its bytes, then a fill block for a tail of zeros (the
     form stock uses for its own zeroed ranges in L1 and DDR, 4-byte aligned). The memory
-    loaded is the same; the stream is shorter by the zeros."""
+    loaded is the same; the stream is shorter by the zeros. A span whose length is not a
+    multiple of 4 gets zeros up to one: a block's count must be (digikit's sharc_bootcheck, H3).
+    The silent table, 1,534 B, went in as one block of that count."""
+    payload += bytes(-len(payload) % 4)
     body = len(payload.rstrip(b"\x00"))
     body += -body % 4
     tail = len(payload) - body

@@ -34,6 +34,82 @@
 static const u8 LFO4_ID[EXT_PARAMS] = {4, 8, 12, 16, 20, 24, 28, 32};
 
 u32 lfo4_loads, lfo4_loads_carrying, lfo4_saves, lfo4_saves_carrying;
+u32 lfo4_loads_refused;
+
+/* The sounds whose last load was refused, by live address, so the LFO4 page
+ * can say so (`note.c`). A clean load of the sound clears its mark. A save
+ * writes zeros in LFO4's ids, so the load after it is clean. When all
+ * MARKS are taken, a new one replaces the oldest. */
+#define MARKS 32u
+u32 lfo4_marked[MARKS];
+static u32 next_mark;
+
+static void mark(u32 key, int on)
+{
+    u32 i;
+
+    for (i = 0; i < MARKS; i++)
+        if (lfo4_marked[i] == key) {
+            if (!on)
+                lfo4_marked[i] = 0;
+            return;
+        }
+    if (!on)
+        return;
+    for (i = 0; i < MARKS; i++)
+        if (!lfo4_marked[i]) {
+            lfo4_marked[i] = key;
+            return;
+        }
+    lfo4_marked[next_mark] = key;
+    next_mark = (next_mark + 1u) % MARKS;
+}
+
+int lfo4_is_marked(u32 key)
+{
+    u32 i;
+
+    for (i = 0; key && i < MARKS; i++)
+        if (lfo4_marked[i] == key)
+            return 1;
+    return 0;
+}
+
+/* LFO4's records in the relocated parameter table: dnfw record i is at
+ * TABLE_VA + 60 * i (`scripts/build_lfo4_table.py`, `mods/lfo4.compose`), and
+ * LFO4's group is records 320..329. Word 5 is the highest value a knob can set.
+ * The mod fills these records at apply time from the image, after the other
+ * mods, so lfowaves' wider WAVE range is the one read here. */
+#define TABLE_VA      0x46900000u
+#define RECORD_BYTES  60u
+#define LFO4_RECORD0  320u
+#define RANGE_AT      20u
+
+/* The record of each value, by group position: SPD MULT FADE DEST WAVE, then
+ * SPH (position 6, the slot SLEW shares), MODE, DEP. Position 1 is the long
+ * MULT range; the short one (position 9) lies inside it. */
+static const u8 POSITION[EXT_PARAMS] = {0, 1, 2, 3, 4, 6, 7, 8};
+
+/* -> 1 when every value is one the knobs can set.
+ *
+ * Stock never writes these ids (both maps fold them onto slot 0), so a stored
+ * sound carries what LFO4 saved, or zeros -- unless it comes from somewhere
+ * else: another firmware, another mod, or a damaged project. A value past its
+ * range then reaches stock code that indexes a list by it. A user's unit drew
+ * EXCEPTION V03 P401157FA (2026-11-04): stock's text draw formatted a name that
+ * pointed into 0xFF memory, and the copy ran over its return address. */
+static int in_range(const u16 *v)
+{
+    u32 k;
+
+    for (k = 0; k < EXT_PARAMS; k++) {
+        u32 max = *(const volatile u32 *)(TABLE_VA + RECORD_BYTES * (LFO4_RECORD0 + POSITION[k]) + RANGE_AT);
+
+        if (v[k] > max)
+            return 0;
+    }
+    return 1;
+}
 
 /* Byte at a time: a stored track's stride is 359, so every other one starts at
  * an odd address and a u16 access would be misaligned. */
@@ -121,8 +197,19 @@ void lfo4_on_load(void *live, const void *stored)
 #ifndef LFO4_KEEP_ALL
         ext_drop((u32)live);
 #endif
+        mark((u32)live, 0);
         return;
     }
+    if (!in_range(value)) {
+        /* Not LFO4's bytes, so none of the eight is trusted: the sound loads
+         * as one without an LFO4 (DEST shows ---, nothing is modulated), the
+         * LFO4 page says why (`note.c`), and the next save writes zeros. */
+        lfo4_loads_refused++;
+        ext_drop((u32)live);
+        mark((u32)live, 1);
+        return;
+    }
+    mark((u32)live, 0);
     lfo4_loads_carrying++;
     for (k = 0; k < EXT_PARAMS; k++)
         ext_set((u32)live, k, value[k]);
@@ -137,6 +224,10 @@ void lfo4_on_save(void *stored, const void *live)
     extern u32 lfo4_pending_sound;
 
     lfo4_saves++;
+    /* A save does not clear a mark. Opening a project saves every sound many
+     * times (lfo4note1 on the unit, 2026-11-09: 21,504 saves), so a mark
+     * cleared here was gone before the page could show it. The zeros below
+     * make the next load clean, and that load clears the mark. */
     /* The re-serialise an LFO4 edit asked for has run (setter.c, `announce`). */
     if ((u32)live == lfo4_pending_sound)
         lfo4_pending_sound = 0;

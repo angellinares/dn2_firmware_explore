@@ -69,6 +69,12 @@ _CODE = pathlib.Path(__file__).with_name("lfo4_code.json")
 SPEC = json.loads(_CODE.read_text()) if _CODE.exists() else None
 
 
+# The sleep and wake code (1.0.5), disassembled: `not.l %d0` (4680) then `and.l %d1,%d0` (c081),
+# `and.l <abs>,%d0` (c0b9) and `and.l %d0,<abs>` (c1b9), not addresses. 1.0.6's load check moved
+# the three. `lfo4_on_frame`'s pair at 0x46800932 is gone: no word there reads as an address now.
+NOT_RAM = (0x46800D2A, 0x46800D8E, 0x46800DBA)
+
+
 def _spec() -> dict:
     if SPEC is None:
         raise ModError("lfo4_code.json is missing: run scripts/gen_lfo4_code.py")
@@ -77,7 +83,8 @@ def _spec() -> dict:
 
 # The entry hooks whose stubs replay the displaced instructions unchanged, then jump
 # back (scripts/build_lfo4_ext.py, SITES): memcpy, memset, the sound LOAD and SAVE.
-HOOKS = ((0x40134490, 8), (0x401344D8, 8), (0x400DD282, 6), (0x400DD724, 8))
+HOOKS = ((0x40134490, 8), (0x401344D8, 8), (0x400DD282, 6), (0x400DD724, 8),
+         (0x400CF7BE, 8))   # fix4: the frame send's guard (csrc/lfo4/bridge.c), a test build
 
 
 def _platform_owned(e: dict) -> bool:

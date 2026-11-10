@@ -52,8 +52,8 @@
 #endif
 
 u32 ext_key[EXT_SLOTS];
-u16 ext_val[EXT_SLOTS][EXT_PARAMS];
-u16 ext_default[EXT_PARAMS];
+u16 ext_val[EXT_SLOTS][EXT_PARAMS] __attribute__((aligned(4)));   /* bridge.c copies rows as longs */
+u16 ext_default[EXT_PARAMS] __attribute__((aligned(4)));
 
 u32 ext_live, ext_lo, ext_hi, ext_generation;
 u32 ext_inserts, ext_drops, ext_full, ext_overflow;
@@ -203,7 +203,7 @@ void ext_copy(u32 dst, u32 src)
     u16 carried[EXT_PARAMS];
     const u16 *from = ext_find(src);
     u16 *to;
-    u32 p;
+    u32 p, changed = 0;
 
     if (!from) {
         LFO4_DROP(dst);                /* the source has no entry: neither has the copy */
@@ -214,9 +214,16 @@ void ext_copy(u32 dst, u32 src)
     to = ext_add(dst);
     if (!to)
         return;
+    /* A copy of equal values changes no row, so no reader has to look again: the stock trig
+     * path copies a playing sound, and a new generation makes the audio frame look up all
+     * sixteen voices (`bridge.c`). */
     for (p = 0; p < EXT_PARAMS; p++)
-        to[p] = carried[p];
-    ext_generation++;
+        if (to[p] != carried[p]) {
+            to[p] = carried[p];
+            changed = 1;
+        }
+    if (changed)
+        ext_generation++;
 }
 
 void ext_carry(u32 dst, u32 src, u32 n)
@@ -242,7 +249,9 @@ void ext_carry(u32 dst, u32 src, u32 n)
         for (p = 0; p < EXT_PARAMS; p++)
             to[p] = carried[i][p];
     }
-    ext_generation++;
+    /* `touches` is only a range test: a block inside it can hold no tracked object */
+    if (taken || gone)
+        ext_generation++;
 }
 
 void ext_clear(u32 at, u32 n)
@@ -274,7 +283,7 @@ void ext_set(u32 key, u32 param, u16 value)
     if (param >= EXT_PARAMS)
         return;
     v = ext_add(key);
-    if (v) {
+    if (v && v[param] != value) {
         v[param] = value;
         ext_generation++;
     }

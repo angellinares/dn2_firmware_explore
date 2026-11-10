@@ -7,7 +7,7 @@ export const VERSIONS = {
   degreetranspose: "0.1.1",
   fxmod: "1.0.2",
   layermidi: "1.0.0",
-  lfo4: "1.0.4",
+  lfo4: "1.0.6",
   lfolength: "1.0.1",
   lfowaves: "1.0.1",
   midiarp: "1.0.0",
@@ -16,5 +16,5 @@ export const VERSIONS = {
   songguard: "0.1.0",
   transients: "2.0.0",
   usbprobe: "0.1.1",
-  waverider: "0.5.0",
+  waverider: "0.5.1"
 };

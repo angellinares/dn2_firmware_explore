@@ -12,6 +12,7 @@ import struct
 import pytest
 
 from dnfw.image import bootstream
+from dnfw.checkout import resources_dir  # noqa: E402
 
 
 def header(code_flags: int, target: int, count: int, argument: int = 0) -> bytes:
@@ -206,7 +207,7 @@ def test_an_ignore_block_with_a_payload_is_stepped_over_and_not_loaded():
     assert result.regions() == [(0x1000, 0x1004)]
 
 
-STOCK_ZIP = pathlib.Path(__file__).resolve().parents[1] / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCK_ZIP = resources_dir(pathlib.Path(__file__).resolve().parents[1]) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
 
 
 def test_stock_section_7_has_two_first_ignore_blocks_and_one_init_block():

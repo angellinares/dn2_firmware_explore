@@ -44,6 +44,7 @@ It reports only, and it does not block the merge.
 ### Every PR
 
 - The tests pass: `pytest -m "not slow"`. Add a test for each new behaviour.
+- In a git worktree, set `DNFW_RESOURCES` to the main checkout's `00_Resources` folder. Do not link that folder into the worktree. Through a link, `git worktree remove` deletes its files. Git treats a gitignored link as clean, so a remove without `--force` deletes through it too.
 - The PR text says what changes for the user, and how you checked it.
 
 ### A new mod

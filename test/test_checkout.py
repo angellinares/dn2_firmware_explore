@@ -32,7 +32,8 @@ def test_src_first_puts_this_checkout_ahead_and_keeps_the_rest():
     assert checkout.with_src_first({})["PYTHONPATH"] == str(checkout.ROOT / "src")
 
 
-def test_the_report_lists_the_resources_present(tmp_path):
+def test_the_report_lists_the_resources_present(tmp_path, monkeypatch):
+    monkeypatch.delenv("DNFW_RESOURCES", raising=False)
     (tmp_path / "00_Resources" / "00_Firmware").mkdir(parents=True)
     r = checkout.report(tmp_path)
     assert r["resources"] == ["00_Firmware"] and r["out"] is False

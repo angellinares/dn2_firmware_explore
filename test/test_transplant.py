@@ -8,9 +8,10 @@ import pathlib
 import pytest
 
 from dnfw.transplant import sharc as S
+from dnfw.checkout import resources_dir  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-FW = ROOT / "00_Resources" / "00_Firmware"
+FW = resources_dir(ROOT) / "00_Firmware"
 DT2 = FW / "Digitakt_II_OS1.16_dist" / "Digitakt_II_OS1.16.syx"
 DN2 = FW / "Digitone_II_OS1.11_dist.zip"
 DT2_15C = FW / "Digitakt_II_OS1.15C.syx"

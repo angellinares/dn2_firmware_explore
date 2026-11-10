@@ -25,6 +25,17 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 RESOURCES = "00_Resources"
 
 
+def resources_dir(root: pathlib.Path = ROOT) -> pathlib.Path:
+    """The resources folder: DNFW_RESOURCES when it is set, else ROOT/00_Resources.
+
+    A worktree sets DNFW_RESOURCES to the main checkout's folder. Never link that folder into a
+    worktree: through a link, `git worktree remove` deleted its files (2026-10-17, 2026-11-10).
+    Git treats the gitignored link as clean, so even a remove without --force deletes through it.
+    """
+    named = os.environ.get("DNFW_RESOURCES")
+    return pathlib.Path(named) if named else root / RESOURCES
+
+
 def child_dnfw(env: dict[str, str] | None = None) -> pathlib.Path | None:
     """-> where a new Python started with ENV (default: this process's) imports dnfw from."""
     r = subprocess.run([sys.executable, "-c", "import dnfw; print(dnfw.__file__)"],
@@ -47,13 +58,14 @@ def report(root: pathlib.Path = ROOT, env: dict[str, str] | None = None) -> dict
 
     here = pathlib.Path(dnfw.__file__).resolve()
     child = child_dnfw(env)
-    res = root / RESOURCES
+    res = resources_dir(root)
     return {
         "checkout": root.resolve(),
         "dnfw": here,
         "dnfw_child": child,
         "inside": _inside(here, root),
         "inside_child": _inside(child, root),
+        "resources_dir": res,
         "resources": sorted(p.name for p in res.iterdir() if p.is_dir()) if res.is_dir() else [],
         "out": (root / "out").is_dir(),
         "progress": progress.DIR,
@@ -75,7 +87,8 @@ def lines(r: dict) -> list[str]:
     """-> the report as short lines, for a pytest header or a sweep report."""
     return [f"checkout: {r['checkout']} (dnfw {'here' if r['inside'] else r['dnfw']}, "
             f"child {'here' if r['inside_child'] else r['dnfw_child']})",
-            f"00_Resources: {', '.join(r['resources']) or 'none'}; out/: {'yes' if r['out'] else 'no'}",
+            f"00_Resources ({r['resources_dir']}): {', '.join(r['resources']) or 'none'}; "
+            f"out/: {'yes' if r['out'] else 'no'}",
             f"progress: {r['progress']}"]
 
 

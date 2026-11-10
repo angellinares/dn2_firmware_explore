@@ -25,10 +25,11 @@ import pytest
 
 from dnfw.firmware import compare, safety
 from dnfw.firmware.load import load
+from dnfw.checkout import resources_dir  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-FLASHED = ROOT / "00_Resources/02_Builds/batcha1-fxmod-lfo4-waverider-usbprobe_DN2_1.11.syx"
+STOCK_111 = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
+FLASHED = resources_dir(ROOT) / "02_Builds/batcha1-fxmod-lfo4-waverider-usbprobe_DN2_1.11.syx"
 KEYS = ("file", "stock", "layout", "recovery", "edits", "area", "ram", "dma", "dsp", "record", "rebuild")
 GOOD = dict(file="pass", stock="pass", layout="pass", recovery="pass", edits="info", area="pass", ram="pass",
             dma="pass", dsp="info", record="pass", rebuild="pass")

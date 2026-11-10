@@ -16,14 +16,15 @@ import subprocess
 import sys
 
 import pytest
+from dnfw.checkout import resources_dir  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-FLASHED = ROOT / "00_Resources/02_Builds/wrl2b-waverider-layermidi-arpmodes-lfowaves-bootscreen-lfo4-fxmod-lfolength-reloadconfirm-songguard-arpplocks-usbprobe_DN2_1.11.syx"
+STOCK_111 = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
+FLASHED = resources_dir(ROOT) / "02_Builds/wrl2b-waverider-layermidi-arpmodes-lfowaves-bootscreen-lfo4-fxmod-lfolength-reloadconfirm-songguard-arpplocks-usbprobe_DN2_1.11.syx"
 MODS = ["waverider", "layermidi", "arpmodes", "lfowaves", "bootscreen", "lfo4", "fxmod", "lfolength", "reloadconfirm",
         "songguard", "arpplocks", "usbprobe"]
 PROBE_TAG = "wrl2b"
-BOOT = ROOT / "00_Resources/08_MyBuilds/waverider_glyph_boot.pgm"
+BOOT = resources_dir(ROOT) / "08_MyBuilds/waverider_glyph_boot.pgm"
 
 
 def _sections(path: pathlib.Path) -> dict[int, bytes]:

@@ -22,10 +22,11 @@ import pytest
 from dnfw.cli import mods as cli_mods
 from dnfw.image import bootstream
 from dnfw.mods import ModError, transients as T
+from dnfw.checkout import resources_dir  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-STOCK_110E = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.10E_dist.zip"
+STOCK_111 = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCK_110E = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.10E_dist.zip"
 
 
 @pytest.fixture(scope="module")

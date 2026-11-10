@@ -28,10 +28,11 @@ import sys
 import pytest
 
 from dnfw.pytest_progress import stage
+from dnfw.checkout import resources_dir  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 HARNESS = ROOT / "scripts" / "js_build_check.mjs"
-STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCK_111 = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
 
 # every website mod that needs no input file, alone, and the sets the hook bus combines
 ORDERS = [

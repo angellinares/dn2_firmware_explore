@@ -8,9 +8,10 @@ import pytest
 
 from dnfw.image import bootstream
 from dnfw.waverider import cohprobe, dsp
+from dnfw.checkout import resources_dir  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-IMAGE = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
+IMAGE = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
 
 
 @pytest.fixture(scope="module")

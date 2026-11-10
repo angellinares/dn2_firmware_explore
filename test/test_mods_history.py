@@ -8,6 +8,7 @@ import pytest
 
 from dnfw.cli.mods import REGISTRY
 from dnfw.mods import fingerprint, history
+from dnfw.checkout import resources_dir  # noqa: E402
 
 SITE = pathlib.Path(__file__).resolve().parent.parent / "site"
 PAGES = sorted(SITE.glob("*.html"))
@@ -91,7 +92,7 @@ def test_a_page_with_several_version_regions_gets_all(monkeypatch):
     assert history.rewrite(text).count("<!-- dnfw:version waverider -->v9.0.0<!-- /dnfw:version -->") == 4
 
 
-STOCK_111 = SITE.parent / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCK_111 = resources_dir(SITE.parent) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
 
 
 @pytest.fixture(scope="module")

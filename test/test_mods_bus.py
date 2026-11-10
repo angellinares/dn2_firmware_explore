@@ -7,9 +7,10 @@ import pytest
 
 from dnfw.mods import ModError, bus, platform
 from dnfw.patch import area
+from dnfw.checkout import resources_dir  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STOCK_SYX = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCK_SYX = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
 BASE = platform.BASE
 SITE = bus.EVENTS[b"PSLT"]["site"]
 

@@ -15,9 +15,10 @@ import pytest
 
 from dnfw.mods import ModError, check_compatible, degreetranspose, platform
 from dnfw.patch import area
+from dnfw.checkout import resources_dir  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCK_111 = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
 BASE = degreetranspose.BASE
 VOICE_SITE, VOICE_BACK = 0x400269A4, 0x400269AA
 KEY_SITE, KEY_BACK, KEY_DONE = 0x4005FB76, 0x4005FB7C, 0x4005FC24

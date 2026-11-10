@@ -178,8 +178,6 @@ def _staged(firmware, payloads: dict[int, bytes]):
 
     Mods read the section they are about to change, so a second mod touching
     the same section must see the first one's bytes rather than the original's.
-    Both current mods touch different sections, so this is not yet exercised --
-    which is exactly why it is written now rather than after it bites.
     """
     if not payloads:
         return firmware
@@ -402,7 +400,7 @@ def _apply(args) -> int:
         wrote.append((mod.ID, result.extents))
 
     if 3 in payloads:
-        payloads[3] = _modinfo(payloads[3], chosen, args)
+        payloads[3] = _modinfo(payloads[3], chosen, args, firmware.container.version)
 
     stock = {s.id: s.unpack() or s.raw_payload for s in firmware.container.sections if s.id in payloads}
     from ..mods import platform
@@ -440,11 +438,11 @@ def _apply(args) -> int:
     return 0
 
 
-def _modinfo(payload: bytes, chosen, args) -> bytes:
+def _modinfo(payload: bytes, chosen, args, os_version: str) -> bytes:
     """MAIN OS with its /modinfo record written (docs/for-dnx-modinfo.md), when a mod
     carries one (Waverider's +Drive chunk); every mod applied is listed with the hash of
-    its code, so two builds of the same mods differ in the image id, not only the tag."""
-    import re
+    its code, so two builds of the same mods differ in the image id, not only the tag. The OS
+    version comes from the stock image's header, not from its file name."""
     import subprocess
     from ..mods import modinfo
     from ..waverider.store import xxh32
@@ -462,10 +460,9 @@ def _modinfo(payload: bytes, chosen, args) -> bytes:
         commit = commit[:10] + ("+" if dirty else "")
     except (OSError, subprocess.SubprocessError):
         commit = "unknown"
-    m = re.search(r"OS(\d+\.\d+[A-Z]?)", pathlib.Path(args.image).name)
     tag = getattr(args, "probe_tag", None) or args.out.stem.split("_DN2_")[0]
     at = modinfo.locate(payload)
-    filled = modinfo.fill(payload, mods, tag, commit, m.group(1) if m else "unknown")
+    filled = modinfo.fill(payload, mods, tag, commit, os_version)
     if at is not None:
         info = modinfo.parse(modinfo.record(filled, at))
         print(f"  /modinfo: image id {info['image_id']:08x}, tag {info['tag']}, commit {info['commit']}, "

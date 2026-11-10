@@ -39,6 +39,39 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 HARNESS = ROOT / "scripts" / "js_codec_check.mjs"
 
 
+# The harness takes about 2 s. Sometimes node writes its output and does not exit (2026-11-04,
+# 2026-11-08, cause not found). After HANG_S the run stops, and the failure gives node's CPU time:
+# near 0 s means node waits on something, near HANG_S means it is busy.
+HANG_S = 120
+
+
+def _harness(node, *args, check=False):
+    proc = subprocess.Popen([node, str(HARNESS), *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, cwd=ROOT)
+    try:
+        out, err = proc.communicate(timeout=HANG_S)
+    except subprocess.TimeoutExpired:
+        cpu = _cpu_seconds(proc)
+        proc.kill()
+        proc.communicate()
+        pytest.fail(f"node did not exit after {HANG_S} s (CPU time {cpu}): {' '.join(args)}")
+    done = subprocess.CompletedProcess(proc.args, proc.returncode, out, err)
+    if check:
+        done.check_returncode()
+    return done
+
+
+def _cpu_seconds(proc) -> str:
+    """The CPU time of a running child, from the OS (Windows only; elsewhere "unknown")."""
+    if not hasattr(proc, "_handle"):
+        return "unknown"
+    import ctypes
+    times = [ctypes.c_ulonglong() for _ in range(4)]
+    if not ctypes.windll.kernel32.GetProcessTimes(int(proc._handle), *map(ctypes.byref, times)):
+        return "unknown"
+    return f"{(times[2].value + times[3].value) / 1e7:.1f} s"
+
+
 @pytest.fixture(scope="session")
 def node() -> str:
     found = shutil.which("node")
@@ -68,9 +101,7 @@ def test_js_depack_matches_python(node, dn2, tmp_path):
         stored.write_bytes(section.stored)
         expect.write_bytes(section.unpack())
 
-        done = subprocess.run(
-            [node, str(HARNESS), "--stored", str(stored), "--expect", str(expect)],
-            capture_output=True, text=True, cwd=ROOT)
+        done = _harness(node, "--stored", str(stored), "--expect", str(expect))
         assert done.returncode == 0, (
             f"section {section.id}: {done.stdout}\n{done.stderr}")
 
@@ -108,10 +139,7 @@ def test_js_packer_emits_the_same_bytes_as_python(node, dn2, tmp_path):
         stored.write_bytes(section.stored)
         expect.write_bytes(content)
 
-        done = subprocess.run(
-            [node, str(HARNESS), "--stored", str(stored), "--expect", str(expect),
-             "--packed-out", str(packed)],
-            capture_output=True, text=True, cwd=ROOT)
+        done = _harness(node, "--stored", str(stored), "--expect", str(expect), "--packed-out", str(packed))
         assert done.returncode == 0, f"{done.stdout}\n{done.stderr}"
 
         assert packed.read_bytes() == aplibpack.pack(content), (
@@ -135,9 +163,7 @@ def test_packed_sections_are_no_larger_than_elektrons(node, dn2, tmp_path):
         stored.write_bytes(section.stored)
         expect.write_bytes(section.unpack())
 
-        done = subprocess.run(
-            [node, str(HARNESS), "--stored", str(stored), "--expect", str(expect)],
-            capture_output=True, text=True, cwd=ROOT)
+        done = _harness(node, "--stored", str(stored), "--expect", str(expect))
         assert done.returncode == 0, f"{done.stdout}\n{done.stderr}"
 
         report = json.loads(done.stdout)
@@ -163,10 +189,7 @@ def test_python_depacks_the_js_packer(node, dn2, tmp_path):
     stored.write_bytes(section.stored)
     expect.write_bytes(content)
 
-    done = subprocess.run(
-        [node, str(HARNESS), "--stored", str(stored), "--expect", str(expect),
-         "--packed-out", str(packed)],
-        capture_output=True, text=True, cwd=ROOT)
+    done = _harness(node, "--stored", str(stored), "--expect", str(expect), "--packed-out", str(packed))
     assert done.returncode == 0, f"{done.stdout}\n{done.stderr}"
 
     assert aplib.depack(packed.read_bytes()) == content
@@ -202,10 +225,7 @@ def test_store_only_section_rebuilds_and_verifies(node, dn2, dn2_raw, tmp_path):
     packed = tmp_path / "js_packed.bin"
     stored.write_bytes(original.stored)
     expect.write_bytes(content)
-    done = subprocess.run(
-        [node, str(HARNESS), "--stored", str(stored), "--expect", str(expect),
-         "--packed-out", str(packed)],
-        capture_output=True, text=True, cwd=ROOT)
+    done = _harness(node, "--stored", str(stored), "--expect", str(expect), "--packed-out", str(packed))
     assert done.returncode == 0, f"{done.stdout}\n{done.stderr}"
 
     stream = packed.read_bytes()
@@ -249,10 +269,8 @@ def test_both_packers_stay_inside_elektrons_limits(node, dn2, tmp_path):
     store_only = tmp_path / "js_store.bin"
     stored.write_bytes(section.stored)
     expect.write_bytes(content)
-    subprocess.run(
-        [node, str(HARNESS), "--stored", str(stored), "--expect", str(expect),
-         "--packed-out", str(packed), "--store-out", str(store_only)],
-        capture_output=True, text=True, cwd=ROOT, check=True)
+    _harness(node, "--stored", str(stored), "--expect", str(expect), "--packed-out", str(packed),
+             "--store-out", str(store_only), check=True)
 
     real = profile(packed.read_bytes())
     assert real.matches > 0, "the real packer emitted no matches at all"

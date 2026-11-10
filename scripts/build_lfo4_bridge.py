@@ -55,7 +55,10 @@ SYX = ROOT / "00_Resources/02_Builds/lfo4-bridge_DN2_1.11.syx"
 # drops both -- but the link needs the symbol to exist.
 SOURCES = ("init.c", "ext.c", "carry.c", "store.c", "bridge.c", "setter.c", "hooks.S")
 ENTRIES = ["lfo4_init", "ext_get", "ext_set", "ext_drop", "lfo4_refresh", "lfo4_sound_of",
-           "lfo4_row_for_block",
+           "lfo4_row_for_block", "lfo4_on_frame", "lfo4_wake", "lfo4_now", "lfo4_held", "lfo4_awake",
+           "lfo4_runs", "lfo4_wakes", "lfo4_owner_raw", "lfo4_seen_generation", "lfo4_refreshes",
+           "ext_generation", "lfo4_fx", "lfo4_fx_generation", "lfo4_sleep",
+           "lfo4_send_guard", "lfo4_guard_holds", "lfo4_guard_carried",
            *(s[2] for s in SITES)]
 
 # Each stub asks the C for its row instead of computing one from a fixed table.
@@ -135,15 +138,87 @@ def cave_source(table_va: int, refresh: int, for_block: int = 0) -> str:
 # base, `%a2`/`%a3` (and B's `%a5`) one 40-byte record lower, and the counter 2,
 # so `a4_bottom`'s "counter 2 -> back to the mirror" case never fires and its
 # plain `lea %a4@(-16)` does exactly what stock's did.
+# **The frame's cost with LFO4 in use (2026-11-05).** On the owner's project the fourth LFO
+# took the audio interrupt from a 97 % peak to 118 %: late frames, lost notes, voices stuck at
+# STOP. Evaluator A was 7,920 instructions a frame in stock, 9,302 with an entry and no
+# destination (69 a voice in the call below) and 11,751 with LFO4 on every voice (153 more a
+# voice). So this asks the C only when the voice's sound or the table has changed, and a voice
+# with no note and no release left starts where stock does (`csrc/lfo4/bridge.c`). The evaluator
+# keeps the voice in `%a5`. At this site d0, a0 and a1 are free (the stock code loads them
+# next) and d1 holds the loop counter; `%d5` is the voice's bit of the frame's LFO trig mask.
 A_TOP_IDLE = """a4_top:
     tst.l   {ext_live:#010x}
-    beq.s   9f                      | no LFO4 anywhere: no call
+    beq     9f                      | no LFO4 anywhere
+    move.l  %a5,%d0
+    bne.s   1f
+    addq.l  #1,{now:#010x}          | once a frame, on voice 0
+    move.l  {generation:#010x},%d0
+    cmp.l   {fx_gen:#010x},%d0
+    bne.s   2f                      | the table changed: the C reads it again
+    move.l  {masks:#010x},%d0       | the note masks of the frame the last interrupt built
+    bne.s   2f
+    tst.b   {now_low:#010x}         | every 256th frame
+    bne.s   1f
+2:  move.l  %d1,%sp@-
+    move.l  {masks:#010x},%d0
+    move.l  %d0,%sp@-
+    jsr     {frame:#010x}
+    addq.l  #4,%sp
+    move.l  %sp@+,%d1
+1:  tst.b   {fx:#010x}
+    bne.s   5f                      | an FX destination somewhere: every voice, as fix2
+    lea     {awake:#010x},%a0
+    tst.b   %a0@(0,%a5:l)
+    bne.s   5f
+    tst.l   %d5
+    beq     9f                      | asleep and no trig: the one test fix3 leaves (bridge.c)
+5:  lea     {raw:#010x},%a1
+    movea.l %a1@(0,%a5:l:4),%a1
+    lea     {voices:#010x},%a0
+    cmpa.l  %a0@(0,%a5:l:4),%a1
+    bne.s   3f
+    lea     {gens:#010x},%a1
+    movea.l %a1@(0,%a5:l:4),%a1
+    cmpa.l  {generation:#010x},%a1
+    bne.s   3f
+    addq.l  #1,{refreshes:#010x}
+    move.l  %a5,%d0
+    lsl.l   #4,%d0
+    lea     {rows:#010x},%a1
+    adda.l  %d0,%a1
+    bra.s   4f
+3:
 {pull}
-    tst.b   %a4@(74)                | the row's DEST (row + 6, a4 = row - 68)
+    lea     %a4@(68),%a1
+    movea.l %sp@(56),%a4            | stock %sp@(52): the mirror block pointer
+4:  mvs.b   %a1@(6),%d0             | the row's DEST (row + 6)
     beq.s   8f
+    cmpi.l  #100,%d0
+    bgt.s   6f                      | an FX destination: no note needed
+    lea     {awake:#010x},%a0
+    tst.b   %a0@(0,%a5:l)
+    bne.s   6f
+    tst.l   %d5
+    beq.s   9f                      | asleep, and no trig
+    move.l  %d1,%sp@-
+    move.l  %a1,%sp@-
+    move.l  %a5,%sp@-
+    jsr     {wake:#010x}
+    addq.l  #4,%sp
+    movea.l %sp@+,%a1
+    move.l  %sp@+,%d1
+6:  addq.l  #1,{runs:#010x}
+    lea     %a1@(-68),%a4
     lea     %a3@(116),%a3           | four iterations, the fourth LFO4
     rts
-8:  movea.l %sp@(56),%a4            | stock %sp@(52): the mirror block pointer
+8:  lea     {awake:#010x},%a0       | no destination: an awake voice sleeps at once
+    tst.b   %a0@(0,%a5:l)
+    beq.s   9f
+    move.l  %d1,%sp@-
+    move.l  %a5,%sp@-
+    jsr     {sleep:#010x}
+    addq.l  #4,%sp
+    move.l  %sp@+,%d1
 9:  lea     %a4@(-34),%a4           | as stock
     lea     %a3@(76),%a3            | 116 - 40: LFO3's record, where stock starts
     lea     %a2@(-40),%a2
@@ -169,6 +244,10 @@ B_TOP_IDLE = """b_top:
 """
 
 
+FRAME_NOTE_MASKS = 0x80005E82    # the frame's note-on mask, then its note-off mask (0x40027498)
+VOICE_SOUND = 0x800052A8         # DN2_VOICE_SOUND
+
+
 # `outer` displaces 28 bytes, and the hook pads them with eleven `nop`s that run
 # on every track of every frame after the stub returns. On the ColdFire a
 # `nop` is not free: it waits for the pipeline to drain. So the idle build
@@ -186,18 +265,25 @@ def skip_padding(content: bytearray) -> None:
     print(f"  {OUTER_HOOK + 6:#010x}  eleven nops -> bra.s {OUTER_END:#010x}")
 
 
-def idle_skip(source: str, ext_live: int, refresh: int, for_block: int) -> str:
+def idle_skip(source: str, code) -> str:
     """Replace `a4_top` and `b_top` with the versions that skip an idle LFO4."""
     import re
 
-    for label, body, bias, index, mask, callee in (
-            ("a4_top", A_TOP_IDLE, 68, "%a4", "%sp", for_block or refresh),
-            ("b_top", B_TOP_IDLE, 34, "%d0", "#0", refresh)):
+    a_top = dict(ext_live=code["ext_live"], now=code["lfo4_now"], now_low=code["lfo4_now"] + 3,
+                 masks=FRAME_NOTE_MASKS, frame=code["lfo4_on_frame"], raw=code["lfo4_owner_raw"],
+                 voices=VOICE_SOUND, gens=code["lfo4_seen_generation"],
+                 generation=code["ext_generation"], refreshes=code["lfo4_refreshes"],
+                 rows=code["lfo4_rows"], awake=code["lfo4_awake"], wake=code["lfo4_wake"],
+                 runs=code["lfo4_runs"], fx=code["lfo4_fx"], fx_gen=code["lfo4_fx_generation"],
+                 sleep=code["lfo4_sleep"])
+    for label, body, bias, index, mask, callee, values in (
+            ("a4_top", A_TOP_IDLE, 68, "%a4", "%sp", code["lfo4_row_for_block"], a_top),
+            ("b_top", B_TOP_IDLE, 34, "%d0", "#0", code["lfo4_refresh"], dict(ext_live=code["ext_live"]))):
         pull = PULL.format(index=index, mask=mask, refresh=callee, bias=bias)
         pattern = re.compile(rf"^{label}:\n.*?^    rts\n", re.S | re.M)
         if len(pattern.findall(source)) != 1:
             raise SystemExit(f"expected one {label} stub to replace")
-        source = pattern.sub(lambda _: body.format(ext_live=ext_live, pull=pull), source)
+        source = pattern.sub(lambda _: body.format(pull=pull, **values), source)
     return source
 
 
@@ -253,7 +339,7 @@ def main(sources=SOURCES, entries=ENTRIES, out=OUT, syx=SYX, extra=(), chunks=No
     v6a.require_zero(content, v6a.CAVE, v6a.CAVE_CAP, "cave region")
     stubs = cave_source(table_va, code["lfo4_refresh"], code["lfo4_row_for_block"])
     if idle:
-        stubs = idle_skip(stubs, code["ext_live"], code["lfo4_refresh"], code["lfo4_row_for_block"])
+        stubs = idle_skip(stubs, code)
     payload, offsets = v6a.assemble_stubs(stubs, stub_va)
     if len(payload) > v6a.CAVE_CAP:
         raise SystemExit(f"cave overflows: {len(payload)} > {v6a.CAVE_CAP}")

@@ -59,6 +59,7 @@ u32 lfo4_page_record[PAGE_WORDS];
 u32 lfo4_page_ids[4];
 u8 lfo4_page_name[NAME_BYTES];
 u32 lfo4_pages_swapped;
+u32 lfo4_mod_mode;                    /* the MOD mode object, once its header is drawn */
 
 static u32 *page(u32 id)
 {
@@ -113,6 +114,8 @@ void lfo4_pages(u32 object)
     u32 *begin = *(u32 **)(object + VEC_BEGIN);
     u32 *end = *(u32 **)(object + VEC_END);
 
+    if (begin && end == begin + 4 && begin[3] == LFO4_PAGE)
+        lfo4_mod_mode = object;       /* the MOD mode, for `note.c` */
     if (!begin || end != begin + 3)
         return;                       /* not a three-page mode, or already ours */
     if (begin[0] != 4u || begin[1] != 5u || begin[2] != 6u)

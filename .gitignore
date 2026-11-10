@@ -38,3 +38,4 @@ desktop.ini
 !.claude/settings.json
 !.claude/hooks/
 out/
+tools/aplibpack/target/

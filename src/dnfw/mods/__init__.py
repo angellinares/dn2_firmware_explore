@@ -20,10 +20,18 @@ useful guarantee, and it is checkable, which is why it is the one enforced.
 
 ## What a mod must not do
 
-**Change any section's length.** Every address after a resized section moves,
-and nothing in this repository fixes up the code that refers to them
-(`dnfw.patch.spec` says the same about patches). A mod that needs more room is
-a code-cave or new-section problem — `docs/ideas-backlog.md` §1a and §6.
+**Change a section's length, with two exceptions.** Every address after a
+resized point moves, and nothing in this repository fixes up the code that
+refers to them (`dnfw.patch.spec` says the same about patches). The exceptions
+add bytes only where no stock code refers to them:
+
+- `dnfw.mods.platform` appends its area after the end of MAIN OS (section 3).
+  Other mods put their code in that area, through the platform.
+- `dnfw.mods.waverider` inserts its blocks into the DSP boot stream (section 7)
+  before the final block. Only the final block moves, and the FIRST header that
+  holds the length is rewritten (`dnfw.waverider.bootstream`).
+
+A mod that needs more room uses the platform's area.
 
 **Touch the "Multiplier" key material** (`docs/ele3-format.md` §5).
 

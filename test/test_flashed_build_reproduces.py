@@ -7,6 +7,9 @@ fmdepth2 (2026-10-20). `dnfw mods apply` of the same mods must give the same ima
 difference is the /modinfo record's build part (commit, image id, hash). When a later build
 passes on the instrument, it replaces FLASHED here.
 
+The record also holds the hash of each mod's code (`*_code.json`). When one of them differs from
+today's, the bytes cannot match, and the test is an expected failure that names the changed mods.
+
 This replaces test_lfo4_mod's byte equality with out/lfo4-fast: that build is from 2026-09-27,
 before lfo4 1.0.1 moved its state arrays (fbac7a3), so the check had failed since 2026-10-11.
 """
@@ -33,10 +36,29 @@ def _sections(path: pathlib.Path) -> dict[int, bytes]:
     return {s.id: s.unpack() or s.raw_payload for s in load(read_image(path)).container.sections}
 
 
+def _changed_since_flash() -> list[str]:
+    """The mods whose code hash in FLASHED's /modinfo record is not today's (dnfw.cli.mods._modinfo).
+    shortcut: the platform's own code has no hash in the record, so a platform change still fails."""
+    from dnfw.mods import modinfo
+    from dnfw.waverider.store import xxh32
+    main = _sections(FLASHED)[3]
+    flashed = dict(modinfo.parse(modinfo.record(main, modinfo.find(main)))["mods"])
+    changed = []
+    for mod in MODS:
+        code = ROOT / "src/dnfw/mods" / f"{mod}_code.json"
+        # the record keeps the first 11 characters of a name
+        if flashed[mod[:11]] != (xxh32(code.read_bytes()) if code.exists() else 0):
+            changed.append(mod)
+    return changed
+
+
 def test_the_flashed_build_rebuilds(tmp_path):
     if not (STOCK_111.exists() and FLASHED.exists() and BOOT.exists()):
         pytest.skip("stock 1.11, the flashed build or its boot image is not in 00_Resources")
     from dnfw.mods import modinfo
+    changed = _changed_since_flash()
+    if changed:
+        pytest.xfail(f"changed since the flash, so the bytes differ: {', '.join(changed)}")
     out = tmp_path / "rebuilt_DN2_1.11.syx"
     done = subprocess.run([sys.executable, "-c", "import sys; from dnfw.cli.main import main; sys.exit(main(sys.argv[1:]))",
                            "mods", "apply", *[a for m in MODS for a in ("--mod", m)], "--probe-tag", PROBE_TAG, "--boot-image", str(BOOT),

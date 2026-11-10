@@ -99,6 +99,10 @@ dnfw mods apply Digitone_II_OS1.11.syx --mod lfo4 -o modded.syx
 
 To run without an install, use `PYTHONPATH=src python -m dnfw.cli.main ...`.
 
+A build takes about 18 s with the Rust packer, and about 80 s without it. To use it, install
+Rust and run `cargo build --release` in `tools/aplibpack`. `dnfw` uses the Rust packer when it
+is built and packs in Python when it is not. The two give the same bytes.
+
 Each command that takes a `.syx` file also takes the `.zip` that Elektron ship.
 
 ### Commands

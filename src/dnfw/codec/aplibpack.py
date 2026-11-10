@@ -22,7 +22,8 @@ with the window below in force):
     DN2 1.11  section 8   159,948 B raw ->   102,552 vs   103,407 stock   -0.8%
 
 Every section comes out smaller than stock, so a rebuild never needs more flash
-than the image it replaces. MAIN OS packs in under a minute.
+than the image it replaces. MAIN OS packs in about 71 s in Python, and in 0.6 s in
+the Rust copy of this packer (`tools/aplibpack`), which `pack` uses when it is built.
 
 **No match reaches back further than `limits.PACK_MAX_OFFSET`.** Without that
 bound this packer reached three megabytes back, which Elektron's never do, and
@@ -31,6 +32,10 @@ the images it made stalled in recovery. The bound also made it *smaller* --
 match costs more bits than it saves, and faster, because the chain walk stops
 at the window. See `codec.limits`.
 """
+
+import os
+import pathlib
+import subprocess
 
 from .aplib import FAR_THRESHOLD, MIN_MATCH, OFFSET_BIAS, REUSE_GAMMA
 from .limits import MAX_MATCH, PACK_MAX_OFFSET
@@ -183,6 +188,22 @@ def _best(
     return best_offset, best_length, best_cost
 
 
+# tools/aplibpack: this packer in Rust, the same bytes (test/test_aplibpack_rust.py).
+# MAIN OS of 1.11 packs in 0.6 s there and in about 71 s here.
+RUST = pathlib.Path(__file__).resolve().parents[3] / "tools/aplibpack/target/release" / (
+    "aplibpack.exe" if os.name == "nt" else "aplibpack")
+
+
+def rust_packer() -> pathlib.Path | None:
+    """The Rust packer to use, or None for Python. DNFW_APLIBPACK names another build of it,
+    and DNFW_APLIBPACK=python always packs in Python."""
+    named = os.environ.get("DNFW_APLIBPACK")
+    if named == "python":
+        return None
+    path = pathlib.Path(named) if named else RUST
+    return path if path.is_file() else None
+
+
 def pack(
     data: bytes,
     chain_depth: int = DEFAULT_CHAIN_DEPTH,
@@ -194,7 +215,23 @@ def pack(
     the same 2-byte prefix are considered at each step. `max_offset` is the
     furthest back any match may reach; the default keeps inside the window
     Elektron's own streams use, and lowering it is for tests.
+
+    The Rust packer runs when it is built (`rust_packer`), else `pack_python`. A Rust packer
+    that fails raises: it never falls back to Python, so a broken build cannot hide.
     """
+    rust = rust_packer()
+    if rust is None:
+        return pack_python(data, chain_depth, max_offset)
+    return subprocess.run([str(rust), "--depth", str(chain_depth), "--max-offset", str(max_offset)],
+                          input=bytes(data), capture_output=True, check=True, timeout=600).stdout
+
+
+def pack_python(
+    data: bytes,
+    chain_depth: int = DEFAULT_CHAIN_DEPTH,
+    max_offset: int = PACK_MAX_OFFSET,
+) -> bytes:
+    """`pack` in Python: the reference that the Rust and the JS packers must equal."""
     writer = _Writer()
     size = len(data)
     if size == 0:

@@ -18,6 +18,7 @@ built without it boot through the normal update path and stall in recovery,
 so it is written here rather than left to chance. See `docs/flashing.md`.
 """
 
+import functools
 from dataclasses import dataclass
 
 from ..codec import aplib, aplibpack
@@ -95,13 +96,21 @@ class Section:
         before running out, so the caller distinguishes raw from compressed by
         None rather than by trusting a length field it has no reason to.
         """
-        if len(self.stored) <= HEADER:
-            return None
-        try:
-            out = aplib.depack(self.stored[HEADER:], allow_truncated=True)
-        except aplib.DepackError:
-            return None
-        return out or None
+        return _unpack(self.stored)
+
+
+# One build depacked the same sections 30 times (2026-11-10, 65 of 86 s profiled). A Section is
+# frozen and depack returns bytes, so the content can be kept by the stored bytes. 16 entries
+# hold two images' compressed sections.
+@functools.lru_cache(maxsize=16)
+def _unpack(stored: bytes) -> bytes | None:
+    if len(stored) <= HEADER:
+        return None
+    try:
+        out = aplib.depack(stored[HEADER:], allow_truncated=True)
+    except aplib.DepackError:
+        return None
+    return out or None
 
 
 def compress(section_id: int, dest: int, content: bytes) -> Section:

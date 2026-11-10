@@ -16,6 +16,12 @@ Apply them with `dnfw mods apply`, or in the browser on the project site,
 in your browser and uploads nothing. The browser and the command line make the same
 file, byte for byte. A test checks this.
 
+**We did not make these mods to work with mods from other developers.** Some of our mods
+keep their settings in parts of a project that stock firmware does not use. A mod from
+another developer can keep its data in the same parts. If you open a project made with
+another developer's mods and then save it, the save can delete or change that developer's data.
+Before you do this, keep a copy of the project.
+
 | Mod | What it does | Status | In the browser |
 |---|---|---|---|
 | `lfo4` | A fourth LFO under `[MOD]`, like LFO1–3. Modulates on every voice; kept by SAVE PROJECT and across a power-cycle | confirmed on hardware | yes |

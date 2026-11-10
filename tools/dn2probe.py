@@ -63,7 +63,8 @@ STATS2_FIELDS = ('isr_over', 'idle_in', 'idle_out', 'idle_offpc', 'idle_lastpc')
 STATS2_FMT = '>5I'
 STATS2_BYTES = STATS_BYTES + struct.calcsize(STATS2_FMT)
 ISR_OVER_TICKS = 87708        # ext.S: one frame at 132.00 MHz / 1505 frames/s
-# lfo4's timers in a profiling build (csrc/lfo4/profile.h), read by PEEK: five
+# lfo4's timers in a profiling build (not in this repository: docs/usbprobe.md,
+# section 3), read by PEEK: five
 # pieces of five u32 (count, ticks, max, window, window_max), then the fast
 # path counts, from the build's symbols.json.
 LFO4_PIECES = ('on_save', 'on_load', 'memcpy', 'memset', 'refresh')

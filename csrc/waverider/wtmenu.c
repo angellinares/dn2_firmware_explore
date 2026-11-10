@@ -74,7 +74,12 @@ void wr_wt_enc_hook(void);
 /* the menu was closed since the last frame: it opens on page 1 */
 static void freshen(void)
 {
-    u32 gap = TICKS - wr_wtmenu.seen;
+    /* TICKS counts to 4,095 and starts again at 0 (read on the unit, lfo4note1, 2026-11-09:
+     * about 135 a second, so a wrap every 30 s). A plain difference across the wrap is a huge
+     * gap, and an UP pressed just after one closed the menu (last_gap 0xfffff003). Taken
+     * modulo 4,096, a real gap over 30 s can read as under GAP, 12 times in 4,096: the menu
+     * then reopens on the page it had, not on page 1. */
+    u32 gap = (TICKS - wr_wtmenu.seen) & 0xFFFu;
     if (gap > GAP) {
         if (wr_wtmenu.page) {
             wr_wtmenu.resets++;

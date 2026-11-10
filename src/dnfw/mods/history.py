@@ -176,6 +176,13 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     ) + PUBLISHED,
     "usbprobe": UNPUBLISHED,
     "waverider": (
+        Release("0.5.1", "2026-11-09", (
+            "The WAVETABLE page of PRESET/KIT no longer goes back to the presets when you press a "
+            "key just as the unit's internal tick counter starts again. This happened about every "
+            "30 seconds.",
+            "The WAVETABLE MANAGER list shows the +Drive slot of each table, 000 to 255, at the left.",
+            "The table lists show up to 22 characters of a table's name. Before, they showed 15.",
+        )),
         Release("0.5.0", "2026-11-08", (
             "Beta 1. Waverider is now a beta. The sound is the same as in 0.4.2.",
             "Tables load from the +Drive about four times as fast.",

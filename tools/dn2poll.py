@@ -32,8 +32,8 @@ wakes) and a little task-level CPU. `Calibration` measures the switches: it
 polls at a low and a high rate, and the slope of switches/s against the
 achieved rate is the cost of one request.
 
-**lfo4's timers** (a build made with `scripts/build_lfo4_profile.py`) are not
-in STATS: they sit in lfo4's BSS, and are read with one PEEK (136 bytes) right
+**lfo4's timers** (a diagnostic build of September 2026, not in this repository;
+docs/usbprobe.md section 3) are not in STATS: they sit in lfo4's BSS, and are read with one PEEK (136 bytes) right
 after each STATS reply, at the addresses in the build's `symbols.json`
 (`dn2probe.lfo4_layout`, `decode_lfo4`, as `dn2probe.py watch` does). That is a
 second request per reading, still one in flight at a time, so it halves the

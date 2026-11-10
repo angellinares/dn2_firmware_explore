@@ -302,53 +302,16 @@ Menu**, press **TRIG 4** for **OS UPGRADE**, and send stock
 `Digitone_II_OS1.11.syx` over MIDI (`docs/flashing.md`; a dedicated
 class-compliant USB-MIDI cable for the long transfer).
 
-### 3. The save-while-playing hunt: `00_Resources/02_Builds/fxmod-lfo4fast-songguard-arpmodes-usbprobe_DN2_1.11.syx`
+### 3. The save-while-playing hunt (September 2026, closed)
 
-The owner's combination -- fxmod, lfo4-fast, songguard, arpmodes -- with the
-probe, and lfo4 built with `LFO4_PROFILE` (`csrc/lfo4/profile.h`,
-`scripts/build_lfo4_profile.py`, branch `local/usbprobe-lfo4prof`). lfo4 is
-exactly lfo4-fast plus a DTCN0 read either side of `lfo4_on_save`,
-`lfo4_on_load`, the `memcpy` / `memset` slow paths and the evaluators' bridge
-call, and a counter on every stub entry and every evaluator skip. Those
-counters are in lfo4's BSS and `watch` reads them with PEEK, at the addresses in
-the build's `symbols.json`.
+In September 2026, the owner's combination of fxmod, lfo4-fast, songguard and arpmodes ran with the
+probe and with a diagnostic LFO 4. That LFO 4 timed its own pieces with DTCN0: `lfo4_on_save`,
+`lfo4_on_load`, the `memcpy` and `memset` slow paths and the evaluators' bridge call.
+`dn2probe.py watch` read the timers with PEEK, at the addresses in the build's `symbols.json`.
 
-    python tools/dn2probe.py watch 30 --symbols out/fxmod-lfo4fast-songguard-arpmodes-usbprobe/symbols.json
-
-Start it with a pattern playing, let it run five seconds, press SAVE PROJECT,
-and let it run until five seconds after the save ends. Do it with the arp on UP
-and no LFO4 set, as the owner's project was; then once more on stock + probe
-(`usbprobe_DN2_1.11.syx`, a newer build of it for protocol 2, or the old one:
-`watch` shows `-` for layout-2 columns it does not get), which is the control.
-One line per 100 ms:
-
-    t(s) frames  ISR%  peak%  over  idle-in  on_save n/us/peak ... cpy/set/skipA/skipB
-
-**What sane numbers look like, so a broken timer is obvious:**
-
-| column | playing, no save | during a save | broken if |
-|---|---|---|---|
-| frames | 150-151 per line | the same on stock (the owner measured 1,505-1,507/s through a save) | 0, or far from 150 |
-| ISR% / peak% | about 51 % / 74-112 % (stock, measured) | 54-56 % average on stock | ISR% 0 while frames move: DTCN0 stopped |
-| over | 0 most lines; a few at most | the question: stock against the lfo4 build | -- |
-| idle-in | 0 means the idle task never ran (then CPU 100 % is real) | -- | -- |
-| on_save n | 0 | about 2,192 over the whole save (one per stored sound), in the first ~0.1 s of it | stays 0 through a save: the converter hook is not reached |
-| on_save us/peak | -- | about 0.6 us each by the emulator's count (157 instructions); a peak of a few us | peak of hundreds of us, or ms |
-| memcpy / memset n | 0 while nothing has an LFO4 (the stub rules the copy out before calling C) | 0 with no LFO4 set | -- |
-| refresh n | 0 with no LFO4 set | 0 | nonzero with no LFO4 set: the idle skip is not engaged |
-| cpy/set | tens to hundreds per line | thousands per line during the serialise | 0: the stubs are not in the path |
-| skipA | 16 x 150 = 2,400 per line (every track, every frame, no LFO4) | the same | 0: the evaluator skip is not engaged |
-| skipB | 0 to a few (evaluator B runs per note event) | -- | -- |
-
-Microseconds use the rate `watch` measures from DTCN0 against the frame count
-(132.00 MHz on the owner's unit). A reading of 0 us everywhere with nonzero
-counts means DTCN0 did not move, as in the emulator.
-
-**What it will say.** If `over` rises during the save on the lfo4 build and not
-on stock, a frame is going late, and the columns beside it say whether lfo4's
-own pieces spent the time. If lfo4's pieces stay near zero and `over` still
-rises, the time is being lost in stock code that runs slower because of lfo4,
-which points at memory and cache effects rather than at any hook.
+The diagnostic code was local and is not in this repository. The hunt ended on 2026-10-10 by another
+route. LFO 4's state arrays were at `0x46700000`, inside stock's DMA section, and they corrupted
+projects saved on an LFO 4 unit. LFO 4 1.0.1 moved them.
 
 ### 2. Waverider: `00_Resources/02_Builds/waverider-m5c-usbprobe_DN2_1.11.syx`
 
@@ -387,7 +350,6 @@ SHARC is still writing anything, word by word.
 | file | |
 |---|---|
 | `csrc/usbprobe/` | the ColdFire code: `timing.S` (ISR and idle timing), `probe.S` (the channel), `data.S` (counters), `ext.S` (STATS layout 2, second cave), `dn2_111.inc` (the sites) |
-| `csrc/lfo4/profile.[ch]`, `scripts/build_lfo4_profile.py` | lfo4's pieces timed, for the save-while-playing build (local branch only) |
 | `scripts/gen_usbprobe_code.py` | assembles it, guards the sites, writes `src/dnfw/mods/usbprobe_code.json` |
 | `src/dnfw/mods/usbprobe.py` | the mod |
 | `scripts/build_usbprobe.py` | a build, a section-7 swap, and the gate layout under `out/<name>/` |
@@ -429,7 +391,7 @@ fourth hash is labelled "USB audio -> SHARC" and STILL is shown as expected,
 not as a fault, on every layout. The ISR's own vs nested time is not shown:
 the hooks cannot separate them (above).
 
-**lfo4's timers** (a `build_lfo4_profile.py` build) are not in STATS. With
+**lfo4's timers** (the diagnostic build of section 3, not in this repository) are not in STATS. With
 `--symbols out/<build>/symbols.json` (launcher: `-Symbols`), dn2live PEEKs lfo4's
 136-byte profile block after every STATS, as `dn2probe.py watch` does, and
 adds a per-piece table (calls/s, us/s, recent and boot peaks) and a graph lane

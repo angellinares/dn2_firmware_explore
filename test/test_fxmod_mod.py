@@ -17,9 +17,10 @@ import pytest
 
 from dnfw.mods import ModError, check_compatible
 from dnfw.mods import fxmod, lfowaves, moddest, platform
+from dnfw.checkout import resources_dir  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCK_111 = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
 # out/fxbrowser3/section_3_MAIN_OS.bin (2026-09-23, scripts/build_fxbrowser3.py), 3,192,192 B, with the
 # hook bus's regions set to zero (test_is_the_image_that_was_gated)
 GATED_LENGTH = 3192192

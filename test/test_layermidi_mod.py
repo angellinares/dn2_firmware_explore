@@ -18,9 +18,10 @@ import pytest
 from dnfw.mods import ModError, check_compatible, platform
 from dnfw.mods import arpmodes, arpplocks, fxmod, layermidi, midiarp, moddest, usbprobe
 from dnfw.patch import area
+from dnfw.checkout import resources_dir  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCK_111 = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
 # section 3 of scripts/build_layer_midi.py's layer-midi7_DN2_1.11.syx, unpacked (2026-11-03)
 BUILT_SHA256 = "e47a6e7b12e180b7aaa5da343a8fcc2561f0521ea43847d619bd95fe6da28615"
 BASE = layermidi.BASE

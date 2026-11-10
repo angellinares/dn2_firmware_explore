@@ -19,9 +19,9 @@ from dnfw.mods import usbprobe
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import dn2probe  # noqa: E402
+from dnfw.checkout import resources_dir  # noqa: E402
 
-RES = next((d / "00_Resources" for d in (ROOT, *ROOT.parents) if (d / "00_Resources").is_dir()),
-           ROOT / "00_Resources")
+RES = resources_dir(ROOT)
 STOCK_111 = RES / "00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
 BASE = usbprobe.BASE
 

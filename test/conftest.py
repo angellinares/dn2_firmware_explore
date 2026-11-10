@@ -76,7 +76,7 @@ from dnfw.pytest_progress import (  # noqa: E402,F401
     pytest_collection_finish, pytest_runtest_logfinish, pytest_runtest_logreport, pytest_runtest_logstart,
     pytest_sessionfinish)
 
-FIRMWARE = ROOT / "00_Resources" / "00_Firmware"
+FIRMWARE = checkout.resources_dir(ROOT) / "00_Firmware"
 
 # Filename, and the facts each image should report. Written down rather than
 # derived so a change in the tooling that silently alters them fails a test.

@@ -15,9 +15,10 @@ import pytest
 
 from dnfw.mods import ModError, RAM, check_compatible, midiarp, platform, usbprobe
 from dnfw.patch import area
+from dnfw.checkout import resources_dir  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCK_111 = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
 BASE = midiarp.BASE
 OLD_CAVE = (0x402D0664, 526)               # arp-midi-play4's cave, before the platform
 ALLOC, FREE_LIST = 0x4012A408, 0x4460E4B8

@@ -17,9 +17,10 @@ import pytest
 
 from dnfw.mods import ModError, check_compatible
 from dnfw.mods import arpmodes, arpplocks, bootscreen, fxmod, lfowaves, midiarp, moddest
+from dnfw.checkout import resources_dir  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCK_111 = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
 # scripts/build_arpmodes.py's out/arpmodes/section_3_MAIN_OS.bin (2026-09-26), which the emulator gates ran
 BUILT_SHA256 = "f9fc321a5b69f6a94bbd1706451a9e1da1a84112454cca7b4276882c847de4e1"
 BASE = arpmodes.BASE

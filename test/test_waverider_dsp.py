@@ -18,9 +18,10 @@ import pytest
 from dnfw.image import bootstream, sharc_object
 from dnfw.waverider import dsp, harmonics, live, mip, reduce, render, table3, testtable
 from dnfw.waverider import render as reference
+from dnfw.checkout import resources_dir  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-IMAGE = ROOT / "00_Resources" / "00_Firmware" / "Digitone_II_OS1.11_dist.zip"
+IMAGE = resources_dir(ROOT) / "00_Firmware" / "Digitone_II_OS1.11_dist.zip"
 SHARC = ROOT / "csrc" / "waverider" / "sharc"
 
 

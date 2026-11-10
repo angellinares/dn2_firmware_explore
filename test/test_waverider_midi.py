@@ -7,9 +7,10 @@ import struct
 import pytest
 
 from dnfw.waverider import pages
+from dnfw.checkout import resources_dir  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCK = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
 SWITCH_CASES = {1, 2, 6, 33, 34, 38, 64, 66, 94, 98, 99, 110, 120, 121, 123}   # 0x40122c0c
 TRIG_AND_LEVEL = {3, 4, 5, 13, 14, 95}                                          # DN2 manual, C.1, C.2
 SENT_UNASKED = {0, 32, 7, 10, 11, 67, 68, 69, *range(96, 102), *range(120, 128)}

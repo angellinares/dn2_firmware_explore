@@ -20,11 +20,12 @@ import pytest
 
 from dnfw.cli.files import read_image
 from dnfw.firmware.load import load
+from dnfw.checkout import resources_dir  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "scripts"))
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCK_111 = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
 MAIN_OS, BASE = 3, 0x40000400
 
 # LFO3's ten records are 94..103, so its entries are 95..104; LFO4's are 321

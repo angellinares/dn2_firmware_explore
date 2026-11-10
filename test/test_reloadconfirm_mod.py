@@ -17,9 +17,10 @@ import pytest
 
 from dnfw.mods import ModError, check_compatible, platform, reloadconfirm
 from dnfw.patch import area
+from dnfw.checkout import resources_dir  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCK_111 = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
 BASE = reloadconfirm.BASE
 KEY_SITE, MENU_SITE = 0x4005F1A2, 0x4009863E
 

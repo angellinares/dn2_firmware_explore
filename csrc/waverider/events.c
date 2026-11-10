@@ -20,7 +20,12 @@
  *   LFOs included, and an idle voice also reads as track 1's. The page showed that
  *   modulation until a note (owner, 2026-11-02: POS moved on a new Waverider track until a
  *   track key). `unplayed` keeps a bit per voice, set while the voice is another machine,
- *   cleared by its first note-on as a Waverider; set for every voice at boot. */
+ *   cleared by its first note-on as a Waverider; set for every voice at boot.
+ * - **A pattern change:** the same again with the machine unchanged. Each pattern has its
+ *   own kit, and a voice holds the old kit's sound until its next note. With a Waverider
+ *   in both patterns no bit was set, so the page drew the old sound's MOVE around the new
+ *   knobs (instrument, wrl2b, 2026-11-03). A kit change sets every bit, so each voice
+ *   counts again from its next Waverider note. */
 
 #include "loader.h"
 #include "events.h"
@@ -35,13 +40,23 @@ volatile struct wr_events wr_events __attribute__((section(".data"))) =
     { 0x57524556u, 0, { 0 }, 0, 0xFF, 0xFFFF, &wr_scope_ring };
 
 #define WR_TYPE 5                          /* Waverider's machine type (dnfw.waverider.coldfire NEW_TYPE) */
+/* The live kit, &kits[active pattern] (0x40025af4 stores it; 0x40025e0a only when it
+ * differs). Instrument, wrl2b, 2026-11-03: it moved 23,921 B a pattern number on each
+ * change, came back to the same value on the same pattern, and held through 30 s of play. */
+#define LIVE_KIT (*(volatile u32 *)0x800052A0u)
+
+static u32 kit_seen __attribute__((section(".data"))) = 0;
 
 /* the frame ISR, every frame: count each voice whose note-on bit is set, and keep
- * `unplayed` (see above) */
+ * `unplayed` (see above), set again for every voice when the kit changes */
 void wr_note_seen(const u8 *frame)
 {
     u32 on = (u32)frame[34] << 8 | frame[35];
-    u32 unplayed = wr_events.unplayed;
+    u32 unplayed = wr_events.unplayed, kit = LIVE_KIT;
+    if (kit != kit_seen) {                 /* before the note-ons: a note in this frame plays the new kit */
+        kit_seen = kit;
+        unplayed = 0xFFFF;
+    }
     for (u32 v = 0; v < 16; v++) {
         u32 wr = ((u32)frame[148 + 2 * v] << 8 | frame[149 + 2 * v]) == WR_TYPE;
         if (on >> v & 1) {

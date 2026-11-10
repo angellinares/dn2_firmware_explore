@@ -1,6 +1,7 @@
 | derived from irpina/digihealth (sysinfo.s), GPL-2.0-or-later, used here under GPL-3.0 within this AGPL-3.0-or-later project
 |
-| STATS layout 2: what the first cave had no room for, in a second one.
+| STATS layout 2, and the REGS command: what the first cave had no room for,
+| in a second one.
 |
 | The owner's first readings (stock + probe, 2026-09-27) raised two questions
 | layout 1 cannot answer, and the save-while-playing hunt needs a third:
@@ -25,6 +26,9 @@
 | One audio frame at the instrument's own rates, measured by this probe on
 | 2026-09-27: DTCN0 at 132.00 MHz, 1,505 frames a second.
         .equ ISR_OVER_TICKS, 87708
+| probe.S's command numbers, and the one this cave adds.
+        .equ C_PEEK, 3
+        .equ C_REGS, 4
 
         .text
         .globl  ext_out
@@ -67,6 +71,55 @@ ext_stats:
         subq.l  #1, %d0
         bne.s   1b
         rts
+
+        .globl  ext_cmd
+| From diag_rx, for a command that is not HELLO, STATS or PEEK (protocol 4).
+| d2 = the command minus C_PEEK, a1 = where the payload goes, a2 = the reply.
+| a1 is left after the payload. d0-d3 and a0 are free: diag_rx saved d2-d7
+| and sends from a2 and a1 only.
+|
+| REGS (command 4) reads a fixed list of peripheral registers. The list is in
+| this cave, so a request cannot name an address. For each entry the reply is
+| u32 address, u32 width in bytes, u32 value. Every register in the list has
+| no read side effect (MCF5441x Reference Manual: the CIR is read-only, the
+| PLL_SR flags clear only on a write of 1, DTMR0 and DTXMR0 are plain R/W).
+ext_cmd:
+        subq.l  #C_REGS - C_PEEK, %d2
+        beq.s   1f
+        moveq   #2, %d0                 | unknown command
+        move.b  %d0, 3(%a2)
+        rts
+1:      lea     regs_list, %a0
+        moveq   #NREGS, %d3
+2:      move.l  (%a0)+, %d1             | the address
+        move.l  (%a0)+, %d2             | its width
+        move.l  %d1, (%a1)+
+        move.l  %d2, (%a1)+
+        movea.l %d1, %a3
+        moveq   #0, %d0
+        subq.l  #1, %d2
+        bne.s   3f
+        move.b  (%a3), %d0              | 8 bits
+        bra.s   5f
+3:      subq.l  #1, %d2
+        bne.s   4f
+        move.w  (%a3), %d0              | 16 bits
+        bra.s   5f
+4:      move.l  (%a3), %d0              | 32 bits
+5:      move.l  %d0, (%a1)+
+        subq.l  #1, %d3
+        bne.s   2b
+        rts
+
+        .balign 4
+regs_list:
+        .long   0xEC09000A, 2           | CIR: PIN, PRN
+        .long   0xFC0C0000, 4           | PLL_CR: REFDIV, FBKDIV
+        .long   0xFC0C0004, 4           | PLL_DR: OUTDIV1..5
+        .long   0xFC0C0008, 4           | PLL_SR: lock and mode
+        .long   0xFC070000, 2           | DTMR0: DMA timer 0's clock source and prescaler
+        .long   0xFC070002, 1           | DTXMR0: DMA timer 0's extended mode
+        .equ    NREGS, 6
 
         .balign 4
 | ext_stats copies these five, in this order.

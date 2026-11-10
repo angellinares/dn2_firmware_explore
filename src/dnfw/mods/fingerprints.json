@@ -60,8 +60,8 @@
   "version": "2.0.0"
  },
  "usbprobe": {
-  "sha256": "06d9d926be7c3658740f28635526e96ab95b8b0fb88fe5bbea69acd6bb1611ac",
-  "version": "0.1.0"
+  "sha256": "b108f2cb9c14ccbf3f9fc02c947ba8c12f26c73530cbd0c6c05bbcf76419332f",
+  "version": "0.1.1"
  },
  "waverider": {
   "sha256": "1c7be47271f297882203538ee991ef8e216a3e117c7c4d578d453d2d858ba098",

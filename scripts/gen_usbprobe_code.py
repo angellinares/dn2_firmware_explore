@@ -50,7 +50,7 @@ MAIN_OS = 3
 # arpmodes, moddest and fxmod, and of waverider-m5b's section 3.
 CAVE, CAVE_CAP = 0x402CF52C, 896
 RAM = 0x46F00000                     # above BSS end 0x466b74d0; 0x900 bytes
-# STATS layout 2's code and counters (`csrc/usbprobe/ext.S`), because the first
+# STATS layout 2's code and counters, and REGS (`csrc/usbprobe/ext.S`), because the first
 # cave was full. The second of the three clean 896-byte runs, 0x402d0664,
 # entered 4 B in and left 4 B short of arpmodes' cave at 0x402d08c0, which
 # guards 4 B either side of itself. midiarp (to 0x402d0872) and arpplocks (to
@@ -104,7 +104,7 @@ def compose(stock: bytes) -> dict:
     if any(stock[CAVE2 - BASE - 4:CAVE2 - BASE + CAVE2_CAP + 4]):
         raise SystemExit(f"cave 0x{CAVE2:08x} is not free in this image")
     ext = cbuild.build([SRC / "ext.S"], base=CAVE2, include=[SRC],
-                       entries=["ext_out", "ext_sw", "ext_stats"])
+                       entries=["ext_out", "ext_sw", "ext_stats", "ext_cmd"])
     if ext.bss or len(ext.image) > CAVE2_CAP:
         raise SystemExit(f"ext.S is {len(ext.image)} B (+{ext.bss} bss), its cave {CAVE2_CAP} B")
     linked = cbuild.build([SRC / "usbprobe.S"], base=CAVE, include=[SRC],
@@ -112,7 +112,8 @@ def compose(stock: bytes) -> dict:
                           defines={"RAM": f"0x{RAM:08x}", "TAG_BYTES": TAG_BYTES,
                                    "EXT_OUT": f"0x{ext['ext_out']:08x}",
                                    "EXT_SW": f"0x{ext['ext_sw']:08x}",
-                                   "EXT_STATS": f"0x{ext['ext_stats']:08x}"})
+                                   "EXT_STATS": f"0x{ext['ext_stats']:08x}",
+                                   "EXT_CMD": f"0x{ext['ext_cmd']:08x}"})
     if linked.bss:
         raise SystemExit(f"{linked.bss} B of .bss: the probe keeps its state in the cave")
     code = linked.image
@@ -125,7 +126,7 @@ def compose(stock: bytes) -> dict:
     edits = [{"va": CAVE, "stock": cave_stock[:len(code)].hex(), "new": code.hex(),
               "what": f"usbprobe code cave, {len(code)} of {CAVE_CAP} B"},
              {"va": CAVE2, "stock": cave2_stock[:len(ext.image)].hex(), "new": ext.image.hex(),
-              "what": f"usbprobe STATS layout 2 cave, {len(ext.image)} of {CAVE2_CAP} B"}]
+              "what": f"usbprobe STATS layout 2 and REGS cave, {len(ext.image)} of {CAVE2_CAP} B"}]
     for what, va, want, target in SITES:
         new = bytes.fromhex("4eb9") + struct.pack(">I", linked[target])
         edits.append({"va": va, "stock": want, "new": new.hex(), "what": f"usbprobe hook: {what}"})

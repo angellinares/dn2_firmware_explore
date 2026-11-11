@@ -51,6 +51,7 @@ Where they disagree, they win and this table is wrong.
 | 33 | LFO shape warps: phase distortion and a power curve | **open** | — | route: new shapes with their own parameter (as `lfowaves`), or a modifier on every shape |
 | 37 | Waverider: a marker for every playing voice on the position line | **open (polish, after Waverider's stages)** | — | whether the drawn wave is one voice's or all sounding voices' together; how many markers stay readable |
 | 38 | Tags, a tag filter and search for wavetables | **queued (owner, 2026-10-14)** | — | everything: how stock stores and filters sound tags, and where a table's tags live in the store |
+| 39 | Keyboard hold: KEYBOARD held over a trig key keeps its note sounding | **queued (owner, 2026-11-11: quality of life)** | — | everything: where stock handles a trig key's release in keyboard mode, and the questions under §39 |
 
 **The numbering is wrong and is left wrong on purpose.** There are two `## 8.`
 headings — "New LFO waveforms" and "FX machines on tracks" — and `## 7.` sits
@@ -4088,3 +4089,17 @@ The owner wants to explore granular synthesis once Wavefinder is finished. Refer
 The owner: "add tags to the tables (like sounds have) ... and the same filtering by tag and generic search that the sound manager currently implements". Three parts: tags on a stored table, of the same kind a sound carries; a filter by tag on the wavetable page, as the sound manager filters sounds; and a search by name there.
 
 Nothing designed yet. Where to start: how stock stores a sound's tags and how its sound manager filters and searches (the DN2 manual first, then the code), so the tag list and the filter and search screens are reused, not rewritten. A table's index entry has 28 reserved bytes (100..127, `docs/waverider-store.md`), a possible home for a tag field without moving anything; DNX is the format authority for what it writes, so the field is agreed with DNX, which would set tags on import. Control layout options come before code, as for Waverider's other pages.
+
+## 39. Keyboard hold (owner, 2026-11-11: quality of life)
+
+**The request.** In keyboard mode, the user holds a trig key and presses the KEYBOARD key. The note then keeps sounding after the user releases the trig key. The held note stops when the user plays a new note on the same track.
+
+**To decide first:**
+- Chords: does KEYBOARD hold every trig key that is down at that moment, or one note only?
+- The new note: does it replace the held note, or does it also become a held note?
+- Other ways to stop a held note: the track's mute, STOP, a pattern change, or KEYBOARD alone.
+- The sequencer: does a sequencer trig on the same track stop the held note, as a played note does?
+- Recording: a held note in live recording. Its length is probably the time until the next note.
+- KEYBOARD's stock action: the press that holds a note must not also leave keyboard mode.
+
+**Where to start.** Find where stock handles a trig key's release in keyboard mode, and where it sends the note-off to the voice. The mod keeps that note-off until the next note on the track. The DN2 manual first, then the code.

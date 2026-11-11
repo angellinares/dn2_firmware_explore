@@ -132,16 +132,18 @@ NOT_RAM += (
     0x4670B936,              # notl %d3 ; andl %d3,%d1 (46 83 c2 83)
     0x4670BB5C,              # addal #0x469ff400,%a0: the pool spans' base 0x46a00000 less one
                              # 3072 B entry, indexed by the table number (1 and up), declared
-    # 2026-11-09, 0.5.1 (the manager's longer names and slot numbers moved the drive chunk's text):
-    # every drive place read again in the applied chunk with objdump -m m68k:cfv4e
-    0x467F0BD2,              # notl %d2 ; andl %d2,%d1 (wr_note_seen, the unplayed mask)
-    0x467F3266,              # pea 0x467f46bc ; mov3ql #2,-(sp): the operand read 2 bytes late
-    0x467F33CE, 0x467F3D38, 0x467F3D7C, 0x467F3E44,
+    # 2026-11-10, 0.5.2 (the kit check in wr_note_seen: events.c grew 0x1a bytes, so each 0.5.1
+    # place moved 0x1a up, the table 0x14): every drive place read again in the applied chunk
+    # with objdump -m m68k:cfv4e
+    0x467F0BEC,              # notl %d2 ; andl %d2,%d0 (wr_note_seen, the unplayed mask)
+    0x467F3280,              # pea 0x467f46d4 ; mov3ql #2,-(sp): the operand read 2 bytes late
+    0x467F329E,              # movel #0x467f4682,(sp): the immediate read 2 bytes late
+    0x467F33E8, 0x467F3D52, 0x467F3D96, 0x467F3E5E,
                              # pea 0x467f46xx ; clrl -(sp): the operand read 2 bytes late
-    0x467F3D6A,              # pea 0x467f469f ; bras: the operand read 2 bytes late
-    0x467F3CF0,              # movel #0x467f466f,%d0 ; movel %d0,-(sp): the immediate read 2 bytes late
-    0x467F4098,              # notl %d0 ; the next instruction
-    0x467F479A, 0x467F479E, 0x467F47A2, 0x467F47A8, 0x467F47AC,
+    0x467F3D84,              # pea 0x467f46b7 ; bras: the operand read 2 bytes late
+    0x467F3D0A,              # movel #0x467f4687,%d0 ; movel %d0,-(sp): the immediate read 2 bytes late
+    0x467F40B2,              # notl %d0 ; the next instruction
+    0x467F47AE, 0x467F47B2, 0x467F47B6, 0x467F47BA, 0x467F47C0,
                              # a table of 0x467f46xx pointers and bytes: read 2 bytes out of step
 )
 # 0x4670C8E2 and 0x4670CBCE (2026-10-11) left the list in 0.5.0: no word there reads as an

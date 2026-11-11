@@ -181,6 +181,11 @@ HISTORY: dict[str, tuple[Release, ...]] = {
         )),
     ) + UNPUBLISHED,
     "waverider": (
+        Release("0.5.2", "2026-11-10", (
+            "After you change the pattern, page 1 no longer shows modulation from the previous "
+            "pattern's sound. Before, POS could move on the screen with no LFO and no MOVE in the sound, "
+            "until you played a note. The sound was not affected.",
+        )),
         Release("0.5.1", "2026-11-09", (
             "The WAVETABLE page of PRESET/KIT no longer goes back to the presets when you press a "
             "key just as the unit's internal tick counter starts again. This happened about every "

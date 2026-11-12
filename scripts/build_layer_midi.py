@@ -123,6 +123,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 
+from dnfw import osport
+from dnfw.checkout import resources_dir
 from dnfw.cli.files import read_image
 from dnfw.container.section import compress
 from dnfw.firmware import build as fwbuild
@@ -161,7 +163,13 @@ RELEASE_DISPLACED = bytes.fromhex("792a00022f04")  # mvs.b 2(%a2),%d4 ; move.l %
 
 LABELS = ("note_hook", "release_hook")
 
-SOURCE = f"""
+def source(os: str = "1.11") -> str:
+    """The hooks' code for OS: the six stock addresses it names go through `dnfw.osport.addr`
+    (issue #382). source("1.11") is the text it always was."""
+    release_return = osport.addr(os, RELEASE_SITE) + 6
+    midi_mask, midi_free = osport.addr(os, MIDI_MASK), osport.addr(os, MIDI_FREE)
+    midi_record, now, kit = osport.addr(os, MIDI_RECORD), osport.addr(os, NOW), osport.addr(os, KIT)
+    return f"""
 | The head of the ISR's per-note body. Record -36(%fp), entry %a2.
 | A layered copy's note on a MIDI track becomes a note-on on the batch.
 note_hook:
@@ -193,7 +201,7 @@ release_hook:
     lea     32(%sp),%sp
     mvs.b   2(%a2),%d4                  | the displaced instructions
     move.l  %d4,-(%sp)
-    jmp     {RELEASE_SITE + 6:#x}
+    jmp     {release_return:#x}
 
 | -> Z set when the record -36(%fp) is a layered copy on a MIDI track and the
 | MIDI pool can spare a record; then %a4 the record, %d2 its track.
@@ -206,10 +214,10 @@ gate:
     moveq   #15,%d1
     cmp.l   %d2,%d1
     bcs.s   8f
-    mvs.w   {MIDI_MASK:#x},%d1
+    mvs.w   {midi_mask:#x},%d1
     btst    %d2,%d1
     beq.s   8f                          | an audio track: stock
-    move.l  {MIDI_FREE:#x},%d0          | the allocator does not check the
+    move.l  {midi_free:#x},%d0          | the allocator does not check the
     beq.s   8f                          | free list, and an empty pop corrupts
     move.l  %d0,%a1                     | low memory for good. Keep one spare
     tst.l   92(%a1)                     | for the MIDI task's own use.
@@ -222,7 +230,7 @@ gate:
 | One MIDI record for entry %a2 of record %a4 on track %d2, kind %d3
 | (1 on, 0 off), appended to the ISR's batch.
 emit:
-    jsr     {MIDI_RECORD:#x}
+    jsr     {midi_record:#x}
     move.l  %d0,%a3
     move.l  %d2,8(%a3)                  | track
     move.l  %d3,12(%a3)                 | kind
@@ -235,7 +243,7 @@ emit:
     moveq   #-1,%d0
     move.l  %d0,24(%a3)                 | the note is the inline entry at +36
     clr.l   32(%a3)
-    move.l  {NOW:#x},%d0
+    move.l  {now:#x},%d0
     tst.l   %d3
     beq.s   2f
     move.l  -44(%fp),%a0                | a note-on: the time the ISR gives the
@@ -253,7 +261,7 @@ emit:
     bne.s   2f
     move.l  #{SOUND_STRIDE},%d0
     muls.l  %d2,%d0
-    add.l   {KIT:#x},%d0
+    add.l   {kit:#x},%d0
     add.l   #{SOUND_BASE},%d0
 2:  move.l  %d0,44(%a3)                 | the MIDI task reads defaults through +44 too
     move.l  %d0,%a0
@@ -281,6 +289,9 @@ emit:
 7:  move.l  %a3,%a5
     rts
 """
+
+
+SOURCE = source()            # OS 1.11's
 
 # (va, stock bytes, kind, label): the stock instructions become a jsr (returns
 # past them) or a jmp (the cave jumps back itself) to `label`.
@@ -330,8 +341,9 @@ CONTEXT = (
 )
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-OUT = ROOT / "00_Resources/02_Builds/layer-midi7_DN2_1.11.syx"
+STOCKS = {"1.11": "00_Firmware/Digitone_II_OS1.11_dist.zip", "1.12": "00_Firmware/Digitone_II_OS1.12.syx"}
+STOCK = resources_dir(ROOT) / STOCKS["1.11"]
+OUT = resources_dir(ROOT) / "02_Builds/layer-midi7_DN2_1.11.syx"
 
 
 def be32(v: int) -> bytes:
@@ -354,27 +366,36 @@ def check(content: bytes, va: int, want: bytes, why: str) -> None:
                          f"-- not the image this patch was written against ({why})")
 
 
-def compose(stock: bytes, log=print, code_base: int | None = None) -> dict:
+def compose(stock: bytes, log=print, code_base: int | None = None, os: str = "1.11") -> dict:
     """Apply the build to a stock MAIN OS. -> {content, cave, code_base, blob}.
 
     Without CODE_BASE the code goes into the cave (layer-midi1..6). With it
     (the mod platform) the same code is assembled to run at CODE_BASE and
     returned as `blob`, 4-padded, for a platform `CODE` chunk; the cave stays
-    stock and the hooks point at the chunk."""
+    stock and the hooks point at the chunk.
+
+    OS is STOCK's version (issue #382): every guard and hook site goes through
+    `dnfw.osport.site`, which refuses a site whose bytes changed other than by a
+    moved address. The cave (layer-midi1..6) is 1.11 only."""
+    if code_base is None and os != "1.11":
+        raise SystemExit("the cave build is OS 1.11 only: give a code base")
     if not available():
         raise SystemExit("no m68k assembler found")
     content = bytearray(stock)
 
     log("part 1 -- the code this relies on, asserted")
     for va, want, why in CONTEXT:
-        check(content, va, want, why)
-        log(f"  {va:#010x}  {want.hex():<14}  {why}")
+        try:
+            at, have = osport.site(os, va, want, content, BASE)
+        except osport.NotPorted as exc:
+            raise SystemExit(f"{why}: {exc}") from None
+        log(f"  {at:#010x}  {have.hex():<14}  {why}")
 
     log("part 2 -- the cave" if code_base is None else f"part 2 -- the code, from {code_base:#010x}")
     where = CAVE if code_base is None else code_base
     if code_base is None and any(content[CAVE - BASE:CAVE - BASE + CAVE_CAP]):
         raise SystemExit(f"cave at {CAVE:#010x} is not free")
-    payload, at = assemble_stubs(SOURCE, where)
+    payload, at = assemble_stubs(source(os), where)
     blob = payload + bytes(-len(payload) % 4)
     if code_base is None:
         if len(payload) > CAVE_CAP:
@@ -385,7 +406,10 @@ def compose(stock: bytes, log=print, code_base: int | None = None) -> dict:
 
     log("part 3 -- the hooks")
     for va, stock_bytes, kind, label in HOOKS:
-        check(content, va, stock_bytes, label)
+        try:
+            va, stock_bytes = osport.site(os, va, stock_bytes, content, BASE)
+        except osport.NotPorted as exc:
+            raise SystemExit(f"hook {label}: {exc}") from None
         new = bytes.fromhex("4eb9" if kind == "jsr" else "4ef9") + be32(at[label])
         if len(new) != len(stock_bytes):
             raise SystemExit(f"hook at {va:#010x} is not {len(stock_bytes)} bytes")
@@ -397,19 +421,21 @@ def compose(stock: bytes, log=print, code_base: int | None = None) -> dict:
 
 
 def main() -> int:
-    firmware = load(read_image(STOCK))
+    os = sys.argv[sys.argv.index("--os") + 1] if "--os" in sys.argv else "1.11"
+    firmware = load(read_image(resources_dir(ROOT) / STOCKS[os]))
+    out = resources_dir(ROOT) / f"02_Builds/layer-midi7_DN2_{os}.syx"
     section = firmware.container.find(MAIN_OS)
     if section is None:
         raise SystemExit("image has no MAIN OS section")
-    built = compose(section.unpack(), code_base=CODE_VA)
+    built = compose(section.unpack(), code_base=CODE_VA, os=os)
     chunk = platform.area.CodeChunk(CODE_VA, built["blob"]).pack()
     content = platform.join(built["content"], [(platform.area.CODE, chunk)])
 
     print("part 4 -- repack")
-    OUT.parent.mkdir(parents=True, exist_ok=True)
+    out.parent.mkdir(parents=True, exist_ok=True)
     replacement = compress(section.id, section.dest, content)
-    OUT.write_bytes(fwbuild.build(firmware, {MAIN_OS: replacement}))
-    print(f"  wrote {OUT} ({OUT.stat().st_size} bytes)")
+    out.write_bytes(fwbuild.build(firmware, {MAIN_OS: replacement}))
+    print(f"  wrote {out} ({out.stat().st_size} bytes)")
     return 0
 
 

@@ -35,6 +35,10 @@ def _map(os: str) -> dict[int, dict]:
 
 WINDOW = 0x08000000                    # the uncached window: the same RAM at address + WINDOW
 RAM_TOP = 0x48000000
+# The on-chip SRAM that the reset fills from the image. Every SRAM operand of every instruction the
+# code map anchors names the same address on 1.11 and 1.12 (173 operands, 173 the same, 2026-11-12,
+# from the votes), so an SRAM address carries over unchanged.
+SRAM = (0x80000000, 0x80010000)
 
 
 def _cached(va: int) -> int:
@@ -51,6 +55,8 @@ def addr(os: str, va: int) -> int:
         return va
     if os not in VERSIONS:
         raise NotPorted(f"no OS {os} in dnfw.osport.versions")
+    if SRAM[0] <= va < SRAM[1]:
+        return va
     old, new = VERSIONS[SOURCE], VERSIONS[os]
     ram = _cached(va)
     if old.dma[1] <= ram < RAM_TOP:
@@ -62,3 +68,34 @@ def addr(os: str, va: int) -> int:
     if row is None:
         raise NotPorted(f"0x{va:08x} has no {os} address in map_{os}.json: read it by hand and add it")
     return int(row["new"], 16)
+
+
+def site(os: str, va: int, want: bytes, image: bytes, base: int = 0x40000400) -> tuple[int, bytes]:
+    """A stock site a mod checks or edits, on OS: (its address, the stock bytes there).
+
+    WANT is the site's 1.11 stock bytes and IMAGE the stock MAIN OS of OS. The bytes there must be
+    WANT, or differ only in address words: each differing byte must lie in a four-byte word whose
+    1.11 value `addr` maps to the word OS has there. Anything else raises NotPorted, so a guard or an
+    edit never lands on code that changed."""
+    new = addr(os, va)
+    have = bytes(image[new - base:new - base + len(want)])
+    if have == want:
+        return new, have
+    i, n = 0, len(want)
+    while i < n:
+        if want[i] == have[i]:
+            i += 1
+            continue
+        for start in range(max(0, i - 3), min(i, n - 4) + 1):
+            old_w = int.from_bytes(want[start:start + 4], "big")
+            new_w = int.from_bytes(have[start:start + 4], "big")
+            try:
+                if addr(os, old_w) == new_w:
+                    i = start + 4
+                    break
+            except NotPorted:
+                continue
+        else:
+            raise NotPorted(f"0x{va:08x} -> 0x{new:08x} on {os}: {have.hex()} is not {want.hex()} "
+                            f"with its addresses moved")
+    return new, have

@@ -60,3 +60,20 @@ def test_the_1_12_header_is_the_generator_s_output():
     r = subprocess.run([sys.executable, str(root / "scripts/gen_dn2_header.py"), "--os", "1.12", "--check"],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_sram_addresses_carry_over():
+    assert osport.addr("1.12", 0x800052A0) == 0x800052A0            # the kit pointer
+
+
+def test_a_site_moves_with_its_relocated_words():
+    """layermidi's guard on the MIDI pool's head: `movea.l 0x4460e4b8,%a0`, the address +0x1000"""
+    image = bytearray(0x200000)
+    new_va = osport.addr("1.12", 0x4012A40E)
+    at = new_va - 0x40000400
+    image[at:at + 6] = bytes.fromhex("20794460f4b8")
+    assert osport.site("1.12", 0x4012A40E, bytes.fromhex("20794460e4b8"), bytes(image)) \
+        == (new_va, bytes.fromhex("20794460f4b8"))
+    image[at:at + 2] = bytes.fromhex("2279")                        # another instruction: refused
+    with pytest.raises(osport.NotPorted):
+        osport.site("1.12", 0x4012A40E, bytes.fromhex("20794460e4b8"), bytes(image))

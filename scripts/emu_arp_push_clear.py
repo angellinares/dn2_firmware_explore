@@ -22,6 +22,10 @@ table (80 records of 258 B, the step lock counts at +22256) with `peek`:
    count while down, released. The lock must be gone. Then, with TRIG 1 held, a
    turn after the release locks again, as on a stock page.
 
+A build for OS 1.12 (issue #382) runs the same steps: the recount's store is the same
+instruction at the same address there, and the fault watch is 1.12's. Stock 1.12 is the
+control for the arp checks: it passes the HARM ones and fails every arp one.
+
 Builds without the fix: `--expect-fail` for 0.1.0 (no push clear) and
 `--expect-nudge-fail` for 0.1.1 (it clears on the press, and the nudge locks
 again). The HARM controls must pass on every build.
@@ -37,11 +41,19 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
+sys.path.insert(0, str(ROOT / "src"))
+
+from dnfw.checkout import resources_dir  # noqa: E402
+from dnfw.cli.files import read_image  # noqa: E402
+from dnfw.firmware.load import load  # noqa: E402
+from dnfw.mods import specs  # noqa: E402
+
+STOCK = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
+FAULT = {"1.11": 0x4011EA6A, "1.12": 0x4011ED4A}   # the fault handler: never reached on a good run
 MAIN = ROOT.parents[2] if ROOT.parent.name == "worktrees" else ROOT
 CANDIDATES = [p.parent / "digikit-wt-flushchk/out/target/release/examples/panel_drive.exe"
               for p in (ROOT, MAIN)]
-RECOUNT_STORE = 0x4003CEE0      # `move.b %d4,%a0@(22256)`: a0 is the lock table
+RECOUNT_STORE = 0x4003CEE0      # `move.b %d4,%a0@(22256)`: a0 is the lock table (1.11 and 1.12)
 REC, RECS, COUNTS = 258, 80, 22256
 TRIG1, RECORD, ARP, PUSH_A = 25, 19, 51, 41
 BOOT = "wait:1100M,tap:12,wait:40M,tap:12,wait:40M"
@@ -60,10 +72,11 @@ def turn(encoder: int, times: int = 12) -> str:
 
 
 def drive(image: pathlib.Path, steps: str, table: int | None) -> dict:
-    base = hashlib.sha256(STOCK.read_bytes()).hexdigest()
+    os_ = specs.of_firmware(load(read_image(image)))
+    base = ["--base", hashlib.sha256(STOCK.read_bytes()).hexdigest()] if os_ == "1.11" else []
     peek = f"peek:{table or 0:#x}:{COUNTS + 16}"
-    cmd = [str(panel_drive()), str(image), "--base", base, "--regs-at", f"{RECOUNT_STORE:#x}",
-           "--watch", "0x4011ea6a", "--steps", BOOT + "," + steps.replace("PEEK", peek)]
+    cmd = [str(panel_drive()), str(image), *base, "--regs-at", f"{RECOUNT_STORE:#x}",
+           "--watch", f"{FAULT[os_]:#x}", "--steps", BOOT + "," + steps.replace("PEEK", peek)]
     done = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     result = json.loads(done.stdout)
     if result["outcome"] != "done" or any(w["hits"] for w in result["watched"]):

@@ -39,6 +39,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 
+from dnfw import osport
 from dnfw.cli.files import read_image
 from dnfw.container.section import compress
 from dnfw.firmware import build as fwbuild
@@ -74,10 +75,12 @@ LABELS = ("step", "pulse", "noise", "trap", "a_call", "b_call", "no_phase", "fmt
 
 # v2: TRAP edge width linear in SLOP (v1 passed on hardware; its glyph barely moved 0-94).
 OUT = pathlib.Path("00_Resources/02_Builds/lfo-waves2_DN2_1.11.syx")
+STOCKS = {"1.11": "00_Firmware/Digitone_II_OS1.11_dist.zip",       # under 00_Resources (issue #382)
+          "1.12": "00_Firmware/Digitone_II_OS1.12.syx"}
 
 
-def boot_source() -> str:
-    return f"""
+def boot_source(os: str = "1.11") -> str:
+    return osport.render("""
     .text
 | ---- boot: .data init, copy the appended wave blob above BSS, clear BSS ----
 boot:
@@ -93,10 +96,10 @@ boot:
     bne.s   1b
 2:  jsr     {CLEAR_VA:#010x}
     rts
-"""
+""", globals(), os)
 
 
-def compose(stock: bytes, frames: list | None = None, log=print) -> dict:
+def compose(stock: bytes, frames: list | None = None, log=print, os: str = "1.11") -> dict:
     """Stock MAIN OS -> the built MAIN OS, plus what the site generator needs.
 
     `frames`: three tables of 7 x 32 signed values, or None for ours. Returns
@@ -104,9 +107,20 @@ def compose(stock: bytes, frames: list | None = None, log=print) -> dict:
     blob starts at), `tables` (each table's runtime address) and `fills` -- the
     blob ranges copied from the stock image (the first seven entries of every
     relocated table), which the browser reads from the user's own file.
+
+    OS is STOCK's version (issue #382): every site goes through `dnfw.osport.site`, and the
+    code, the Bitmaps and the fills name OS's addresses. The blob still runs at RUNTIME_VA.
     """
-    if BASE + len(stock) != AREA_VA:
-        raise SystemExit("MAIN OS is not stock 1.11's length")
+    A = lambda va: osport.addr(os, va)          # noqa: E731
+    if BASE + len(stock) != A(AREA_VA):
+        raise SystemExit(f"MAIN OS is not stock {os}'s length")
+
+    def poke(va: int, want: bytes, new: bytes, why: str) -> None:
+        try:
+            at, have = osport.site(os, va, want, stock, BASE)
+        except osport.NotPorted as exc:
+            raise SystemExit(f"{why}: {exc}") from None
+        shapes.poke(content, at, have, new, why)
     content = bytearray(stock)
     frames = frames or [make() for _, _, make in wt.TABLES]
     fills = []
@@ -127,7 +141,7 @@ def compose(stock: bytes, frames: list | None = None, log=print) -> dict:
     never_va = put(shapes.NEVER_FMT)
     table_vas = [put(wt.table_bytes(f)) for f in frames]
     glyph_va = put(b"", 4)
-    glyph_bytes, glyph_sets, label_table = glyph.blob(glyph_va, [w[3] for w in WAVES])
+    glyph_bytes, glyph_sets, label_table = glyph.blob(glyph_va, [w[3] for w in WAVES], os)
     put(glyph_bytes)
     names_va = put(bytes(4 * ENTRIES), 4)
     long_names_va = put(bytes(4 * ENTRIES), 4)
@@ -136,10 +150,10 @@ def compose(stock: bytes, frames: list | None = None, log=print) -> dict:
 
     # ---- the blob's code, assembled at its runtime address
     shapes.ENTRIES = ENTRIES          # the formatter bound and the no-phase test read it
-    text = (shapes.source(fn_vas[0x4020B340], 0, names_va, long_names_va, never_va, 0, 0)
+    text = (shapes.source(fn_vas[0x4020B340], 0, names_va, long_names_va, never_va, 0, 0, os)
             + wt.generator_source(table_vas)
             + glyph.source(glyph_sets, fn_vas[0x4020B340], len(WAVES), label_table,
-                           state_reset=shapes.NOISE_RAM + 8 * glyph.NOISE_GLYPH_KEY))
+                           state_reset=shapes.NOISE_RAM + 8 * glyph.NOISE_GLYPH_KEY, os=os))
     code, offsets = shapes.assemble_stubs(text, code_va, LABELS)
     data.extend(code)
     while len(data) % 4:
@@ -150,44 +164,44 @@ def compose(stock: bytes, frames: list | None = None, log=print) -> dict:
         off = va - RUNTIME_VA - 8
         data[off:off + 4 * len(values)] = b"".join(struct.pack(">I", v) for v in values)
 
-    fills.append((names_va, ui.SHORT_NAMES, STOCK_ENTRIES))
-    fill(names_va, shapes.read_longs(content, ui.SHORT_NAMES, STOCK_ENTRIES) + short_vas)
-    fills.append((long_names_va, ui.LONG_NAMES, STOCK_ENTRIES))
-    fill(long_names_va, shapes.read_longs(content, ui.LONG_NAMES, STOCK_ENTRIES) + long_vas)
-    for old in shapes.STOCK_TABLES:
-        fills.append((fn_vas[old], old, STOCK_ENTRIES))
+    fills.append((names_va, A(ui.SHORT_NAMES), STOCK_ENTRIES))
+    fill(names_va, shapes.read_longs(content, A(ui.SHORT_NAMES), STOCK_ENTRIES) + short_vas)
+    fills.append((long_names_va, A(ui.LONG_NAMES), STOCK_ENTRIES))
+    fill(long_names_va, shapes.read_longs(content, A(ui.LONG_NAMES), STOCK_ENTRIES) + long_vas)
+    for old in shapes.STOCK_TABLES:             # keyed by the 1.11 address, read at OS's
+        fills.append((fn_vas[old], A(old), STOCK_ENTRIES))
         extra = [offsets[w[2]] for w in WAVES] if old == 0x4020B340 else [0] * len(WAVES)
-        fill(fn_vas[old], shapes.read_longs(content, old, STOCK_ENTRIES) + extra)
+        fill(fn_vas[old], shapes.read_longs(content, A(old), STOCK_ENTRIES) + extra)
 
     blob = MAGIC + struct.pack(">I", 8 + len(data)) + bytes(data)
-    log(f"blob: {len(blob):,} bytes, appended at {AREA_VA:#010x}, runs at {RUNTIME_VA:#010x}")
+    log(f"blob: {len(blob):,} bytes, appended at {A(AREA_VA):#010x}, runs at {RUNTIME_VA:#010x}")
     log(f"  code {len(code)} B at {code_va:#010x}; tables {', '.join(f'{v:#010x}' for v in table_vas)}")
     for label in LABELS:
         log(f"  {label:<10} {offsets[label]:#010x}")
 
     # ---- the one thing in a cave: the boot copy stub
-    shapes.require_zero(content, BOOT_CAVE, BOOT_CAVE_CAP, "boot cave")
-    boot = assemble(boot_source(), base=BOOT_CAVE)
-    shapes.write(content, BOOT_CAVE, boot)
-    log(f"boot stub {len(boot)} B at {BOOT_CAVE:#010x}")
+    boot_cave = A(BOOT_CAVE)
+    shapes.require_zero(content, boot_cave, BOOT_CAVE_CAP, "boot cave")
+    boot = assemble(boot_source(os), base=boot_cave)
+    shapes.write(content, boot_cave, boot)
+    log(f"boot stub {len(boot)} B at {boot_cave:#010x}")
 
     # ---- the edits in the image, all pointing into RAM
     be = lambda v: struct.pack(">I", v)
-    poke = shapes.poke
-    poke(content, CALLS_VA, CALLS_STOCK, b"\x4e\xb9" + be(BOOT_CAVE) + b"\x4e\x71",
+    poke(CALLS_VA, CALLS_STOCK, b"\x4e\xb9" + be(boot_cave) + b"\x4e\x71",
          "startup calls -> boot copy stub")
     for old, sites in shapes.REPOINTS.items():
         for va, prefix in sites:
-            poke(content, va, prefix + be(old), prefix + be(fn_vas[old]), f"{old:#010x} -> RAM")
+            poke(va, prefix + be(old), prefix + be(fn_vas[old]), f"{old:#010x} -> RAM")
     for va, stock_bytes, label in shapes.HOOKS:
-        poke(content, va, stock_bytes, b"\x4e\xf9" + be(offsets[label]), f"jmp -> {label}")
+        poke(va, stock_bytes, b"\x4e\xf9" + be(offsets[label]), f"jmp -> {label}")
     for va in (shapes.SOUND_SET_V92, shapes.MIDI_SET_V92):
-        poke(content, va, be(shapes.STOCK_V92), be(offsets["fmt_v92"]), "vtable slot 92 -> fmt_v92")
+        poke(va, be(shapes.STOCK_V92), be(offsets["fmt_v92"]), "vtable slot 92 -> fmt_v92")
     for va, stock_bytes, new, why in (glyph.clamp_edits(ENTRIES - 1) + glyph.hooks(offsets)
                                       + ui.clamp_edits(ENTRIES - 1)):
-        poke(content, va, stock_bytes, new, why)
+        poke(va, stock_bytes, new, why)
     for va in shapes.WAVE_MAX_FIELDS:
-        poke(content, va, be(shapes.STOCK_WAVE_MAX << 8), be((ENTRIES - 1) << 8), "LFO Waveform max")
+        poke(va, be(shapes.STOCK_WAVE_MAX << 8), be((ENTRIES - 1) << 8), "LFO Waveform max")
 
     content += blob
     while len(content) % 4:

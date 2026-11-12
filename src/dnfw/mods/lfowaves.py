@@ -42,7 +42,8 @@ from __future__ import annotations
 import json
 import pathlib
 
-from . import RAM, Extent, ModError, Result, platform
+from . import RAM, Extent, ModError, Result, platform, specs
+from .. import osport
 from ..patch import paramtable
 
 ID = "lfowaves"
@@ -52,9 +53,10 @@ DEVICE = 0x15                      # Digitone II
 SECTION = 3                        # MAIN OS
 BASE = 0x40000400
 SPEC = json.loads((pathlib.Path(__file__).with_name("lfowaves_code.json")).read_text())
+SPECS = specs.load(__file__, "lfowaves")           # one per OS version (issue #382); SPEC is 1.11's
 TABLE_BYTES = 7 * 32
 RUNTIME_VA = SPEC["runtime_va"]
-# The packaged build's own copy stub, replaced by the platform loader.
+# The packaged build's own copy stub, replaced by the platform loader (1.11's address).
 STUB = (0x402CF52C, 46)
 NOISE_RAM, NOISE_BYTES = 0x46740000, 1024 * 8     # NOIS per-LFO state
 TILE_RAM, TILE_BYTES = 0x46750000, 7 * 112         # a rendered glyph tile per new wave
@@ -63,34 +65,44 @@ TILE_RAM, TILE_BYTES = 0x46750000, 7 * 112         # a rendered glyph tile per n
 NOT_RAM = (0x467805F4,)
 
 
-def _own(e: dict) -> bool:
+def _own(e: dict, os: str) -> bool:
     lo, hi = e["va"] - BASE, e["va"] - BASE + len(e["new"]) // 2
-    stub_lo = STUB[0] - BASE
-    return not (any(x.start < hi and lo < x.end for x in platform.loader_extents())
+    stub_lo = osport.addr(os, STUB[0]) - BASE
+    return not (any(x.start < hi and lo < x.end for x in platform.loader_extents(0, os))
                 or (stub_lo < hi and lo < stub_lo + STUB[1]))
 
 
-EDITS = [e for e in SPEC["edits"] if _own(e)]
+def edits(os: str = "1.11") -> list[dict]:
+    """OS's edits without the copy stub and the start-up call, which the platform loader replaces"""
+    return [e for e in specs.pick(SPECS, os, ID)["edits"] if _own(e, os)]
 
-# getShortName's first two instructions, replayed by the hook and then a jump back.
+
+EDITS = edits()
+
+# getShortName's first two instructions, replayed by the hook and then a jump back (1.11's address).
 SHORT_NAME, SHORT_NAME_DISPLACED = 0x400372DA, 10
 
 
-def _displaced_copy(blob: bytes) -> int:
+def _displaced_copy(blob: bytes, os: str = "1.11") -> int:
     """Where in RAM the hook replays the displaced instructions."""
-    stock = bytes.fromhex(next(e["stock"] for e in SPEC["edits"] if e["va"] == SHORT_NAME))
-    replay = stock[:SHORT_NAME_DISPLACED] + bytes.fromhex("4ef9") + (SHORT_NAME + SHORT_NAME_DISPLACED).to_bytes(4, "big")
+    site = osport.addr(os, SHORT_NAME)
+    spec = specs.pick(SPECS, os, ID)
+    stock = bytes.fromhex(next(e["stock"] for e in spec["edits"] if e["va"] == site))
+    replay = stock[:SHORT_NAME_DISPLACED] + bytes.fromhex("4ef9") + (site + SHORT_NAME_DISPLACED).to_bytes(4, "big")
     found = blob.find(replay)
     if found < 0 or blob.find(replay, found + 1) >= 0:
-        raise ModError("lfowaves_code.json is damaged: getShortName's replay is not found once")
+        raise ModError(f"lfowaves' {os} spec is damaged: getShortName's replay is not found once")
     return RUNTIME_VA + found
 
 
-def extents(firmware, blob_length: int | None = None) -> list[Extent]:
+def extents(firmware, blob_length: int | None = None, os: str | None = None) -> list[Extent]:
+    os = os or specs.of_firmware(firmware)
+    spec = specs.pick(SPECS, os, ID)
+    site = osport.addr(os, SHORT_NAME)
     out = [Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, "LFO waves edit",
-                  displaced=e["va"] == SHORT_NAME) for e in EDITS]
-    length = len(SPEC["blob"]) // 2 if blob_length is None else blob_length
-    return out + platform.extents(16 + length)
+                  displaced=e["va"] == site) for e in edits(os)]
+    length = len(spec["blob"]) // 2 if blob_length is None else blob_length
+    return out + platform.extents(16 + length, os)
 
 
 def ram(blob_length: int | None = None) -> list[Extent]:
@@ -114,27 +126,30 @@ def apply(firmware, tables: list[bytes | None] | None = None) -> Result:
     if section is None:
         raise ModError("image has no MAIN OS section")
     base, others = platform.split(section.unpack())
+    os = specs.of_main_os(base)
+    spec = specs.pick(SPECS, os, ID)
     # Three edits open records in the parameter table, and lfo4 copies that table into
     # the appended area: applied after lfo4, they would land on a table nothing reads.
-    why = paramtable.moved(base, BASE)
+    why = paramtable.moved(base, BASE, os)
     if why:
         raise ModError(f"the parameter table has been moved ({why}); lfo4 does that, and "
                        "lfowaves edits records in the stock table, which nothing reads once it "
                        "has moved: apply lfowaves first, then lfo4")
     content = bytearray(base)
-    for e in EDITS:
+    own = edits(os)
+    for e in own:
         at = e["va"] - BASE
         have = bytes(content[at:at + len(e["stock"]) // 2]).hex()
         if have != e["stock"]:
             raise ModError(f"0x{e['va']:08x} is not stock ({have[:24]}...); "
-                           "this mod is for unmodified Digitone II 1.11")
+                           f"this mod is for unmodified Digitone II {os}")
 
-    blob = bytearray.fromhex(SPEC["blob"])
-    for f in SPEC["fills"]:
+    blob = bytearray.fromhex(spec["blob"])
+    for f in spec["fills"]:
         src = f["from_va"] - BASE
         blob[f["offset"]:f["offset"] + 4 * f["count"]] = content[src:src + 4 * f["count"]]
     custom = []
-    for t, table in zip(SPEC["tables"], tables):
+    for t, table in zip(spec["tables"], tables):
         if table is None:
             continue
         if len(table) != TABLE_BYTES:
@@ -142,18 +157,18 @@ def apply(firmware, tables: list[bytes | None] | None = None) -> Result:
         blob[t["offset"]:t["offset"] + TABLE_BYTES] = table
         custom.append(t["name"])
 
-    for e in EDITS:
+    for e in own:
         at = e["va"] - BASE
         new = bytes.fromhex(e["new"])
         content[at:at + len(new)] = new
     chunk = platform.area.CodeChunk(RUNTIME_VA, bytes(blob)).pack()
     content = platform.join(bytes(content), others + [
         (platform.area.CODE, chunk),
-        platform.displace(SHORT_NAME, SHORT_NAME_DISPLACED, _displaced_copy(bytes(blob)))])
+        platform.displace(osport.addr(os, SHORT_NAME), SHORT_NAME_DISPLACED, _displaced_copy(bytes(blob), os))])
 
-    notes = [f"waves after RAND: {' '.join(SPEC['waves'])}",
+    notes = [f"waves after RAND: {' '.join(spec['waves'])}",
              "wavetables: " + ", ".join(f"{t['name']} {'custom' if t['name'] in custom else 'ours'}"
-                                        for t in SPEC["tables"]),
+                                        for t in spec["tables"]),
              f"a {len(blob):,} B CODE chunk at 0x{RUNTIME_VA:08x} in the platform's area; "
              f"MAIN OS {len(content):,} B"]
-    return Result({SECTION: bytes(content)}, extents(firmware, len(blob)), notes)
+    return Result({SECTION: bytes(content)}, extents(firmware, len(blob), os), notes)

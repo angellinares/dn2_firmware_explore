@@ -50,6 +50,8 @@ is not read.
 
 from __future__ import annotations
 
+from dnfw import osport
+
 SPRINTF = 0x40000E82
 PCT_S = 0x40219C2D          # "%s"
 ERR = 0x40210C9E            # "ERR"
@@ -79,10 +81,10 @@ def clamp_edits(max_index: int) -> list[tuple[int, bytes, bytes, str]]:
             for va, op in CLAMPS]
 
 
-def formatter_source(max_index: int, short_table: int, long_table: int) -> str:
+def formatter_source(max_index: int, short_table: int, long_table: int, os: str = "1.11") -> str:
     """Two frameless formatters. Entered by `jmp` at the stock entry, so
-    `%sp@(4)` is the value and `%sp@(8)` the destination buffer."""
-    return f"""
+    `%sp@(4)` is the value and `%sp@(8)` the destination buffer. OS: the stock addresses' version."""
+    return osport.render("""
 | ---- WAVE value text: the stock contract, a larger bound and table -----
 fmt_short:
     lea     {short_table:#010x},%a0
@@ -104,4 +106,4 @@ fmt_long:
     move.l  #{ERR:#010x},%d0          | ColdFire: no #imm32 to a displacement
     move.l  %d0,%sp@(8)
     jmp     {SPRINTF:#010x}
-"""
+""", {**globals(), **locals()}, os)

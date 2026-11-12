@@ -173,7 +173,8 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_lfo_waveshapes:build"
+    "build_lfo_waveshapes:build",
+    "lfo_wave_ui:build"
    ]
   },
   "0x40001608": {
@@ -184,12 +185,28 @@
     "build_lfo4_tick:build"
    ]
   },
+  "0x4000766c": {
+   "new": "0x4000766c",
+   "how": "bracketed",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
+   ]
+  },
   "0x4000766d": {
    "new": "0x4000766d",
    "how": "bracketed",
    "check": "bytes match",
    "users": [
     "lfowaves:edit"
+   ]
+  },
+  "0x40016adc": {
+   "new": "0x40016adc",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_glyph:build"
    ]
   },
   "0x400174db": {
@@ -2366,6 +2383,14 @@
     "waverider:edit"
    ]
   },
+  "0x4003713c": {
+   "new": "0x4003713c",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_glyph:build"
+   ]
+  },
   "0x4003717c": {
    "new": "0x4003717c",
    "how": "bracketed",
@@ -2413,6 +2438,7 @@
    "how": "exact",
    "check": "bytes match",
    "users": [
+    "lfo_wave_glyph:build",
     "lfowaves:edit",
     "waverider:operand"
    ]
@@ -2423,6 +2449,14 @@
    "check": "bytes match",
    "users": [
     "lfo4:edit"
+   ]
+  },
+  "0x400372e4": {
+   "new": "0x400372e4",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_glyph:build"
    ]
   },
   "0x400372e8": {
@@ -4475,6 +4509,7 @@
    "how": "exact",
    "check": "bytes match",
    "users": [
+    "lfo_wave_glyph:build",
     "waverider:edit"
    ]
   },
@@ -6691,6 +6726,14 @@
     "build_arpscale:build"
    ]
   },
+  "0x400e34ac": {
+   "new": "0x400e3610",
+   "how": "bracketed",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
+   ]
+  },
   "0x400e34ad": {
    "new": "0x400e3611",
    "how": "bracketed",
@@ -7034,12 +7077,36 @@
     "dn2_111.h:header"
    ]
   },
+  "0x4010dc82": {
+   "new": "0x4010df62",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_glyph:build"
+   ]
+  },
+  "0x4010dc8e": {
+   "new": "0x4010df6e",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_glyph:build"
+   ]
+  },
   "0x4010dc8f": {
    "new": "0x4010df6f",
    "how": "exact",
    "check": "bytes match",
    "users": [
     "lfowaves:edit"
+   ]
+  },
+  "0x4010dcb0": {
+   "new": "0x4010df90",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_glyph:build"
    ]
   },
   "0x4010dcb1": {
@@ -7050,12 +7117,53 @@
     "lfowaves:edit"
    ]
   },
+  "0x4010dd2a": {
+   "new": "0x4010e00a",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_glyph:build"
+   ]
+  },
+  "0x4010dd42": {
+   "new": "0x4010e022",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_glyph:build"
+   ]
+  },
   "0x4010dd58": {
    "new": "0x4010e038",
    "how": "exact",
    "check": "bytes match",
    "users": [
+    "lfo_wave_glyph:build",
     "lfowaves:edit"
+   ]
+  },
+  "0x4010ddac": {
+   "new": "0x4010e08c",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_glyph:build"
+   ]
+  },
+  "0x4010ddca": {
+   "new": "0x4010e0aa",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_glyph:build"
+   ]
+  },
+  "0x4010deba": {
+   "new": "0x4010e19a",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_glyph:build"
    ]
   },
   "0x4010ded0": {
@@ -7063,6 +7171,7 @@
    "how": "exact",
    "check": "relocated",
    "users": [
+    "lfo_wave_glyph:build",
     "lfowaves:edit"
    ]
   },
@@ -7072,7 +7181,8 @@
    "check": null,
    "users": [
     "build_lfo4_value:build",
-    "dn2_111.h:header"
+    "dn2_111.h:header",
+    "lfo_wave_glyph:build"
    ]
   },
   "0x4010e22e": {
@@ -7212,7 +7322,24 @@
    "check": null,
    "users": [
     "bootscreen:literal",
-    "build_personalize_toggle:build"
+    "build_personalize_toggle:build",
+    "lfo_wave_glyph:build"
+   ]
+  },
+  "0x40115b5e": {
+   "new": "0x40115e3e",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_glyph:build"
+   ]
+  },
+  "0x40115ca8": {
+   "new": "0x40115f88",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_glyph:build"
    ]
   },
   "0x40116018": {
@@ -8105,6 +8232,14 @@
     "build_lfo4_tick:build"
    ]
   },
+  "0x40137494": {
+   "new": "0x40137774",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
+   ]
+  },
   "0x4013749e": {
    "new": "0x4013777e",
    "how": "exact",
@@ -8112,6 +8247,14 @@
    "users": [
     "build_lfo_length:build",
     "lfolength:guard"
+   ]
+  },
+  "0x401374a8": {
+   "new": "0x40137788",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
    ]
   },
   "0x401374a9": {
@@ -8122,12 +8265,44 @@
     "lfowaves:edit"
    ]
   },
+  "0x401374aa": {
+   "new": "0x4013778a",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
+   ]
+  },
+  "0x401374ac": {
+   "new": "0x4013778c",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
+   ]
+  },
+  "0x401374ae": {
+   "new": "0x4013778e",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
+   ]
+  },
   "0x401374af": {
    "new": "0x4013778f",
    "how": "exact",
    "check": "bytes match",
    "users": [
     "lfowaves:edit"
+   ]
+  },
+  "0x401374b6": {
+   "new": "0x40137796",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
    ]
   },
   "0x401374de": {
@@ -8590,6 +8765,22 @@
     "lfo4:edit"
    ]
   },
+  "0x40137876": {
+   "new": "0x40137b56",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
+   ]
+  },
+  "0x40137880": {
+   "new": "0x40137b60",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
+   ]
+  },
   "0x40137881": {
    "new": "0x40137b61",
    "how": "exact",
@@ -8598,12 +8789,44 @@
     "lfowaves:edit"
    ]
   },
+  "0x40137882": {
+   "new": "0x40137b62",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
+   ]
+  },
+  "0x40137884": {
+   "new": "0x40137b64",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
+   ]
+  },
+  "0x40137886": {
+   "new": "0x40137b66",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
+   ]
+  },
   "0x40137887": {
    "new": "0x40137b67",
    "how": "exact",
    "check": "bytes match",
    "users": [
     "lfowaves:edit"
+   ]
+  },
+  "0x4013788c": {
+   "new": "0x40137b6c",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
    ]
   },
   "0x4013788e": {
@@ -9320,6 +9543,22 @@
     "build_inline_proof:build"
    ]
   },
+  "0x401d176c": {
+   "new": "0x401d1b7c",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
+   ]
+  },
+  "0x401d1988": {
+   "new": "0x401d1d98",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
+   ]
+  },
   "0x401d3574": {
    "new": "0x401d3984",
    "how": "data bracketed",
@@ -9327,7 +9566,8 @@
    "users": [
     "build_lfo_waveshapes:build",
     "build_lfo_wavetable:build",
-    "build_lfo_wavetables:build"
+    "build_lfo_wavetables:build",
+    "lfo_wave_ui:build"
    ]
   },
   "0x401d3b60": {
@@ -9677,6 +9917,14 @@
     "patch.paramtable:patch"
    ]
   },
+  "0x401f91e4": {
+   "new": "0x401f95f4",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
+   ]
+  },
   "0x401f9224": {
    "new": "0x401f9634",
    "how": "data exact",
@@ -9863,6 +10111,22 @@
     "build_lfo4_probe:build"
    ]
   },
+  "0x401fd5c0": {
+   "new": "0x401fd9d0",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "lfo_wave_ui:build"
+   ]
+  },
+  "0x4020544c": {
+   "new": "0x40205904",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "lfo_wave_glyph:build"
+   ]
+  },
   "0x40205454": {
    "new": "0x4020590c",
    "how": "data exact",
@@ -9913,6 +10177,14 @@
    "users": [
     "build_reload_confirm:build",
     "reloadconfirm:guard"
+   ]
+  },
+  "0x4020650c": {
+   "new": "0x402069c4",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "lfo_wave_glyph:build"
    ]
   },
   "0x40207ae6": {
@@ -10032,7 +10304,8 @@
    "check": null,
    "users": [
     "build_fxbrowser3:build",
-    "fxmod:operand"
+    "fxmod:operand",
+    "lfo_wave_ui:build"
    ]
   },
   "0x40215cca": {
@@ -10073,6 +10346,7 @@
    "how": "data exact",
    "check": null,
    "users": [
+    "lfo_wave_ui:build",
     "waverider:operand"
    ]
   },
@@ -10363,6 +10637,14 @@
    "check": null,
    "users": [
     "build_fxblock16:build"
+   ]
+  },
+  "0x402b8d90": {
+   "new": "0x402b92d0",
+   "how": "data exact",
+   "check": null,
+   "users": [
+    "lfo_wave_glyph:build"
    ]
   },
   "0x402cf52c": {
@@ -11332,6 +11614,7 @@
    "how": "votes 3/3",
    "check": null,
    "users": [
+    "lfo_wave_glyph:build",
     "lfowaves:operand"
    ]
   },
@@ -11487,6 +11770,7 @@
     "build_lfo4_tick:build",
     "build_lfo_waveshapes:build",
     "build_payload_section:build",
+    "lfo_wave_glyph:build",
     "ramcheck:literal"
    ]
   },

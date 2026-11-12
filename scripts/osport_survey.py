@@ -23,7 +23,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 IMAGE_END_111 = 0x4030B980
 MOD_RAM = 0x46701340                       # the mods' RAM starts here on 1.11 (osport.addr handles it)
 WINDOW = 0x08000000
-LIT = re.compile(r"0x(4[0-9A-Fa-f]{7})\b")
+# A literal keyed by a later OS ("1.12": 0x...) is already that OS's address, not a 1.11 one.
+LIT = re.compile(r'(?<!"1\.12": )0x(4[0-9A-Fa-f]{7})\b')
 
 
 def sources():
@@ -48,7 +49,8 @@ def sources():
     for py in sorted((ROOT / "src/dnfw/patch").glob("*.py")):  # the platform's and the tables' searches
         for m in LIT.finditer(py.read_text(encoding="utf-8")):
             yield "patch." + py.stem, int(m.group(1), 16), "patch", None
-    for py in sorted((ROOT / "scripts").glob("build_*.py")):   # the generators' own hook and guard addresses
+    builders = sorted((ROOT / "scripts").glob("build_*.py")) + sorted((ROOT / "scripts").glob("lfo_wave_*.py"))
+    for py in builders:                       # the generators' own hook and guard addresses, and lfowaves' parts
         for m in LIT.finditer(py.read_text(encoding="utf-8")):
             yield py.stem, int(m.group(1), 16), "build", None
     h = ROOT / "csrc/include/dn2_111.h"

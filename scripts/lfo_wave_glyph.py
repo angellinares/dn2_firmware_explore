@@ -75,6 +75,8 @@ from __future__ import annotations
 
 import struct
 
+from dnfw import osport
+
 W, H = 28, 15
 BITMAP_VTABLE = 0x4020650C
 FULL_MASK = 0x402B8D90          # a stock 28 x 15 all-ones mask (TRI's)
@@ -106,11 +108,11 @@ LFO4_SPH = 327
 LABELS = ("glyph_flag", "glyph_set", "short_name")
 
 
-def blob(base: int, labels: list[str]) -> tuple[bytes, int, int]:
+def blob(base: int, labels: list[str], os: str = "1.11") -> tuple[bytes, int, int]:
     """Static sets, Bitmaps and label strings. -> (bytes, sets VA, label table VA).
 
     sets[i] = {begin, end, capacity} over one Bitmap, whose pixels are the RAM
-    tile the flag hook renders.
+    tile the flag hook renders. Each Bitmap names stock's vtable and mask, at OS's addresses.
     """
     n = len(labels)
     sets_va, objs_va, table_va = base, base + 12 * n, base + 40 * n
@@ -119,7 +121,8 @@ def blob(base: int, labels: list[str]) -> tuple[bytes, int, int]:
     for i, label in enumerate(labels):
         obj = objs_va + 28 * i
         sets += struct.pack(">III", obj, obj + 28, obj + 28)
-        objs += struct.pack(">IIIIIII", BITMAP_VTABLE, W, H, 1, TILE_RAM + 112 * i, FULL_MASK, 0)
+        objs += struct.pack(">IIIIIII", osport.addr(os, BITMAP_VTABLE), W, H, 1, TILE_RAM + 112 * i,
+                            osport.addr(os, FULL_MASK), 0)
         table += struct.pack(">I", strings_va + len(strings))
         strings += label.encode("ascii") + b"\x00"
     return sets + objs + table + strings, sets_va, table_va
@@ -135,7 +138,7 @@ def clamp_edits(max_index: int) -> list[tuple[int, bytes, bytes, str]]:
 
 
 def source(sets_va: int, fn_table: int, count: int, label_table: int,
-           state_reset: int | None = None) -> str:
+           state_reset: int | None = None, os: str = "1.11") -> str:
     """`state_reset`: the 8-byte state of NOISE_GLYPH_KEY, cleared before each render.
 
     [WRONG in v8 — corrected] v8 left it running: each render sweeps a whole cycle,
@@ -148,7 +151,7 @@ def source(sets_va: int, fn_table: int, count: int, label_table: int,
             f"    clr.l   {state_reset:#010x}              | a fresh cycle for every render\n",
             f"    clr.l   {state_reset + 4:#010x}\n",
         ])
-    return f"""
+    return osport.render("""
 | ---- [MOD] glyph: render the new waveform's tile from its own generator ----
 | Reached by jsr at 0x4010dd58 with %d5 = WAVE (clamped), %d2 = SPH 0..127,
 | %d6 = DEP 0..127 and %fp@(-24) = SPD 0..127 (64 is zero), as stock clamped them.
@@ -285,7 +288,7 @@ short_name:
     lea     {label_table:#010x},%a1
     move.l  %a1@(0,%d0:l:4),%d0     | the label
     rts
-"""
+""", {**globals(), **locals()}, os)
 
 
 def hooks(offsets: dict[str, int]) -> list[tuple[int, bytes, bytes, str]]:

@@ -39,6 +39,9 @@ def sources():
     for py in sorted(mods.glob("*.py")):
         for m in LIT.finditer(py.read_text(encoding="utf-8")):
             yield py.stem, int(m.group(1), 16), "literal", None
+    for py in sorted((ROOT / "src/dnfw/patch").glob("*.py")):  # the platform's and the tables' searches
+        for m in LIT.finditer(py.read_text(encoding="utf-8")):
+            yield "patch." + py.stem, int(m.group(1), 16), "patch", None
     for py in sorted((ROOT / "scripts").glob("build_*.py")):   # the generators' own hook and guard addresses
         for m in LIT.finditer(py.read_text(encoding="utf-8")):
             yield py.stem, int(m.group(1), 16), "build", None

@@ -74,7 +74,7 @@ TABLE_SLOTS = 8     # per event: up to seven handlers, then 0
 
 # The dispatcher, assembled at BUS_VA by scripts/gen_platform_code.py. One table
 # per event comes first, at a fixed place; the code follows.
-SOURCE = """
+SOURCE_TEMPLATE = """
 | Each event's handlers, in order, then 0. The platform fills them at apply time.
 param_slot_table:
     .space  32
@@ -105,7 +105,7 @@ ev_param_slot:
     move.l  %d2,%sp@-
     moveq   #100,%d1
     movea.l %sp@(8),%a0
-    jmp     0x400dc032
+    jmp     {PSLT_RET}
 | The incoming CC's and NRPN's parameter, (track, type, filter, number), from
 | 0x400dc814 and 0x400dc8f6 by jmp: each handler in turn, int f(track, type, filter,
 | number). The first nonzero answer is the record id. None: the two stock instructions
@@ -121,7 +121,7 @@ ev_param_cc:
 9:  movea.l %sp@+,%a2
     lea     %sp@(-12),%sp
     movem.l %d2-%d4,%sp@
-    jmp     0x400dc81c
+    jmp     {PCCI_RET}
     .globl  ev_param_nrpn
 ev_param_nrpn:
     move.l  %a2,%sp@-
@@ -133,7 +133,7 @@ ev_param_nrpn:
 9:  movea.l %sp@+,%a2
     lea     %sp@(-12),%sp
     movem.l %d2-%d4,%sp@
-    jmp     0x400dc8fe
+    jmp     {PNRI_RET}
 | the walk for both: a2 = the table; the four arguments at %sp@(12..24) here (our
 | return, the saved a2, the caller's return before them). d0 = the answer, flags set.
 7:  move.l  %a2@+,%d0
@@ -150,6 +150,16 @@ ev_param_nrpn:
 8:  tst.l   %d0
     rts
 """
+
+RETURN = 8          # each hook is `jmp entry ; nop`, 8 bytes: the stock code resumes 8 bytes past its site
+
+
+def source(sites: dict[bytes, int] | None = None) -> str:
+    """The dispatchers' source, returning to the stock code past each site (OS 1.11's when SITES
+    is None; a 1.12 spec passes its own, issue #382). Braces in the comments are doubled."""
+    sites = sites or {e: v["site"] for e, v in EVENTS.items()}
+    return SOURCE_TEMPLATE.format(**{f"{e.decode()}_RET": f"0x{sites[e] + RETURN:x}" for e in EVENTS})
+
 
 # The events: their sites, the stock bytes the jump replaces, and the table's place.
 EVENTS = {
@@ -215,10 +225,16 @@ def handlers(chunks) -> dict[bytes, list[int]]:
 
 
 def bounds(spec: dict, count: bytes) -> list[tuple[int, int, int]]:
-    """-> [(va, width, stock value)] for COUNT, from the generated spec."""
-    if count == b"MACH":
+    """-> [(va, width, stock value)] for COUNT, from the generated spec (a spec without MACH
+    is OS 1.11's, whose machine bounds are MACHINE_BOUNDS)."""
+    if count == b"MACH" and "MACH" not in spec["counts"]:
         return [(va, w, v) for va, w, v, _ in MACHINE_BOUNDS]
     return [tuple(s) for s in spec["counts"][count.decode()]]
+
+
+def site(spec: dict, event: bytes) -> int:
+    """The event's site in the spec's OS (a spec without sites is OS 1.11's: EVENTS)"""
+    return spec["bus"].get("sites", {}).get(event.decode(), {}).get("site", EVENTS[event]["site"])
 
 
 def _hook(spec: dict, event: bytes) -> bytes:
@@ -226,8 +242,8 @@ def _hook(spec: dict, event: bytes) -> bytes:
     return b"\x4e\xf9" + struct.pack(">I", entry) + b"\x4e\x71"
 
 
-def _stock(event: bytes) -> bytes:
-    return bytes.fromhex(EVENTS[event]["stock"])
+def _stock(spec: dict, event: bytes) -> bytes:
+    return bytes.fromhex(spec["bus"].get("sites", {}).get(event.decode(), {}).get("stock", EVENTS[event]["stock"]))
 
 
 def detach(write, content: bytearray, chunks: list, spec: dict) -> list:
@@ -238,7 +254,7 @@ def detach(write, content: bytearray, chunks: list, spec: dict) -> list:
             write(content, chunks, va, (value + amount).to_bytes(width, "big"),
                   value.to_bytes(width, "big"), f"the {COUNT_NAMES[count]} count")
     for event in handlers(chunks):
-        write(content, chunks, EVENTS[event]["site"], _hook(spec, event), _stock(event),
+        write(content, chunks, site(spec, event), _hook(spec, event), _stock(spec, event),
               EVENTS[event]["name"])
     return [(c, d) for c, d in chunks
             if not (c == area.CODE and area.CodeChunk.unpack(d).load == BUS_VA)]
@@ -260,7 +276,7 @@ def attach(write, content: bytearray, chunks: list, spec: dict) -> list:
                            f"the bus takes {TABLE_SLOTS - 1}")
         at = EVENTS[event]["table"]
         image[at:at + 4 * len(found)] = b"".join(struct.pack(">I", h) for h in found)
-        write(content, chunks, EVENTS[event]["site"], _stock(event), _hook(spec, event),
+        write(content, chunks, site(spec, event), _stock(spec, event), _hook(spec, event),
               EVENTS[event]["name"])
     return chunks + [(area.CODE, area.CodeChunk(BUS_VA, bytes(image)).pack())]
 
@@ -268,9 +284,12 @@ def attach(write, content: bytearray, chunks: list, spec: dict) -> list:
 def extents(spec: dict) -> list[Extent]:
     """The bytes the bus owns. Every mod on the platform declares them, so a mod that
     writes one of them by itself conflicts with all of them."""
-    out = [Extent(SECTION, e["site"] - BASE, len(e["stock"]) // 2, e["what"], "platform")
-           for e in EVENTS.values()]
+    out = [Extent(SECTION, site(spec, ev) - BASE, len(_stock(spec, ev)), e["what"], "platform")
+           for ev, e in EVENTS.items()]
     for count in COUNT_NAMES:
         out += [Extent(SECTION, va - BASE, w, f"the {COUNT_NAMES[count]} count", "platform")
                 for va, w, _ in bounds(spec, count)]
     return out
+
+
+SOURCE = source()       # OS 1.11's dispatchers (a 1.12 spec assembles source(its sites))

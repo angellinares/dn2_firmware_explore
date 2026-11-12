@@ -15,7 +15,7 @@
  * the compiled C was 220 bytes and the largest free clean cave is 138. It saves
  * no registers: the startup code after it only calls `main` (0x40000568).
  */
-#include "dn2_111.h"
+#include "dn2.h"                   /* dn2_111.h or dn2_112.h: the build picks (issue #382) */
 
     .section .text.entry,"ax"
     .globl  dnfw_boot

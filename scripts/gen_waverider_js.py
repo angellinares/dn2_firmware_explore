@@ -28,13 +28,14 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
+from dnfw.checkout import resources_dir                # noqa: E402
 from dnfw.cli.files import read_image                   # noqa: E402
 from dnfw.firmware.load import load                     # noqa: E402
 from dnfw.image import bootstream                       # noqa: E402
 from dnfw.mods import waverider                         # noqa: E402
 from dnfw.waverider import dsp                          # noqa: E402
 
-STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCK = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist.zip"   # DNFW_RESOURCES in a worktree
 OUT_JS = ROOT / "site/js/mods/waverider-code.js"
 
 

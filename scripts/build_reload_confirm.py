@@ -92,6 +92,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 
+from dnfw import osport
+from dnfw.checkout import resources_dir
 from dnfw.cli.files import read_image
 from dnfw.container.section import compress
 from dnfw.firmware import build as fwbuild
@@ -146,7 +148,7 @@ LINE2 = "RELOAD THE PATTERN? Y/N"
 
 LABELS = ("key_hook", "menu_hook")
 
-SOURCE = f"""
+TEMPLATE = """
 | FUNC + NO, pressed, reached by jmp. Off: the stock reload. On: the prompt.
 key_hook:
     mvz.b   {FLAG:#x},%d0
@@ -303,11 +305,11 @@ on_answer:
     move.l  (%sp)+,%d2
 1:  rts
 
-{toggle.routines(FLAG)}
+{toggle.routines(FLAG, OS)}
 | PersonalizeMenuView's constructor, its epilogue, reached by jmp: append the
 | twelfth item, then the displaced movem.l and back. %a4 is the view.
 menu_hook:
-{toggle.append_item()}
+{toggle.append_item(OS)}
     movem.l 24(%sp),%d2-%d6/%a2-%a6     | the displaced instruction
     jmp     {MENU_BACK:#x}
 
@@ -323,6 +325,21 @@ swallow:
 vtable:
     .space  {4 * VTABLE_LONGS}
 """
+
+SETTINGS = 0x405CD85C           # the settings block: FLAG is its byte +0x52, in the unaddressed tail
+
+
+def overrides(os: str) -> dict:
+    """What the map cannot place: FLAG, which no instruction names, moves with the settings block"""
+    return {"FLAG": osport.addr(os, SETTINGS) + (FLAG - SETTINGS)}
+
+
+def source(os: str = "1.11") -> str:
+    """The hooks' code for OS (issue #382): every stock address through `dnfw.osport`"""
+    return osport.render(TEMPLATE, globals(), os, overrides(os) if os != "1.11" else None)
+
+
+SOURCE = source()            # OS 1.11's
 
 # (va, stock bytes, label): each site becomes `jmp label`, nop-padded.
 HOOKS = (
@@ -368,8 +385,9 @@ CONTEXT = (
 assert set(toggle.CONTEXT) <= set(CONTEXT), "the guards miss some of what the PERSONALIZE item relies on"
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-OUT = ROOT / "00_Resources/02_Builds/reload-confirm_DN2_1.11.syx"
+STOCKS = {"1.11": "00_Firmware/Digitone_II_OS1.11_dist.zip", "1.12": "00_Firmware/Digitone_II_OS1.12.syx"}
+STOCK = resources_dir(ROOT) / STOCKS["1.11"]
+OUT = resources_dir(ROOT) / "02_Builds/reload-confirm_DN2_1.11.syx"
 
 
 def assemble_stubs(source: str, base: int) -> tuple[bytes, dict[str, int]]:
@@ -388,28 +406,38 @@ def check(content: bytes, va: int, want: bytes, why: str) -> None:
                          f"-- not the image this build was written against ({why})")
 
 
-def compose(stock: bytes, log=print) -> dict:
+def compose(stock: bytes, log=print, os: str = "1.11") -> dict:
     """Apply the build to a stock MAIN OS. -> {content, blob}: the hooked image
-    and the code, 4-padded, for a platform `CODE` chunk at CODE_VA."""
+    and the code, 4-padded, for a platform `CODE` chunk at CODE_VA.
+
+    OS is STOCK's version (issue #382): every guard and hook site goes through
+    `dnfw.osport.site`, which refuses one whose bytes changed other than by a moved address."""
+    flag = FLAG if os == "1.11" else overrides(os)["FLAG"]
     if not available():
         raise SystemExit("no m68k assembler found")
     content = bytearray(stock)
-    if any(content[FLAG - BASE:FLAG - BASE + 1]):
+    if any(content[flag - BASE:flag - BASE + 1]):
         raise SystemExit("the toggle's byte is not zero in the image")
 
     log("part 1 -- the code this relies on, asserted")
     for va, want, why in CONTEXT:
-        check(content, va, want, why)
-        log(f"  {va:#010x}  {want.hex():<14}  {why}")
+        try:
+            at, have = osport.site(os, va, want, content, BASE)
+        except osport.NotPorted as exc:
+            raise SystemExit(f"{why}: {exc}") from None
+        log(f"  {at:#010x}  {have.hex():<14}  {why}")
 
     log(f"part 2 -- the code, from {CODE_VA:#010x}")
-    payload, at = assemble_stubs(SOURCE, CODE_VA)
+    payload, at = assemble_stubs(source(os), CODE_VA)
     blob = payload + bytes(-len(payload) % 4)
     log(f"  {len(payload)} bytes: " + ", ".join(f"{k} {v:#010x}" for k, v in at.items()))
 
     log("part 3 -- the hooks")
     for va, stock_bytes, label in HOOKS:
-        check(content, va, stock_bytes, label)
+        try:
+            va, stock_bytes = osport.site(os, va, stock_bytes, content, BASE)
+        except osport.NotPorted as exc:
+            raise SystemExit(f"hook {label}: {exc}") from None
         new = bytes.fromhex("4ef9") + struct.pack(">I", at[label])
         new += bytes.fromhex("4e71") * ((len(stock_bytes) - len(new)) // 2)
         if len(new) != len(stock_bytes):
@@ -417,18 +445,19 @@ def compose(stock: bytes, log=print) -> dict:
         content[va - BASE:va - BASE + len(new)] = new
         log(f"  {va:#010x}  {stock_bytes.hex()} -> {new.hex()}  jmp {label}")
 
-    return {"content": bytes(content), "blob": blob, "labels": at}
+    return {"content": bytes(content), "blob": blob, "labels": at, "flag": flag}
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--out", type=pathlib.Path, default=OUT)
+    p.add_argument("--os", default="1.11", choices=sorted(STOCKS))
     a = p.parse_args()
-    firmware = load(read_image(STOCK))
+    firmware = load(read_image(resources_dir(ROOT) / STOCKS[a.os]))
     section = firmware.container.find(MAIN_OS)
     if section is None:
         raise SystemExit("image has no MAIN OS section")
-    built = compose(section.unpack())
+    built = compose(section.unpack(), os=a.os)
     chunk = platform.area.CodeChunk(CODE_VA, built["blob"]).pack()
     content = platform.join(built["content"], [(platform.area.CODE, chunk)])
 

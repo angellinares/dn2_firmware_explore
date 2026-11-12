@@ -36,6 +36,12 @@ through the stock setting writer `0x400bb4f8`, which re-signs the block.
 
 from __future__ import annotations
 
+import pathlib as _pathlib
+import sys as _sys
+
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent / "src"))
+from dnfw import osport  # noqa: E402
+
 SETTINGS_WRITE = 0x400BB4F8     # (dst, src, n): write a setting, re-sign the block
 NEW = 0x40120264                # operator new(size)
 STR_CTOR = 0x401CE69E           # std::string(this, const char *, const alloc &)
@@ -59,11 +65,11 @@ CONTEXT = (
 )
 
 
-def routines(flag: int) -> str:
+def routines(flag: int, os: str = "1.11") -> str:
     """Assembly: the item's functions for the toggle byte FLAG. `get` -> `%d0` 1
     when the toggle is on, else 0; `set(on)` writes it; `name`, `press`, `value`
     and `adjust` are the item's invokers. `name` reads the label `item_name`."""
-    return f"""| -> %d0 1 when the toggle is on, else 0.
+    return osport.render("""| -> %d0 1 when the toggle is on, else 0.
 get:
     mvz.b   {flag:#x},%d0
     subq.l  #1,%d0
@@ -161,14 +167,14 @@ adjust:
     move.l  (%sp)+,%a2
     jmp     {REDRAW:#x}
 
-"""
+""", {**globals(), "flag": flag}, os)
 
 
-def append_item() -> str:
+def append_item(os: str = "1.11") -> str:
     """Assembly: build the item from `routines`' functions and append it to the
     view in `%a4`. Leaves the stack as it found it; uses `%d6` and `%a3`, which a
     caller inside the constructor saves first, and the scratch registers."""
-    return f"""    lea     -64(%sp),%sp
+    return osport.render("""    lea     -64(%sp),%sp
     move.l  %sp,%a3
     pea     1
     jsr     {NEW:#x}
@@ -231,4 +237,4 @@ def append_item() -> str:
     jsr     {FUNC_DTOR:#x}
     lea     52(%sp),%sp
     lea     64(%sp),%sp
-"""
+""", {**globals(), }, os)

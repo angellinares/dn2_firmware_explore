@@ -77,3 +77,19 @@ def test_a_site_moves_with_its_relocated_words():
     image[at:at + 2] = bytes.fromhex("2279")                        # another instruction: refused
     with pytest.raises(osport.NotPorted):
         osport.site("1.12", 0x4012A40E, bytes.fromhex("20794460e4b8"), bytes(image))
+
+
+def test_render_keeps_1_11_text_and_moves_addresses_for_1_12():
+    ns = {"ALLOC": 0x4012A408, "FREE": 0x4460E4B8, "COUNT": 19, "CODE_VA": 0x467D8000, "__builtins__": {}}
+    t = "    jsr     {ALLOC:#x}\n    move.l  {FREE:#x},%d0\n    moveq   #{COUNT},%d1\n    lea     {CODE_VA + 4:#x},%a0\n"
+    want = ["    jsr     0x4012a408", "    move.l  0x4460e4b8,%d0", "    moveq   #19,%d1",
+            "    lea     0x467d8004,%a0", ""]
+    assert osport.render(t, ns, "1.11") == chr(10).join(want)
+    out = osport.render(t, ns, "1.12")
+    assert "jsr     0x4012a6e8" in out and "0x4460f4b8" in out and "#19" in out and "0x467d8004" in out
+
+
+def test_rebind_names_the_constant_it_cannot_move():
+    with pytest.raises(osport.NotPorted, match="FLAG"):
+        osport.rebind({"FLAG": 0x405CD8AE}, "1.12")
+    assert osport.rebind({"FLAG": 0x405CD8AE}, "1.12", {"FLAG": 0x405CE8AE})["FLAG"] == 0x405CE8AE

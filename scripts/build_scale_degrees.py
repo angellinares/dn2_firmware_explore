@@ -53,7 +53,13 @@ scale note ends.
 
 from __future__ import annotations
 
+import pathlib
 import struct
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
+
+from dnfw import osport  # noqa: E402
 
 BASE = 0x40000400
 
@@ -73,16 +79,16 @@ SEMITONES = 0x4020DEA0          # 8 longs a scale: degree -> semitone, -1 past t
 DEGREE_ROW, SEMITONE_ROW = 13, 32
 
 
-def scale_lookup(fail: str) -> str:
+def scale_lookup(fail: str, os: str = "1.11") -> str:
     """Assembly, for code running inside the frame ISR (`%a6` its frame): the SCALE
     and ROOT of the voice record's track in the playing pattern. -> `%d6` SCALE
     (0..SCALE_MAX), `%d7` ROOT (0..ROOT_MAX), or a branch to FAIL when the track
     has no scale (CHROMATIC, CHORD MEMORY, a value out of range, or no playback
-    copy). Uses `%d3`-`%d5` and `%a2`-`%a4`."""
-    return locate(fail) + resolve(fail)
+    copy). Uses `%d3`-`%d5` and `%a2`-`%a4`. OS: the stock addresses' version (issue #382)."""
+    return locate(fail, os) + resolve(fail)
 
 
-def locate(fail: str) -> str:
+def locate(fail: str, os: str = "1.11") -> str:
     """Assembly, inside the frame ISR (`%a6` its frame): where the voice record's
     track is in the playing pattern. -> `%a3` the track's part of the playback copy,
     `%a4` the pattern's header, or a branch to FAIL when there is no playback copy.
@@ -90,7 +96,7 @@ def locate(fail: str) -> str:
     layered copy keeps its source's, so the pattern's start is found from the
     source track, then the record's own track (`+16`) is taken from it. Uses
     `%d3`-`%d5` and `%a2`."""
-    return f"""    move.l  {RECORD}(%a6),%a2           | the voice record
+    return osport.render("""    move.l  {RECORD}(%a6),%a2           | the voice record
     move.l  {REC_COPY}(%a2),%d3         | the playback copy of the track that made it
     bne.s   1f
     move.l  {PLAYBACK:#x},%d3           | a live note's record has none: the
@@ -110,7 +116,7 @@ def locate(fail: str) -> str:
     adda.l  #{HEADER:#x},%a4
     add.l   %d3,%d4
     move.l  %d4,%a3
-"""
+""", {**globals(), **locals()}, os)
 
 
 def resolve(fail: str) -> str:
@@ -146,13 +152,13 @@ def resolve(fail: str) -> str:
 """
 
 
-def degree_move(prefix: str) -> str:
+def degree_move(prefix: str, os: str = "1.11") -> str:
     """Assembly: `%d0` a note, `%d2` a move in degrees (not 0), `%d6` SCALE and `%d7`
     ROOT as `scale_lookup` leaves them. -> `%d0` the note moved by `%d2` degrees of the
     scale (a note outside it first moves to the nearest note in it, the lower one on a
     tie). Uses `%d3`-`%d5` and `%a0`-`%a2`; keeps `%d1` and `%d2`. PREFIX names its
     labels."""
-    return f"""| The held note's place: %d3 its semitone above the root (0..11), %a1 its
+    return osport.render("""| The held note's place: %d3 its semitone above the root (0..11), %a1 its
 | octave above the root. %d0 is free from here on.
     move.l  %d0,%d3
     sub.l   %d7,%d3
@@ -242,7 +248,7 @@ def degree_move(prefix: str) -> str:
     muls.l  %d3,%d0
     add.l   (0,%a2,%d4.l*4),%d0
     add.l   %d7,%d0
-"""
+""", {**globals(), **locals()}, os)
 
 
 # Read, not written: where `scale_lookup` finds a voice's scale, and the scale tables
@@ -274,17 +280,18 @@ SCALE_CONTEXT = (
 )
 
 
-def scales(content: bytes) -> list[list[int]]:
-    """The firmware's 35 scales as semitone lists, read from both tables, which
-    must agree. Every scale holds its root (the nearest-note search relies on it)."""
+def scales(content: bytes, os: str = "1.11") -> list[list[int]]:
+    """The firmware's 35 scales as semitone lists, read from both tables (at OS's
+    addresses), which must agree. Every scale holds its root (the nearest-note search
+    relies on it)."""
     out = []
     for s in range(SCALE_MAX + 1):
-        at = SEMITONES - BASE + SEMITONE_ROW * s
+        at = osport.addr(os, SEMITONES) - BASE + SEMITONE_ROW * s
         row = struct.unpack(">8i", content[at:at + SEMITONE_ROW])
         semis = [x for x in row if x >= 0]
         if row[:len(semis)] != tuple(semis) or not semis or semis[0] != 0:
             raise SystemExit(f"scale {s}: semitone row {row} is not a list from the root")
-        at = DEGREES - BASE + DEGREE_ROW * s
+        at = osport.addr(os, DEGREES) - BASE + DEGREE_ROW * s
         want = bytes(semis.index(pc) + 1 if pc in semis else 0 for pc in range(12))
         if content[at:at + 12] != want:
             raise SystemExit(f"scale {s}: the degree table {content[at:at + 12].hex()} "

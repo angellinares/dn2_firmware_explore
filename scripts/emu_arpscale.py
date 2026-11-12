@@ -32,6 +32,9 @@ Pentatonic Minor on D, each from its own KEYBOARD SETUP, so a lookup that took
 the wrong track's part would play C Ionian. Track 1's chord, played as entered
 at each trig, is set aside before the comparison.
 
+On OS 1.12 (issue #382) the same cases run: the build's version picks the stock image,
+the toggle's byte, the playback pointer, the scale tables and the captured exchange.
+
 For every case the same pokes go to stock and to BUILD. Stock is the control:
 its notes must be the held note plus the offset in semitones, which also yields
 the held note of each step (`stock - offset`). BUILD's notes must equal the rule
@@ -83,12 +86,16 @@ import build_arpscale as bs  # noqa: E402
 import build_scale_degrees as sd  # noqa: E402
 import emu_seqplay as sp  # noqa: E402
 from dnfw import seqframes as SF  # noqa: E402
+from dnfw import osport  # noqa: E402
+from dnfw.checkout import resources_dir  # noqa: E402
 from dnfw.cli.files import read_image  # noqa: E402
 from dnfw.firmware.load import load  # noqa: E402
+from dnfw.mods import specs  # noqa: E402
 
-STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
+STOCK = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
 
-PLAYBACK = 0x42C5A9A0          # -> L, the playback copy of the pattern
+PLAYBACK = 0x42C5A9A0          # -> L, the playback copy of the pattern (1.11; main() sets OS's)
+FLAG = bs.FLAG                 # the toggle's byte (1.11; main() sets OS's)
 SOUNDS = 0x800052A0            # -> the live sounds: + 52 + 1163 x track
 SOUND_FIRST, SOUND_STRIDE, OFFSETS = 52, 1163, 358
 ARP_LEN, ARP_MASK = 355, 356   # the arp's LEN (steps - 1) and its u16 step mask
@@ -245,7 +252,7 @@ def pokes(lo: int, first_sound: int, case: tuple, track_index: int, marks: int) 
            f"poke:{sound + ARP_LEN:#x}:0fffff",
            f"poke:{sound + bs.MARKS:#x}:{marks:04x}",
 
-           f"poke:{bs.FLAG:#x}:{toggle:02x}",
+           f"poke:{FLAG:#x}:{toggle:02x}",
            f"poke:{header + sd.H_SCALE:#x}:{hs:02x}{hm:02x}{hr:02x}",
            f"poke:{header + sd.H_SWITCH:#x}:{switch:02x}"]
     if ts is not None:
@@ -331,7 +338,7 @@ def arp_menu(sound: int, *, toggle: int, marks: int, length: int = 16, mask: int
     return [f"poke:{sound + OFFSETS:#x}:" + bytes(o & 0xFF for o in OFFS).hex(),
             f"poke:{sound + ARP_LEN:#x}:{length - 1:02x}{mask:04x}",
             f"poke:{sound + bs.MARKS:#x}:{marks:04x}",
-            f"poke:{bs.FLAG:#x}:{toggle:02x}", f"tap:{ARP}", "wait:40M"]
+            f"poke:{FLAG:#x}:{toggle:02x}", f"tap:{ARP}", "wait:40M"]
 
 
 def verdict(name: str, ok: bool, detail: str) -> bool:
@@ -352,7 +359,7 @@ def check_keys(images: dict, places: dict) -> bool:
     look = [f"peek:{sound + ARP_MASK:#x}:2", f"peek:{sound + bs.MARKS:#x}:2"]
     steps = arp_menu(sound, toggle=1, marks=0) + tap(RIGHT) + tap(RIGHT)
     for toggle, key, _, _ in presses:
-        steps += [f"poke:{bs.FLAG:#x}:{toggle:02x}"] + tap(key) + look
+        steps += [f"poke:{FLAG:#x}:{toggle:02x}"] + tap(key) + look
     found = words(drive(images["build"], steps))
     got = list(zip(found[0::2], found[1::2]))
     want = [(0xFFFF & ~((not on) << step), marked << step) for _, _, on, marked in presses]
@@ -371,7 +378,7 @@ def screens(images: dict, places: dict, marks: int, out: pathlib.Path) -> dict[s
     shots = {}
     for who in images:
         steps = (arp_menu(places[who][1], toggle=1, marks=marks) + tap(RIGHT)
-                 + [f"frame:{who}-on", f"poke:{bs.FLAG:#x}:00"] + tap(RIGHT) + tap(LEFT)
+                 + [f"frame:{who}-on", f"poke:{FLAG:#x}:00"] + tap(RIGHT) + tap(LEFT)
                  + [f"frame:{who}-off"])
         shots |= {pathlib.Path(r["frame"]).stem: frame(r["frame"])
                   for r in drive(images[who], steps, out) if "frame" in r}
@@ -490,12 +497,20 @@ CHECKS = {"step-keys": check_keys, "step-graph": check_graph, "step-rotate": che
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("build", type=pathlib.Path)
-    ap.add_argument("--stock", type=pathlib.Path, default=STOCK)
+    ap.add_argument("--stock", type=pathlib.Path, help="stock of the build's OS (default: the user's own)")
     ap.add_argument("--case", action="append", choices=list(RUNS) + list(CHECKS))
     ap.add_argument("--frames", type=pathlib.Path, default=ROOT / "out/emu-arpscale",
                     help="where step-graph writes its screens")
     a = ap.parse_args()
-    tables = sd.scales(load(read_image(a.stock)).container.find(bs.MAIN_OS).unpack())
+    global PLAYBACK, FLAG
+    os_version = specs.of_firmware(load(read_image(a.build)))
+    a.stock = a.stock or (STOCK if os_version == "1.11" else resources_dir(ROOT) / bs.STOCKS[os_version])
+    if os_version != "1.11":
+        PLAYBACK, FLAG = osport.addr(os_version, PLAYBACK), bs.overrides(os_version)["FLAG"]
+        sp.use(os_version)
+    print(f"OS {os_version}: stock {a.stock.name}, toggle {FLAG:#010x}, playback {PLAYBACK:#010x}, "
+          f"exchange {sp.EXCHANGE}")
+    tables = sd.scales(load(read_image(a.stock)).container.find(bs.MAIN_OS).unpack(), os_version)
 
     images = {"stock": a.stock, "build": a.build}
     places = {who: addresses(image) for who, image in images.items()}

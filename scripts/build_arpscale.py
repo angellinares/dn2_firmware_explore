@@ -128,6 +128,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 
+from dnfw import osport
+from dnfw.checkout import resources_dir
 from dnfw.cli.files import read_image
 from dnfw.container.section import compress
 from dnfw.firmware import build as fwbuild
@@ -143,12 +145,14 @@ MAIN_OS = 3
 
 CODE_VA = 0x467A8000            # past arpmodes' RAM (0x467a0000, 2,320 B), below 0x467b0000
 FLAG = 0x405CD8AF               # the toggle: reloadconfirm's 0x405cd8ae, plus one
+SETTINGS = 0x405CD85C           # the settings block: FLAG is its byte +0x53, in the unaddressed tail
 
 # The arp step's tail.
 ARP_SITE = 0x4002A390
 ARP_DISPLACED = bytes.fromhex("d081" "d082" "6006")   # add.l %d1,%d0; add.l %d2,%d0; bra 0x4002a39c
 STEP_EXIT = 0x4002A39C          # restores the step's registers, returns %d0
 CALLER_RETURNS = (0x400266E6, 0x40026874)    # after the two stock calls of the step
+CALLER_RETURN_1, CALLER_RETURN_2 = CALLER_RETURNS   # named, so that `osport.render` moves them
 STEP_FRAME = 36                 # the step's own frame: its return address is at 36(%sp)
 MENU_SITE = 0x40098630          # PersonalizeMenuView's constructor, after the last stock append
 MENU_DISPLACED = bytes.fromhex("4e93" "2f03" "4e93")  # jsr (%a3); move.l %d3,-(%sp); jsr (%a3)
@@ -179,7 +183,7 @@ LABELS = ("arp", "menu_hook", "load_marks", "save_marks", "step_key", "draw_step
 
 
 
-SOURCE = f"""
+SOURCE = """
 | The arp step's tail (0x4002a390), reached by jmp. %d0 the held note, %d1 12 x
 | the arp's octave, %d2 the step's offset, %d3 the step, %a1 the sound + the
 | step; out: %d0 the note, at 0x4002a39c, which restores %d2-%d7/%a2-%a4. %d0
@@ -197,13 +201,13 @@ arp:
     cmp.l   %d4,%d3
     bne.w   arp_stock                   | the toggle is off
     move.l  {STEP_FRAME}(%sp),%d3       | the step's caller: only the frame ISR's
-    cmpi.l  #{CALLER_RETURNS[0]:#x},%d3 | two calls have the record at -36(%fp)
+    cmpi.l  #{CALLER_RETURN_1:#x},%d3 | two calls have the record at -36(%fp)
     beq.s   1f
-    cmpi.l  #{CALLER_RETURNS[1]:#x},%d3
+    cmpi.l  #{CALLER_RETURN_2:#x},%d3
     bne.w   arp_stock
 1:
-{scale_lookup('arp_stock')}
-{degree_move('arp')}
+{scale_lookup("arp_stock", OS)}
+{degree_move("arp", OS)}
     add.l   %d1,%d0                     | the arp's octave
     jmp     {STEP_EXIT:#x}
 
@@ -475,7 +479,7 @@ undo_marks:
 8:  move.l  (%sp)+,%d0
 9:  rts
 
-{toggle.routines(FLAG)}
+{toggle.routines(FLAG, OS)}
 | PersonalizeMenuView's constructor, after its last stock item is appended,
 | reached by jmp: the displaced destructor calls, then append this item. %a4 is
 | the view; %a3 (the destructor) and %d6 are the constructor's, so kept.
@@ -485,7 +489,7 @@ menu_hook:
     jsr     (%a3)
     lea     -8(%sp),%sp
     movem.l %d6/%a3,(%sp)
-{toggle.append_item()}
+{toggle.append_item(OS)}
     movem.l (%sp),%d6/%a3
     lea     8(%sp),%sp
     jmp     {MENU_BACK:#x}
@@ -577,6 +581,20 @@ CONTEXT = (
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCKS = {"1.11": "00_Firmware/Digitone_II_OS1.11_dist.zip",       # under 00_Resources (issue #382)
+          "1.12": "00_Firmware/Digitone_II_OS1.12.syx"}
+
+
+def overrides(os: str) -> dict:
+    """What the map cannot place: FLAG, which no instruction names, moves with the settings block,
+    and MENU_BACK is the hooked site's next instruction"""
+    return {"FLAG": osport.addr(os, SETTINGS) + (FLAG - SETTINGS),
+            "MENU_BACK": osport.addr(os, MENU_SITE) + len(MENU_DISPLACED)}
+
+
+def source(os: str = "1.11") -> str:
+    """The routines for OS (issue #382): their stock addresses through `dnfw.osport`"""
+    return osport.render(SOURCE, globals(), os, None if os == "1.11" else overrides(os))
 OUT = ROOT / "00_Resources/02_Builds/arpscale_DN2_1.11.syx"
 
 
@@ -589,36 +607,38 @@ def assemble_stubs(source: str, base: int, labels: tuple[str, ...]) -> tuple[byt
     return blob[:-width], dict(zip(labels, addrs))
 
 
-def check(content: bytes, va: int, want: bytes, why: str) -> None:
-    have = bytes(content[va - BASE:va - BASE + len(want)])
-    if have != want:
-        raise SystemExit(f"{va:#010x}: expected {want.hex()}, found {have.hex()} "
-                         f"-- not the image this build was written against ({why})")
+def compose(stock: bytes, log=print, os: str = "1.11") -> dict:
+    """Apply the build to a stock MAIN OS. -> {content, blob, labels, flag}: the hooked
+    image and the code, 4-padded, for a platform `CODE` chunk at CODE_VA.
 
-
-def compose(stock: bytes, log=print) -> dict:
-    """Apply the build to a stock MAIN OS. -> {content, blob, labels}: the hooked
-    image and the code, 4-padded, for a platform `CODE` chunk at CODE_VA."""
+    OS is STOCK's version (issue #382): every guard and hook site goes through
+    `dnfw.osport.site`, and the toggle's byte moves with the settings block."""
+    def site(va, want, why):
+        try:
+            return osport.site(os, va, want, stock, BASE)
+        except osport.NotPorted as exc:
+            raise SystemExit(f"{why}: {exc}") from None
     if not available():
         raise SystemExit("no m68k assembler found")
     content = bytearray(stock)
-    if any(content[FLAG - BASE:FLAG - BASE + 1]):
+    flag = FLAG if os == "1.11" else overrides(os)["FLAG"]
+    if flag - BASE < len(content) and content[flag - BASE]:
         raise SystemExit("the toggle's byte is not zero in the image")
 
     log("part 1 -- the code this relies on, asserted")
     for va, want, why in CONTEXT:
-        check(content, va, want, why)
+        va, want = site(va, want, why)
         log(f"  {va:#010x}  {want.hex():<28}  {why}")
-    log(f"  {len(scales(content))} scales, each holding its root, the two tables agreeing")
+    log(f"  {len(scales(content, os))} scales, each holding its root, the two tables agreeing")
 
     log(f"part 2 -- the code, from {CODE_VA:#010x}")
-    payload, at = assemble_stubs(SOURCE, CODE_VA, LABELS)
+    payload, at = assemble_stubs(source(os), CODE_VA, LABELS)
     blob = payload + bytes(-len(payload) % 4)
     log(f"  {len(payload)} bytes: " + ", ".join(f"{k} {v:#010x}" for k, v in at.items()))
 
     log("part 3 -- the hooks")
     for va, stock_bytes, label, opcode in HOOKS:
-        check(content, va, stock_bytes, label)
+        va, stock_bytes = site(va, stock_bytes, label)
         new = opcode + struct.pack(">I", at[label])
         new += bytes.fromhex("4e71") * ((len(stock_bytes) - len(new)) // 2)
         if len(new) != len(stock_bytes):
@@ -626,7 +646,7 @@ def compose(stock: bytes, log=print) -> dict:
         content[va - BASE:va - BASE + len(new)] = new
         log(f"  {va:#010x}  {stock_bytes.hex()} -> {new.hex()}  {'jmp' if opcode == JMP else 'jsr'} {label}")
 
-    return {"content": bytes(content), "blob": blob, "labels": at}
+    return {"content": bytes(content), "blob": blob, "labels": at, "flag": flag}
 
 
 def main() -> int:

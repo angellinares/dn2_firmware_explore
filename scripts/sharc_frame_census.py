@@ -1,6 +1,6 @@
 """A read census of the ColdFire frame on the stock DSP: which frame words are read, and by what.
 
-Runs the unmodified section 7 of OS 1.11 in digikit's runner over blocks whose frames carry
+Runs the unmodified section 7 of OS 1.12 (the same bytes as 1.11) in digikit's runner over blocks whose frames carry
 random words, with read watchpoints over the whole frame twice (where it lands in the receive
 page, and in the DSP's frame copy). Every read is recorded by frame word and PC, so a word's
 consumers are named. The method follows naturarum/dn2-cfw notes/T6.0 section 1.2 (their
@@ -41,18 +41,22 @@ COPY_LOOPS = {0x1C287D, 0x1C3030}   # the two unpack copy loops (naturarum T6.0 
 RANDOM_FROM = 0x34                  # words below carry the structural header
 OWNERS = 0xA5A                      # row r's owning track at +2r: the voice-mix loops' I0 = 0x258f68 + 0x100 x owner (naturarum T6.0c 4.1)
 ALIAS = 0x28000000                  # the memory layer's alias of DM (sharcldr.SW_ALIAS_BASE)
+# section 7 is byte for byte the same in OS 1.11 and 1.12 (issue #382), so either stock image serves.
+
+from dnfw.checkout import resources_dir   # noqa: E402  (DNFW_RESOURCES, or 00_Resources beside the repo)
+STOCK = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.12.syx"
 
 
 def run_group(a) -> int:
     import sharc_waverider_m5 as g
     from dnfw import sharcemu
-    sys.path.insert(0, str(sharcemu.path()))
-    from tools import sharc_run as SR
+    sharcemu.alias_main_layout(sharcemu.path())     # digikit main: tools.sharc_dev
+    import sharc_run as SR
     from dnfw.waverider import frame as FR
 
     dk = g.m1.Digikit(sharcemu.path())
     g.fx.bind(str(sharcemu.path() / "tools"))
-    image = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+    image = STOCK
     g.m4.IMAGE = image
     stock = g.m1.dn2_section7(image)
     sound, machines = g.m4.init_sound(image)
@@ -116,7 +120,7 @@ def run_diff(a) -> int:
 
     dk = g.m1.Digikit(sharcemu.path())
     g.fx.bind(str(sharcemu.path() / "tools"))
-    image = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+    image = STOCK
     g.m4.IMAGE = image
     stock = g.m1.dn2_section7(image)
     sound, machines = g.m4.init_sound(image)
@@ -186,7 +190,7 @@ def run_flip(a) -> int:
 
     dk = g.m1.Digikit(sharcemu.path())
     g.fx.bind(str(sharcemu.path() / "tools"))
-    image = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+    image = STOCK
     g.m4.IMAGE = image
     stock = g.m1.dn2_section7(image)
     sound, machines = g.m4.init_sound(image)
@@ -267,12 +271,12 @@ def run_replay(a) -> int:
     nothing shows as 0 differing words, and the control is any word that matters."""
     import sharc_waverider_m5 as g
     from dnfw import sharcemu
-    sys.path.insert(0, str(sharcemu.path()))
-    from tools import sharc_run as SR
+    sharcemu.alias_main_layout(sharcemu.path())     # digikit main: tools.sharc_dev
+    import sharc_run as SR
 
     dk = g.m1.Digikit(sharcemu.path())
     g.fx.bind(str(sharcemu.path() / "tools"))
-    image = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+    image = STOCK
     g.m4.IMAGE = image
     stock = g.m1.dn2_section7(image)
     stock_image = g.Image(dk, stock)

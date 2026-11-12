@@ -1,6 +1,7 @@
 """Assemble the USB probe and record it as data for `dnfw mods apply --mod usbprobe`.
 
     python scripts/gen_usbprobe_code.py [--routines out/usbprobe/routines.json]
+    python scripts/gen_usbprobe_code.py --os 1.12      # writes usbprobe_code_1.12.json
 
 derived from irpina/digihealth (sysinfo.s), GPL-2.0-or-later, used here under GPL-3.0 within this AGPL-3.0-or-later project
 
@@ -31,6 +32,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
+from dnfw import osport                                 # noqa: E402
+from dnfw.checkout import resources_dir                 # noqa: E402
 from dnfw.cli.files import read_image                   # noqa: E402
 from dnfw.firmware.load import load                     # noqa: E402
 from dnfw.patch import cbuild                           # noqa: E402
@@ -87,15 +90,27 @@ GUARDS = [
 ]
 
 
-def compose(stock: bytes) -> dict:
-    for what, va, want, _ in SITES:
-        got = stock[va - BASE:va - BASE + len(want) // 2].hex()
-        if got != want:
-            raise SystemExit(f"{what} at 0x{va:08x} is {got}, not {want}: not stock 1.11")
-    for va, want in GUARDS:
-        got = stock[va - BASE:va - BASE + len(want) // 2].hex()
-        if got != want:
-            raise SystemExit(f"guard 0x{va:08x} is {got}, not {want}: not stock 1.11")
+STOCKS = {"1.11": "00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx",
+          "1.12": "00_Firmware/Digitone_II_OS1.12.syx"}
+
+
+def outputs(os: str) -> pathlib.Path:
+    """The spec for OS: 1.11 keeps its name (issue #382)"""
+    return OUT_JSON if os == "1.11" else OUT_JSON.with_name(f"usbprobe_code_{os}.json")
+
+
+def compose(stock: bytes, os: str = "1.11") -> dict:
+    """OS is STOCK's version (issue #382): the sites, guards and caves go through `dnfw.osport`,
+    and the assembly includes dn2_112.inc for 1.12 (`dn2.inc` picks it)."""
+    def site(va, want, what):
+        try:
+            return osport.site(os, va, bytes.fromhex(want), stock, BASE)
+        except (osport.NotPorted, SystemExit) as exc:
+            raise SystemExit(f"{what} at 0x{va:08x}: {exc}: not stock {os}") from None
+    sites = [(what, *site(va, want, what), target) for what, va, want, target in SITES]
+    guards = [site(va, want, "guard") for va, want in GUARDS]
+    CAVE, CAVE2 = osport.addr(os, globals()["CAVE"]), osport.addr(os, globals()["CAVE2"])
+    defines = {"DN2_OS_112": 1} if os == "1.12" else {}
     cave_stock = stock[CAVE - BASE:CAVE - BASE + CAVE_CAP]
     if any(cave_stock):
         raise SystemExit(f"cave 0x{CAVE:08x} is not free in this image")
@@ -104,7 +119,7 @@ def compose(stock: bytes) -> dict:
     if any(stock[CAVE2 - BASE - 4:CAVE2 - BASE + CAVE2_CAP + 4]):
         raise SystemExit(f"cave 0x{CAVE2:08x} is not free in this image")
     ext = cbuild.build([SRC / "ext.S"], base=CAVE2, include=[SRC],
-                       entries=["ext_out", "ext_sw", "ext_stats", "ext_cmd"])
+                       entries=["ext_out", "ext_sw", "ext_stats", "ext_cmd"], defines=defines)
     if ext.bss or len(ext.image) > CAVE2_CAP:
         raise SystemExit(f"ext.S is {len(ext.image)} B (+{ext.bss} bss), its cave {CAVE2_CAP} B")
     linked = cbuild.build([SRC / "usbprobe.S"], base=CAVE, include=[SRC],
@@ -113,7 +128,7 @@ def compose(stock: bytes) -> dict:
                                    "EXT_OUT": f"0x{ext['ext_out']:08x}",
                                    "EXT_SW": f"0x{ext['ext_sw']:08x}",
                                    "EXT_STATS": f"0x{ext['ext_stats']:08x}",
-                                   "EXT_CMD": f"0x{ext['ext_cmd']:08x}"})
+                                   "EXT_CMD": f"0x{ext['ext_cmd']:08x}", **defines})
     if linked.bss:
         raise SystemExit(f"{linked.bss} B of .bss: the probe keeps its state in the cave")
     code = linked.image
@@ -127,11 +142,11 @@ def compose(stock: bytes) -> dict:
               "what": f"usbprobe code cave, {len(code)} of {CAVE_CAP} B"},
              {"va": CAVE2, "stock": cave2_stock[:len(ext.image)].hex(), "new": ext.image.hex(),
               "what": f"usbprobe STATS layout 2 and REGS cave, {len(ext.image)} of {CAVE2_CAP} B"}]
-    for what, va, want, target in SITES:
+    for what, va, want, target in sites:
         new = bytes.fromhex("4eb9") + struct.pack(">I", linked[target])
-        edits.append({"va": va, "stock": want, "new": new.hex(), "what": f"usbprobe hook: {what}"})
+        edits.append({"va": va, "stock": want.hex(), "new": new.hex(), "what": f"usbprobe hook: {what}"})
     return {
-        "os": "Digitone II 1.11",
+        "os": f"Digitone II {os}",
         "licence": "derived from irpina/digihealth (sysinfo.s), GPL-2.0-or-later, used here under GPL-3.0 within this AGPL-3.0-or-later project",
         "stock_length": len(stock),
         "cave": {"va": CAVE, "capacity": CAVE_CAP, "used": len(code)},
@@ -139,7 +154,7 @@ def compose(stock: bytes) -> dict:
         "ram": {"va": RAM, "length": 0x900},
         "tag": {"va": tag_va, "length": TAG_BYTES},
         "edits": edits,
-        "guards": [{"va": va, "bytes": want} for va, want in GUARDS],
+        "guards": [{"va": va, "bytes": want.hex()} for va, want in guards],
         "symbols": {k: v for k, v in sorted({**linked.symbols, **ext.symbols}.items())
                     if not k.startswith("__")},
         "routines": {k: v for k, v in sorted({**linked.routines(), **ext.routines()}.items())},
@@ -149,10 +164,12 @@ def compose(stock: bytes) -> dict:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--routines", type=pathlib.Path, help="also write the code symbols here")
+    p.add_argument("--os", default="1.11", choices=sorted(STOCKS))
     args = p.parse_args()
-    stock = load(read_image(STOCK)).container.find(MAIN_OS).unpack()
-    spec = compose(stock)
-    OUT_JSON.write_text(json.dumps(spec, indent=1) + "\n", encoding="utf-8", newline="\n")
+    stock = load(read_image(resources_dir(ROOT) / STOCKS[args.os])).container.find(MAIN_OS).unpack()
+    spec = compose(stock, args.os)
+    CAVE, CAVE2 = spec["cave"]["va"], spec["cave2"]["va"]
+    outputs(args.os).write_text(json.dumps(spec, indent=1) + "\n", encoding="utf-8", newline="\n")
     if args.routines:
         args.routines.parent.mkdir(parents=True, exist_ok=True)
         args.routines.write_text(json.dumps({k: f"0x{v:08x}" for k, v in spec["routines"].items()},

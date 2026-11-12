@@ -54,6 +54,9 @@ def sources():
     h = ROOT / "csrc/include/dn2_111.h"
     for m in LIT.finditer(h.read_text(encoding="utf-8")):
         yield "dn2_111.h", int(m.group(1), 16), "header", None
+    for inc in sorted((ROOT / "csrc").glob("*/dn2_111.inc")):   # assembly includes (usbprobe's)
+        for m in LIT.finditer(inc.read_text(encoding="utf-8")):
+            yield f"{inc.parent.name}/dn2_111.inc", int(m.group(1), 16), "header", None
 
 
 def mapped(v, m, d):

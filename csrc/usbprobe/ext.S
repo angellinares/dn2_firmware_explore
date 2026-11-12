@@ -21,7 +21,7 @@
 | and task_switch's `rts`) or a `jsr` from STATS, so every register contract
 | there holds: see timing.S. The counters are in this cave, which the stock
 | image ships as zeros, so they start at zero at every power-on.
-#include "dn2_111.inc"
+#include "dn2.inc"
 
 | One audio frame at the instrument's own rates, measured by this probe on
 | 2026-09-27: DTCN0 at 132.00 MHz, 1,505 frames a second.

@@ -4,7 +4,7 @@
 | in MAIN OS, and the four hooks jsr into it (scripts/gen_usbprobe_code.py).
 | timing.S keeps the counters, probe.S answers the SysEx channel, data.S is the
 | counters' storage at the cave's end.
-#include "dn2_111.inc"
+#include "dn2.inc"
 #include "layout.inc"
 
         .text

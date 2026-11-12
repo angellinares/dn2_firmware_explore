@@ -82,12 +82,15 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
+from dnfw import osport  # noqa: E402
+from dnfw.checkout import resources_dir  # noqa: E402
 
 from dnfw.patch.assemble import assemble, available  # noqa: E402
 
 MAIN_OS = 3
 BASE = 0x40000400
-STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCKS = {"1.11": "00_Firmware/Digitone_II_OS1.11_dist.zip", "1.12": "00_Firmware/Digitone_II_OS1.12.syx"}
+STOCK = resources_dir(ROOT) / STOCKS["1.11"]
 OUT = ROOT / "out/arpmodes/section_3_MAIN_OS.bin"
 RANGES = ROOT / "out/arpmodes/arpmodes.ranges.json"
 
@@ -136,7 +139,7 @@ CONTEXT = [
 CAVE = (0x402D08C0, 288)
 CAVE2 = (0x4028FCB4, 128)               # the run 0x4028fcb0, 136 B
 
-SOURCE = f"""
+TEMPLATE = """
 | Entered from the step's dispatch (0x4002a13c) for MODE > 1, not 2. Live:
 | a0 the arp state, a1 the sound, a2 the held-note bitmaps, d1 the track,
 | d2 4 x track, d3 the step counter, d4 MODE. The stock tail wants d0 the note
@@ -243,6 +246,15 @@ play:
     jmp     {TAIL:#010x}
 """
 
+
+
+def source(os: str = "1.11") -> str:
+    """The first cave's code for OS (issue #382): its stock addresses through `dnfw.osport`"""
+    return osport.render(TEMPLATE, globals(), os)
+
+
+SOURCE = source()            # OS 1.11's
+
 SOURCE2 = """
 | SHUF, from the first cave: a4 the record, d7 = d6 = N, d5 = H, a3 the
 | generator. Record: +4 N of this cycle, +8 the last entry, +12 how many this
@@ -315,50 +327,67 @@ def _assemble(source: str, at: dict, cave: tuple[int, int], labels: tuple[str, .
     return payload, dict(zip(labels, struct.unpack(f">{len(labels)}I", blob[-4 * len(labels):])))
 
 
-def code() -> tuple[bytes, bytes, dict]:
+def caves(os: str = "1.11") -> tuple[tuple[int, int], tuple[int, int]]:
+    """The two caves on OS. On 1.12 both moved +0x540 (the map); each was checked there as on
+    1.11: zero from 4 B before to 4 B past, and no instruction, branch or literal names it
+    (refscan and a literal scan, 2026-11-12)."""
+    return tuple((osport.addr(os, va), cap) for va, cap in (CAVE, CAVE2))
+
+
+def code(os: str = "1.11") -> tuple[bytes, bytes, dict]:
     """-> (cave 1, cave 2, labels). Two passes: each cave names the other's labels."""
     at: dict = {}
+    cave1, cave2 = caves(os)
+    text = source(os)
     for _ in range(2):
-        one, found1 = _assemble(SOURCE, at, CAVE, ("arpmodes", "draw", "play"))
+        one, found1 = _assemble(text, at, cave1, ("arpmodes", "draw", "play"))
         at.update(found1)
-        two, found2 = _assemble(SOURCE2, at, CAVE2, ("shuf", "mark"))
+        two, found2 = _assemble(SOURCE2, at, cave2, ("shuf", "mark"))
         at.update(found2)
     return one, two, at
 
 
-def compose(stock: bytes, log=print) -> dict:
+def compose(stock: bytes, log=print, os: str = "1.11") -> dict:
+    """OS is STOCK's version (issue #382): every guard, bound and the dispatch go through
+    `dnfw.osport.site`, the caves through `caves`."""
+    def site(va, want, why):
+        try:
+            return osport.site(os, va, want, content, BASE)
+        except osport.NotPorted as exc:
+            raise SystemExit(f"{why}: {exc}") from None
     if not available():
         raise SystemExit("no m68k assembler found (m68k-linux-gnu-as; WSL is fine)")
     content = bytearray(stock)
     log("part 1 -- the code this relies on, asserted")
     for va, want, why in CONTEXT:
-        check(content, va, bytes.fromhex(want), why)
-        log(f"  {va:#010x}  {want:<14}  {why}")
+        at_, have = site(va, bytes.fromhex(want), why)
+        log(f"  {at_:#010x}  {have.hex():<14}  {why}")
 
     log("part 2 -- the caves")
-    one, two, at = code()
-    caves = []
-    for (cave, cap), payload in ((CAVE, one), (CAVE2, two)):
+    one, two, at = code(os)
+    cave1, cave2 = caves(os)
+    placed = []
+    for (cave, cap), payload in ((cave1, one), (cave2, two)):
         if len(payload) > cap:
             raise SystemExit(f"cave at {cave:#010x} overflows: {len(payload)} > {cap}")
         if any(content[cave - BASE - 4:cave - BASE + cap + 4]):
             raise SystemExit(f"cave at {cave:#010x} is not free")
         content[cave - BASE:cave - BASE + len(payload)] = payload
-        caves.append((cave, len(payload)))
+        placed.append((cave, len(payload)))
         log(f"  {len(payload)} of {cap} bytes at {cave:#010x}")
 
     log("part 3 -- the dispatch")
-    check(content, DISPATCH, DISPATCH_STOCK, "the dispatch's tail: 3 DOWN, else CYCL")
+    dispatch, dispatch_stock = site(DISPATCH, DISPATCH_STOCK, "the dispatch's tail: 3 DOWN, else CYCL")
     hook = bytes.fromhex("4ef9") + struct.pack(">I", at["arpmodes"]) + bytes.fromhex("4e71") * 3
-    content[DISPATCH - BASE:DISPATCH - BASE + len(hook)] = hook
-    log(f"  {DISPATCH:#010x}  {DISPATCH_STOCK.hex()} -> {hook.hex()}")
+    content[dispatch - BASE:dispatch - BASE + len(hook)] = hook
+    log(f"  {dispatch:#010x}  {dispatch_stock.hex()} -> {hook.hex()}")
 
     log("part 4 -- the MODE bounds, 4 -> 6")
     for va, want, why in BOUNDS:
-        check(content, va, bytes.fromhex(want), why)
+        va, _ = site(va, bytes.fromhex(want), why)
         content[va - BASE + 1] = MODE_MAX
         log(f"  {va:#010x}  {want} -> {content[va - BASE:va - BASE + 2].hex()}  {why}")
-    return {"content": bytes(content), "caves": caves, "at": at, "hook": (DISPATCH, len(hook))}
+    return {"content": bytes(content), "caves": placed, "at": at, "hook": (dispatch, len(hook))}
 
 
 def main() -> int:

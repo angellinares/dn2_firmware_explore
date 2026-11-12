@@ -48,7 +48,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from . import RAM, Extent, ModError, Result
+from . import RAM, Extent, ModError, Result, specs
 
 ID = "arpmodes"
 NAME = "Arpeggiator SHUF and RAND"
@@ -57,10 +57,12 @@ DEVICE = 0x15                      # Digitone II
 SECTION = 3                        # MAIN OS
 BASE = 0x40000400
 SPEC = json.loads((pathlib.Path(__file__).with_name("arpmodes_code.json")).read_text())
+SPECS = specs.load(__file__, "arpmodes")           # one per OS version (issue #382); SPEC is 1.11's
 
 
-def extents(firmware=None) -> list[Extent]:
-    return [Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in SPEC["edits"]]
+def extents(firmware=None, os: str | None = None) -> list[Extent]:
+    spec = specs.pick(SPECS, os or specs.of_firmware(firmware), ID)
+    return [Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in spec["edits"]]
 
 
 def apply(firmware) -> Result:
@@ -72,34 +74,36 @@ def apply(firmware) -> Result:
         raise ModError("MAIN OS did not depack")
     # Longer is fine: data appended after the stock end (lfowaves, bootscreen)
     # moves no address this mod writes or reads. The guards identify the build.
-    if len(original) < SPEC["stock_length"]:
+    os = specs.of_main_os(original)
+    spec = specs.pick(SPECS, os, ID)
+    if len(original) < spec["stock_length"]:
         raise ModError(f"MAIN OS is {len(original):,} B, shorter than "
-                       f"{SPEC['stock_length']:,}: not Digitone II 1.11")
-    for g in SPEC["guards"]:
+                       f"{spec['stock_length']:,}: not Digitone II {os}")
+    for g in spec["guards"]:
         want = bytes.fromhex(g["bytes"])
         at = g["va"] - BASE
         if original[at:at + len(want)] != want:
             raise ModError(f"0x{g['va']:08x} ({g['what']}) is not stock; this mod is "
-                           "for unmodified Digitone II 1.11")
-    for e in SPEC["edits"]:
+                           f"for unmodified Digitone II {os}")
+    for e in spec["edits"]:
         want = bytes.fromhex(e["stock"])
         at = e["va"] - BASE
         if original[at:at + len(want)] != want:
             raise ModError(f"0x{e['va']:08x} ({e['what']}) is not stock; this mod is "
-                           "for unmodified Digitone II 1.11, or another mod already "
+                           f"for unmodified Digitone II {os}, or another mod already "
                            "wrote there")
 
     content = bytearray(original)
-    for e in SPEC["edits"]:
+    for e in spec["edits"]:
         new = bytes.fromhex(e["new"])
         content[e["va"] - BASE:e["va"] - BASE + len(new)] = new
 
-    return Result(payloads={SECTION: bytes(content)}, extents=extents(),
+    return Result(payloads={SECTION: bytes(content)}, extents=extents(os=os),
                   notes=["the ARPEGGIATOR MODE menu offers SHUF and RAND after CYCL, "
                          "and stops there",
-                         f"{len(SPEC['edits'])} edits in section 3, nothing appended"])
+                         f"{len(spec['edits'])} edits in section 3, nothing appended"])
 
 
-def ram() -> list[Extent]:
-    """The RAM above BSS the code uses (`SPEC["ram"]`), for the platform's comparison."""
-    return [Extent(RAM, r["va"], r["bytes"], r["what"]) for r in SPEC.get("ram", [])]
+def ram(os: str = "1.11") -> list[Extent]:
+    """The RAM above BSS the code uses (the spec's "ram"), for the platform's comparison."""
+    return [Extent(RAM, r["va"], r["bytes"], r["what"]) for r in specs.pick(SPECS, os, ID).get("ram", [])]

@@ -80,8 +80,8 @@ def _spec(os: str) -> dict:
     return SPECS[os]
 
 
-def extents(firmware=None) -> list[Extent]:
-    os = versions.of_firmware(firmware).name if firmware is not None else "1.11"
+def extents(firmware=None, os: str | None = None) -> list[Extent]:
+    os = os or (versions.of_firmware(firmware).name if firmware is not None else "1.11")
     spec = _spec(os)
     blob = bytes.fromhex(spec["code"]["blob"])
     return ([Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in spec["edits"]]
@@ -122,7 +122,7 @@ def apply(firmware) -> Result:
     chunk = platform.area.CodeChunk(code_va, blob).pack()
     content = platform.join(bytes(content), others + [(platform.area.CODE, chunk)])
 
-    return Result(payloads={SECTION: bytes(content)}, extents=extents(firmware),
+    return Result(payloads={SECTION: bytes(content)}, extents=extents(os=os),
                   notes=["TRACK WILL TRIGGER onto a MIDI track plays it over MIDI",
                          "note-on as the layered note plays, note-off as it is released",
                          f"{len(spec['edits'])} hooks in section 3, and a {len(blob):,} B CODE "

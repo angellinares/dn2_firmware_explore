@@ -58,8 +58,8 @@ BLOB = bytes.fromhex(SPEC["code"]["blob"])
 FLAG = 0x405CD8AE                  # the toggle, in the settings block's unaddressed tail
 
 
-def extents(firmware=None) -> list[Extent]:
-    os = specs.of_firmware(firmware)
+def extents(firmware=None, os: str | None = None) -> list[Extent]:
+    os = os or specs.of_firmware(firmware)
     spec = specs.pick(SPECS, os, ID)
     blob = bytes.fromhex(spec["code"]["blob"])
     return ([Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in spec["edits"]]
@@ -78,7 +78,7 @@ def apply(firmware) -> Result:
     chunk = platform.area.CodeChunk(code_va, blob).pack()
     content = platform.join(bytes(content), others + [(platform.area.CODE, chunk)])
 
-    return Result(payloads={SECTION: bytes(content)}, extents=extents(firmware),
+    return Result(payloads={SECTION: bytes(content)}, extents=extents(os=os),
                   notes=["SETTINGS > PERSONALIZE > RELOAD CONFIRM: off by default",
                          "on: FUNC + NO asks before reloading the pattern",
                          f"{len(spec['edits'])} hooks in section 3, and a {len(blob):,} B CODE "

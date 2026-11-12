@@ -66,8 +66,8 @@ CODE_VA = SPEC["code"]["va"]
 BLOB = bytes.fromhex(SPEC["code"]["blob"])
 
 
-def extents(firmware=None) -> list[Extent]:
-    os = specs.of_firmware(firmware)
+def extents(firmware=None, os: str | None = None) -> list[Extent]:
+    os = os or specs.of_firmware(firmware)
     spec = specs.pick(SPECS, os, ID)
     return ([Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in spec["edits"]]
             + platform.extents(16 + len(spec["code"]["blob"]) // 2, os))
@@ -103,7 +103,7 @@ def apply(firmware) -> Result:
     chunk = platform.area.CodeChunk(code_va, bytes(blob)).pack()
     content = platform.join(bytes(content), others + [(platform.area.CODE, chunk)])
 
-    return Result(payloads={SECTION: bytes(content)}, extents=extents(firmware),
+    return Result(payloads={SECTION: bytes(content)}, extents=extents(os=os),
                   notes=["ARPEGGIATOR menu opens on MIDI tracks",
                          "an arp-enabled MIDI track plays its arp out over MIDI",
                          f"{len(spec['edits'])} edits in section 3, and a {len(blob):,} B CODE "

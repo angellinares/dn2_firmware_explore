@@ -62,31 +62,56 @@ import pathlib
 import struct
 
 from . import RAM, Extent, ModError, bus
+from ..osport import versions
 from ..patch import area
 
 ID = "platform"
 SECTION = 3                        # MAIN OS
 BASE = 0x40000400
 SPEC = json.loads((pathlib.Path(__file__).with_name("platform_code.json")).read_text())
+# One spec per OS version (issue #382). SPEC and STOCK_LENGTH stay OS 1.11's for the mods not yet
+# ported; every function here takes the spec of the MAIN OS it is given (`spec_for`).
+SPECS = {"1.11": SPEC}
+for _os in versions.VERSIONS:
+    _path = pathlib.Path(__file__).with_name(f"platform_code_{_os}.json")
+    if _os != "1.11" and _path.exists():
+        SPECS[_os] = json.loads(_path.read_text())
 
 STOCK_LENGTH = SPEC["stock_length"]
 RUNTIME_VA = area.RUNTIME_VA       # the data window: the header, then the data chunks
 DATA_LIMIT = SPEC["data_limit"]    # the window ends below lfowaves' NOIS state
 
 
-def extents(area_length: int = 0) -> list[Extent]:
+def spec_for(content: bytes) -> dict:
+    """The spec of the OS this MAIN OS is (stock, edited, or with the area appended)"""
+    try:
+        v = versions.of_main_os(content)
+    except versions.UnknownImage as exc:
+        # longer than a stock image but no area of ours: take that version, so that `split`
+        # refuses it for what it is (appended data the platform did not write)
+        longer = [v for v in versions.VERSIONS.values() if len(content) > v.main_length]
+        if not longer:
+            raise ModError(str(exc)) from None
+        v = max(longer, key=lambda v: v.main_length)
+    if v.name not in SPECS:
+        raise ModError(f"the platform is not yet ported to Digitone II {v.name}")
+    return SPECS[v.name]
+
+
+def extents(area_length: int = 0, os: str = "1.11") -> list[Extent]:
     """What the platform writes. A mod on it declares these too (they are
     owned by the platform, so two mods declaring them do not conflict)."""
-    return loader_extents(area_length) + bus.extents(SPEC)
+    return loader_extents(area_length, os) + bus.extents(SPECS[os])
 
 
-def loader_extents(area_length: int = 0) -> list[Extent]:
+def loader_extents(area_length: int = 0, os: str = "1.11") -> list[Extent]:
     """The start-up call, the loader's cave and the appended area."""
-    out = [Extent(SECTION, SPEC["calls_va"] - BASE, len(SPEC["calls_stock"]) // 2,
+    spec = SPECS[os]
+    out = [Extent(SECTION, spec["calls_va"] - BASE, len(spec["calls_stock"]) // 2,
                   "start-up calls -> the platform loader", ID),
-           Extent(SECTION, SPEC["cave_va"] - BASE, SPEC["cave_cap"], "the platform loader's cave", ID)]
+           Extent(SECTION, spec["cave_va"] - BASE, spec["cave_cap"], "the platform loader's cave", ID)]
     if area_length:
-        out.append(Extent(SECTION, STOCK_LENGTH, area_length, "the appended DNFW area", ID))
+        out.append(Extent(SECTION, spec["stock_length"], area_length, "the appended DNFW area", ID))
     return out
 
 
@@ -104,50 +129,51 @@ def split(content: bytes) -> tuple[bytes, list[tuple[bytes, bytes]]]:
     platform does not know, and it is refused rather than overwritten. The bytes
     the bus owns come back stock, and its dispatchers' chunk is left out.
     """
-    if len(content) < STOCK_LENGTH:
-        raise ModError(f"MAIN OS is {len(content):,} B, shorter than {STOCK_LENGTH:,}: "
-                       "not Digitone II 1.11")
-    if len(content) == STOCK_LENGTH:
+    spec = spec_for(content)
+    length = spec["stock_length"]
+    if len(content) == length:
         return bytes(content), []
-    if not installed(content):
+    if not installed(content, spec):
         raise ModError("MAIN OS carries appended data but not the platform loader: "
-                       "it was built by something else; start from stock 1.11")
+                       f"it was built by something else; start from stock {spec['os']}")
     try:
-        chunks = area.parse(bytes(content[STOCK_LENGTH:]))
+        chunks = area.parse(bytes(content[length:]))
     except area.AreaError as exc:
         raise ModError(f"the appended area: {exc}") from None
-    base = bytearray(content[:STOCK_LENGTH])
-    chunks = bus.detach(write, base, chunks, SPEC)
+    base = bytearray(content[:length])
+    chunks = bus.detach(write, base, chunks, spec)
     return bytes(base), chunks
 
 
-def installed(content: bytes) -> bool:
-    at = SPEC["calls_va"] - BASE
-    return bytes(content[at:at + len(SPEC["hook"]) // 2]).hex() == SPEC["hook"]
+def installed(content: bytes, spec: dict | None = None) -> bool:
+    spec = spec or spec_for(content)
+    at = spec["calls_va"] - BASE
+    return bytes(content[at:at + len(spec["hook"]) // 2]).hex() == spec["hook"]
 
 
 def join(base: bytes, chunks: list[tuple[bytes, bytes]]) -> bytes:
     """MAIN OS without an area + chunks -> MAIN OS with the loader and the area."""
-    if len(base) != STOCK_LENGTH:
-        raise ModError(f"MAIN OS is {len(base):,} B, not {STOCK_LENGTH:,}")
+    spec = spec_for(base)
+    if len(base) != spec["stock_length"]:
+        raise ModError(f"MAIN OS is {len(base):,} B, not {spec['stock_length']:,}")
     content = bytearray(base)
-    calls = SPEC["calls_va"] - BASE
-    cave = SPEC["cave_va"] - BASE
-    loader = bytes.fromhex(SPEC["loader"])
-    link = SPEC["link_va"] - BASE
-    if not installed(content):
-        if content[calls:calls + len(SPEC["calls_stock"]) // 2].hex() != SPEC["calls_stock"]:
-            raise ModError(f"0x{SPEC['calls_va']:08x} holds neither the stock start-up calls "
+    calls = spec["calls_va"] - BASE
+    cave = spec["cave_va"] - BASE
+    loader = bytes.fromhex(spec["loader"])
+    link = spec["link_va"] - BASE
+    if not installed(content, spec):
+        if content[calls:calls + len(spec["calls_stock"]) // 2].hex() != spec["calls_stock"]:
+            raise ModError(f"0x{spec['calls_va']:08x} holds neither the stock start-up calls "
                            "nor the platform loader's call: another mod has changed it")
-        if any(content[cave:cave + SPEC["cave_cap"]]):
-            raise ModError(f"the platform loader's cave at 0x{SPEC['cave_va']:08x} is in use")
+        if any(content[cave:cave + spec["cave_cap"]]):
+            raise ModError(f"the platform loader's cave at 0x{spec['cave_va']:08x} is in use")
         content[link:link + len(loader)] = loader
-        hook = bytes.fromhex(SPEC["hook"])
+        hook = bytes.fromhex(spec["hook"])
         content[calls:calls + len(hook)] = hook
     elif bytes(content[link:link + len(loader)]) != loader:
         raise ModError("the start-up call reaches a loader that is not this platform's")
 
-    chunks = bus.attach(write, content, list(chunks), SPEC)
+    chunks = bus.attach(write, content, list(chunks), spec)
     ordered = sorted(chunks, key=lambda c: c[0] == area.CODE)     # data first; stable
     blob = area.build(ordered)
     check_runtime(blob)
@@ -184,9 +210,10 @@ def runtime(content: bytes) -> list[tuple[int, bytes]]:
     `CODE` chunk's image at its load address followed by its zeroed BSS. For a
     harness that starts past boot and must install the area by hand.
     """
-    if len(content) <= STOCK_LENGTH:
+    length = spec_for(content)["stock_length"]
+    if len(content) <= length:
         return []
-    blob = bytes(content[STOCK_LENGTH:])
+    blob = bytes(content[length:])
     head = 12 + 12 * struct.unpack_from(">I", blob, 8)[0]
     out = [(RUNTIME_VA, blob[:head])]
     for cid, data in area.parse(blob):

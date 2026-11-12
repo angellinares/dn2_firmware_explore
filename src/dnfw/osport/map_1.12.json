@@ -70,6 +70,7 @@
     "lfolength:literal",
     "lfowaves:literal",
     "midiarp:literal",
+    "patch.loader:patch",
     "platform:literal",
     "reloadconfirm:literal",
     "songguard:literal",
@@ -136,6 +137,7 @@
    "users": [
     "build_lfo_waves:build",
     "build_payload_section:build",
+    "patch.loader:patch",
     "platform:literal"
    ]
   },
@@ -2116,6 +2118,38 @@
     "build_layer_midi:build"
    ]
   },
+  "0x40031fd8": {
+   "new": "0x40031fd8",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "patch.paramtable:patch"
+   ]
+  },
+  "0x40031fee": {
+   "new": "0x40031fee",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "patch.paramtable:patch"
+   ]
+  },
+  "0x40032422": {
+   "new": "0x40032422",
+   "how": "bracketed",
+   "check": null,
+   "users": [
+    "patch.paramtable:patch"
+   ]
+  },
+  "0x400325e2": {
+   "new": "0x400325e2",
+   "how": "bracketed",
+   "check": null,
+   "users": [
+    "patch.paramtable:patch"
+   ]
+  },
   "0x40036274": {
    "new": "0x40036274",
    "how": "exact",
@@ -3089,6 +3123,22 @@
    "check": null,
    "users": [
     "build_reload_confirm:build"
+   ]
+  },
+  "0x400446c2": {
+   "new": "0x400446c2",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "patch.paramtable:patch"
+   ]
+  },
+  "0x40044828": {
+   "new": "0x40044828",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "patch.paramtable:patch"
    ]
   },
   "0x4004483e": {
@@ -4633,6 +4683,14 @@
     "lfo4:edit"
    ]
   },
+  "0x4006eb9e": {
+   "new": "0x4006eb9e",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "patch.paramtable:patch"
+   ]
+  },
   "0x4006eba3": {
    "new": "0x4006eba3",
    "how": "exact",
@@ -4647,6 +4705,14 @@
    "check": "relocated",
    "users": [
     "lfo4:edit"
+   ]
+  },
+  "0x4006ef14": {
+   "new": "0x4006ef14",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "patch.paramtable:patch"
    ]
   },
   "0x4006f6ab": {
@@ -4928,6 +4994,14 @@
     "build_lfo4_value:build",
     "dn2_111.h:header",
     "lfo4:edit"
+   ]
+  },
+  "0x400c241c": {
+   "new": "0x400c2580",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "patch.paramtable:patch"
    ]
   },
   "0x400c2422": {
@@ -5729,6 +5803,7 @@
     "bus:literal",
     "fxmod:literal",
     "matrix:literal",
+    "patch.paramtable:patch",
     "waverider:guard"
    ]
   },
@@ -6035,6 +6110,14 @@
     "fxmod:guard"
    ]
   },
+  "0x400dc4d0": {
+   "new": "0x400dc634",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "patch.paramtable:patch"
+   ]
+  },
   "0x400dc540": {
    "new": "0x400dc6a4",
    "how": "exact",
@@ -6061,6 +6144,14 @@
     "build_page_renumber_test:build"
    ]
   },
+  "0x400dc7f0": {
+   "new": "0x400dc954",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "patch.paramtable:patch"
+   ]
+  },
   "0x400dc814": {
    "new": "0x400dc978",
    "how": "exact",
@@ -6069,24 +6160,8 @@
     "bus:literal"
    ]
   },
-  "0x400dc81c": {
-   "new": "0x400dc980",
-   "how": "exact",
-   "check": null,
-   "users": [
-    "bus:literal"
-   ]
-  },
   "0x400dc8f6": {
    "new": "0x400dca5a",
-   "how": "exact",
-   "check": null,
-   "users": [
-    "bus:literal"
-   ]
-  },
-  "0x400dc8fe": {
-   "new": "0x400dca62",
    "how": "exact",
    "check": null,
    "users": [
@@ -6674,6 +6749,14 @@
    "check": null,
    "users": [
     "build_lfo4_browser:build"
+   ]
+  },
+  "0x4010756e": {
+   "new": "0x4010784e",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "patch.paramtable:patch"
    ]
   },
   "0x40107573": {
@@ -9271,7 +9354,8 @@
     "build_moddest_expand:build",
     "build_modmask_test:build",
     "build_page_classifier_test:build",
-    "moddest:literal"
+    "moddest:literal",
+    "patch.paramtable:patch"
    ]
   },
   "0x401f7fc8": {
@@ -9280,7 +9364,8 @@
    "check": null,
    "users": [
     "build_fxbrowser:build",
-    "dn2_111.h:header"
+    "dn2_111.h:header",
+    "patch.paramtable:patch"
    ]
   },
   "0x401f9224": {
@@ -9442,6 +9527,15 @@
    "users": [
     "build_fxbrowser3:build",
     "fxmod:guard"
+   ]
+  },
+  "0x401fcac8": {
+   "new": "0x401fced8",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "patch.lfo4records:patch",
+    "patch.paramtable:patch"
    ]
   },
   "0x401fcf20": {
@@ -9661,6 +9755,14 @@
     "dn2_111.h:header"
    ]
   },
+  "0x4028830e": {
+   "new": "0x4028884e",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "patch.cave:patch"
+   ]
+  },
   "0x4028bfc4": {
    "new": "0x4028c504",
    "how": "data exact",
@@ -9699,6 +9801,7 @@
    "how": "data bracketed",
    "check": null,
    "users": [
+    "patch.loader:patch",
     "platform:literal"
    ]
   },
@@ -9707,7 +9810,8 @@
    "how": "data bracketed",
    "check": "bytes match",
    "users": [
-    "lfo4:edit"
+    "lfo4:edit",
+    "patch.loader:patch"
    ]
   },
   "0x4028da74": {
@@ -9788,6 +9892,14 @@
    "check": "bytes match",
    "users": [
     "waverider:edit"
+   ]
+  },
+  "0x4028dfae": {
+   "new": "0x4028e4ee",
+   "how": "data exact",
+   "check": null,
+   "users": [
+    "patch.loader:patch"
    ]
   },
   "0x4028e958": {
@@ -10505,6 +10617,14 @@
     "build_lfo4_test:build"
    ]
   },
+  "0x402e2000": {
+   "new": "0x402e2540",
+   "how": "data exact",
+   "check": null,
+   "users": [
+    "patch.cave:patch"
+   ]
+  },
   "0x402fc000": {
    "new": "0x402fd000",
    "how": "votes 4/4",
@@ -10528,7 +10648,9 @@
    "users": [
     "build_lfo_waves:build",
     "build_payload_section:build",
-    "dn2_111.h:header"
+    "dn2_111.h:header",
+    "patch.area:patch",
+    "patch.paramtable:patch"
    ]
   },
   "0x4058e550": {
@@ -10662,7 +10784,8 @@
    "users": [
     "build_lfo4_nav_test:build",
     "build_lfo4_page_test:build",
-    "dn2_111.h:header"
+    "dn2_111.h:header",
+    "patch.paramtable:patch"
    ]
   },
   "0x424388ac": {
@@ -10714,6 +10837,14 @@
     "build_scale_degrees:build"
    ]
   },
+  "0x42c647ac": {
+   "new": "0x42c657ac",
+   "how": "votes 5/5",
+   "check": null,
+   "users": [
+    "patch.paramtable:patch"
+   ]
+  },
   "0x42c64940": {
    "new": "0x42c65940",
    "how": "votes 3/3",
@@ -10727,7 +10858,8 @@
    "how": "votes 5/5",
    "check": null,
    "users": [
-    "build_fxbrowser:build"
+    "build_fxbrowser:build",
+    "patch.paramtable:patch"
    ]
   },
   "0x42c64b3c": {
@@ -10736,7 +10868,16 @@
    "check": null,
    "users": [
     "build_fxbrowser:build",
-    "build_modmask_test:build"
+    "build_modmask_test:build",
+    "patch.paramtable:patch"
+   ]
+  },
+  "0x42c64cd0": {
+   "new": "0x42c65cd0",
+   "how": "votes 3/3",
+   "check": null,
+   "users": [
+    "patch.paramtable:patch"
    ]
   },
   "0x42c66a0c": {

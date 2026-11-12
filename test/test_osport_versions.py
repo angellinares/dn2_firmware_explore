@@ -58,3 +58,21 @@ def test_the_constants_match_each_image(name):
     assert main[cave:cave + 138] == bytes(138)
     window = sorted(w for w in words if 0x4E6B0000 <= w < 0x4E6D0000 and w & 0xFFF == 0)
     assert window[0] == v.dma[0] + 0x08000000
+
+
+@pytest.mark.parametrize("name", sorted(IMAGES))
+def test_a_modded_main_os_still_names_its_version(name):
+    """An edit anywhere and an appended area: the version comes from where the area starts"""
+    main = bytearray(_main_os(IMAGES[name]))
+    main[0x2000] ^= 0xFF                                       # an edit: no longer stock
+    assert V.of_main_os(bytes(main)).name == name               # stock length, no area
+    assert V.of_main_os(bytes(main) + b"DNFW" + bytes(4092)).name == name
+
+
+@pytest.mark.parametrize("name", sorted(IMAGES))
+def test_the_build_stamp_names_the_firmware(name):
+    from dnfw.cli.files import read_image
+    from dnfw.firmware.load import load
+    if not IMAGES[name].exists():
+        pytest.skip(f"no stock image {IMAGES[name].name}")
+    assert V.of_firmware(load(read_image(IMAGES[name]))).name == name

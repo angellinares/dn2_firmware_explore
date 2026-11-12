@@ -45,6 +45,7 @@ import struct
 from dataclasses import dataclass
 
 from ..container import ele3
+from ..osport import versions
 from ..mods import modinfo, platform, ramcheck
 from ..patch import area
 from . import compare
@@ -61,8 +62,22 @@ KNOWN = {
         7: "336e340aa0cdcd34e314cfa44849f709a3134f6bd4cd57dfc7e15702c83115e2",
         8: "6943b2f27773f40f1e7857ea6fa7a121269e930bd403098e6b6c00002327dc20",
     },
+    # issue #382: sections 2, 4, 7 and 8 are 1.11's, byte for byte; MAIN OS and the build stamp differ
+    "1.12": {
+        2: "038aa5d188af120f3ca2ce4299147952c505f6bc2e8d24c2d1f16db8c21a9d62",
+        3: "a098f620019b2ad38fd7e0397df39501fb1cf6bc26d0283915f34c49446fdf1a",
+        4: "951ced17c9e9d9421c6d910eb1201726d13498c2cc64f33e7d4767a4771419fa",
+        5: "22d60a9b383a6bbc378afd799e20ecae12b0e57fae970289ec8751de248df1ea",
+        7: "336e340aa0cdcd34e314cfa44849f709a3134f6bd4cd57dfc7e15702c83115e2",
+        8: "6943b2f27773f40f1e7857ea6fa7a121269e930bd403098e6b6c00002327dc20",
+    },
 }
-STOCK_RAM_END = ramcheck.STOCK_DMA[1]                    # stock's image, BSS and DMA section end here
+STOCK_RAM_END = ramcheck.STOCK_DMA[1]                    # OS 1.11's: stock's image, BSS and DMA section end here
+
+
+def _stock_dma(base: bytes) -> tuple[int, int]:
+    """Stock's DMA section for the OS whose MAIN OS is BASE (issue #382)"""
+    return versions.identify(base).dma
 STACK_FLOOR = ramcheck.STACK_TOP - ramcheck.STACK_RESERVE
 NOT_CHECKED = (
     "RAM that a mod uses without an area chunk: the image does not declare it.",
@@ -208,7 +223,7 @@ def _area(main: bytes, base: bytes) -> list[Item]:
     kinds = ", ".join(sorted({c.decode("ascii", "replace") for c, _ in chunks}))
     items = [Item("area", title, "pass", f"{len(chunks)} chunks ({kinds}), {len(blob):,} bytes")]
     ranges = _ranges(blob)
-    items.append(_ram(ranges))
+    items.append(_ram(ranges, _stock_dma(base)[1]))
     items.append(_dma(main, base, chunks))
     return items
 
@@ -233,13 +248,13 @@ def _cached(a: int) -> int:
     return a - ramcheck.WINDOW if ramcheck.STACK_TOP <= a < ramcheck.STACK_TOP + ramcheck.WINDOW else a
 
 
-def _ram(ranges: list[tuple[int, int, str]]) -> Item:
+def _ram(ranges: list[tuple[int, int, str]], ram_end: int = STOCK_RAM_END) -> Item:
     title = "Run-time RAM stays out of stock's"
     bad = []
     for lo, hi, what in ranges:
         lo, hi = _cached(lo), _cached(hi)
-        if lo < STOCK_RAM_END:
-            bad.append(f"{what} ({lo:#010x}..{hi:#010x}) is inside stock's RAM, which ends at {STOCK_RAM_END:#010x}")
+        if lo < ram_end:
+            bad.append(f"{what} ({lo:#010x}..{hi:#010x}) is inside stock's RAM, which ends at {ram_end:#010x}")
         elif hi > STACK_FLOOR:
             bad.append(f"{what} ({lo:#010x}..{hi:#010x}) reaches the stack's reserve at {STACK_FLOOR:#010x}")
     spans = sorted((_cached(lo), _cached(hi), w) for lo, hi, w in ranges if hi > lo)
@@ -256,7 +271,7 @@ def _text(v: int) -> bool:
     return all(0x20 <= b <= 0x7E for b in v.to_bytes(4, "big"))
 
 
-def _named(base: bytes, main: bytes, chunks, lo: int, hi: int) -> list[tuple[int, int]]:
+def _named(base: bytes, main: bytes, chunks, lo: int, hi: int, ram_end: int = STOCK_RAM_END) -> list[tuple[int, int]]:
     """(where, value) for each word in LO..HI that the new bytes name and stock's do not: in the
     changed runs of stock's MAIN OS (a word may straddle a run) and in every CODE chunk's image.
     `mods.ramcheck.named` reads the area through the platform, which refuses a malformed one;
@@ -281,22 +296,22 @@ def _named(base: bytes, main: bytes, chunks, lo: int, hi: int) -> list[tuple[int
             code = area.CodeChunk.unpack(data)
             found += [(code.load + at, v) for at in range(0, len(code.image) - 3, 2)
                       if lo <= (v := struct.unpack_from(">I", code.image, at)[0]) < hi
-                      and not _own_tail(code, at)]
+                      and not _own_tail(code, at, ram_end)]
     return found
 
 
-def _own_tail(code, at: int) -> bool:
+def _own_tail(code, at: int, ram_end: int = STOCK_RAM_END) -> bool:
     """The word at AT is the low half of an address in mod RAM plus the next word
     (`pea 0x467f466b ; mov3ql #2,-(sp)` reads 0x466ba567 at its second word)."""
     # shortcut: a real DMA pointer is skipped too if the word before it is 0x4670..0x47ff; record the chunk's code/data boundary and decode instructions if that ever happens
-    return at >= 2 and STOCK_RAM_END <= _cached(struct.unpack_from(">I", code.image, at - 2)[0]) < STACK_FLOOR
+    return at >= 2 and ram_end <= _cached(struct.unpack_from(">I", code.image, at - 2)[0]) < STACK_FLOOR
 
 
 def _dma(main: bytes, base: bytes, chunks) -> Item:
     title = "No new reference to stock's DMA buffers"
-    lo, hi = ramcheck.STOCK_DMA
+    lo, hi = _stock_dma(base)
     w = ramcheck.WINDOW
-    found = {(at, v) for at, v in _named(base, main, chunks, lo, hi) + _named(base, main, chunks, lo + w, hi + w)
+    found = {(at, v) for at, v in _named(base, main, chunks, lo, hi, hi) + _named(base, main, chunks, lo + w, hi + w, hi)
              if not _text(v)}
     if not found:
         return Item("dma", title, "pass", "the new bytes name no address in stock's DMA section")

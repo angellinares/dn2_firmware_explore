@@ -50,6 +50,8 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
+from .. import osport
+from ..osport import versions
 
 # Stock 1.11's last byte. Every site this module rewrites is in the firmware's
 # own code, and a build's `content` is longer than that: the appended area,
@@ -133,9 +135,10 @@ class Site:
         return 4
 
 
-def _stock(content: bytes, base: int) -> bytes:
+def _stock(content: bytes, base: int, os: str = "1.11") -> bytes:
     """`content` cut to the firmware's own image, without the appended area."""
-    return content[:max(0, min(len(content), STOCK_END - base))]
+    end = STOCK_END if os == "1.11" else versions.VERSIONS[os].stock_end
+    return content[:max(0, min(len(content), end - base))]
 
 
 def _even_occurrences(content: bytes, base: int, value: int) -> list[int]:
@@ -213,7 +216,7 @@ def runtime_literals(content: bytes, base: int) -> list[int]:
     return out
 
 
-def bound_sites(content: bytes, base: int) -> list[Site]:
+def bound_sites(content: bytes, base: int, os: str = "1.11") -> list[Site]:
     """Every `cmpil #320` / `#321` that bounds the entry space.
 
     A bound belongs to the table when the same function multiplies by 60 --
@@ -229,10 +232,13 @@ def bound_sites(content: bytes, base: int) -> list[Site]:
 
     `NOT_THIS_TIME` is the other kind of exclusion: a site that is this bound
     and must still be left where it is. Read its entry before changing it.
+
+    OS is the image's version (issue #382): the excluded sites are named by their 1.11
+    addresses and translated through `dnfw.osport.addr`.
     """
-    content = _stock(content, base)
+    content = _stock(content, base, os)
     out = []
-    skip = set(NOT_THE_BOUND) | set(SWITCH_CASES) | set(NOT_THIS_TIME)
+    skip = {osport.addr(os, va) for va in (*NOT_THE_BOUND, *SWITCH_CASES, *NOT_THIS_TIME)}   # issue #382
     for value in (320, 321):
         for reg in range(8):
             for opcode, name in ((bytes([0x0C, 0x80 | reg]), f"cmpil #{value},%d{reg}"),

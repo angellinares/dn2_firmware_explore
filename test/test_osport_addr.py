@@ -34,3 +34,29 @@ def test_an_address_the_map_did_not_decide_stops_the_build():
         osport.addr("1.12", 0x4464ABF0)          # the 1.11 heap start: no instruction names it
     with pytest.raises(osport.NotPorted):
         osport.addr("1.13", 0x40026980)          # no map for that version
+
+
+def test_mod_ram_above_both_dma_sections_stays():
+    """RAM above 1.12's DMA section passed the three checks (refscan, data scan, touch run), so a mod's
+    chunk there keeps its address, in either window"""
+    assert osport.addr("1.12", 0x46710000) == 0x46710000          # the platform's data window
+    assert osport.addr("1.12", 0x4E710000) == 0x4E710000          # the same RAM, uncached
+
+
+def test_mod_ram_that_1_12_dma_now_covers_must_move():
+    with pytest.raises(osport.NotPorted, match="DMA"):
+        osport.addr("1.12", 0x46708000)                           # bootscreen's 1.11 chunk
+
+
+def test_stock_dma_addresses_follow_the_map():
+    assert osport.addr("1.12", 0x4E6DF100) == 0x4E6E7100          # the SSI receive ring, +0x8000
+
+
+def test_the_1_12_header_is_the_generator_s_output():
+    import pathlib
+    import subprocess
+    import sys
+    root = pathlib.Path(__file__).resolve().parent.parent
+    r = subprocess.run([sys.executable, str(root / "scripts/gen_dn2_header.py"), "--os", "1.12", "--check"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr

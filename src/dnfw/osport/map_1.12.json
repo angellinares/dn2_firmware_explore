@@ -10877,6 +10877,41 @@
     "build_payload_section:build",
     "ramcheck:literal"
    ]
+  },
+  "0x48000000": {
+   "new": "0x48000000",
+   "how": "votes 9/9",
+   "check": null,
+   "users": [
+    "build_fxblock16:build",
+    "ramcheck:literal"
+   ]
+  },
+  "0x4e6df100": {
+   "new": "0x4e6e7100",
+   "how": "votes 9/9",
+   "check": null,
+   "users": [
+    "dn2_111.h:header",
+    "usbprobe:literal"
+   ]
+  },
+  "0x4e6e0100": {
+   "new": "0x4e6e8100",
+   "how": "votes 8/8",
+   "check": null,
+   "users": [
+    "usbprobe:literal"
+   ]
+  },
+  "0x4e6f1300": {
+   "new": "0x4e6f9300",
+   "how": "votes 6/6",
+   "check": null,
+   "users": [
+    "build_lfo4_tick:build",
+    "ramcheck:literal"
+   ]
   }
  }
 }

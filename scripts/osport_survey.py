@@ -21,7 +21,8 @@ from dnfw.osport import codemap as C
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 IMAGE_END_111 = 0x4030B980
-MOD_RAM = 0x466B8000                       # stock's DMA section and the mods' RAM start here on 1.11
+MOD_RAM = 0x46701340                       # the mods' RAM starts here on 1.11 (osport.addr handles it)
+WINDOW = 0x08000000
 LIT = re.compile(r"0x(4[0-9A-Fa-f]{7})\b")
 
 
@@ -104,7 +105,8 @@ def main() -> int:
     seen = set()
     decided: dict[int, dict] = {}
     for owner, a, what, stock in sources():
-        if (owner, a) in seen or a >= MOD_RAM:
+        ram = a - WINDOW if a >= 0x48000000 else a       # the uncached window names the same RAM
+        if (owner, a) in seen or MOD_RAM <= ram < 0x48000000:
             continue
         seen.add((owner, a))
         if a < 0x401D0400:

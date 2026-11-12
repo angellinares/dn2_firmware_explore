@@ -33,9 +33,30 @@ def _map(os: str) -> dict[int, dict]:
     return {int(k, 16): v for k, v in data["addresses"].items()}
 
 
+WINDOW = 0x08000000                    # the uncached window: the same RAM at address + WINDOW
+RAM_TOP = 0x48000000
+
+
+def _cached(va: int) -> int:
+    return va - WINDOW if va >= 0x40000000 + WINDOW else va
+
+
 def addr(os: str, va: int) -> int:
-    """VA (a 1.11 address) on OS. Raises NotPorted when the map did not decide it."""
+    """VA (a 1.11 address) on OS. Raises NotPorted when the map did not decide it.
+
+    Mod RAM is not stock's, so it has no map entry: an address above the 1.11 DMA section stays
+    the same on OS when it is above OS's DMA section too (that RAM passed the three checks on 1.12,
+    vault "OS 1.12 migration.md"). One that OS's DMA section now covers is NotPorted: the mod moves."""
     if os == SOURCE:
+        return va
+    if os not in VERSIONS:
+        raise NotPorted(f"no OS {os} in dnfw.osport.versions")
+    old, new = VERSIONS[SOURCE], VERSIONS[os]
+    ram = _cached(va)
+    if old.dma[1] <= ram < RAM_TOP:
+        if ram < new.dma[1]:
+            raise NotPorted(f"0x{va:08x} is free on {SOURCE} but inside {os}'s DMA section "
+                            f"(0x{new.dma[0]:08x}..0x{new.dma[1]:08x}): move it")
         return va
     row = _map(os).get(va)
     if row is None:

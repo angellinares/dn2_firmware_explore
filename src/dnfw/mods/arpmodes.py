@@ -74,6 +74,9 @@ def apply(firmware) -> Result:
         raise ModError("MAIN OS did not depack")
     # Longer is fine: data appended after the stock end (lfowaves, bootscreen)
     # moves no address this mod writes or reads. The guards identify the build.
+    if len(original) < SPEC["stock_length"]:      # shorter than the shortest stock: say so, as the web does
+        raise ModError(f"MAIN OS is {len(original):,} B, shorter than "
+                       f"{SPEC['stock_length']:,}: not Digitone II 1.11")
     os = specs.of_main_os(original)
     spec = specs.pick(SPECS, os, ID)
     if len(original) < spec["stock_length"]:

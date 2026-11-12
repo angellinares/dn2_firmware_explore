@@ -174,3 +174,22 @@ Every mod gets a 1.12 build beside its 1.11 build, in the same repository. 1.11 
 **How a generator uses it.** `dnfw.osport.addr("1.12", va)` gives the 1.12 address of a 1.11 one. An address the map did not decide raises `NotPorted`. Mod RAM above 1.12's DMA section keeps its address. Mod RAM that 1.12's DMA section now covers raises `NotPorted`, so that mod moves (bootscreen's `0x46708000`). `scripts/gen_dn2_header.py --os 1.12` writes `csrc/include/dn2_112.h` from `dn2_111.h`, so the C code builds for either OS from one source.
 
 **The RAM and frame checks on 1.12.** The RAM `0x46709340..0x48000000` passed the three checks of `docs/mod-memory-regions.md`: a refscan in nine windows, the data pointer scan and the touch run with a project upload. Stock 1.12 writes the same 902 frame words as 1.11, and the 301 distinct frames of the corpus are the same byte for byte (`scripts/frame_word_diff.py`). The corpus script also selected the wrong machines until this change. Its earlier corpora held FM TONE, FM DRUM and WAVETONE only, so results drawn from them cover those three.
+
+## The platform on 1.12 (issue #382)
+
+The platform has one spec per OS version: `platform_code.json` for 1.11 and `platform_code_1.12.json` for 1.12. `scripts/gen_platform_code.py --os 1.12` writes the 1.12 spec. `platform.spec_for(content)` takes the spec of the MAIN OS it gets. A modded MAIN OS no longer hashes as stock. So the version comes from where the DNFW area starts, or from the stock length when there is no area. A whole firmware file gets its version from its build stamp in section 5 (`versions.of_firmware`).
+
+| | 1.11 | 1.12 | how 1.12's was found |
+|---|---|---|---|
+| start-up calls | `0x4000053e` | the same, same bytes | read in the image |
+| loader cave, link | `0x4028da6e`, `0x4028da70` | `0x4028dfae`, `0x4028dfb0` | 138 zero bytes, +0x540 |
+| area | `0x4030b980` | `0x4030c980` | the stock end |
+| bus sites | `0x400dc02a`, `0x400dc814`, `0x400dc8f6` | +0x164 each | `osport.addr`, stock bytes equal |
+| machine-count bounds | 6 sites | +0x164 each | `osport.addr`, the stock value read there |
+| parameter bounds | 55 | 55 | found in the image; each 1.11 bound maps onto one |
+
+The loader is one source for both. `csrc/include/dn2.h` includes `dn2_112.h` when the build defines `DN2_OS_112`, and `dn2_111.h` otherwise. The 1.12 loader differs from 1.11's only in the area's address.
+
+`dnfw check` knows stock 1.12. Sections 2, 4, 7 and 8 of 1.12 hash the same as 1.11's. The check takes stock's DMA end from the image's version.
+
+**Checked on 2026-11-12.** A 1.12 test image holds the platform and a handler on `ev_param_slot` that answers 0. It passes `dnfw check` against stock 1.12. It boots from reset in digikit main's `boot_gate` to the main UI at the same instruction as stock 1.12, with no hit on the fault reporter (`0x4011ed4a` on 1.12). The handler ran on each parameter lookup. Give `boot_gate` only fault PCs in `--watch`: a watched PC counts as a fault the first time it runs.

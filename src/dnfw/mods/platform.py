@@ -135,7 +135,7 @@ def split(content: bytes) -> tuple[bytes, list[tuple[bytes, bytes]]]:
         return bytes(content), []
     if not installed(content, spec):
         raise ModError("MAIN OS carries appended data but not the platform loader: "
-                       f"it was built by something else; start from stock {spec['os']}")
+                       f"it was built by something else; start from stock {spec['os'].removeprefix('Digitone II ')}")
     try:
         chunks = area.parse(bytes(content[length:]))
     except area.AreaError as exc:

@@ -153,3 +153,24 @@ Before any mod builds for 1.12:
 2. Make `STOCK_DMA` per OS version.
 3. Move each chunk that the 1.12 range covers, and give the mod a new version.
 4. Measure the OS update buffer again (`docs/version-gate.md` section 5b).
+
+## The 1.12 port: tools (issue #382, 2026-11-12)
+
+Every mod gets a 1.12 build beside its 1.11 build, in the same repository. 1.11 stays the build users get until all mods are on 1.12. Then 1.12 becomes the default, and the 1.11 builds move to an archive.
+
+**Which OS an image is.** `dnfw.osport.versions.identify(main_os)` names the version of a stock MAIN OS from its sha256. `by_length` does the same when the platform's area is appended. The table there also holds what differs between the versions:
+
+| | 1.11 | 1.12 |
+|---|---|---|
+| MAIN OS length | 3,192,192 B | 3,196,288 B |
+| the reset clears stock's data up to | `0x466b74d0` | `0x466b84d0` |
+| stock's DMA section | `0x466b8000..0x46701340` | `0x466c0000..0x46709340` |
+| the loader's 138-byte cave | `0x4028da6e` | `0x4028dfae` |
+
+**Where an address went.** `src/dnfw/osport/codemap.py` decodes both images and anchors runs of 10 instructions with their address operands masked. Each matched instruction's old and new operands give a vote for the data map. A second map anchors the image's data part on byte windows. `scripts/osport_check.py` checks the maps against addresses read by hand.
+
+**Every mod site, checked.** `scripts/osport_survey.py` runs every address the mods, their generators and `dn2_111.h` name through the maps. For each edit and guard site it reads the 1.12 image at the new address. The site passes when its stock bytes are there, or when each differing word is an address that maps to its new value. On 2026-11-12: 778 sites decided, 594 with the same bytes, 184 relocated, none unexplained. `--write` saves the decisions to `src/dnfw/osport/map_1.12.json`.
+
+**How a generator uses it.** `dnfw.osport.addr("1.12", va)` gives the 1.12 address of a 1.11 one. An address the map did not decide raises `NotPorted`. Mod RAM above 1.12's DMA section keeps its address. Mod RAM that 1.12's DMA section now covers raises `NotPorted`, so that mod moves (bootscreen's `0x46708000`). `scripts/gen_dn2_header.py --os 1.12` writes `csrc/include/dn2_112.h` from `dn2_111.h`, so the C code builds for either OS from one source.
+
+**The RAM and frame checks on 1.12.** The RAM `0x46709340..0x48000000` passed the three checks of `docs/mod-memory-regions.md`: a refscan in nine windows, the data pointer scan and the touch run with a project upload. Stock 1.12 writes the same 902 frame words as 1.11, and the 301 distinct frames of the corpus are the same byte for byte (`scripts/frame_word_diff.py`). The corpus script also selected the wrong machines until this change. Its earlier corpora held FM TONE, FM DRUM and WAVETONE only, so results drawn from them cover those three.

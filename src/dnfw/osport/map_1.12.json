@@ -235,7 +235,8 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_arp_midi_play:build"
+    "build_arp_midi_play:build",
+    "midiarp:operand"
    ]
   },
   "0x400187ea": {
@@ -1766,6 +1767,7 @@
    "how": "exact",
    "check": null,
    "users": [
+    "arpplocks:operand",
     "build_arp_midi_play:build",
     "build_arp_plocks:build"
    ]
@@ -1787,7 +1789,8 @@
     "arpscale:guard",
     "build_arp_midi_play:build",
     "build_arpmodes:build",
-    "build_arpscale:build"
+    "build_arpscale:build",
+    "midiarp:operand"
    ]
   },
   "0x4002a0f4": {
@@ -1984,7 +1987,8 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_layer_midi:build"
+    "build_layer_midi:build",
+    "degreetranspose:operand"
    ]
   },
   "0x4002b22e": {
@@ -2067,7 +2071,8 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_arp_on_midi2:build"
+    "build_arp_on_midi2:build",
+    "midiarp:operand"
    ]
   },
   "0x4003129c": {
@@ -2076,6 +2081,14 @@
    "check": null,
    "users": [
     "build_arp_on_midi2:build"
+   ]
+  },
+  "0x4003134e": {
+   "new": "0x4003134e",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "waverider:operand"
    ]
   },
   "0x40031396": {
@@ -2229,7 +2242,8 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_lfo_waveshapes:build"
+    "build_lfo_waveshapes:build",
+    "lfowaves:operand"
    ]
   },
   "0x400366af": {
@@ -2395,7 +2409,8 @@
    "how": "exact",
    "check": "bytes match",
    "users": [
-    "lfowaves:edit"
+    "lfowaves:edit",
+    "waverider:operand"
    ]
   },
   "0x400372e3": {
@@ -2626,6 +2641,14 @@
    "check": "bytes match",
    "users": [
     "lfo4:edit"
+   ]
+  },
+  "0x40038e88": {
+   "new": "0x40038e88",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "waverider:operand"
    ]
   },
   "0x4003907e": {
@@ -3040,7 +3063,8 @@
    "check": null,
    "users": [
     "build_arp_plocks:build",
-    "build_degreetranspose:build"
+    "build_degreetranspose:build",
+    "degreetranspose:operand"
    ]
   },
   "0x4003efe2": {
@@ -3122,7 +3146,8 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_reload_confirm:build"
+    "build_reload_confirm:build",
+    "reloadconfirm:operand"
    ]
   },
   "0x400446c2": {
@@ -3154,7 +3179,8 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_degreetranspose:build"
+    "build_degreetranspose:build",
+    "degreetranspose:operand"
    ]
   },
   "0x4004b0cc": {
@@ -3189,6 +3215,14 @@
     "dn2_111.h:header"
    ]
   },
+  "0x4004b7f2": {
+   "new": "0x4004b7f2",
+   "how": "bracketed",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
   "0x4004b816": {
    "new": "0x4004b816",
    "how": "exact",
@@ -3202,6 +3236,7 @@
    "how": "exact",
    "check": null,
    "users": [
+    "arpscale:operand",
     "build_arp_plocks:build"
    ]
   },
@@ -3234,6 +3269,7 @@
    "how": "exact",
    "check": null,
    "users": [
+    "arpscale:operand",
     "build_arp_plocks:build"
    ]
   },
@@ -3290,6 +3326,7 @@
    "how": "exact",
    "check": null,
    "users": [
+    "arpscale:operand",
     "build_arpscale:build"
    ]
   },
@@ -3298,6 +3335,7 @@
    "how": "bracketed",
    "check": null,
    "users": [
+    "arpplocks:operand",
     "build_arp_plocks:build"
    ]
   },
@@ -3306,6 +3344,7 @@
    "how": "exact",
    "check": null,
    "users": [
+    "arpplocks:operand",
     "build_arp_midi_play:build",
     "build_arp_plocks:build"
    ]
@@ -3388,6 +3427,7 @@
    "how": "exact",
    "check": null,
    "users": [
+    "arpplocks:operand",
     "build_arp_plocks:build"
    ]
   },
@@ -3396,6 +3436,7 @@
    "how": "exact",
    "check": null,
    "users": [
+    "arpplocks:operand",
     "build_arp_plocks:build"
    ]
   },
@@ -3404,6 +3445,7 @@
    "how": "bracketed",
    "check": null,
    "users": [
+    "arpplocks:operand",
     "build_arp_plocks:build"
    ]
   },
@@ -3412,6 +3454,7 @@
    "how": "exact",
    "check": null,
    "users": [
+    "arpplocks:operand",
     "build_arp_plocks:build"
    ]
   },
@@ -3420,6 +3463,7 @@
    "how": "bracketed",
    "check": null,
    "users": [
+    "arpplocks:operand",
     "build_arp_plocks:build"
    ]
   },
@@ -3428,6 +3472,7 @@
    "how": "exact",
    "check": null,
    "users": [
+    "arpplocks:operand",
     "build_arp_plocks:build",
     "build_trace_harness:build"
    ]
@@ -3487,6 +3532,7 @@
    "how": "exact",
    "check": null,
    "users": [
+    "arpscale:operand",
     "build_arpscale:build"
    ]
   },
@@ -3504,6 +3550,7 @@
    "how": "exact",
    "check": null,
    "users": [
+    "arpscale:operand",
     "build_arpscale:build"
    ]
   },
@@ -3512,6 +3559,7 @@
    "how": "exact",
    "check": null,
    "users": [
+    "arpscale:operand",
     "build_arpscale:build"
    ]
   },
@@ -3529,6 +3577,7 @@
    "how": "exact",
    "check": null,
    "users": [
+    "arpscale:operand",
     "build_arpscale:build"
    ]
   },
@@ -3673,7 +3722,8 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_degreetranspose:build"
+    "build_degreetranspose:build",
+    "degreetranspose:operand"
    ]
   },
   "0x40050cce": {
@@ -4448,7 +4498,8 @@
    "check": null,
    "users": [
     "build_lfo4_value:build",
-    "dn2_111.h:header"
+    "dn2_111.h:header",
+    "lfo4:operand"
    ]
   },
   "0x40065abd": {
@@ -4747,6 +4798,38 @@
     "waverider:edit"
    ]
   },
+  "0x4008a5ec": {
+   "new": "0x4008a5ec",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
+  "0x4008a94a": {
+   "new": "0x4008a94a",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
+  "0x4008abec": {
+   "new": "0x4008abec",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
+  "0x4008c78e": {
+   "new": "0x4008c78e",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
   "0x40096464": {
    "new": "0x400965c8",
    "how": "bracketed",
@@ -4993,7 +5076,8 @@
    "users": [
     "build_lfo4_value:build",
     "dn2_111.h:header",
-    "lfo4:edit"
+    "lfo4:edit",
+    "waverider:operand"
    ]
   },
   "0x400c241c": {
@@ -5167,7 +5251,8 @@
    "check": "bytes match",
    "users": [
     "build_lfo4_ext:build",
-    "lfo4:edit"
+    "lfo4:edit",
+    "waverider:operand"
    ]
   },
   "0x400d0000": {
@@ -5519,7 +5604,8 @@
    "check": null,
    "users": [
     "build_arp_midi_play:build",
-    "build_layer_midi:build"
+    "build_layer_midi:build",
+    "midiarp:operand"
    ]
   },
   "0x400dbc88": {
@@ -5801,7 +5887,7 @@
    "users": [
     "build_fxbrowser:build",
     "bus:literal",
-    "fxmod:literal",
+    "fxmod:operand",
     "matrix:literal",
     "patch.paramtable:patch",
     "waverider:guard"
@@ -5908,6 +5994,14 @@
     "waverider:edit"
    ]
   },
+  "0x400dc19a": {
+   "new": "0x400dc2fe",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
   "0x400dc19d": {
    "new": "0x400dc301",
    "how": "exact",
@@ -5964,6 +6058,14 @@
     "lfo4:edit"
    ]
   },
+  "0x400dc2a2": {
+   "new": "0x400dc406",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
   "0x400dc2ab": {
    "new": "0x400dc40f",
    "how": "exact",
@@ -5980,6 +6082,14 @@
     "lfo4:edit"
    ]
   },
+  "0x400dc2c6": {
+   "new": "0x400dc42a",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
   "0x400dc2cf": {
    "new": "0x400dc433",
    "how": "exact",
@@ -5994,6 +6104,14 @@
    "check": "relocated",
    "users": [
     "lfo4:edit"
+   ]
+  },
+  "0x400dc2ea": {
+   "new": "0x400dc44e",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "waverider:operand"
    ]
   },
   "0x400dc2f3": {
@@ -6663,6 +6781,14 @@
     "build_reload_confirm:build"
    ]
   },
+  "0x400f630a": {
+   "new": "0x400f64d6",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "midiarp:operand"
+   ]
+  },
   "0x400f6960": {
    "new": "0x400f6b2c",
    "how": "exact",
@@ -6700,7 +6826,8 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_reload_confirm:build"
+    "build_reload_confirm:build",
+    "reloadconfirm:operand"
    ]
   },
   "0x400f7f14": {
@@ -6991,7 +7118,8 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_reload_confirm:build"
+    "build_reload_confirm:build",
+    "reloadconfirm:operand"
    ]
   },
   "0x40112b84": {
@@ -6999,7 +7127,8 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_reload_confirm:build"
+    "build_reload_confirm:build",
+    "reloadconfirm:operand"
    ]
   },
   "0x40112b92": {
@@ -7041,8 +7170,10 @@
    "how": "exact",
    "check": null,
    "users": [
+    "arpscale:operand",
     "build_arpscale:build",
-    "build_degreetranspose:build"
+    "build_degreetranspose:build",
+    "degreetranspose:operand"
    ]
   },
   "0x4011545c": {
@@ -7071,7 +7202,8 @@
     "build_arp_on_midi2:build",
     "build_degreetranspose:build",
     "build_reload_confirm:build",
-    "degreetranspose:guard"
+    "degreetranspose:guard",
+    "reloadconfirm:operand"
    ]
   },
   "0x40116040": {
@@ -7079,7 +7211,8 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_reload_confirm:build"
+    "build_reload_confirm:build",
+    "reloadconfirm:operand"
    ]
   },
   "0x40116070": {
@@ -7099,7 +7232,9 @@
     "build_arp_on_midi2:build",
     "build_arp_on_midi:build",
     "build_degreetranspose:build",
-    "build_reload_confirm:build"
+    "build_reload_confirm:build",
+    "degreetranspose:operand",
+    "reloadconfirm:operand"
    ]
   },
   "0x401160bc": {
@@ -7131,6 +7266,14 @@
     "build_reload_confirm:build"
    ]
   },
+  "0x4011c674": {
+   "new": "0x4011c954",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "arpplocks:operand"
+   ]
+  },
   "0x4011c7ba": {
    "new": "0x4011ca9a",
    "how": "exact",
@@ -7139,7 +7282,16 @@
     "arpplocks:guard",
     "build_arp_plocks:build",
     "build_degreetranspose:build",
-    "build_personalize_toggle:build"
+    "build_personalize_toggle:build",
+    "degreetranspose:operand"
+   ]
+  },
+  "0x4011d2f4": {
+   "new": "0x4011d5d4",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "waverider:operand"
    ]
   },
   "0x4011d71e": {
@@ -7147,7 +7299,8 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_reload_confirm:build"
+    "build_reload_confirm:build",
+    "reloadconfirm:operand"
    ]
   },
   "0x4011f5e4": {
@@ -7164,7 +7317,8 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_degreetranspose:build"
+    "build_degreetranspose:build",
+    "degreetranspose:operand"
    ]
   },
   "0x4011ffe8": {
@@ -7376,6 +7530,14 @@
     "build_layer_midi:build"
    ]
   },
+  "0x4012a394": {
+   "new": "0x4012a674",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "midiarp:operand"
+   ]
+  },
   "0x4012a3b4": {
    "new": "0x4012a694",
    "how": "exact",
@@ -7575,7 +7737,8 @@
    "users": [
     "build_arp_midi_play:build",
     "build_degreetranspose:build",
-    "build_layer_midi:build"
+    "build_layer_midi:build",
+    "midiarp:operand"
    ]
   },
   "0x4012c59a": {
@@ -7585,6 +7748,14 @@
    "users": [
     "build_driveread_probe:build",
     "build_waverider_route:build"
+   ]
+  },
+  "0x40133ebc": {
+   "new": "0x4013419c",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "reloadconfirm:operand"
    ]
   },
   "0x40134490": {
@@ -8812,7 +8983,8 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_arp_midi_play:build"
+    "build_arp_midi_play:build",
+    "midiarp:operand"
    ]
   },
   "0x401389d6": {
@@ -8942,6 +9114,7 @@
    "how": "exact",
    "check": null,
    "users": [
+    "arpscale:operand",
     "build_arpscale:build"
    ]
   },
@@ -8974,7 +9147,8 @@
    "how": "bracketed",
    "check": null,
    "users": [
-    "build_reload_confirm:build"
+    "build_reload_confirm:build",
+    "reloadconfirm:operand"
    ]
   },
   "0x401a528a": {
@@ -8982,7 +9156,8 @@
    "how": "bracketed",
    "check": null,
    "users": [
-    "build_reload_confirm:build"
+    "build_reload_confirm:build",
+    "reloadconfirm:operand"
    ]
   },
   "0x401a52b6": {
@@ -9073,6 +9248,22 @@
     "reloadconfirm:guard"
    ]
   },
+  "0x401b99ba": {
+   "new": "0x401b9dd4",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "reloadconfirm:operand"
+   ]
+  },
+  "0x401b9a5c": {
+   "new": "0x401b9e76",
+   "how": "bracketed",
+   "check": null,
+   "users": [
+    "reloadconfirm:operand"
+   ]
+  },
   "0x401ccbee": {
    "new": "0x401cd008",
    "how": "exact",
@@ -9120,7 +9311,8 @@
    "how": "data bracketed",
    "check": null,
    "users": [
-    "build_reload_confirm:build"
+    "build_reload_confirm:build",
+    "reloadconfirm:operand"
    ]
   },
   "0x401d4c08": {
@@ -9145,6 +9337,14 @@
    "check": null,
    "users": [
     "build_arpscale:build"
+   ]
+  },
+  "0x401d88d4": {
+   "new": "0x401d8ce4",
+   "how": "data exact",
+   "check": null,
+   "users": [
+    "midiarp:operand"
    ]
   },
   "0x401d88d8": {
@@ -9210,7 +9410,24 @@
    "how": "data bracketed",
    "check": null,
    "users": [
-    "build_reload_confirm:build"
+    "build_reload_confirm:build",
+    "reloadconfirm:operand"
+   ]
+  },
+  "0x401ddd58": {
+   "new": "0x401de168",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
+  "0x401ddd6c": {
+   "new": "0x401de17c",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "waverider:operand"
    ]
   },
   "0x401dddec": {
@@ -9218,8 +9435,17 @@
    "how": "data bracketed",
    "check": null,
    "users": [
+    "arpscale:operand",
     "build_arpscale:build",
     "dn2_111.h:header"
+   ]
+  },
+  "0x401de848": {
+   "new": "0x401dec58",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "degreetranspose:operand"
    ]
   },
   "0x401e0000": {
@@ -9237,7 +9463,8 @@
    "users": [
     "build_lfo4_nav_test:build",
     "build_lfo4_page_test:build",
-    "build_lfo4_pagelist:build"
+    "build_lfo4_pagelist:build",
+    "lfo4:operand"
    ]
   },
   "0x401e0054": {
@@ -9295,7 +9522,8 @@
    "how": "data exact",
    "check": null,
    "users": [
-    "build_fxbrowser3:build"
+    "build_fxbrowser3:build",
+    "fxmod:operand"
    ]
   },
   "0x401f7720": {
@@ -9341,6 +9569,46 @@
     "build_fxbrowser3:build"
    ]
   },
+  "0x401f77f4": {
+   "new": "0x401f7c04",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
+  "0x401f77f8": {
+   "new": "0x401f7c08",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
+  "0x401f77fc": {
+   "new": "0x401f7c0c",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
+  "0x401f7930": {
+   "new": "0x401f7d40",
+   "how": "data exact",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
+  "0x401f7932": {
+   "new": "0x401f7d42",
+   "how": "data exact",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
   "0x401f7f94": {
    "new": "0x401f83a4",
    "how": "data exact",
@@ -9354,8 +9622,25 @@
     "build_moddest_expand:build",
     "build_modmask_test:build",
     "build_page_classifier_test:build",
+    "lfo4:operand",
     "moddest:literal",
     "patch.paramtable:patch"
+   ]
+  },
+  "0x401f7f9c": {
+   "new": "0x401f83ac",
+   "how": "data exact",
+   "check": null,
+   "users": [
+    "lfo4:operand"
+   ]
+  },
+  "0x401f7fb4": {
+   "new": "0x401f83c4",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "lfo4:operand"
    ]
   },
   "0x401f7fc8": {
@@ -9560,7 +9845,16 @@
    "check": null,
    "users": [
     "build_lfo4_ui:build",
-    "dn2_111.h:header"
+    "dn2_111.h:header",
+    "lfo4:operand"
+   ]
+  },
+  "0x4020623c": {
+   "new": "0x402066f4",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "reloadconfirm:operand"
    ]
   },
   "0x4020625c": {
@@ -9613,7 +9907,8 @@
     "build_lfo_waveshapes:build",
     "build_lfo_wavetable:build",
     "build_lfo_wavetables:build",
-    "lfohold:literal"
+    "lfohold:literal",
+    "lfowaves:operand"
    ]
   },
   "0x4020b308": {
@@ -9624,7 +9919,8 @@
     "build_lfo_waveshapes:build",
     "build_lfo_wavetable:build",
     "build_lfo_wavetables:build",
-    "lfohold:literal"
+    "lfohold:literal",
+    "lfowaves:operand"
    ]
   },
   "0x4020b324": {
@@ -9646,7 +9942,8 @@
     "build_lfo_waves:build",
     "build_lfo_waveshapes:build",
     "build_lfo_wavetable:build",
-    "build_lfo_wavetables:build"
+    "build_lfo_wavetables:build",
+    "lfowaves:operand"
    ]
   },
   "0x4020dea0": {
@@ -9654,7 +9951,9 @@
    "how": "data bracketed",
    "check": null,
    "users": [
-    "build_scale_degrees:build"
+    "arpscale:operand",
+    "build_scale_degrees:build",
+    "degreetranspose:operand"
    ]
   },
   "0x4020ec20": {
@@ -9662,7 +9961,9 @@
    "how": "data exact",
    "check": null,
    "users": [
-    "build_scale_degrees:build"
+    "arpscale:operand",
+    "build_scale_degrees:build",
+    "degreetranspose:operand"
    ]
   },
   "0x4021077c": {
@@ -9679,7 +9980,8 @@
    "how": "data exact",
    "check": null,
    "users": [
-    "build_fxbrowser3:build"
+    "build_fxbrowser3:build",
+    "fxmod:operand"
    ]
   },
   "0x40210919": {
@@ -9687,7 +9989,8 @@
    "how": "data exact",
    "check": null,
    "users": [
-    "build_fxbrowser3:build"
+    "build_fxbrowser3:build",
+    "fxmod:operand"
    ]
   },
   "0x40210bce": {
@@ -9703,7 +10006,8 @@
    "how": "data exact",
    "check": null,
    "users": [
-    "build_fxbrowser3:build"
+    "build_fxbrowser3:build",
+    "fxmod:operand"
    ]
   },
   "0x40215cca": {
@@ -9723,6 +10027,14 @@
     "build_arp_on_midi:build"
    ]
   },
+  "0x40216cee": {
+   "new": "0x402171a6",
+   "how": "data exact",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
   "0x402193f4": {
    "new": "0x402198ac",
    "how": "data exact",
@@ -9731,12 +10043,37 @@
     "build_flash_control:build"
    ]
   },
+  "0x40219c2d": {
+   "new": "0x4021a0e5",
+   "how": "data exact",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
+  "0x4021f244": {
+   "new": "0x4021f783",
+   "how": "votes 1/1",
+   "check": null,
+   "users": [
+    "waverider:operand"
+   ]
+  },
   "0x402876f8": {
    "new": "0x40287c38",
    "how": "data exact",
    "check": null,
    "users": [
-    "build_fxblock16:build"
+    "build_fxblock16:build",
+    "waverider:operand"
+   ]
+  },
+  "0x40287b04": {
+   "new": "0x40288044",
+   "how": "data exact",
+   "check": null,
+   "users": [
+    "midiarp:operand"
    ]
   },
   "0x40287b08": {
@@ -9974,7 +10311,8 @@
    "how": "data bracketed",
    "check": null,
    "users": [
-    "build_lfo4_tick:build"
+    "build_lfo4_tick:build",
+    "lfo4:operand"
    ]
   },
   "0x4029eba0": {
@@ -10661,6 +10999,14 @@
     "build_fxblock16:build"
    ]
   },
+  "0x4058e8d4": {
+   "new": "0x4058f8d4",
+   "how": "votes 2/2",
+   "check": null,
+   "users": [
+    "usbprobe:operand"
+   ]
+  },
   "0x4058e8d8": {
    "new": "0x4058f8d8",
    "how": "votes 3/3",
@@ -10674,7 +11020,8 @@
    "how": "votes 2/2",
    "check": null,
    "users": [
-    "build_layer_midi:build"
+    "build_layer_midi:build",
+    "layermidi:operand"
    ]
   },
   "0x405984a8": {
@@ -10690,6 +11037,7 @@
    "how": "votes 6/6",
    "check": null,
    "users": [
+    "arpmodes:operand",
     "build_arpmodes:build"
    ]
   },
@@ -10706,7 +11054,16 @@
    "how": "votes 2/2",
    "check": null,
    "users": [
-    "build_waverider_route:build"
+    "build_waverider_route:build",
+    "waverider:operand"
+   ]
+  },
+  "0x4059cd24": {
+   "new": "0x4059dd24",
+   "how": "votes 6/6",
+   "check": null,
+   "users": [
+    "waverider:operand"
    ]
   },
   "0x405cd85c": {
@@ -10726,6 +11083,14 @@
     "build_reload_confirm:build"
    ]
   },
+  "0x405cd8a3": {
+   "new": "0x405ce8a3",
+   "how": "votes 2/2",
+   "check": null,
+   "users": [
+    "reloadconfirm:operand"
+   ]
+  },
   "0x405cd8ad": {
    "new": "0x405ce8ad",
    "how": "votes 3/3",
@@ -10740,7 +11105,8 @@
    "check": null,
    "users": [
     "build_arpmodes:build",
-    "build_reload_confirm:build"
+    "build_reload_confirm:build",
+    "reloadconfirm:operand"
    ]
   },
   "0x405cd96c": {
@@ -10825,8 +11191,10 @@
    "how": "votes 42/42",
    "check": null,
    "users": [
+    "arpscale:operand",
     "build_degreetranspose:build",
-    "build_scale_degrees:build"
+    "build_scale_degrees:build",
+    "degreetranspose:operand"
    ]
   },
   "0x42c5a9a8": {
@@ -10859,6 +11227,7 @@
    "check": null,
    "users": [
     "build_fxbrowser:build",
+    "fxmod:operand",
     "patch.paramtable:patch"
    ]
   },
@@ -10869,6 +11238,7 @@
    "users": [
     "build_fxbrowser:build",
     "build_modmask_test:build",
+    "fxmod:operand",
     "patch.paramtable:patch"
    ]
   },
@@ -10904,12 +11274,30 @@
     "build_intro_tunnel:build"
    ]
   },
+  "0x44507b68": {
+   "new": "0x44508b68",
+   "how": "votes 3/3",
+   "check": null,
+   "users": [
+    "lfowaves:operand"
+   ]
+  },
   "0x44507eb8": {
    "new": "0x44508eb8",
    "how": "votes 18/18",
    "check": null,
    "users": [
-    "build_degreetranspose:build"
+    "build_degreetranspose:build",
+    "degreetranspose:operand"
+   ]
+  },
+  "0x445fe870": {
+   "new": "0x445ff870",
+   "how": "votes 6/6",
+   "check": null,
+   "users": [
+    "layermidi:operand",
+    "midiarp:operand"
    ]
   },
   "0x4460e4b8": {
@@ -10918,7 +11306,8 @@
    "check": null,
    "users": [
     "build_arp_midi_play:build",
-    "build_layer_midi:build"
+    "build_layer_midi:build",
+    "layermidi:operand"
    ]
   },
   "0x4460fcbc": {
@@ -10934,7 +11323,8 @@
    "how": "votes 4/4",
    "check": null,
    "users": [
-    "build_degreetranspose:build"
+    "build_degreetranspose:build",
+    "degreetranspose:operand"
    ]
   },
   "0x44617238": {
@@ -10942,7 +11332,8 @@
    "how": "votes 4/4",
    "check": null,
    "users": [
-    "build_degreetranspose:build"
+    "build_degreetranspose:build",
+    "degreetranspose:operand"
    ]
   },
   "0x4463ed18": {
@@ -10963,6 +11354,14 @@
     "lfolength:literal"
    ]
   },
+  "0x4463f4be": {
+   "new": "0x446404be",
+   "how": "votes 1/1",
+   "check": null,
+   "users": [
+    "lfo4:operand"
+   ]
+  },
   "0x4463fc18": {
    "new": "0x44640c18",
    "how": "votes 4/4",
@@ -10979,7 +11378,9 @@
    "how": "votes 10/10",
    "check": null,
    "users": [
-    "build_personalize_toggle:build"
+    "arpscale:operand",
+    "build_personalize_toggle:build",
+    "reloadconfirm:operand"
    ]
   },
   "0x446478c8": {
@@ -10995,6 +11396,7 @@
    "how": "votes 7/7",
    "check": null,
    "users": [
+    "arpmodes:operand",
     "build_arpmodes:build"
    ]
   },
@@ -11026,6 +11428,14 @@
    "users": [
     "build_fxblock16:build",
     "ramcheck:literal"
+   ]
+  },
+  "0x4c010800": {
+   "new": "0x4c010800",
+   "how": "votes 1/1",
+   "check": null,
+   "users": [
+    "degreetranspose:operand"
    ]
   },
   "0x4e6df100": {

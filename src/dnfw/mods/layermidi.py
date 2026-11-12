@@ -54,6 +54,7 @@ import json
 import pathlib
 
 from . import RAM, Extent, ModError, Result, platform
+from ..osport import versions
 
 ID = "layermidi"
 NAME = "Layering onto MIDI tracks"
@@ -62,13 +63,29 @@ DEVICE = 0x15                      # Digitone II
 SECTION = 3                        # MAIN OS
 BASE = 0x40000400
 SPEC = json.loads((pathlib.Path(__file__).with_name("layermidi_code.json")).read_text())
+# One spec per OS version (issue #382): the user's stock image picks it. SPEC, CODE_VA and BLOB stay
+# OS 1.11's names.
+SPECS = {"1.11": SPEC}
+for _os in versions.VERSIONS:
+    _path = pathlib.Path(__file__).with_name(f"layermidi_code_{_os}.json")
+    if _os != "1.11" and _path.exists():
+        SPECS[_os] = json.loads(_path.read_text())
 CODE_VA = SPEC["code"]["va"]
 BLOB = bytes.fromhex(SPEC["code"]["blob"])
 
 
+def _spec(os: str) -> dict:
+    if os not in SPECS:
+        raise ModError(f"layermidi is not yet ported to Digitone II {os}")
+    return SPECS[os]
+
+
 def extents(firmware=None) -> list[Extent]:
-    return ([Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in SPEC["edits"]]
-            + platform.extents(16 + len(BLOB)))
+    os = versions.of_firmware(firmware).name if firmware is not None else "1.11"
+    spec = _spec(os)
+    blob = bytes.fromhex(spec["code"]["blob"])
+    return ([Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in spec["edits"]]
+            + platform.extents(16 + len(blob), os))
 
 
 def apply(firmware) -> Result:
@@ -76,34 +93,40 @@ def apply(firmware) -> Result:
     if section is None:
         raise ModError("image has no MAIN OS section")
     original, others = platform.split(section.unpack())
+    try:
+        os = versions.of_main_os(original).name
+    except versions.UnknownImage as exc:
+        raise ModError(str(exc)) from None
+    spec = _spec(os)
+    code_va, blob = spec["code"]["va"], bytes.fromhex(spec["code"]["blob"])
     # Longer is fine: data appended after the stock end (lfowaves, bootscreen)
     # moves no address this mod writes or reads. The guards identify the build.
-    if len(original) < SPEC["stock_length"]:
+    if len(original) < spec["stock_length"]:
         raise ModError(f"MAIN OS is {len(original):,} B, shorter than "
-                       f"{SPEC['stock_length']:,}: not Digitone II 1.11")
-    for g in SPEC["guards"]:
+                       f"{spec['stock_length']:,}: not Digitone II {os}")
+    for g in spec["guards"]:
         want = bytes.fromhex(g["bytes"])
         if original[g["va"] - BASE:g["va"] - BASE + len(want)] != want:
             raise ModError(f"0x{g['va']:08x} is not stock; this mod is for unmodified "
-                           "Digitone II 1.11")
-    for e in SPEC["edits"]:
+                           f"Digitone II {os}")
+    for e in spec["edits"]:
         want = bytes.fromhex(e["stock"])
         if original[e["va"] - BASE:e["va"] - BASE + len(want)] != want:
             raise ModError(f"0x{e['va']:08x} is not stock; this mod is for unmodified "
-                           "Digitone II 1.11, or another mod already wrote there")
+                           f"Digitone II {os}, or another mod already wrote there")
 
     content = bytearray(original)
-    for e in SPEC["edits"]:
+    for e in spec["edits"]:
         new = bytes.fromhex(e["new"])
         content[e["va"] - BASE:e["va"] - BASE + len(new)] = new
-    chunk = platform.area.CodeChunk(CODE_VA, BLOB).pack()
+    chunk = platform.area.CodeChunk(code_va, blob).pack()
     content = platform.join(bytes(content), others + [(platform.area.CODE, chunk)])
 
-    return Result(payloads={SECTION: bytes(content)}, extents=extents(),
+    return Result(payloads={SECTION: bytes(content)}, extents=extents(firmware),
                   notes=["TRACK WILL TRIGGER onto a MIDI track plays it over MIDI",
                          "note-on as the layered note plays, note-off as it is released",
-                         f"{len(SPEC['edits'])} hooks in section 3, and a {len(BLOB):,} B CODE "
-                         f"chunk at 0x{CODE_VA:08x} in the platform's area"])
+                         f"{len(spec['edits'])} hooks in section 3, and a {len(blob):,} B CODE "
+                         f"chunk at 0x{code_va:08x} in the platform's area"])
 
 
 def ram() -> list[Extent]:

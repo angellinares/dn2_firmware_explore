@@ -36,6 +36,12 @@ def sources():
             yield owner, e["va"], "edit", bytes.fromhex(e["stock"]) if e.get("stock") else None
         for g in spec.get("guards", []):
             yield owner, g["va"], "guard", bytes.fromhex(g["bytes"]) if g.get("bytes") else None
+        for item in spec.get("edits", []) + spec.get("guards", []):     # addresses inside the bytes
+            raw = bytes.fromhex(item.get("stock") or item.get("bytes") or "")
+            for at in range(0, len(raw) - 3, 2):
+                word = int.from_bytes(raw[at:at + 4], "big")
+                if 0x40000000 <= word < 0x50000000:
+                    yield owner, word, "operand", None
     for py in sorted(mods.glob("*.py")):
         for m in LIT.finditer(py.read_text(encoding="utf-8")):
             yield py.stem, int(m.group(1), 16), "literal", None

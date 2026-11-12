@@ -93,3 +93,12 @@ def test_rebind_names_the_constant_it_cannot_move():
     with pytest.raises(osport.NotPorted, match="FLAG"):
         osport.rebind({"FLAG": 0x405CD8AE}, "1.12")
     assert osport.rebind({"FLAG": 0x405CD8AE}, "1.12", {"FLAG": 0x405CE8AE})["FLAG"] == 0x405CE8AE
+
+
+def test_render_refuses_a_moved_literal():
+    """A stock address written as a literal in a template would not move: render names it"""
+    template = "    jmp     0x40137566              | a literal: 0x40137574 in a comment is fine\n"
+    assert osport.render(template, {}, "1.11") == template
+    with pytest.raises(osport.NotPorted, match="0x40137566"):
+        osport.render(template, {}, "1.12")
+    assert osport.render("    jmp     {T:#x}\n", {"T": 0x40137566}, "1.12") == "    jmp     0x40137846\n"

@@ -53,9 +53,9 @@ def pick(specs: dict[str, dict], os: str, mod: str) -> dict:
     return specs[os]
 
 
-def apply_edits(original: bytes, spec: dict, os: str) -> bytearray:
+def apply_edits(original: bytes, spec: dict, os: str, advice: str = "") -> bytearray:
     """ORIGINAL (stock MAIN OS, the platform's area split off) with SPEC's edits, after every guard
-    and every edit's stock bytes are checked"""
+    and every edit's stock bytes are checked. ADVICE ends a guard's or an edit's refusal."""
     if len(original) < spec["stock_length"]:
         raise ModError(f"MAIN OS is {len(original):,} B, shorter than "
                        f"{spec['stock_length']:,}: not Digitone II {os}")
@@ -63,12 +63,12 @@ def apply_edits(original: bytes, spec: dict, os: str) -> bytearray:
         want = bytes.fromhex(g["bytes"])
         if original[g["va"] - BASE:g["va"] - BASE + len(want)] != want:
             raise ModError(f"0x{g['va']:08x} is not stock; this mod is for unmodified "
-                           f"Digitone II {os}")
+                           f"Digitone II {os}{advice}")
     for e in spec["edits"]:
         want = bytes.fromhex(e["stock"])
         if original[e["va"] - BASE:e["va"] - BASE + len(want)] != want:
             raise ModError(f"0x{e['va']:08x} is not stock; this mod is for unmodified "
-                           f"Digitone II {os}, or another mod already wrote there")
+                           f"Digitone II {os}, or another mod already wrote there{advice}")
     content = bytearray(original)
     for e in spec["edits"]:
         new = bytes.fromhex(e["new"])

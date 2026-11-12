@@ -9,6 +9,8 @@ firmware bytes.
 
 from __future__ import annotations
 
+import re
+
 import functools
 import json
 import pathlib
@@ -133,6 +135,25 @@ def render(template: str, namespace: dict, os: str, overrides: dict | None = Non
     """TEMPLATE, an f-string's text kept as a plain string, evaluated with NAMESPACE rebound for OS.
     For 1.11 it is the text the f-string always gave. The template can name OS, to pass the version
     to code it pulls in from another script."""
+    if os != SOURCE:
+        stale = sorted({m for m in re.findall(r"0x[0-9a-fA-F]{8}", _code_only(template))
+                        if is_stock_address(int(m, 16)) and _moves(os, int(m, 16))})
+        if stale:
+            raise NotPorted(f"the template writes {', '.join(stale)} as a literal, which moves on {os}: "
+                            "name it as a constant")
     ns = dict(namespace) if os == SOURCE else rebind(namespace, os, overrides)
     ns["OS"] = os
     return eval("f" + repr(template), ns)     # noqa: S307  (our own template, our own names)
+
+
+def _code_only(template: str) -> str:
+    """The template without its assembly comments (after `|`) or its {...} fields"""
+    lines = (line.split("|", 1)[0] for line in template.splitlines())
+    return re.sub(r"\{[^{}]*\}", "", chr(10).join(lines))
+
+
+def _moves(os: str, value: int) -> bool:
+    try:
+        return addr(os, value) != value
+    except NotPorted:
+        return True

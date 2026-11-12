@@ -153,12 +153,12 @@ def _even_occurrences(content: bytes, base: int, value: int) -> list[int]:
         i += 1
 
 
-def base_sites(content: bytes, base: int) -> list[Site]:
-    """The 56 pre-biased bases of the 60-byte table."""
-    content = _stock(content, base)
+def base_sites(content: bytes, base: int, os: str = "1.11") -> list[Site]:
+    """The 56 pre-biased bases of the 60-byte table (on 1.12 at the map's address)."""
+    content = _stock(content, base, os)
     out = []
     for bias in BIASES:
-        literal = TABLE - RECORD + bias
+        literal = osport.addr(os, TABLE) - RECORD + bias
         found = _even_occurrences(content, base, literal)
         if len(found) != EXPECTED_BASES[bias]:
             raise TableError(f"expected {EXPECTED_BASES[bias]} site(s) holding "

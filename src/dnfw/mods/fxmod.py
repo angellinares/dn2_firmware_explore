@@ -68,7 +68,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from . import Extent, ModError, Result, bus, platform
+from . import Extent, ModError, Result, bus, platform, specs
 from ..patch import paramtable
 
 ID = "fxmod"
@@ -79,6 +79,7 @@ DEVICE = 0x15                      # Digitone II
 SECTION = 3                        # MAIN OS
 BASE = 0x40000400
 SPEC = json.loads(pathlib.Path(__file__).with_name("fxmod_code.json").read_text())
+SPECS = specs.load(__file__, "fxmod")              # one per OS version (issue #382); SPEC is 1.11's
 
 
 def destinations() -> list[tuple[str, list[str]]]:
@@ -91,9 +92,15 @@ def destinations() -> list[tuple[str, list[str]]]:
 AREA = 12 + 2 * 12 + 12 + 16 + len(platform.SPEC["bus"]["code"]) // 2
 
 
-def extents(firmware=None) -> list[Extent]:
+def area(os: str = "1.11") -> int:
+    """AREA on OS: its bus dispatchers are that OS's platform's"""
+    return 12 + 2 * 12 + 12 + 16 + len(platform.SPECS[os]["bus"]["code"]) // 2
+
+
+def extents(firmware=None, os: str | None = None) -> list[Extent]:
+    os = os or specs.of_firmware(firmware)
     return [Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"])
-            for e in SPEC["edits"]] + platform.extents(AREA)
+            for e in specs.pick(SPECS, os, ID)["edits"]] + platform.extents(area(os), os)
 
 
 def apply(firmware) -> Result:
@@ -104,37 +111,39 @@ def apply(firmware) -> Result:
     if original is None:
         raise ModError("MAIN OS did not depack")
     original, others = platform.split(original)
+    os = specs.of_main_os(original)
+    spec = specs.pick(SPECS, os, ID)
     try:
-        paramtable.base_sites(original, BASE)
+        paramtable.base_sites(original, BASE, os)
     except paramtable.TableError as exc:
         raise ModError(f"the parameter table has been moved ({exc}); lfo4 does that, and "
                        "fxmod opens records in the stock table, which nothing reads once it "
                        "has moved: apply fxmod first, then lfo4") from None
 
-    for g in SPEC["guards"]:
+    for g in spec["guards"]:
         want = bytes.fromhex(g["bytes"])
         if platform.read(original, others, g["va"], len(want)) != want:
             raise ModError(f"0x{g['va']:08x} ({g['what']}) is not stock; this mod is "
-                           "for unmodified Digitone II 1.11")
-    for e in SPEC["edits"]:
+                           f"for unmodified Digitone II {os}")
+    for e in spec["edits"]:
         want = bytes.fromhex(e["stock"])
         at = e["va"] - BASE
         if original[at:at + len(want)] != want:
             raise ModError(f"0x{e['va']:08x} ({e['what']}) is not stock; this mod is "
-                           "for unmodified Digitone II 1.11, or another mod already "
+                           f"for unmodified Digitone II {os}, or another mod already "
                            "wrote there")
 
     content = bytearray(original)
-    for e in SPEC["edits"]:
+    for e in spec["edits"]:
         new = bytes.fromhex(e["new"])
         content[e["va"] - BASE:e["va"] - BASE + len(new)] = new
 
     content = platform.join(bytes(content), others + [
-        bus.subscribe(SPEC["bus"]["event"].encode(), SPEC["bus"]["handler"])])
-    count = sum(len(g["parameters"]) for g in SPEC["destinations"])
-    return Result(payloads={SECTION: content}, extents=extents(),
+        bus.subscribe(spec["bus"]["event"].encode(), spec["bus"]["handler"])])
+    count = sum(len(g["parameters"]) for g in spec["destinations"])
+    return Result(payloads={SECTION: content}, extents=extents(os=os),
                   notes=[f"{count} FX destinations appear in the LFO DEST list",
                          "Chorus, Delay and Reverb parameters follow the LFO",
                          "the Chorus group reads CHR, not ERR",
-                         f"{len(SPEC['edits'])} edits in section 3, the slot lookup on the "
+                         f"{len(spec['edits'])} edits in section 3, the slot lookup on the "
                          "platform's hook bus"])

@@ -119,6 +119,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 
+from dnfw import osport
 from dnfw.cli.files import read_image
 from dnfw.container.section import compress
 from dnfw.firmware import build as fwbuild
@@ -202,13 +203,51 @@ SECTION_OUT = pathlib.Path("out/fxbrowser/section_3_MAIN_OS.bin")
 # covering every edit in the build. See `build_fxbrowser3.py`.
 EXTRA_LONGWORDS: list[tuple[int, str, str, str]] = []
 
+STOCK_HELPER = 0x400DBCC4   # entry -> slot: what the conversion sites call on stock
+
+
+def anchor_for(os: str, stock: bytes) -> dict:
+    """The anchor for OS (issue #382), with the tables and the cave it names.
+
+    On 1.11 it is ANCHORS' own. On another OS it is 1.11's, mapped: every site through
+    `osport.site` (so its stock bytes are OS's, address words moved and nothing else
+    different), every other address through `osport.addr`. A longword edit's new value
+    is an address, so it moves too."""
+    one_eleven = dict(ANCHORS[3_192_192], records=RECORDS, record_base=RECORD_BASE,
+                      fx_slot_table=FX_SLOT_TABLE, cave=CAVE, helper_stock=STOCK_HELPER,
+                      extra=list(EXTRA_LONGWORDS))
+    if os == "1.11":
+        return one_eleven
+
+    def site(va: int, stock_hex: str) -> tuple[int, str]:
+        try:
+            at, have = osport.site(os, va, bytes.fromhex(stock_hex), stock, BASE)
+        except osport.NotPorted as exc:
+            raise SystemExit(f"{va:#010x}: {exc}") from None
+        return at, have.hex()
+
+    def at(va: int) -> int:
+        return osport.addr(os, va)
+
+    a = one_eleven
+    return {
+        **{key: (*site(a[key][0], a[key][1]), a[key][2], a[key][3]) for key in ("eval_bound", "enum_bound")},
+        **{key: (*site(a[key][0], a[key][1]), at(a[key][2])) for key in ("eval_hook", "slot_hook")},
+        "convert": tuple((at(va), why) for va, why in a["convert"]),
+        "sealed": tuple((at(va), n) for va, n in a["sealed"]),
+        "controls": tuple((*site(va, want), why) for va, want, why in a["controls"]),
+        "records": at(RECORDS), "record_base": at(RECORD_BASE), "fx_slot_table": at(FX_SLOT_TABLE),
+        "cave": (at(CAVE[0]), CAVE[1]), "helper_stock": at(STOCK_HELPER),
+        "extra": [(*site(va, old), f"{at(int(new, 16)):08x}", why) for va, old, new, why in a["extra"]],
+    }
+
 
 def fx_mirror_base() -> int:
     """What `fxdest`'s cave loads into `%a0` for a code of 101..127."""
     return MIRROR_BASE + HEADER + BLOCK * FX_BLOCK - 2 * CODE_BIAS
 
 
-def helper_source() -> str:
+def helper_source(record_base: int = RECORD_BASE) -> str:
     """entry -> `DEST` code: `0x400dbcc4`'s answer, plus 76 for an FX record.
 
     The out-of-range fold is `0x400dbcc4`'s own, spelled as a branch rather
@@ -223,7 +262,7 @@ def helper_source() -> str:
     lsl.l   #2,%d1
     lsl.l   #6,%d0
     sub.l   %d1,%d0                | 60 * entry
-    lea     {RECORD_BASE:#010x},%a0
+    lea     {record_base:#010x},%a0
     lea     %a0@(0,%d0:l),%a0      | the pre-biased record
     move.l  %a0@(4),%d0            | +12 : the ParameterSet slot
     move.l  %a0@(0),%d1            | +8  : the page group
@@ -234,14 +273,14 @@ def helper_source() -> str:
 2:  rts"""
 
 
-def slot_payload() -> str:
+def slot_payload(fx_slot_table: int = FX_SLOT_TABLE) -> str:
     """Answer slots 101..124 from the FX set's own table; everything else stock.
 
     Entered before the function has pushed anything, so `%sp@(4)` is its first
     argument and an `rts` here returns to its caller. `%d0`, `%d1` and `%a0` are
     call-clobbered and are what the stock routine uses as scratch anyway.
     """
-    indexed = FX_SLOT_TABLE - 4 * CODE_BIAS
+    indexed = fx_slot_table - 4 * CODE_BIAS
     return f"""    move.l  %sp@(4),%d0            | the slot
     moveq   #100,%d1
     cmp.l   %d0,%d1
@@ -249,7 +288,7 @@ def slot_payload() -> str:
     moveq   #{CODE_HI},%d1
     cmp.l   %d0,%d1
     bcs.s   1f                     | above {CODE_HI} -> stock, which returns 0
-    lea     {indexed:#010x},%a0     | {FX_SLOT_TABLE:#010x} - 4*{CODE_BIAS}
+    lea     {indexed:#010x},%a0     | {fx_slot_table:#010x} - 4*{CODE_BIAS}
     move.l  %a0@(0,%d0:l:4),%d0    | the FX set's own entry for this slot
     rts
 1:"""
@@ -269,7 +308,7 @@ def eval_payload(base: int) -> str:
 2:"""
 
 
-def compose(stock_bytes: bytes, dest: int, log=print) -> dict:
+def compose(stock_bytes: bytes, dest: int, log=print, os: str = "1.11") -> dict:
     """Stock MAIN OS in, the modified bytes out. No filesystem, no .syx.
 
     Split out of `main()` on 2026-09-23 so the same composition can feed three
@@ -282,18 +321,19 @@ def compose(stock_bytes: bytes, dest: int, log=print) -> dict:
     """
     content = bytearray(stock_bytes)
 
-    anchor = ANCHORS.get(len(content))
-    if anchor is None:
+    if os == "1.11" and len(content) not in ANCHORS:
         raise SystemExit(
             f"MAIN OS is {len(content):,} bytes -- no hook anchored for this build "
             f"(docs/version-anchors.md)."
         )
+    anchor = anchor_for(os, bytes(content))       # OS: STOCK's version (issue #382)
+    records = anchor["records"]
 
     _check_controls(content, anchor["controls"], log)
     for address, length in anchor["sealed"]:
         _check_sealed(content, address, length, log)
-    _check_geometry(content, log)
-    _check_masks(content, log)
+    _check_geometry(content, log, records)
+    _check_masks(content, log, records)
 
     # --- the two byte edits -------------------------------------------------
     for key in ("eval_bound", "enum_bound"):
@@ -301,8 +341,8 @@ def compose(stock_bytes: bytes, dest: int, log=print) -> dict:
         _poke_byte(content, address, stock_hex, new_byte, why, log)
 
     # --- the cave layout ----------------------------------------------------
-    cave_address, cave_capacity = CAVE
-    helper = assemble(helper_source())
+    cave_address, cave_capacity = anchor["cave"]
+    helper = assemble(helper_source(anchor["record_base"]))
     if len(helper) % 2:
         helper += b"\x00"
     helper_address = cave_address
@@ -319,7 +359,7 @@ def compose(stock_bytes: bytes, dest: int, log=print) -> dict:
     hooks = []
     for key, payload_source, why in (
         ("eval_hook", eval_payload(fx_mirror_base()), "fxdest: block 16 for 101..127"),
-        ("slot_hook", slot_payload(), "the FX set's table for slots 101..124"),
+        ("slot_hook", slot_payload(anchor["fx_slot_table"]), "the FX set's table for slots 101..124"),
     ):
         site, stock_hex, resume = anchor[key]
         payload = assemble(payload_source)
@@ -341,17 +381,17 @@ def compose(stock_bytes: bytes, dest: int, log=print) -> dict:
 
     # --- the three conversion sites ----------------------------------------
     for address, why in anchor["convert"]:
-        _repoint(content, address, 0x400DBCC4, helper_address, why, log)
+        _repoint(content, address, anchor["helper_stock"], helper_address, why, log)
 
     # --- the ten record masks ----------------------------------------------
     log("")
     for entry in OPEN_RECORDS:
-        _open_mask(content, entry, log)
+        _open_mask(content, entry, log, records)
 
     # --- whatever a successor adds -----------------------------------------
-    if EXTRA_LONGWORDS:
+    if anchor["extra"]:
         log("")
-    for address, stock_hex, new_hex, why in EXTRA_LONGWORDS:
+    for address, stock_hex, new_hex, why in anchor["extra"]:
         _poke_longword(content, address, stock_hex, new_hex, why, log)
 
     _verify(stock_bytes, content, anchor, helper_address, used, log)
@@ -401,8 +441,8 @@ def main() -> int:
 # guards
 
 
-def _record(content, entry: int) -> tuple[int, ...]:
-    off = RECORDS - BASE + RECORD_SIZE * (entry - 1)
+def _record(content, entry: int, records: int = RECORDS) -> tuple[int, ...]:
+    off = records - BASE + RECORD_SIZE * (entry - 1)
     return struct.unpack_from(">15I", content, off)
 
 
@@ -453,7 +493,7 @@ def _check_sealed(content, address: int, length: int, log=print) -> None:
     log(f"  sealed  {address:#010x}+{length}: nothing points into its interior{note}")
 
 
-def _check_geometry(content, log=print) -> None:
+def _check_geometry(content, log=print, records: int = RECORDS) -> None:
     """A wrong anchor into a dense table still yields plausible records.
 
     So the records this build reasons about are checked by name, group and
@@ -467,7 +507,7 @@ def _check_geometry(content, log=print) -> None:
         124: ("Decay Time", 17, 42), 131: ("Reverb FX Routing", 17, 48),
     }
     for entry, (name, group, slot) in expect.items():
-        w = _record(content, entry)
+        w = _record(content, entry, records)
         got = (_name(content, w[12]), w[GROUP_WORD], w[SLOT_WORD])
         if got != (name, group, slot):
             raise SystemExit(
@@ -477,7 +517,7 @@ def _check_geometry(content, log=print) -> None:
     log(f"  geometry {len(expect)} records resolve to their expected name, group and slot")
 
 
-def _check_masks(content, log=print) -> None:
+def _check_masks(content, log=print, records: int = RECORDS) -> None:
     """Report what `+44` carries across slots 25..48, and which `want` passes.
 
     This is the measurement §6 item 5 was guessing at, and it decides how many
@@ -486,7 +526,7 @@ def _check_masks(content, log=print) -> None:
     """
     table = {}
     for index in range(320):
-        w = _record(content, index + 1)
+        w = _record(content, index + 1, records)
         if w[GROUP_WORD] != 0xFFFFFFFF and 16 <= w[GROUP_WORD] <= 21 \
                 and w[SLOT_WORD] != 0xFFFFFFFF:
             table[w[SLOT_WORD]] = index + 1
@@ -495,7 +535,7 @@ def _check_masks(content, log=print) -> None:
         entry = table.get(slot)
         if entry is None:
             raise SystemExit(f"FX slot {slot} has no record -- the derivation is wrong")
-        w = _record(content, entry)
+        w = _record(content, entry, records)
         if (~w[MASK_WORD] & OPEN_MASK) != 0:
             blocked.append((slot, entry, _name(content, w[12])))
     log(f"  masks    slots 25..48 resolve to 24 records; {24 - len(blocked)} already "
@@ -543,8 +583,8 @@ def _repoint(content, address: int, old: int, new: int, why: str, log=print) -> 
     log(f"  repoint {address:#010x}  jsr {old:#010x} -> jsr {new:#010x}   {why}")
 
 
-def _open_mask(content, entry: int, log=print) -> None:
-    w = _record(content, entry)
+def _open_mask(content, entry: int, log=print, records: int = RECORDS) -> None:
+    w = _record(content, entry, records)
     if w[MASK_WORD] == OPEN_MASK:
         log(f"  mask    entry {entry:3} already {OPEN_MASK:#07x}, left alone")
         return
@@ -553,7 +593,7 @@ def _open_mask(content, entry: int, log=print) -> None:
             f"entry {entry}: `+44` is {w[MASK_WORD]:#010x}, not 0 -- this build only "
             f"opens records that are closed, so it cannot quietly clear a flag"
         )
-    off = RECORDS - BASE + RECORD_SIZE * (entry - 1) + 4 * MASK_WORD
+    off = records - BASE + RECORD_SIZE * (entry - 1) + 4 * MASK_WORD
     struct.pack_into(">I", content, off, OPEN_MASK)
     log(f"  mask    entry {entry:3} {_name(content, w[12])!r:22} group {w[GROUP_WORD]:2} "
           f"slot {w[SLOT_WORD]:2}: +44 0x0 -> {OPEN_MASK:#07x}")
@@ -572,8 +612,8 @@ def _verify(before: bytes, after, anchor, helper_address: int, used: int, log=pr
         allowed.append((address - BASE + 2, 4))
     allowed.append((helper_address - BASE, used))
     for entry in OPEN_RECORDS:
-        allowed.append((RECORDS - BASE + RECORD_SIZE * (entry - 1) + 4 * MASK_WORD, 4))
-    for address, _stock, _new, _why in EXTRA_LONGWORDS:
+        allowed.append((anchor["records"] - BASE + RECORD_SIZE * (entry - 1) + 4 * MASK_WORD, 4))
+    for address, _stock, _new, _why in anchor["extra"]:
         allowed.append((address - BASE, 4))
 
     diffs = [i for i in range(len(before)) if before[i] != after[i]]

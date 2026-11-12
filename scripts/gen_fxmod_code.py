@@ -1,6 +1,6 @@
 """Pre-assemble the FX modulation mod for the browser and the CLI.
 
-    python scripts/gen_fxmod_code.py
+    python scripts/gen_fxmod_code.py [--os 1.12]
 
 Runs `build_fxbrowser.compose` — with `build_fxbrowser2`'s four extra conversion
 sites and `build_fxbrowser3`'s group-name longword, which together are the
@@ -28,7 +28,9 @@ project wrote (the cave, the hooks, the repointed addresses) or a mask constant
 and a pointer that already exist in the user's own image, and the `stock` fields
 are guards the mod compares against the file the user supplies.
 
-Outputs `src/dnfw/mods/fxmod_code.json` and `site/js/mods/fxmod-code.js`.
+Outputs `src/dnfw/mods/fxmod_code.json` and `site/js/mods/fxmod-code.js`, or with `--os 1.12`
+the 1.12 build beside them, `fxmod_code_1.12.json` and `fxmod-code-1.12.js` (issue #382): the
+anchor is 1.11's mapped (`build_fxbrowser.anchor_for`).
 """
 
 from __future__ import annotations
@@ -41,6 +43,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from dnfw.checkout import resources_dir                        # noqa: E402
 from dnfw.cli.files import read_image                          # noqa: E402
 from dnfw.firmware.load import load                            # noqa: E402
 
@@ -48,8 +51,15 @@ import build_fxbrowser as one                                  # noqa: E402
 import build_fxbrowser2 as two                                 # noqa: E402
 import build_fxbrowser3 as three                               # noqa: E402
 
-OUT_JSON = ROOT / "src/dnfw/mods/fxmod_code.json"
-OUT_JS = ROOT / "site/js/mods/fxmod-code.js"
+STOCKS = {"1.11": "00_Firmware/Digitone_II_OS1.11_dist.zip",       # under 00_Resources (issue #382)
+          "1.12": "00_Firmware/Digitone_II_OS1.12.syx"}
+
+
+def outputs(os: str):
+    """(the spec, its web copy) for OS: 1.11 keeps its names (issue #382)"""
+    if os == "1.11":
+        return ROOT / "src/dnfw/mods/fxmod_code.json", ROOT / "site/js/mods/fxmod-code.js"
+    return ROOT / f"src/dnfw/mods/fxmod_code_{os}.json", ROOT / f"site/js/mods/fxmod-code-{os}.js"
 
 # What the destination list gains, for the page to show. Entry numbers are this
 # image's; the mod never uses them, it uses the records' own group and id.
@@ -85,14 +95,13 @@ def regions(built: dict) -> list[tuple[int, int, str]]:
     for address, why in anchor["convert"]:
         out.append((address - base + 2, address - base + 6, f"entry -> code: {why}"))
     for entry in one.OPEN_RECORDS:
-        at = one.RECORDS - base + one.RECORD_SIZE * (entry - 1) + 4 * one.MASK_WORD
+        at = anchor["records"] - base + one.RECORD_SIZE * (entry - 1) + 4 * one.MASK_WORD
         out.append((at, at + 4, f"entry {entry}: +44 opened to 0x1e00"))
-    for address, _stock, _new, why in one.EXTRA_LONGWORDS:
+    for address, _stock, _new, why in anchor["extra"]:
         out.append((address - base, address - base + 4, why))
     return out
 
 
-SLOT_SITE, SLOT_RESUME = 0x400DC02A, 0x400DC032
 NOT_TAKEN = bytes.fromhex("70004e75")              # moveq #0,%d0 ; rts
 
 
@@ -100,14 +109,15 @@ def on_the_bus(edits: list[dict], anchor: dict, cave_va: int) -> tuple[list[dict
     """The slot hook as a bus handler: -> (edits without the hook, the handler, the
     cave's length). The handler is the hook's target; its replay of the displaced
     stock bytes and its jump back, the cave's last 14 bytes, become NOT_TAKEN."""
-    hook = next(e for e in edits if e["va"] == SLOT_SITE)
+    slot_site, slot_resume = anchor["slot_hook"][0], anchor["slot_hook"][2]
+    hook = next(e for e in edits if e["va"] == slot_site)
     new = bytes.fromhex(hook["new"])
     if new[:2] != bytes.fromhex("4ef9") or len(new) != 8:
         raise SystemExit(f"the slot hook is not a jmp: {hook['new']}")
     handler = int.from_bytes(new[2:6], "big")
     cave = next(e for e in edits if e["what"] == "the code cave")
     body = bytes.fromhex(cave["new"])
-    tail = bytes.fromhex(anchor["slot_hook"][1]) + bytes.fromhex("4ef9") + SLOT_RESUME.to_bytes(4, "big")
+    tail = bytes.fromhex(anchor["slot_hook"][1]) + bytes.fromhex("4ef9") + slot_resume.to_bytes(4, "big")
     if not body.endswith(tail) or not cave_va < handler < cave_va + len(body):
         raise SystemExit("the slot hook's replay is not the cave's tail")
     body = body[:-len(tail)] + NOT_TAKEN
@@ -121,11 +131,13 @@ def main() -> int:
     a["controls"] = a["controls"] + three.CONTROLS
     one.EXTRA_LONGWORDS.append(three.EDIT)
 
-    firmware = load(read_image(ROOT / one.STOCK))
+    os = sys.argv[sys.argv.index("--os") + 1] if "--os" in sys.argv else "1.11"
+    firmware = load(read_image(resources_dir(ROOT) / STOCKS[os]))
     section = firmware.container.find(one.MAIN_OS)
     stock = section.unpack()
-    built = one.compose(stock, section.dest, log=lambda *_: None)
+    built = one.compose(stock, section.dest, log=lambda *_: None, os=os)
     content = built["content"]
+    a = built["anchor"]                           # OS's: 1.11's, mapped
 
     labels = regions(built)
     cave_address, used = built["cave"]
@@ -159,7 +171,7 @@ def main() -> int:
     edits, handler, used = on_the_bus(edits, a, cave_address)
 
     code = {
-        "os": "Digitone II 1.11",
+        "os": f"Digitone II {os}",
         "stock_length": n,
         "cave_va": cave_address,
         "cave_used": used,
@@ -170,18 +182,20 @@ def main() -> int:
         # are the whole argument for the `ERR` -> `CHR` longword, and an
         # argument that is not checked is prose.
         "guards": [{"va": va, "bytes": want, "what": why}
-                   for va, want, why in a["controls"] if va != SLOT_RESUME],
+                   for va, want, why in a["controls"] if va != a["slot_hook"][2]],
         "destinations": [{"group": g, "parameters": p} for g, p in DESTINATIONS],
     }
-    OUT_JSON.write_text(json.dumps(code, indent=1) + "\n", newline="\n")
-    OUT_JS.write_text("// Generated by scripts/gen_fxmod_code.py -- do not edit by hand.\n"
+    out_json, out_js = outputs(os)
+    flag = "" if os == "1.11" else f" --os {os}"
+    out_json.write_text(json.dumps(code, indent=1) + "\n", newline="\n")
+    out_js.write_text(f"// Generated by scripts/gen_fxmod_code.py{flag} -- do not edit by hand.\n"
                       "export const CODE = " + json.dumps(code, indent=1) + ";\n",
                       newline="\n")
     changed = sum(len(e["new"]) // 2 for e in edits)
     print(f"{len(edits)} edits, {changed} bytes, cave {used} B at {cave_address:#010x}, "
           f"{len(code['guards'])} guards")
-    print(f"  wrote {OUT_JSON.relative_to(ROOT)}")
-    print(f"  wrote {OUT_JS.relative_to(ROOT)}")
+    print(f"  wrote {out_json.relative_to(ROOT)}")
+    print(f"  wrote {out_js.relative_to(ROOT)}")
     return 0
 
 

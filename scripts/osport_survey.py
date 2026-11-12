@@ -1,9 +1,12 @@
 """Every MAIN OS address the mods use, through the 1.11 -> 1.12 map (issue #382).
 
-    python scripts/osport_survey.py OLD_MAIN_OS.bin NEW_MAIN_OS.bin DECODED_CACHE [--list]
+    python scripts/osport_survey.py OLD_MAIN_OS.bin NEW_MAIN_OS.bin DECODED_CACHE [--list] [--write]
+
+--write saves every decided address to src/dnfw/osport/map_1.12.json, which the generators read
+through dnfw.osport.addr (addresses and how each was decided; no firmware bytes).
 
 The sources: each mod's `*_code.json` (edits and guards), `csrc/include/dn2_111.h` and the 0x4....... literals
-in each mod's Python. An address in the image is code: the map translates it. An address past the image
+in each mod's Python and the generators' `scripts/build_*.py`. An address in the image is code: the map translates it. An address past the image
 (BSS, heap, stock's data) is data: the votes translate it. Mod RAM (0x466c0000 and up) is not stock's and
 is left out. Per mod: how many the map decides, and which it cannot.
 """
@@ -35,6 +38,9 @@ def sources():
     for py in sorted(mods.glob("*.py")):
         for m in LIT.finditer(py.read_text(encoding="utf-8")):
             yield py.stem, int(m.group(1), 16), "literal", None
+    for py in sorted((ROOT / "scripts").glob("build_*.py")):   # the generators' own hook and guard addresses
+        for m in LIT.finditer(py.read_text(encoding="utf-8")):
+            yield py.stem, int(m.group(1), 16), "build", None
     h = ROOT / "csrc/include/dn2_111.h"
     for m in LIT.finditer(h.read_text(encoding="utf-8")):
         yield "dn2_111.h", int(m.group(1), 16), "header", None
@@ -73,6 +79,20 @@ def relocated(stock: bytes, here: bytes, m, d, lo: int = 0, hi: int | None = Non
     return "relocated"
 
 
+def kind_of(stock, got, a, old_img, new_img, m, d) -> str:
+    """How an edit or guard site's stock bytes stand at its new address (None for an address with no
+    stock bytes): 'bytes match', 'relocated' or 'BYTES DIFFER'"""
+    if not stock:
+        return None
+    o, g = a - C.BASE, got - C.BASE
+    if old_img[o:o + len(stock)] != stock:
+        return "BYTES DIFFER"                        # the mod's own record of stock is wrong
+    if new_img[g:g + len(stock)] == stock:
+        return "bytes match"
+    # 3 bytes either side: an edit may cover part of an operand
+    return relocated(old_img[o - 3:o + len(stock) + 3], new_img[g - 3:g + len(stock) + 3], m, d, 3, 3 + len(stock))
+
+
 def main() -> int:
     old_img, new_img = (pathlib.Path(p).read_bytes() for p in sys.argv[1:3])
     old, new = pickle.loads(pathlib.Path(sys.argv[3]).read_bytes())
@@ -82,6 +102,7 @@ def main() -> int:
     per = collections.defaultdict(collections.Counter)
     undecided = collections.defaultdict(list)
     seen = set()
+    decided: dict[int, dict] = {}
     for owner, a, what, stock in sources():
         if (owner, a) in seen or a >= MOD_RAM:
             continue
@@ -95,18 +116,15 @@ def main() -> int:
         else:
             got, how = m.data(a)
         if got is not None and stock:             # the site's stock bytes must be at the new address
-            o, g = a - C.BASE, got - C.BASE
-            if old_img[o:o + len(stock)] != stock:
-                kind = "BYTES DIFFER"                 # the mod's own record of stock is wrong
-            elif new_img[g:g + len(stock)] == stock:
-                kind = "bytes match"
-            else:                                     # 3 bytes either side: an edit may cover part of an operand
-                kind = relocated(old_img[o - 3:o + len(stock) + 3], new_img[g - 3:g + len(stock) + 3], m, d,
-                                 3, 3 + len(stock))
-            here = new_img[g:g + len(stock)]
+            kind = kind_of(stock, got, a, old_img, new_img, m, d)
             checked[kind] += 1
             if kind == "BYTES DIFFER":
-                undecided[owner].append((a, what, f"-> {got:#x} but bytes {here.hex()} != {stock.hex()}"))
+                undecided[owner].append((a, what, f"-> {got:#x}: bytes differ"))
+        check = kind_of(stock, got, a, old_img, new_img, m, d) if got is not None else None
+        if got is not None and check != "BYTES DIFFER":
+            row = decided.setdefault(a, {"new": got, "how": how, "check": None, "users": []})
+            row["users"].append(f"{owner}:{what}")
+            row["check"] = row["check"] or check
         per[owner]["decided" if got is not None else "undecided"] += 1
         if got is None:
             undecided[owner].append((a, what, how))
@@ -117,6 +135,13 @@ def main() -> int:
         print(f"{owner:18} decided {c['decided']:4}  undecided {c['undecided']:4}")
     print(f"{'all':18} decided {total['decided']:4}  undecided {total['undecided']:4}")
     print(f"edit and guard sites decided: {dict(checked)}")
+    if "--write" in sys.argv:
+        out = ROOT / "src/dnfw/osport/map_1.12.json"
+        rows = {f"0x{a:08x}": {"new": f"0x{r['new']:08x}", "how": r["how"], "check": r["check"],
+                               "users": sorted(set(r["users"]))} for a, r in sorted(decided.items())}
+        out.write_text(json.dumps({"from": "1.11", "to": "1.12", "addresses": rows}, indent=1) + chr(10),
+                       encoding="utf-8", newline=chr(10))
+        print(f"wrote {out.relative_to(ROOT)}: {len(rows)} addresses")
     if "--list" in sys.argv:
         for owner in sorted(undecided):
             for a, what, how in undecided[owner]:

@@ -128,9 +128,58 @@ class CodeMap:
         return None, "none"
 
     def data(self, value: int) -> tuple[int | None, str]:
+        """See `_votes`. A value no instruction names but in the image's data part is left to `DataMap`."""
+        return self._votes(value)
+
+    def _votes(self, value: int) -> tuple[int | None, str]:
         """The new value of an old operand value, by the votes: (value, 'votes N/M') or (None, why)"""
         c = self.votes.get(value)
         if not c:
             return None, "no votes"
         (best, n), total = c.most_common(1)[0], sum(c.values())
         return (best, f"votes {n}/{total}") if n * 2 > total else (None, f"split {dict(c)}")
+
+
+WINDOW, STEP = 24, 8           # the data map's window and stride (Aggregat's anchor_translate.py, CC0: the method)
+
+
+def _mask_words(b: bytes) -> bytes:
+    """B with every aligned longword in 0x40000000..0x50000000 (an address, relinked) zeroed"""
+    w = bytearray(b)
+    for i in range(0, len(w) - 3, 4):
+        if 0x40 <= w[i] < 0x50:
+            w[i:i + 4] = bytes(4)
+    return bytes(w)
+
+
+@dataclass
+class DataMap:
+    """The image's data part (rodata, tables, strings): anchors are byte windows, address words masked, that
+    occur once in each image. An address translates by the anchors either side, as CodeMap's do."""
+    anchors: list[tuple[int, int]]          # (old address, new address), in order
+
+    @classmethod
+    def build(cls, old: bytes, new: bytes, lo: int, old_hi: int, new_lo: int, new_hi: int) -> "DataMap":
+        def table(img, a, b, step):
+            seen: dict[bytes, list[int]] = collections.defaultdict(list)
+            for va in range(a - a % 4, b - WINDOW, step):
+                w = _mask_words(img[va - BASE: va - BASE + WINDOW])
+                if len(set(w)) >= 6:                                    # padding and fills are useless anchors
+                    seen[w].append(va)
+            return seen
+        a, b = table(old, lo, old_hi, STEP), table(new, new_lo, new_hi, 4)
+        anchors = sorted((wa[0], b[w][0]) for w, wa in a.items() if len(wa) == 1 and len(b.get(w, ())) == 1)
+        return cls(anchors)
+
+    def translate(self, address: int) -> tuple[int | None, str]:
+        olds = [o for o, _ in self.anchors]
+        k = bisect.bisect_right(olds, address) - 1
+        before = self.anchors[k] if k >= 0 else None
+        after = self.anchors[k + 1] if k + 1 < len(self.anchors) else None
+        if before and address < before[0] + WINDOW:
+            return before[1] + (address - before[0]), "data exact"
+        if before and after and address - before[0] <= REACH and after[0] - address <= REACH:
+            if before[1] - before[0] == after[1] - after[0]:
+                return address + before[1] - before[0], "data bracketed"
+            return None, "data ambiguous"
+        return None, "data none"

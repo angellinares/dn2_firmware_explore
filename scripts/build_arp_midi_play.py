@@ -79,12 +79,19 @@ Arp OFF on the MIDI track, and every synth track: must be exactly stock.
 
 from __future__ import annotations
 
+import pathlib as _pathlib
+import sys as _sys
+
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent / "src"))
+from dnfw import osport  # noqa: E402
+
 import pathlib
 import struct
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 
+from dnfw.checkout import resources_dir
 from dnfw.cli.files import read_image
 from dnfw.container.section import compress
 from dnfw.firmware import build as fwbuild
@@ -176,8 +183,8 @@ DIAG_MARK = """    move.l  56(%a2),%d1
 DIAG_LEAVE = f"""9:  jmp     {VOICE_TRIGGER:#x}              | and voice it: the hook fired if T16 sounds"""
 
 
-def cave_source(nlen_lut: bytes, diag: bool = False) -> str:
-    return f"""
+def cave_source(nlen_lut: bytes, diag: bool = False, os: str = "1.11") -> str:
+    return osport.render("""
 | Sequencer fork. In: %a0 kit, %d2 track. Out: Z set -> synth producer,
 | Z clear -> MIDI producer. Replaces `mvs.w 23770(%a0),%dN; btst %d2,%dN`;
 | the stock bne that follows is kept. Preserves every register.
@@ -315,7 +322,7 @@ voice_hook:
 | N.LEN -> the trig length index nearest in duration (build-time, from the image).
 nlen_lut:
     .byte   {', '.join(str(b) for b in nlen_lut)}
-""".replace("{FILTER}", DIAG_FILTER if diag else FILTER)      .replace("{MARK}", DIAG_MARK if diag else "")      .replace("{LEAVE}", DIAG_LEAVE if diag else LEAVE)
+""", {**globals(), "nlen_lut": nlen_lut, "diag": diag}, os).replace("{FILTER}", DIAG_FILTER if diag else FILTER)      .replace("{MARK}", DIAG_MARK if diag else "")      .replace("{LEAVE}", DIAG_LEAVE if diag else LEAVE)
 
 
 # (va, stock bytes, kind, label) -- each stock sequence is replaced by a call
@@ -386,13 +393,13 @@ def assemble_stubs(source: str, base: int) -> tuple[bytes, dict[str, int]]:
     return blob[:-width], dict(zip(LABELS, addrs))
 
 
-def nlen_lut(content: bytes) -> bytes:
+def nlen_lut(content: bytes, os: str = "1.11") -> bytes:
     """For each N.LEN, the trig length index whose duration is nearest (ties go
     shorter, so a note ends before the next step). The MIDI task times a note
     only through the trig table; INF becomes 126, the longest finite length."""
     def table(va: int) -> list[int]:
         return list(struct.unpack(">128i", content[va - BASE:va - BASE + 512]))
-    trig, arp = table(TRIG_LENGTHS)[:127], table(ARP_LENGTHS)
+    trig, arp = table(osport.addr(os, TRIG_LENGTHS))[:127], table(osport.addr(os, ARP_LENGTHS))
     return bytes(126 if want < 0 else
                  min(range(127), key=lambda i: (abs(trig[i] - want), trig[i]))
                  for want in arp)
@@ -411,7 +418,8 @@ def poke(content: bytearray, va: int, stock: bytes, new: bytes, why: str, log=pr
     log(f"  {va:#010x}  {stock.hex():<14} -> {new.hex():<14}  {why}")
 
 
-def compose(stock: bytes, diag: bool = False, log=print, code_base: int | None = None) -> dict:
+def compose(stock: bytes, diag: bool = False, log=print, code_base: int | None = None,
+            os: str = "1.11") -> dict:
     """Apply the whole build to a stock MAIN OS. -> {content, cave, lut, blob}.
 
     `cave` is (va, length) of the assembled code and `lut` is (va, 128), the
@@ -421,21 +429,33 @@ def compose(stock: bytes, diag: bool = False, log=print, code_base: int | None =
     Without CODE_BASE the code goes into its cave in the image (the build of
     2026-09-17, plus the 2026-10-03 fixes). With it (the mod platform) the same code is
     assembled to run at CODE_BASE and returned as `blob`, for a platform `CODE` chunk;
-    the cave stays stock and the hooks point at the chunk."""
+    the cave stays stock and the hooks point at the chunk.
+
+    OS is STOCK's version (issue #382): every guard, edit and hook site goes through
+    `dnfw.osport.site`, and the two length tables are read at their OS addresses. The cave
+    build and --diag are 1.11 only."""
+    if os != "1.11" and (code_base is None or diag):
+        raise SystemExit("on OS 1.12 only the platform build exists: give a code base, no --diag")
+
+    def site(va, want, why):
+        try:
+            return osport.site(os, va, want, content, BASE)
+        except osport.NotPorted as exc:
+            raise SystemExit(f"{why}: {exc}") from None
     if not available():
         raise SystemExit("no m68k assembler found (m68k-linux-gnu-as; WSL is fine)")
     content = bytearray(stock)
 
     log("part 1 -- the code this relies on, asserted")
     for va, want, why in CONTEXT:
-        check(content, va, want, why)
-        log(f"  {va:#010x}  {want.hex():<14}  {why}")
+        at, have = site(va, want, why)
+        log(f"  {at:#010x}  {have.hex():<14}  {why}")
 
     log("part 2 -- the cave" if code_base is None else f"part 2 -- the code, from {code_base:#010x}")
     where = CAVE if code_base is None else code_base
     if code_base is None and any(content[CAVE - BASE:CAVE - BASE + CAVE_CAP]):
         raise SystemExit(f"cave at {CAVE:#010x} is not free")
-    payload, at = assemble_stubs(cave_source(nlen_lut(content), diag), where)
+    payload, at = assemble_stubs(cave_source(nlen_lut(content, os), diag, os), where)
     blob = payload + bytes(-len(payload) % 4)
     if code_base is None:
         if len(payload) > CAVE_CAP:
@@ -446,10 +466,12 @@ def compose(stock: bytes, diag: bool = False, log=print, code_base: int | None =
 
     log("part 3 -- the menu gate")
     for va, stock_bytes, new, why in EDITS:
+        va, stock_bytes = site(va, stock_bytes, why)
         poke(content, va, stock_bytes, new, why, log)
 
     log("part 4 -- the hooks")
     for va, stock_bytes, kind, label in HOOKS:
+        va, stock_bytes = site(va, stock_bytes, label)
         new = (bytes.fromhex("4eb9") if kind == "jsr" else bytes.fromhex("4ef9")) + be32(at[label])
         if len(new) > len(stock_bytes) or (len(stock_bytes) - len(new)) % 2:
             raise SystemExit(f"hook at {va:#010x} does not fit {len(stock_bytes)} bytes")

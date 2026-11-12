@@ -74,6 +74,7 @@
     "platform:literal",
     "reloadconfirm:literal",
     "songguard:literal",
+    "specs:literal",
     "usbprobe:literal",
     "waverider:literal"
    ]
@@ -91,6 +92,7 @@
    "how": "exact",
    "check": "bytes match",
    "users": [
+    "usbprobe/dn2_111.inc:header",
     "usbprobe:edit"
    ]
   },
@@ -942,6 +944,7 @@
    "how": "exact",
    "check": "bytes match",
    "users": [
+    "usbprobe/dn2_111.inc:header",
     "usbprobe:edit"
    ]
   },
@@ -1751,6 +1754,7 @@
    "how": "exact",
    "check": "relocated",
    "users": [
+    "usbprobe/dn2_111.inc:header",
     "usbprobe:edit"
    ]
   },
@@ -5237,11 +5241,28 @@
     "build_lfo4_page_test:build"
    ]
   },
+  "0x400cebe2": {
+   "new": "0x400ced46",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "usbprobe/dn2_111.inc:header"
+   ]
+  },
+  "0x400cec98": {
+   "new": "0x400cedfc",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "usbprobe/dn2_111.inc:header"
+   ]
+  },
   "0x400cf0e2": {
    "new": "0x400cf246",
    "how": "exact",
    "check": "bytes match",
    "users": [
+    "usbprobe/dn2_111.inc:header",
     "usbprobe:guard"
    ]
   },
@@ -7367,6 +7388,7 @@
    "how": "exact",
    "check": "bytes match",
    "users": [
+    "usbprobe/dn2_111.inc:header",
     "usbprobe:guard"
    ]
   },
@@ -7375,6 +7397,7 @@
    "how": "exact",
    "check": "relocated",
    "users": [
+    "usbprobe/dn2_111.inc:header",
     "usbprobe:edit"
    ]
   },
@@ -7519,6 +7542,7 @@
    "check": "bytes match",
    "users": [
     "dn2_111.h:header",
+    "usbprobe/dn2_111.inc:header",
     "usbprobe:guard"
    ]
   },
@@ -9896,6 +9920,7 @@
    "how": "data exact",
    "check": "bytes match",
    "users": [
+    "usbprobe/dn2_111.inc:header",
     "usbprobe:guard"
    ]
   },
@@ -10065,6 +10090,7 @@
    "check": null,
    "users": [
     "build_fxblock16:build",
+    "usbprobe/dn2_111.inc:header",
     "waverider:operand"
    ]
   },
@@ -10999,11 +11025,20 @@
     "build_fxblock16:build"
    ]
   },
+  "0x4058e558": {
+   "new": "0x4058f558",
+   "how": "votes 6/6",
+   "check": null,
+   "users": [
+    "usbprobe/dn2_111.inc:header"
+   ]
+  },
   "0x4058e8d4": {
    "new": "0x4058f8d4",
    "how": "votes 2/2",
    "check": null,
    "users": [
+    "usbprobe/dn2_111.inc:header",
     "usbprobe:operand"
    ]
   },
@@ -11154,12 +11189,29 @@
     "patch.paramtable:patch"
    ]
   },
+  "0x424388a0": {
+   "new": "0x424398a0",
+   "how": "votes 3/3",
+   "check": null,
+   "users": [
+    "usbprobe/dn2_111.inc:header"
+   ]
+  },
+  "0x424388a4": {
+   "new": "0x424398a4",
+   "how": "votes 2/2",
+   "check": null,
+   "users": [
+    "usbprobe/dn2_111.inc:header"
+   ]
+  },
   "0x424388ac": {
    "new": "0x424398ac",
    "how": "votes 2/2",
    "check": null,
    "users": [
-    "songguard:literal"
+    "songguard:literal",
+    "usbprobe/dn2_111.inc:header"
    ]
   },
   "0x4243c900": {
@@ -11167,7 +11219,8 @@
    "how": "votes 2/2",
    "check": null,
    "users": [
-    "songguard:literal"
+    "songguard:literal",
+    "usbprobe/dn2_111.inc:header"
    ]
   },
   "0x42800000": {
@@ -11391,6 +11444,22 @@
     "build_arp_plocks:build"
    ]
   },
+  "0x4664ac9c": {
+   "new": "0x4664bc9c",
+   "how": "votes 4/4",
+   "check": null,
+   "users": [
+    "usbprobe/dn2_111.inc:header"
+   ]
+  },
+  "0x4664acdc": {
+   "new": "0x4664bcdc",
+   "how": "votes 22/22",
+   "check": null,
+   "users": [
+    "usbprobe/dn2_111.inc:header"
+   ]
+  },
   "0x466758b0": {
    "new": "0x466768b0",
    "how": "votes 7/7",
@@ -11444,6 +11513,7 @@
    "check": null,
    "users": [
     "dn2_111.h:header",
+    "usbprobe/dn2_111.inc:header",
     "usbprobe:literal"
    ]
   },
@@ -11452,6 +11522,7 @@
    "how": "votes 8/8",
    "check": null,
    "users": [
+    "usbprobe/dn2_111.inc:header",
     "usbprobe:literal"
    ]
   },

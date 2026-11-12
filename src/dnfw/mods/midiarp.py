@@ -51,7 +51,7 @@ import json
 import pathlib
 import struct
 
-from . import RAM, Extent, ModError, Result, platform
+from . import RAM, Extent, ModError, Result, platform, specs
 
 ID = "midiarp"
 NAME = "Arpeggiator on MIDI tracks"
@@ -60,27 +60,30 @@ DEVICE = 0x15                      # Digitone II
 SECTION = 3                        # MAIN OS
 BASE = 0x40000400
 SPEC = json.loads((pathlib.Path(__file__).with_name("midiarp_code.json")).read_text())
+SPECS = specs.load(__file__, "midiarp")            # one per OS version (issue #382); SPEC is 1.11's
 LUT_BYTES = 128
 CODE_VA = SPEC["code"]["va"]
 BLOB = bytes.fromhex(SPEC["code"]["blob"])
 
 
-def extents(firmware=None) -> list[Extent]:
-    return ([Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in SPEC["edits"]]
-            + platform.extents(16 + len(BLOB)))
+def extents(firmware=None, os: str | None = None) -> list[Extent]:
+    os = os or specs.of_firmware(firmware)
+    spec = specs.pick(SPECS, os, ID)
+    return ([Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in spec["edits"]]
+            + platform.extents(16 + len(spec["code"]["blob"]) // 2, os))
 
 
-def nlen_lut(content: bytes) -> bytes:
+def nlen_lut(content: bytes, spec: dict = SPEC) -> bytes:
     """For each N.LEN, the trig length index nearest in duration (ties shorter);
     INF becomes 126, the longest finite trig length. The MIDI task times notes
     only through the trig table."""
     def table(va: int) -> list[int]:
         at = va - BASE
         return list(struct.unpack(">128i", content[at:at + 512]))
-    trig = table(SPEC["trig_lengths_va"])[:127]
+    trig = table(spec["trig_lengths_va"])[:127]
     return bytes(126 if want < 0 else
                  min(range(127), key=lambda i: (abs(trig[i] - want), trig[i]))
-                 for want in table(SPEC["arp_lengths_va"]))
+                 for want in table(spec["arp_lengths_va"]))
 
 
 def apply(firmware) -> Result:
@@ -89,37 +92,22 @@ def apply(firmware) -> Result:
         raise ModError("image has no MAIN OS section")
     original, others = platform.split(section.unpack())
     # Longer is fine: data appended after the stock end (lfowaves, bootscreen)
-    # moves no address this mod writes or reads. The guards below are what
-    # identify the build.
-    if len(original) < SPEC["stock_length"]:
-        raise ModError(f"MAIN OS is {len(original):,} B, shorter than "
-                       f"{SPEC['stock_length']:,}: not Digitone II 1.11")
-    for g in SPEC["guards"]:
-        want = bytes.fromhex(g["bytes"])
-        if original[g["va"] - BASE:g["va"] - BASE + len(want)] != want:
-            raise ModError(f"0x{g['va']:08x} is not stock; this mod is for unmodified "
-                           "Digitone II 1.11")
-    for e in SPEC["edits"]:
-        want = bytes.fromhex(e["stock"])
-        if original[e["va"] - BASE:e["va"] - BASE + len(want)] != want:
-            raise ModError(f"0x{e['va']:08x} is not stock; this mod is for unmodified "
-                           "Digitone II 1.11, or another mod already wrote there")
-
-    content = bytearray(original)
-    for e in SPEC["edits"]:
-        new = bytes.fromhex(e["new"])
-        content[e["va"] - BASE:e["va"] - BASE + len(new)] = new
-    blob = bytearray(BLOB)
-    lut = SPEC["lut_va"] - CODE_VA
-    blob[lut:lut + LUT_BYTES] = nlen_lut(original)
-    chunk = platform.area.CodeChunk(CODE_VA, bytes(blob)).pack()
+    # moves no address this mod writes or reads. The guards are what identify the build.
+    os = specs.of_main_os(original)
+    spec = specs.pick(SPECS, os, ID)
+    content = specs.apply_edits(original, spec, os)
+    code_va = spec["code"]["va"]
+    blob = bytearray.fromhex(spec["code"]["blob"])
+    lut = spec["lut_va"] - code_va
+    blob[lut:lut + LUT_BYTES] = nlen_lut(original, spec)
+    chunk = platform.area.CodeChunk(code_va, bytes(blob)).pack()
     content = platform.join(bytes(content), others + [(platform.area.CODE, chunk)])
 
-    return Result(payloads={SECTION: bytes(content)}, extents=extents(),
+    return Result(payloads={SECTION: bytes(content)}, extents=extents(os=os),
                   notes=["ARPEGGIATOR menu opens on MIDI tracks",
                          "an arp-enabled MIDI track plays its arp out over MIDI",
-                         f"{len(SPEC['edits'])} edits in section 3, and a {len(BLOB):,} B CODE "
-                         f"chunk at 0x{CODE_VA:08x} in the platform's area"])
+                         f"{len(spec['edits'])} edits in section 3, and a {len(blob):,} B CODE "
+                         f"chunk at 0x{code_va:08x} in the platform's area"])
 
 
 def ram() -> list[Extent]:

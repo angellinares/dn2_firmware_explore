@@ -48,6 +48,8 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
+from dnfw import osport  # noqa: E402
+from dnfw.checkout import resources_dir  # noqa: E402
 
 from dnfw.cli.files import read_image                     # noqa: E402
 from dnfw.container.section import compress               # noqa: E402
@@ -60,12 +62,17 @@ BASE = 0x40000400
 MAIN_OS = 3
 CODE_VA = 0x467B0000          # between arpscale (0x467a8000) and arpplocks (0x467c0000); 0x467f8000 until
                               # 2026-10-15, which Waverider's +Drive chunk (0x467f0000..0x467fa390) grew over
-STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCKS = {"1.11": "00_Firmware/Digitone_II_OS1.11_dist.zip", "1.12": "00_Firmware/Digitone_II_OS1.12.syx"}
+STOCK = resources_dir(ROOT) / STOCKS["1.11"]
 OUT = ROOT / "00_Resources/02_Builds/lfolength_DN2_1.11.syx"
 
 A_CYCLE, B_CYCLE = 1382400000, 21600000
 
-SOURCE = f"""
+# Where the routines return to stock (each asserted in CONTEXT)
+A_TRIG_TAIL, A_TRIG_ON, A_WAVE_READ = 0x40137970, 0x4013797E, 0x401379F2
+B_TRIG_TAIL, B_TRIG_ON, B_WAVE_ON, B_RND = 0x40137566, 0x40137574, 0x401375EA, 0x4013761A
+
+TEMPLATE = """
     .text
 | -- evaluator A (audio tracks): d4 = TRIG MODE, d3 = waveform, a2 = the LFO's state
 | (fields +80 ..), %sp@(68) = the SPH cell sign-extended
@@ -85,9 +92,9 @@ lfa_trig:
     asrl    #8,%d1
     moveb   %d1,%a2@(119)
     clrl    %d2                     | ... and start the phase at 0
-    jmp     0x4013797e
+    jmp     {A_TRIG_ON:#x}
 1:  clrb    %a2@(119)               | any other mode: no latch, stock's start
-    jmp     0x40137970
+    jmp     {A_TRIG_TAIL:#x}
 
 | d2 = the phase about to be read (stored at +80 already), d0/d1 free
 lfa_wave:
@@ -115,7 +122,7 @@ lfa_wave:
 3:  movel   %d2,%a2@(80)            | another mode now: fold the latch in once
     clrb    %a2@(119)
 9:  movel   #1667999861,%d0         | replayed
-    jmp     0x401379f2
+    jmp     {A_WAVE_READ:#x}
 
 | -- evaluator B (MIDI tracks): d4 = TRIG MODE, a2 = the LFO's state, a4 = its parameters
 lfb_trig:
@@ -134,9 +141,9 @@ lfb_trig:
     asrl    #8,%d1
     moveb   %d1,%a2@(119)
     clrl    %d2
-    jmp     0x40137574
+    jmp     {B_TRIG_ON:#x}
 1:  clrb    %a2@(119)
-    jmp     0x40137566
+    jmp     {B_TRIG_TAIL:#x}
 
 | replaces `moveq #6,%d0 ; cmpl %d3,%d0 ; beqs` (RND), just before the `lea` of the
 | waveform table that lfowaves repoints. d2 = the phase about to be read (before B's x 50);
@@ -171,9 +178,18 @@ lfb_wave:
     clrb    %a2@(119)
 9:  movel   %sp@+,%d1
     moveq   #6,%d0
-    jmp     0x401375ea              | on to stock's `moveb #50,%d0 ; lea table,%a1`
-8:  jmp     0x4013761a              | RND: stock's branch target
+    jmp     {B_WAVE_ON:#x}              | on to stock's `moveb #50,%d0 ; lea table,%a1`
+8:  jmp     {B_RND:#x}              | RND: stock's branch target
 """
+
+
+
+def source(os: str = "1.11") -> str:
+    """The routines for OS (issue #382): their stock addresses through `dnfw.osport`"""
+    return osport.render(TEMPLATE, globals(), os)
+
+
+SOURCE = source()            # OS 1.11's
 
 LABELS = ("lfa_trig", "lfa_wave", "lfb_trig", "lfb_wave")
 
@@ -237,27 +253,37 @@ def check(content: bytes, va: int, want: bytes, why: str) -> None:
                          f"-- not the image this build was written against ({why})")
 
 
-def compose(stock: bytes, log=print) -> dict:
-    """Apply the build to a stock MAIN OS. -> {content, blob, labels}."""
+def compose(stock: bytes, log=print, os: str = "1.11") -> dict:
+    """Apply the build to a stock MAIN OS. -> {content, blob, labels}.
+
+    OS is STOCK's version (issue #382): every guard, store and hook site goes through
+    `dnfw.osport.site`. The code chunk stays at CODE_VA, above both versions' DMA."""
+    def site(va, want, why):
+        try:
+            return osport.site(os, va, want, content, BASE)
+        except osport.NotPorted as exc:
+            raise SystemExit(f"{why}: {exc}") from None
     if not available():
         raise SystemExit("no m68k assembler found")
     content = bytearray(stock)
     log("part 1 -- the code this relies on, asserted")
     for va, want, why in CONTEXT:
-        check(content, va, want, why)
+        va, want = site(va, want, why)
         log(f"  {va:#010x}  {want.hex():<28}  {why}")
     log(f"part 2 -- the code, from {CODE_VA:#010x}")
-    payload, at = assemble_stubs(SOURCE, CODE_VA)
+    payload, at = assemble_stubs(source(os), CODE_VA)
     blob = payload + bytes(-len(payload) % 4)
     log(f"  {len(payload)} bytes: " + ", ".join(f"{k} {v:#010x}" for k, v in at.items()))
     log("part 3 -- the hold: the stop-table stores")
     for va, stock_bytes, new, what in HOLD:
-        check(content, va, stock_bytes, what)
+        va, have = site(va, stock_bytes, what)
+        if have != stock_bytes:
+            raise SystemExit(f"{va:#010x}: a store moved an address word; the NOP bytes are 1.11's ({what})")
         content[va - BASE:va - BASE + len(new)] = new
         log(f"  {va:#010x}  {stock_bytes.hex()} -> {new.hex()}  {what}")
     log("part 4 -- the hooks")
     for va, stock_bytes, label in HOOKS:
-        check(content, va, stock_bytes, label)
+        va, stock_bytes = site(va, stock_bytes, label)
         new = bytes.fromhex("4ef9") + struct.pack(">I", at[label])
         new += bytes.fromhex("4e71") * ((len(stock_bytes) - len(new)) // 2)
         if len(new) != len(stock_bytes):

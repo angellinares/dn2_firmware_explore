@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from . import RAM, Extent, ModError, Result
+from . import RAM, Extent, ModError, Result, specs
 
 ID = "usbprobe"
 NAME = "USB SysEx probe (diagnostic)"
@@ -43,11 +43,13 @@ DEVICE = 0x15                      # Digitone II
 SECTION = 3                        # MAIN OS
 BASE = 0x40000400
 SPEC = json.loads((pathlib.Path(__file__).with_name("usbprobe_code.json")).read_text())
+SPECS = specs.load(__file__, "usbprobe")           # one per OS version (issue #382); SPEC is 1.11's
 DEFAULT_TAG = "usbprobe 1"
 
 
-def extents(firmware=None) -> list[Extent]:
-    return [Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in SPEC["edits"]]
+def extents(firmware=None, os: str | None = None) -> list[Extent]:
+    spec = specs.pick(SPECS, os or specs.of_firmware(firmware), ID)
+    return [Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in spec["edits"]]
 
 
 def tag_bytes(tag: str) -> bytes:
@@ -63,36 +65,24 @@ def apply(firmware, tag: str = DEFAULT_TAG) -> Result:
     if section is None:
         raise ModError("image has no MAIN OS section")
     original = section.unpack()
-    if len(original) < SPEC["stock_length"]:
-        raise ModError(f"MAIN OS is {len(original):,} B, shorter than "
-                       f"{SPEC['stock_length']:,}: not Digitone II 1.11")
-    for g in SPEC["guards"]:
-        want = bytes.fromhex(g["bytes"])
-        if original[g["va"] - BASE:g["va"] - BASE + len(want)] != want:
-            raise ModError(f"0x{g['va']:08x} is not stock; this mod is for Digitone II 1.11")
-    for e in SPEC["edits"]:
-        want = bytes.fromhex(e["stock"])
-        if original[e["va"] - BASE:e["va"] - BASE + len(want)] != want:
-            raise ModError(f"0x{e['va']:08x} is not stock; this mod is for unmodified "
-                           "Digitone II 1.11, or another mod already wrote there")
+    os = specs.of_main_os(original)
+    spec = specs.pick(SPECS, os, ID)
+    content = specs.apply_edits(original, spec, os)
+    at = spec["tag"]["va"] - BASE
+    content[at:at + spec["tag"]["length"]] = tag_bytes(tag)
 
-    content = bytearray(original)
-    for e in SPEC["edits"]:
-        new = bytes.fromhex(e["new"])
-        content[e["va"] - BASE:e["va"] - BASE + len(new)] = new
-    at = SPEC["tag"]["va"] - BASE
-    content[at:at + SPEC["tag"]["length"]] = tag_bytes(tag)
-
-    return Result(payloads={SECTION: bytes(content)}, extents=extents(),
+    return Result(payloads={SECTION: bytes(content)}, extents=extents(os=os),
                   notes=[f"USB SysEx probe on device byte 0x7D, tag {tag!r}: "
                          "python tools/dn2probe.py hello",
-                         f"{len(SPEC['edits']) - 1} hooks and a {SPEC['cave']['used']} B cave "
+                         f"{len(spec['edits']) - 2} hooks and {spec['cave']['used'] + spec['cave2']['used']} B "
+                         "in two caves "
                          "in section 3, nothing appended"])
 
 
-def ram() -> list[Extent]:
+def ram(os: str = "1.11") -> list[Extent]:
     """The scratch buffers and timing words above BSS (`csrc/usbprobe/layout.inc`)."""
-    return [Extent(RAM, SPEC["ram"]["va"], SPEC["ram"]["length"], "the probe's buffers and timing state")]
+    r = specs.pick(SPECS, os, ID)["ram"]
+    return [Extent(RAM, r["va"], r["length"], "the probe's buffers and timing state")]
 
 
 # Bytes that only look like RAM above BSS (`dnfw.mods.ramcheck`):

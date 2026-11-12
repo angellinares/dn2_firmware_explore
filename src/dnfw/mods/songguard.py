@@ -46,7 +46,7 @@ Because the clamped value is what is stored in the live song, playback and a
 later save see 0 too -- the damage does not travel with the project.
 """
 
-from . import Extent, ModError, Result
+from . import Extent, ModError, Result, specs
 
 ID = "songguard"
 NAME = "Song guard"
@@ -55,6 +55,7 @@ DEVICE = 0x15                      # Digitone II
 SECTION = 3                        # MAIN OS
 BASE = 0x40000400
 SITE = 0x400DEAC2
+SITES = {"1.11": SITE, "1.12": 0x400DEC26}   # 1.12: the map's +0x164; the 54 stock bytes match there, once
 ROWS = 99                          # both the stored and the live song hold 99 rows
 
 # Stock 1.11, 0x400deac2..0x400deaf8, as `out/main111.dis` reads it.
@@ -94,8 +95,15 @@ NEW = bytes.fromhex(
 assert len(NEW) == len(STOCK) == 54
 
 
-def extents(firmware=None) -> list[Extent]:
-    return [Extent(SECTION, SITE - BASE, len(NEW), "song LOAD: bound the row count")]
+def _site(os: str) -> int:
+    if os not in SITES:
+        raise ModError(f"{ID} is not yet ported to Digitone II {os}")
+    return SITES[os]
+
+
+def extents(firmware=None, os: str | None = None) -> list[Extent]:
+    site = _site(os or specs.of_firmware(firmware))
+    return [Extent(SECTION, site - BASE, len(NEW), "song LOAD: bound the row count")]
 
 
 def apply(firmware) -> Result:
@@ -103,14 +111,16 @@ def apply(firmware) -> Result:
     if section is None:
         raise ModError("image has no MAIN OS section")
     original = section.unpack()
-    at = SITE - BASE
+    os = specs.of_main_os(original)
+    site = _site(os)
+    at = site - BASE
     # Longer is fine: data appended after the stock end moves nothing here.
     if len(original) < at + len(STOCK) or original[at:at + len(STOCK)] != STOCK:
-        raise ModError(f"0x{SITE:08x} is not stock; this mod is for Digitone II 1.11, "
+        raise ModError(f"0x{site:08x} is not stock; this mod is for Digitone II {os}, "
                        "or another mod already wrote there")
     content = bytearray(original)
     content[at:at + len(NEW)] = NEW
-    return Result(payloads={SECTION: bytes(content)}, extents=extents(),
+    return Result(payloads={SECTION: bytes(content)}, extents=extents(os=os),
                   notes=[f"a song's stored row count above {ROWS} loads as 0 instead of "
                          "overwriting memory",
                          "1 in-place edit of 54 B in section 3, nothing appended"])

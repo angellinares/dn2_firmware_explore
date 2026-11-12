@@ -9,6 +9,8 @@ firmware bytes.
 
 from __future__ import annotations
 
+import re
+
 import functools
 import json
 import pathlib
@@ -99,3 +101,59 @@ def site(os: str, va: int, want: bytes, image: bytes, base: int = 0x40000400) ->
             raise NotPorted(f"0x{va:08x} -> 0x{new:08x} on {os}: {have.hex()} is not {want.hex()} "
                             f"with its addresses moved")
     return new, have
+
+
+# Where a stock address can lie on 1.11: the image, its data and BSS, stock's DMA section (either
+# window) and SRAM. A constant outside these is a size, an offset or a count, and stays.
+STOCK_RANGES = ((0x40000400, 0x466B74D0), (0x466B8000, 0x46701340), (0x4E6B8000, 0x4E701340), SRAM)
+
+
+def is_stock_address(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and any(
+        lo <= value < hi for lo, hi in STOCK_RANGES)
+
+
+def rebind(namespace: dict, os: str, overrides: dict | None = None) -> dict:
+    """A copy of NAMESPACE (a build script's globals) for OS: every UPPERCASE constant that is a
+    stock address goes through `addr`, and OVERRIDES (name -> value on OS) win, for an address the
+    map cannot decide (one derived from another, or one no instruction names). An address neither
+    decides raises NotPorted with its name."""
+    out = dict(namespace)
+    overrides = overrides or {}
+    for name, value in namespace.items():
+        if not name.isupper() or name in overrides or not is_stock_address(value):
+            continue
+        try:
+            out[name] = addr(os, value)
+        except NotPorted as exc:
+            raise NotPorted(f"{name}: {exc}") from None
+    out.update(overrides)
+    return out
+
+
+def render(template: str, namespace: dict, os: str, overrides: dict | None = None) -> str:
+    """TEMPLATE, an f-string's text kept as a plain string, evaluated with NAMESPACE rebound for OS.
+    For 1.11 it is the text the f-string always gave. The template can name OS, to pass the version
+    to code it pulls in from another script."""
+    if os != SOURCE:
+        stale = sorted({m for m in re.findall(r"0x[0-9a-fA-F]{8}", _code_only(template))
+                        if is_stock_address(int(m, 16)) and _moves(os, int(m, 16))})
+        if stale:
+            raise NotPorted(f"the template writes {', '.join(stale)} as a literal, which moves on {os}: "
+                            "name it as a constant")
+    ns = dict(namespace) if os == SOURCE else rebind(namespace, os, overrides)
+    ns["OS"] = os
+    return eval("f" + repr(template), ns)     # noqa: S307  (our own template, our own names)
+
+
+def _code_only(template: str) -> str:
+    """The template without its assembly comments (after `|`) or its {...} fields"""
+    lines = (line.split("|", 1)[0] for line in template.splitlines())
+    return re.sub(r"\{[^{}]*\}", "", chr(10).join(lines))
+
+
+def _moves(os: str, value: int) -> bool:
+    try:
+        return addr(os, value) != value
+    except NotPorted:
+        return True

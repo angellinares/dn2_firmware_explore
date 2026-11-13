@@ -183,8 +183,9 @@ def retarget(os: str, modules, overrides: dict | None = None):
     try:
         for m in modules:
             ns = vars(m)
-            new = {k: _port_value(v, os, f"{m.__name__}.{k}") for k, v in ns.items() if k.isupper()}
-            new.update(overrides.get(m, {}))
+            mine = overrides.get(m, {})
+            new = {k: _port_value(v, os, f"{m.__name__}.{k}") for k, v in ns.items() if k.isupper() and k not in mine}
+            new.update(mine)
             for k, v in new.items():
                 if k not in ns or (v is not ns[k] and v != ns[k]):
                     saved.append((m, k, ns.get(k, _MISSING)))

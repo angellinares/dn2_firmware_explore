@@ -14,6 +14,10 @@ The items, in order:
 - **stock**: the stock file is Elektron's Digitone II OS 1.11, by the SHA-256 of each section's
   content (`KNOWN`). Hashes only: no Elektron bytes are kept here.
 - **layout**: the patched file has the stock file's version, sections and load addresses.
+- **size**: the update data (the 8-byte preamble and the container) is at most `UPDATE_MAX`,
+  2 MiB. elekloader measured it on a Digitone II on OS 1.12 (docs/DEVICES.md, 2026-10-23): an update
+  of 1,915,960 bytes installed over USB, and one of 2,147,448 bytes stopped before the instrument
+  asked to install it. It is a limit seen on a unit, not one read in code, so it does not stop the list.
 - **recovery**: every section other than MAIN OS (3) and the DSP image (7) is the stock one,
   byte for byte. The bootstrap (2) holds the Early Start-up Menu's receiver, so a unit can
   always take the stock OS again.
@@ -49,7 +53,7 @@ from ..osport import versions
 from ..mods import modinfo, platform, ramcheck
 from ..patch import area
 from . import compare
-from .model import Firmware
+from .model import PREAMBLE, Firmware
 from .verify import verify
 
 MAIN_OS, DSP = 3, 7
@@ -85,6 +89,7 @@ NOT_CHECKED = (
     "The DSP's memory: which parts of it the stock DSP code uses.",
     "Whether the new code runs correctly: only the emulator and the instrument can show that.",
 )
+UPDATE_MAX = 0x200000                                   # the USB update limit seen on a unit (the docstring's size)
 SHOWN = 8                                                # runs listed by address; the rest are counted
 
 
@@ -110,6 +115,7 @@ def check(patched: Firmware, stock: Firmware, rebuild=None) -> list[Item]:
     items.append(layout)
     if layout.status != "pass":
         return items
+    items.append(_guard("size", "The update fits the instrument's USB transfer", _size, patched))
     ours, theirs = _contents(patched), _contents(stock)
     main, base = ours[MAIN_OS], theirs[MAIN_OS]
     items.append(_guard("recovery", "The bootstrap and the other recovery sections are stock",
@@ -169,6 +175,15 @@ def _layout(patched: Firmware, stock: Firmware) -> Item:
     if ids(a) != ids(b):
         return Item("layout", title, "fail", "the sections or their load addresses differ from stock's")
     return Item("layout", title, "pass", f"version {a.version}, {len(a.sections)} sections at stock's addresses")
+
+
+def _size(patched: Firmware) -> Item:
+    title = "The update fits the instrument's USB transfer"
+    n = PREAMBLE + patched.container.declared_size
+    if n > UPDATE_MAX:
+        return Item("size", title, "fail", f"{n:,} bytes of update data, over the {UPDATE_MAX:,} that a Digitone II "
+                    "takes over USB: the transfer can stop before the instrument asks to install it")
+    return Item("size", title, "pass", f"{n:,} bytes of update data, {UPDATE_MAX - n:,} below the limit of {UPDATE_MAX:,}")
 
 
 def _recovery(ours: dict[int, bytes], theirs: dict[int, bytes]) -> Item:

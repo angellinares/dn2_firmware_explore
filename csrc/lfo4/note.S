@@ -11,22 +11,23 @@
  * (`scripts/build_reload_confirm.py`, passed on the instrument 2026-10-04).
  * Its answer does nothing: YES and NO both close it.
  */
-#define PAGE_SELECT   0x4005E7E4      /* (this, key index, 0) */
-#define KEY_HANDLED   0x4005EF52
-#define NEW           0x40120264      /* operator new(size) */
-#define STR_CTOR      0x401CE69E      /* std::string(this, const char *, const alloc &) */
-#define STR_DTOR      0x401CCBEE
-#define FUNC_DTOR     0x40188086      /* std::function destructor(this) */
-#define SP_RELEASE    0x401880CC
-#define SP_GET        0x4018816A
-#define SP_MOVE       0x401A54AA
-#define PROMPT        0x40112A2E      /* (this, line1, line2, &fn, 0) */
-#define PROMPT_CTRL   0x401DD3D4
-#define PROMPT_TAG    0x401D3B60
-#define PROMPT_MGR    0x401A4358
-#define VIEWS         0x4018C8DC
-#define VIEW_STACK    0x4002C47A
-#define VIEW_PUSH     0x4011D71E
+#include "stock.h"
+#define PAGE_SELECT   STOCK_PAGE_SELECT
+#define KEY_HANDLED   STOCK_KEY_HANDLED
+#define NEW           STOCK_NEW
+#define STR_CTOR      STOCK_STR_CTOR
+#define STR_DTOR      STOCK_STR_DTOR
+#define FUNC_DTOR     STOCK_FUNC_DTOR
+#define SP_RELEASE    STOCK_SP_RELEASE
+#define SP_GET        STOCK_SP_GET
+#define SP_MOVE       STOCK_SP_MOVE
+#define PROMPT        STOCK_PROMPT
+#define PROMPT_CTRL   STOCK_PROMPT_CTRL
+#define PROMPT_TAG    STOCK_PROMPT_TAG
+#define PROMPT_MGR    STOCK_PROMPT_MGR
+#define VIEWS         STOCK_VIEWS
+#define VIEW_STACK    STOCK_VIEW_STACK
+#define VIEW_PUSH     STOCK_VIEW_PUSH
 
 /* Page key, no FUNC: %d4 the key index, %a2 the handler's object. */
     .globl  lfo4_key_stub
@@ -59,7 +60,7 @@ lfo4_setpage_displaced:
     addq.l  #4,%sp
     movem.l (%sp),%d0-%d1/%a0-%a1
     lea     16(%sp),%sp
-    jmp     0x40063B06
+    jmp     STOCK_KEY_RESUME
 
 /* lfo4_note_open(line1, line2). Frame: -16 the callback (then the view's
  * shared_ptr), -20 the control block, -24 the made one, -28 and -32 the two

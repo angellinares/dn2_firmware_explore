@@ -17,7 +17,7 @@
  * `%d1` were the stock code's own scratch here, and both exits overwrite them
  * before reading them.
  */
-#include "dn2_111.h"
+#include "dn2.h"
 #include "slots.h"
 
     .globl  lfo4_slew_stub

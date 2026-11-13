@@ -159,7 +159,17 @@ Before any mod builds for 1.12:
 1. `scripts/emu_high_ram_touch.py --os 1.12` ran on stock 1.12: boot, SAVE PROJECT AS, the DNX reads of the saved project, and the panel walk. Stock touched no RAM page from `0x46700000` up, under any of the nine addresses. Both controls (`0x46600000`, `0x4e600000`) answered. The same run on stock 1.11 gave the result in `docs/mod-memory-regions.md` again. The run does not show the end of the section: it shows that stock touched nothing above it.
 2. Done. `ramcheck.in_stock_dma` takes the range of the stock image's OS from `dnfw.osport.versions`: `0x466c0000..0x46709340` on 1.12.
 3. bootscreen's stamp moves to `0x467e8000` on 1.12. Refscan of 1.12's code finds 0 references to `0x467e0000..0x467f0000` under all nine addresses. A literal scan of the whole image finds 6 values in the stamp's 4 KiB. One is a `bne.s` in code. The other 5 are in data, and each fails the pointer test: 0 of 15 neighbours point into the image. The test passes on a real code pointer.
-4. Not done.
+4. Not done. The safety checklist now refuses an update of more than 2 MiB (8-byte preamble and container), the limit elekloader measured on a unit over USB. That is a limit seen on a unit, not the buffer read in code.
+
+**Addresses read by hand.** `src/dnfw/osport/by_hand_1.12.json` holds the addresses the map cannot decide because no instruction names them. `osport.addr` reads it after the map. For each entry, 32 bytes of 1.11 around the address occur once in 1.12, at the new address, or differ there only in moved address words. `test_lfo4_112.py` checks this for every entry.
+
+The heap arena is one range in the table: it moves `+0x1000` as one block (its descriptor's `+4` holds `0x4464bbf0` on 1.12, and elekloader's DN2 profile gives the same).
+
+**lfo4 on 1.12.**
+- The C builds with `DN2_OS_112`, and its own stock addresses are in `csrc/lfo4/stock_111.h`. The header generator writes `stock_112.h` from it.
+- The Python build chain runs with its address constants retargeted (`osport.retarget`). Anything written inline either goes through `osport.addr` or is checked against the 1.12 image's stock bytes.
+- The 1.12 build is the 1.11 build with its address words moved, and `test_lfo4_112.py` checks both directions. This is how `valuehooks.S` was found still including `dn2_111.h`, and the emulator then booted.
+- The engine's stub cave moves `+0x540` with the code. Its start touches a neighbouring halfword, as on 1.11. In the emulator, its contents read back unchanged after a boot and four page changes.
 
 ## The 1.12 port: tools (issue #382, 2026-11-12)
 

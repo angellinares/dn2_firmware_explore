@@ -14,7 +14,7 @@
  */
 /* Both, and in this order: `slots.h` keeps its C behind `__ASSEMBLER__`, so
  * it does not pull in the site addresses the way it does for C. */
-#include "dn2_111.h"
+#include "dn2.h"
 #include "slots.h"
 
 /* The read side, and it is `lfo4_set_stub` in a mirror.

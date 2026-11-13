@@ -127,8 +127,8 @@ u32 lfo4_seen_generation[TRACKS];     /* `a4_top` compares these and `lfo4_owner
  *
  * What sleeping gives up: a page that shows an idle voice's modulation holds still. */
 #define LFO_PERIOD     1382400000u    /* the evaluators' phase wraps here */
-#define LFO_RATE       (*(volatile u32 *)0x402A0DECu)   /* the frame's rate, the evaluators' 2nd argument */
-#define LFO_LIVE_STATE 0x4464ABF0u    /* `build_lfo4_tick.py`: 160 bytes a voice, 40 an LFO */
+#define LFO_RATE       (*(volatile u32 *)STOCK_LFO_RATE)   /* the frame's rate, the evaluators' 2nd argument */
+#define LFO_LIVE_STATE ((u32)STOCK_LIVE_STATE)   /* `build_lfo4_tick.py`: 160 bytes a voice, 40 an LFO */
 #define LFO4_STATE     120u           /* the fourth LFO's record; its phase is its first word */
 
 u8  lfo4_awake[TRACKS];               /* read by `a4_top` */

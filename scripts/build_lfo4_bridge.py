@@ -38,13 +38,16 @@ sys.path.insert(0, str(HERE))
 import build_lfo4_tick as v6a                             # noqa: E402
 import build_lfo4_tick7 as tick7                          # noqa: E402
 from build_lfo4_ext import CODE_VA, SITES                 # noqa: E402
+from dnfw.checkout import resources_dir                    # noqa: E402
 from dnfw.cli.files import read_image                      # noqa: E402
 from dnfw.container.section import compress                # noqa: E402
 from dnfw.firmware import build as fwbuild                 # noqa: E402
 from dnfw.firmware.load import load                        # noqa: E402
+from dnfw import osport                                    # noqa: E402
 from dnfw.patch import area, cbuild, loader                # noqa: E402
 
-STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCKS = {"1.11": "00_Firmware/Digitone_II_OS1.11_dist.zip", "1.12": "00_Firmware/Digitone_II_OS1.12.syx"}
+STOCK = resources_dir(ROOT) / STOCKS["1.11"]
 MAIN_OS, BASE = 3, 0x40000400
 SRC = ROOT / "csrc"
 OUT = ROOT / "out/lfo4-bridge"
@@ -288,7 +291,7 @@ def idle_skip(source: str, code) -> str:
 
 
 def main(sources=SOURCES, entries=ENTRIES, out=OUT, syx=SYX, extra=(), chunks=None,
-         defines=None, include=(), exports=(), idle=False) -> int:
+         defines=None, include=(), exports=(), idle=False, os="1.11") -> int:
     """Build it. `extra` are further site patches, each `f(content, code)`.
 
     The arguments exist so a build that is *this one plus a site* -- step 4's
@@ -306,8 +309,23 @@ def main(sources=SOURCES, entries=ENTRIES, out=OUT, syx=SYX, extra=(), chunks=No
 
     `idle` builds the evaluator stubs that skip an idle LFO4 (`idle_skip`);
     the release sets it, and every diagnostic build before it did not.
+
+    `os` is the stock image's OS (issue #382). For 1.12 the C builds with DN2_OS_112 (dn2_112.h,
+    csrc/lfo4/stock_112.h), and every build module's address constants take their 1.12 values
+    (`dnfw.osport.retarget`) while it runs. An address written inline goes through `osport.addr`
+    here; a stock-bytes check on the 1.12 image stops the build when one was missed.
     """
-    firmware = load(read_image(STOCK))
+    if os != "1.11":
+        modules = [m for n, m in sorted(sys.modules.items()) if n.startswith("build_lfo4_")]
+        with osport.retarget(os, modules, {m: {"OS": os} for m in modules if hasattr(m, "OS")}):
+            return _main(sources, entries, out, syx, extra, chunks, {**(defines or {}), "DN2_OS_112": 1},
+                         include, exports, idle, os)
+    return _main(sources, entries, out, syx, extra, chunks, defines, include, exports, idle, os)
+
+
+def _main(sources, entries, out, syx, extra, chunks, defines, include, exports, idle, os) -> int:
+    A = lambda va: osport.addr(os, va)          # noqa: E731
+    firmware = load(read_image(resources_dir(ROOT) / STOCKS[os]))
     section = firmware.container.find(MAIN_OS)
     stock = section.unpack()
 
@@ -320,7 +338,7 @@ def main(sources=SOURCES, entries=ENTRIES, out=OUT, syx=SYX, extra=(), chunks=No
                         defines=defines)
     table_va = code["lfo4_rows"]
     chunk = area.CodeChunk(CODE_VA, code.image, code.bss, code["lfo4_init"]).pack()
-    content = loader.install(stock, [(area.CODE, chunk), *(chunks(stock) if chunks else ())])
+    content = loader.install(stock, [(area.CODE, chunk), *(chunks(stock) if chunks else ())], os=os)
     print(f"part 1 -- C: {len(code.image)} B at {CODE_VA:#010x}, {code.bss:,} B of state; "
           f"rows at {table_va:#010x}; the live container is read from "
           f"0x800052a0, not built in")
@@ -347,8 +365,9 @@ def main(sources=SOURCES, entries=ENTRIES, out=OUT, syx=SYX, extra=(), chunks=No
     print(f"  rows {table_va:#010x} (in our BSS), stubs {len(payload)} B, "
           f"{v6a.CAVE_CAP - len(payload)} B of cave left")
     for va, was, new, why in v6a.edits(table_va):
-        v6a.poke(content, va, was, new, why)
+        v6a.poke(content, A(va), was, new, why)
     for va, was, kind, label in v6a.hooks(table_va, offsets):
+        va = A(va)
         op = b"\x4e\xb9" if kind == "jsr" else b"\x4e\xf9"
         new = op + v6a.be32(offsets[label])
         new += b"\x4e\x71" * ((len(was) - len(new)) // 2)
@@ -365,7 +384,7 @@ def main(sources=SOURCES, entries=ENTRIES, out=OUT, syx=SYX, extra=(), chunks=No
     wanted = ("lfo4_", "ext_", *exports)
     symbols = {k: v for k, v in code.symbols.items() if k.startswith(wanted)}
     symbols["lfo4_rows"] = table_va
-    symbols["dnfw_boot"] = loader.build()["dnfw_boot"]
+    symbols["dnfw_boot"] = loader.build(os=os)["dnfw_boot"]
     (out / "symbols.json").write_text(
         json.dumps({k: f"0x{v:08x}" for k, v in sorted(symbols.items())}, indent=1) + "\n", newline="\n")
     # Which of those are code. The boot gate reports what never ran, and a

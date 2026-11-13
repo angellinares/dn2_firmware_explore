@@ -17,7 +17,8 @@
 #ifndef LFO4_EXT_H
 #define LFO4_EXT_H
 
-#include "dn2_111.h"
+#include "dn2.h"
+#include "stock.h"
 
 #define EXT_PARAMS 8              /* SPD MULT FADE DEST WAVE SPH MODE DEP */
 #define EXT_SHIFT  8

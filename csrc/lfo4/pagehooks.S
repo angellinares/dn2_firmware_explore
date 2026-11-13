@@ -8,7 +8,7 @@
  * displaced, and go back -- the same shape as the four in `hooks.S`, and for
  * the same reason.
  */
-#include "dn2_111.h"
+#include "dn2.h"
 /* `id -> record`. The site is that routine's **first** instruction, so the
  * stub is the whole function and owns every scratch register it did: d0 is
  * the result, d1 was its own, and it touched nothing else.

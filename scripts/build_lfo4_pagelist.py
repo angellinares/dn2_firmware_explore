@@ -64,9 +64,16 @@ ENTRIES = ui.ENTRIES + ["lfo4_mod_pages"]
 COUNT_AT = 0x40061558            # moveq #3,%d1
 COUNT_STOCK = bytes.fromhex("7203")
 LIST_AT = 0x40061562             # movel #0x401e0048,%d0
-LIST_STOCK = bytes.fromhex("203c401e0048")
 STOCK_LIST = 0x401E0048
 NEIGHBOUR = 0x401E0054           # the next registration's id, proving no gap
+
+
+def list_stock() -> bytes:
+    """`movel #STOCK_LIST,%d0`, built when used: the list moves with the OS (issue #382)"""
+    return bytes.fromhex("203c") + struct.pack(">I", STOCK_LIST)
+
+
+LIST_STOCK = list_stock()          # 203c401e0048 on 1.11
 
 
 def pagelist(content, code):
@@ -84,7 +91,7 @@ def pagelist(content, code):
     content[at + 1] = 4
     print(f"  {COUNT_AT:#010x}  moveq #3 -> #4")
 
-    at = ui._at(content, LIST_AT, LIST_STOCK, "the page list")
+    at = ui._at(content, LIST_AT, list_stock(), "the page list")
     content[at + 2:at + 6] = struct.pack(">I", code["lfo4_mod_pages"])
     mine = struct.unpack_from(">4I", code.image,
                               code["lfo4_mod_pages"] - bridge.CODE_VA)

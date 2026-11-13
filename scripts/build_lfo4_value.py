@@ -97,7 +97,15 @@ def companion(content, code):
 # computes as 3 for LFO4. There is no block for 3, so the page drew no preview
 # and `SPH` came out a plain dial.
 WAVE_FALLBACK = 0x4010E2F0
-WAVE_STOCK = bytes.fromhex("2f0a4eb94006597a")          # movel a2,-(sp) ; jsr 0x4006597a
+WAVE_CALLEE = 0x4006597A
+
+
+def wave_stock() -> bytes:
+    """`movel a2,-(sp) ; jsr WAVE_CALLEE`, built when used: the callee moves with the OS (issue #382)"""
+    return bytes.fromhex("2f0a4eb9") + struct.pack(">I", WAVE_CALLEE)
+
+
+WAVE_STOCK = wave_stock()                               # 2f0a4eb94006597a on 1.11
 LFO3_BLOCK = (0x4010E27E, 0x4010E2C6)                   # the block this one transcribes
 # (LFO3's literal, LFO4's) in the order the block calls for them.
 SUBSTITUTIONS = ((99, 325), (101, 327), (102, 328), (95, 321), (103, 329))
@@ -106,10 +114,11 @@ SUBSTITUTIONS = ((99, 325), (101, 327), (102, 328), (95, 321), (103, 329))
 def waveform(content, code):
     """Add the fourth block, and assert it is the third with five constants changed."""
     at = WAVE_FALLBACK - BASE
-    here = bytes(content[at:at + len(WAVE_STOCK)])
-    if here != WAVE_STOCK:
+    want = wave_stock()
+    here = bytes(content[at:at + len(want)])
+    if here != want:
         raise SystemExit(f"the preview fallback at {WAVE_FALLBACK:#010x} is {here.hex()}, "
-                         f"not {WAVE_STOCK.hex()}")
+                         f"not {want.hex()}")
 
     # What the firmware's own block is, and what ours must be: the same bytes
     # with five 16-bit immediates substituted. Checked rather than trusted,
@@ -132,7 +141,7 @@ def waveform(content, code):
 
     jump = bytes.fromhex("4ef9") + struct.pack(">I", code["lfo4_wave_stub"])
     nop = bytes.fromhex("4e71")
-    content[at:at + len(WAVE_STOCK)] = jump + nop * ((len(WAVE_STOCK) - len(jump)) // 2)
+    content[at:at + len(want)] = jump + nop * ((len(want) - len(jump)) // 2)
     print("part 9 -- the waveform preview")
     print(f"  {WAVE_FALLBACK:#010x}  index {3} -> lfo4_wave_stub {code['lfo4_wave_stub']:#010x}")
     print(f"  the block is LFO3's {len(theirs)} bytes with "

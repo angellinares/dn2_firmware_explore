@@ -73,7 +73,8 @@ SPEC = SPECS.get("1.11")
 # The sleep and wake code (1.0.5), disassembled: `not.l %d0` (4680) then `and.l %d1,%d0` (c081),
 # `and.l <abs>,%d0` (c0b9) and `and.l %d0,<abs>` (c1b9), not addresses. 1.0.6's load check moved
 # the three. `lfo4_on_frame`'s pair at 0x46800932 is gone: no word there reads as an address now.
-NOT_RAM = (0x46800D2A, 0x46800D8E, 0x46800DBA)
+# 1.0.7 removed the frame send guard, and the three moved down 0xC0.
+NOT_RAM = (0x46800C6A, 0x46800CCE, 0x46800CFA)
 
 
 def _spec(os: str = "1.11") -> dict:

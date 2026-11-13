@@ -126,6 +126,19 @@ bytes there. No absolute operand in MAIN OS names `0x405cd8ae..0x405cd95b` (the 
 the payload's `0x405cd8a3` four times), and the 114 absolute references into the block below it
 are followed (48 bytes each) by offsets that stay below `0x405cd8ae`. The settings defaults
 clear `0x405cd85c..0x405cd8ad` only.
+
+## OS 1.12 (issue #382, 2026-11-13)
+
+`compose(stock, os="1.12")` builds from the same source. Every guard, hook and vtable entry goes
+through `dnfw.osport.site`: of the 73 sites, 35 hold 1.11's bytes on 1.12 and 38 differ only in
+address words that the map moves. The routines' stock addresses come through `dnfw.osport.render`,
+and `CHANGE` has a name so that it moves with them. Every word that differs between the 1.11 and
+1.12 code is a mapped address or the switch's byte. The chunk keeps `0x46790000`, above 1.12's
+DMA section, and the code keeps its layout and its labels.
+
+No instruction names the switch, so it moves with the settings block (`0x405cd85c` ->
+`0x405ce85c`) to `0x405ce8c1`. The same scan as on 1.11 finds no absolute operand in 1.12's
+MAIN OS in `0x405ce8ae..0x405ce95b`, and it finds the payload's `0x405ce8a3` four times.
 """
 
 from __future__ import annotations
@@ -137,6 +150,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 
+from dnfw import osport
 from dnfw.checkout import resources_dir
 from dnfw.cli.files import read_image
 from dnfw.container.section import compress
@@ -155,6 +169,7 @@ BASE = 0x40000400
 CODE_VA = 0x46790000
 
 FLAG = 0x405CD8C1               # the switch: the settings block's unaddressed tail, past degreetranspose's old amounts
+SETTINGS = 0x405CD85C           # the settings block: FLAG is its byte +0x65
 STR_DTOR = 0x401CCBEE
 KEY_CODE = 0x40116018           # key event: its code
 PRESSED = 0x401160BC            # ...pressed, not a repeat
@@ -184,6 +199,7 @@ QUEUE_PATH = 0x400DA416         # tick 2: the queue's head, then the last-step t
 TICK_END = 0x400DA902           # where every tick past the boundary ends
 TEST_SITE = 0x400DA45A          # the last-step test's first instruction
 TEST_DISPLACED = bytes.fromhex("737942c5aab4")    # mvs.w 0x42c5aab4,%d1 (CHANGE)
+CHANGE = 0x42C5AAB4             # the playing pattern's CHANGE (word)
 TEST_BACK = TEST_SITE + len(TEST_DISPLACED)
 ARM = 0x400DA4D2                # arm the switch to the head in %d0
 PATTERN = 0x42C5A9A0            # the playing pattern
@@ -200,7 +216,7 @@ NAME_OFF = "Direct Jump OFF"
 LABELS = ("ptn_keys", "ptn_leds", "cue_hook", "tick_hook", "arm_hook", "switch_hook",
           "early_hook", "kit_hook", "phase_hook")
 
-SOURCE = f"""
+SOURCE = """
 | The PTN view's key handler (this, event), through its vtable. [UP] or [DOWN] pressed: the
 | switch on or off, and the message; their releases and repeats: handled, as stock's. All
 | else: stock's handler.
@@ -329,7 +345,7 @@ arm_hook:
     subq.l  #2,%d1
     beq.s   1f
     jmp     {TICK_END:#x}
-1:  mvs.w   0x42c5aab4,%d1              | the displaced instruction
+1:  mvs.w   {CHANGE:#x},%d1              | the displaced instruction
     jmp     {TEST_BACK:#x}
 
 | The switch, reached by jmp, before it copies the start step. Ours: the start step is the
@@ -351,7 +367,7 @@ switch_hook:
 1:  lea     {START:#x},%a1              | the displaced instruction
     jmp     {START_BACK:#x}
 
-{toggle.toggle(FLAG)}
+{toggle.toggle(FLAG, OS)}
 msg_on:
     .asciz  "{NAME_ON}"
 msg_off:
@@ -405,7 +421,7 @@ FREE_MIDI = 0x4012A3D2          # (payload): a MIDI payload back to its pool, it
 FREE_RECORD = 0x40138A0C        # (record): an engine record back to its pool, its lock released
 FREE_BUCKET = 0x40138A84        # (bucket)
 
-NEXT_STEP = f"""
+NEXT_STEP = """
 | The preparation's start, reached by jmp. Our jump armed, on the real tick that ends the step:
 | free the source's queued events from T on, and run stock's switch, which comes back through
 | phase_hook. Else the displaced instruction.
@@ -711,8 +727,20 @@ CONTEXT = (
 ) + toggle.CONTEXT[:1]          # the setting writer
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STOCK = resources_dir() / "00_Firmware/Digitone_II_OS1.11_dist.zip"
+STOCKS = {"1.11": "00_Firmware/Digitone_II_OS1.11_dist.zip",       # under 00_Resources (issue #382)
+          "1.12": "00_Firmware/Digitone_II_OS1.12.syx"}
+STOCK = resources_dir() / STOCKS["1.11"]
 OUT = resources_dir() / "02_Builds/directjump_DN2_1.11.syx"
+
+
+def overrides(os: str) -> dict:
+    """What the map cannot place: FLAG, which no instruction names, moves with the settings block"""
+    return {"FLAG": osport.addr(os, SETTINGS) + (FLAG - SETTINGS)}
+
+
+def source(os: str = "1.11") -> str:
+    """The routines for OS (issue #382): their stock addresses through `dnfw.osport`"""
+    return osport.render(SOURCE, globals(), os, None if os == "1.11" else overrides(os))
 
 
 def assemble_stubs(source: str, base: int) -> tuple[bytes, dict[str, int]]:
@@ -724,35 +752,37 @@ def assemble_stubs(source: str, base: int) -> tuple[bytes, dict[str, int]]:
     return blob[:-width], dict(zip(LABELS, addrs))
 
 
-def check(content: bytes, va: int, want: bytes, why: str) -> None:
-    have = bytes(content[va - BASE:va - BASE + len(want)])
-    if have != want:
-        raise SystemExit(f"{va:#010x}: expected {want.hex()}, found {have.hex()} "
-                         f"-- not the image this build was written against ({why})")
+def compose(stock: bytes, log=print, os: str = "1.11") -> dict:
+    """Apply the build to a stock MAIN OS. -> {content, blob, labels, flag}: the hooked image and
+    the code, 4-padded, for a platform `CODE` chunk at CODE_VA.
 
-
-def compose(stock: bytes, log=print) -> dict:
-    """Apply the build to a stock MAIN OS. -> {content, blob, labels}: the hooked image and the
-    code, 4-padded, for a platform `CODE` chunk at CODE_VA."""
+    OS is STOCK's version (issue #382): every guard, hook and vtable entry goes through
+    `dnfw.osport.site`, and the switch's byte moves with the settings block."""
+    def site(va, want, why):
+        try:
+            return osport.site(os, va, want, stock, BASE)
+        except osport.NotPorted as exc:
+            raise SystemExit(f"{why}: {exc}") from None
     if not available():
         raise SystemExit("no m68k assembler found")
     content = bytearray(stock)
-    if any(content[FLAG - BASE:FLAG - BASE + 1]):
+    flag = FLAG if os == "1.11" else overrides(os)["FLAG"]
+    if any(content[flag - BASE:flag - BASE + 1]):
         raise SystemExit("the switch's byte is not zero in the image")
 
     log("part 1 -- the code this relies on, asserted")
     for va, want, why in CONTEXT:
-        check(content, va, want, why)
+        va, want = site(va, want, why)
         log(f"  {va:#010x}  {want.hex():<24}  {why}")
 
     log(f"part 2 -- the code, from {CODE_VA:#010x}")
-    payload, at = assemble_stubs(SOURCE, CODE_VA)
+    payload, at = assemble_stubs(source(os), CODE_VA)
     blob = payload + bytes(-len(payload) % 4)
     log(f"  {len(payload)} bytes: " + ", ".join(f"{k} {v:#010x}" for k, v in at.items()))
 
     log("part 3 -- the hooks")
     for va, stock_bytes, label in HOOKS:
-        check(content, va, stock_bytes, label)
+        va, stock_bytes = site(va, stock_bytes, label)
         new = bytes.fromhex("4ef9") + struct.pack(">I", at[label])
         new += bytes.fromhex("4e71") * ((len(stock_bytes) - len(new)) // 2)
         if len(new) != len(stock_bytes):
@@ -760,11 +790,11 @@ def compose(stock: bytes, log=print) -> dict:
         content[va - BASE:va - BASE + len(new)] = new
         log(f"  {va:#010x}  {stock_bytes.hex()} -> {new.hex()}  jmp {label}")
     for va, stock_pointer, label in POINTERS:
-        check(content, va, struct.pack(">I", stock_pointer), label)
+        va, stock_entry = site(va, struct.pack(">I", stock_pointer), label)
         content[va - BASE:va - BASE + 4] = struct.pack(">I", at[label])
-        log(f"  {va:#010x}  {stock_pointer:#010x} -> {at[label]:#010x}  {label}")
+        log(f"  {va:#010x}  {stock_entry.hex()} -> {at[label]:#010x}  {label}")
 
-    return {"content": bytes(content), "blob": blob, "labels": at}
+    return {"content": bytes(content), "blob": blob, "labels": at, "flag": flag}
 
 
 def main() -> int:

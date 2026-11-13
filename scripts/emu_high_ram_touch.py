@@ -55,15 +55,13 @@ DMA_END = {"1.11": 0x46701340, "1.12": 0x46709340}
 # has none (2026-11-13: the 256 bytes there differ from 1.11's only in moved address words)
 CODE = {"call_at": 0x4002E464, "call_fn": 0x4012166E, "lz4_compress": 0x400EFB70,
         "lz4_decompress": 0x400EF5D0, "emmc_write": 0x4012C780, "emmc_read": 0x4012C59A}
-BY_HAND = {"1.12": {0x400EFB70: 0x400EFCD4, 0x400EF5D0: 0x400EF734, 0x4012C780: 0x4012CA60}}
 
 
 def code(os_version: str) -> dict[str, int]:
-    """CODE's addresses on OS_VERSION"""
+    """CODE's addresses on OS_VERSION (three are in src/dnfw/osport/by_hand_1.12.json)"""
     sys.path.insert(0, str(ROOT / "src"))
     from dnfw import osport
-    hand = BY_HAND.get(os_version, {})
-    return {k: hand[v] if v in hand else osport.addr(os_version, v) for k, v in CODE.items()}
+    return {k: osport.addr(os_version, v) for k, v in CODE.items()}
 
 
 CONTROLS = (0x46600000, 0x4E600000)

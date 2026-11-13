@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import struct
 
+from .. import osport
 from .paramtable import COUNT, RECORD, TABLE, TableError
 
 LFO3_FIRST, GROUP_SIZE = 94, 10            # records 94..103, the LFO3 group
@@ -80,9 +81,10 @@ def _u32(blob: bytes, off: int) -> int:
     return struct.unpack_from(">I", blob, off)[0]
 
 
-def free_unique_ids(content: bytes, base: int, want: int = GROUP_SIZE) -> list[int]:
+def free_unique_ids(content: bytes, base: int, want: int = GROUP_SIZE, os: str = "1.11") -> list[int]:
     """`want` values of field +40 that are inside the used range and unclaimed."""
-    used = {_u32(content, TABLE - base + RECORD * i + UNIQUE) for i in range(COUNT)}
+    table = osport.addr(os, TABLE)
+    used = {_u32(content, table - base + RECORD * i + UNIQUE) for i in range(COUNT)}
     used.discard(UNSET)
     gaps = [v for v in range(min(used), max(used)) if v not in used]
     if len(gaps) < want:
@@ -90,15 +92,17 @@ def free_unique_ids(content: bytes, base: int, want: int = GROUP_SIZE) -> list[i
     return gaps[:want]
 
 
-def build(content: bytes, base: int, *, page_name_va: int) -> bytes:
-    """-> the ten records and LFO3's 8-byte tail, ready to append to a copy of the table."""
-    ids = free_unique_ids(content, base)
+def build(content: bytes, base: int, *, page_name_va: int, os: str = "1.11") -> bytes:
+    """-> the ten records and LFO3's 8-byte tail, ready to append to a copy of the table.
+    CONTENT is stock MAIN OS of OS: the table is where that OS keeps it (issue #382)."""
+    ids = free_unique_ids(content, base, os=os)
+    table = osport.addr(os, TABLE)
     out = bytearray()
     for k in range(GROUP_SIZE):
-        at = TABLE - base + RECORD * (LFO3_FIRST + k)
+        at = table - base + RECORD * (LFO3_FIRST + k)
         record = bytearray(content[at:at + RECORD])
         if k == 0:   # the last stock record's formatter and unit
-            end = TABLE - base + RECORD * COUNT
+            end = table - base + RECORD * COUNT
             record[:TAIL] = content[end:end + TAIL]
         struct.pack_into(">I", record, SLOT, SLOT0 + SLOTS[k])
         struct.pack_into(">I", record, NRPN, UNSET)
@@ -106,7 +110,7 @@ def build(content: bytes, base: int, *, page_name_va: int) -> bytes:
         struct.pack_into(">I", record, FLAGS, DEST_FLAGS if k == DEST_POSITION else 0)
         struct.pack_into(">I", record, PAGE_NAME, page_name_va)
         out += record
-    last = TABLE - base + RECORD * (LFO3_FIRST + GROUP_SIZE)
+    last = table - base + RECORD * (LFO3_FIRST + GROUP_SIZE)
     out += content[last:last + TAIL]   # LFO4's last entry ends as LFO3's does
     return bytes(out)
 

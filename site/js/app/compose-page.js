@@ -36,6 +36,7 @@ const MODS = {
   arpmodes: ["Arpeggiator SHUF and RAND", "SHUF and RAND as real arpeggiator modes.", "arp-modes.html"],
   arpscale: ["Arp offsets in scale", "The step offsets of the arpeggiator move by degrees of the scale.", "arp-scale.html"],
   reloadconfirm: ["Reload confirm", "FUNC + NO can ask before it reloads the pattern.", "reload-confirm.html"],
+  directjump: ["Direct jump", "A pattern cued in the pattern view starts on the next step, from where the playing one was.", "direct-jump.html"],
   bootscreen: ["Boot screen", "Your own mark in the start-up animation.", "boot.html"],
 };
 /** The suffix each mod's own page gives its file. */

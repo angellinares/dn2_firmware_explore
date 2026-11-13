@@ -35,6 +35,7 @@ Before you do this, keep a copy of the project.
 | `bootscreen` | Your own mark in the start-up animation | confirmed on hardware | yes |
 | `reloadconfirm` | FUNC + NO can ask before it reloads the pattern (a switch in SETTINGS > PERSONALIZE) | confirmed on hardware | yes |
 | `arpscale` | The arp's step offsets move by degrees of the track's scale and root, not semitones (a switch in SETTINGS > PERSONALIZE); a step can be marked to move in semitones | confirmed on hardware (2026-10-14); steps in semitones: not yet tested by the repository owner; external report in `docs/flashing.md` | yes |
+| `directjump` | A pattern cued in the PTN view starts on the next step, from where the playing pattern was ([PTN] + [UP] turns it on, [PTN] + [DOWN] off) | not yet tested by the repository owner; external report in `docs/flashing.md` | yes |
 | `degreetranspose` | [KEYBOARD] + [FUNC] or [TRK] + [+]/[−] (stock's track transpose keys, with [KEYBOARD] added) transposes the active track by degrees of its scale, not semitones, kept in each pattern, MIDI tracks included | not yet tested by the repository owner; external reports in `docs/flashing.md` | no |
 | `transients` | Replace the FM drum transient bank with your own samples | confirmed on hardware | yes |
 | `songguard` | A song with a damaged row count loads as empty instead of halting the instrument (a stock bug) | confirmed on hardware | no |

@@ -780,6 +780,122 @@ Projects saved without this mod open with no degrees: in a +Drive backup of seve
 
 **Octave hardware test.** Start with the arp off and all transposes at zero. In C major, sequence F#4. Hold [KEYBOARD] + [TRK] + [FUNC] and press [+]: the pending semitone amount shows `+12`, with F#4 sounding until stock applies the change on release, then F#5. [KEYBOARD] + [PTN] + [FUNC] + [+] does the same for the pattern, as [PTN] + [FUNC] + [+] does. With a degree amount already set, the track's octave leaves that amount as it is, and the track box alternates the two after release.
 
+## Mod: `directjump` (direct jump)
+
+**Status: not yet tested by the repository owner.** By [w-winter](https://github.com/w-winter). On w-winter's Digitone II, `directjump4_DN2_1.11.syx` passes the jumps, the switch, the arp, the load, held notes and a power cycle (2026-11-12, `docs/flashing.md`). A script checked the jumps from the instrument's MIDI, and [STOP] just after a cue passed at 80 BPM and 1/8X. The switch's state right after flashing, the chains and external MIDI clock were not checked there. Checked in the emulator, 2026-11-11 and 2026-11-12, on the same build (below).
+
+Stock 1.11 changes to a pattern cued with [PTN] and a [TRIG] key when the playing pattern ends, or at its CHANGE length. This mod adds the Analog Rytm's DIRECT JUMP as a switch in the PTN view. Press [PTN] (tap or hold), then [UP] to turn it on, or [DOWN] to turn it off. The title bar shows "Direct Jump ON" or "Direct Jump OFF". Off is the default, and what a fresh instrument reads.
+
+While the switch is on, [PTN] lights magenta in the PTN view, the colour of PATTERN MUTE mode, where stock lights it white. Bank selection ([FUNC] + [PTN]) keeps stock's colour.
+
+With the switch on, a pattern cued in the PTN view while the sequencer plays starts on the next step. At 1x, a cue in about the last third of a step starts on the step after. The sequencer prepares each step a moment before you hear it. A cue near the end of a step comes too late for the next one.
+
+The new pattern goes on from the playing pattern's position, wrapped by its own length. For example, if A01 is on its step 11 and A02 has 8 steps, A02 goes on from its step 3. In per-track mode, each track takes that position, wrapped by its own length, and goes on at its own speed. The Analog Rytm uses the same rule. Its commit sets `new_step = master_step mod length`, as Zac-Kyoti's reading of the Rytm's OS 1.73 shows (`reference/AR_DIRECT_JUMP.md` in `Zac-Kyoti/octatrack-kyoti-fw`).
+
+![The PTN view in the emulator after [UP], stock 1.11](img/emu-directjump-ptn-stock.png) ![The same view and key on this build: "Direct Jump ON" in the title bar](img/emu-directjump-ptn-on.png)
+
+- Chains, songs and MIDI program changes keep stock's change at the end of the pattern. This includes a chain made with [PTN] held and [TRIG] keys, the manual's legacy procedure. A cue while the sequencer is stopped also changes as on stock.
+- The mod takes a cue made with the switch on at the sequencer's next tick, within about 40 ms at 120 BPM. Turning the switch off after that does not cancel the jump.
+- Until the jump, at most a step after the cue, the jump takes the newest cue. So a second cue, a program change, a chain confirmed with [YES] or a cue made with the switch off jumps in its place.
+- From the new pattern's first step on, the old pattern plays nothing, on audio tracks or MIDI tracks, and its arps stop. A note that started before the jump plays to its end.
+- At 1x, the mod makes the jump a sixth of a step before the new pattern's first step. If micro timing moves a trig on that step earlier than that, the trig plays at the jump.
+- With Page Loop on, the position is the full pattern's, which the top row of [TRIG] keys shows. The looped page plays as before, and the new pattern goes on from that position.
+- With CHANGE shorter than the pattern, the position is still the pattern's.
+- LST and !LST mark the last pass before a change. A jump cuts that pass short: no LST trig of either pattern plays, and no !LST trig stops. A cue too late for the next step is the exception. The old pattern plays one more step, which counts as its last pass, so an LST trig on that step plays.
+- The A:B count starts again at the jump, as at stock's change. With Page Loop on in the new pattern, the count's first pass starts at the jump's position in the looped page. 1ST trigs are expected to play again in the new pattern's first pass, because the jump runs stock's reset of the trig conditions.
+- The switch is one byte of the settings block, `0x405cd8c1`. It comes after reloadconfirm's `0x405cd8ae` and arpscale's `0x405cd8af`, and after `0x405cd8b0..0x405cd8c0`, where the first degreetranspose builds (pull request #212 before its rework) kept their amounts. The instrument saves the block with its settings. On w-winter's Digitone II, the switch survives a power cycle without SAVE PROJECT, as reloadconfirm's and arpscale's switches do. The mod writes the byte only through the stock setter.
+
+**What changes:** nine edits in section 3 and a platform `CODE` chunk.
+- `0x402008cc`, the PTN view's key handler in its vtable: [UP] and [DOWN] presses go to the mod, and all other keys to stock's handler `0x400fa6be`. Stock does nothing with [UP] and [DOWN] in this view (`0x400fabb0`). The message uses the view's own message line (`this + 120`, `0x4005628c`).
+- `0x4020097c`, the PTN view's LED method in the vtable of its `LedHandler` base (`this + 104`), stock's thunk `0x400fa6b4`. With the switch on and the view showing patterns (`this + 137`), the mod sets [PTN]'s LED 4 to `0x61` through stock's setter `0x4002c318`. Then it runs stock's method. The setter keeps an LED's first value in a frame (`0x4002c342`), so stock's white for [PTN] in that frame is ignored. PATTERN MUTE mode lights the [TRIG] keys `0x61`, and GLOBAL MUTE mode `0x21` (the manual's magenta and green).
+- `0x400fa1e0`, after the PTN view posts a cue: with the switch on and the sequencer playing, the cue is the mod's.
+- `0x400da406`, where the tick routine reads the tick: the mod's cue runs the queue path on the next tick past 0. Stock runs it on tick 2 only. After the arming, the queue path waits for the switch, so stock's tick 2 cannot clear the arming (`0x400da41c`).
+- `0x400da45a`, the test for the last step before a change: for the mod's cue, when its pattern is not the playing one, stock's arming at once (`0x400da4d2`).
+- `0x400da6e6`, the switch: for the mod's switch, the start step is the change counter `0x42c5a91c`, wrapped by the new pattern's length when that is above 1. The counter holds the old pattern's position of the step that the switch fills.
+- `0x400d9e10`, where the sequencer starts to prepare its next events. On the real tick that ends an armed jump's step, the mod frees the old pattern's queued events and runs stock's switch (`0x400da58e`). It waits while STOP is pending. Stock prepares a step one step before it sounds, so without this the next step is the old pattern's.
+- `0x400da7a6`, the switch's kit event: for a jump, at that tick, before the new pattern's first notes.
+- `0x400da7c2`, the switch's bridge from the old pattern's tracks. For a jump, every track of the new pattern starts on the start step, wrapped by its own length. Its phase starts again (the Rytm's rule). Its condition cycle starts there too, wrapped by the looped page with Page Loop on. LST is off for that first step. Then stock's preparation runs again from `0x400d9e10`, so the first step goes through stock's own routing.
+- 1,196 B of code at `0x46790000`, between lfowaves' code and arpmodes.
+
+The jump frees these events from the sequencer: note-ons and locks for voices and MIDI, and arp requests (type 9, `0x400d9ee4`). Stock queues an arp request for each audio track with every step, with the arp on or off. Live input, releases, records that stock has marked, recurring clocks and configuration events stay. A voice counts its own note-off down (`0x80005220`), and MIDI keeps note-offs in its own lists, so the jump never meets a note-off in the queue.
+
+Each record is unlinked under masked interrupts, then freed through stock's own routines (`0x40138a0c`, `0x4012a3d2`, `0x40138a84`). Stock's own discard only marks a record, which then keeps its lock until its old time.
+
+A jump can interrupt the MIDI task just before it queues a note group (`0x4012b478..0x4012b49e`). That group reaches the queue after the jump, so it still plays. This is read from the code. Stock's discard at its own change misses such a group in the same way.
+
+`scripts/build_direct_jump.py` has the reading of the firmware. Every address it relies on is asserted as a guard (64). `scripts/gen_directjump_code.py` writes `directjump_code.json` and `site/js/mods/directjump-code.js`, and refuses to write unless the JSON, replayed on stock, is the build byte for byte. `test/test_directjump_mod.py` checks the shipped bytes, the hooks and the refusal of an image that is not stock.
+
+**Sources.** Four of the nine sites are the ones that De-Pattern's dn2mk2-firmware uses for its DIRECT JUMP (`docs/jump.md`, AGPL-3.0-or-later, listed in `docs/references.md`). One more is the instruction after its cue site. The LED method and the three sites of the next step come from this mod's own reading. This mod reads each site again in stock 1.11, and it has no code from that project.
+
+**Browser:** `site/direct-jump.html` (2026-11-11). `site/js/mods/directjump.js` ports `apply`, and `test/test_js_build_matches_cli.py` builds the mod as the page does and with `dnfw mods apply`.
+
+**Checks** (2026-11-11 and 2026-11-12, OS 1.11, `dnfw mods apply --mod directjump`, `directjump4_DN2_1.11.syx`, sha256 `f46778d900be5ee9b0b1c8ad26f98d834a801483bc40e70dccf905a1f396b5ef`, digikit-seqplay's `panel_drive` at `92e29144`):
+- `scripts/emu_directjump.py`: 26 cases, the switch check, the LED check and the pool check, each on stock and on the build. The patterns use complementary trig sets from a binary de Bruijn sequence, and different notes, so the notes name the pattern and its position. `panel_drive` records every cue post, tick, step boundary and switch.
+- From these records the script predicts each step's note or silence. Each step must hold exactly that note, or none, among every voice sent to the DSP and every MIDI note. So an extra or a doubled note fails. Stock must match the same prediction with start step 0. All pass:
+  - The switch off: the build equals stock note for note. With the switch on, the same is true for a chain from the chain creator. It is also true for a chain made with the manual's legacy gesture. That gesture holds [PTN] and presses a [TRIG], then presses each next [TRIG] with the previous one held.
+  - Patterns of 16 and 16, 16 and 12, and 12 and 16 steps, a jump and a jump back, and twelve cues among patterns of 16, 12 and 7 steps. Every cue starts on the predicted step, at the predicted position. That step is the next one, or the one after for a cue after the sequencer's last tick.
+  - A second cue before the first one's switch: the switch takes the second.
+  - Page Loop on page 2 of 32 steps. A jump into a pattern with Page Loop on page 2. After it, track 1's condition cycle is its next step wrapped by the looped page. Per-track mode with track 1 of 5 and 7 steps (the start past the track's length), and CHANGE 8 on a 16-step pattern.
+  - Every trig LST, for an early and a late cue, and every trig !LST, for an early cue.
+  - "Stop pending" written between the arming and the switch, then PLAY: the build equals stock note for note. The arming stays across STOP. At the first boundary after PLAY, stock's switch installs the playing pattern at its own position, so nothing changes.
+  - Track 1 as a MIDI track: the jump starts on the next step in the MIDI messages.
+  - Track 1's arp on UP: the jump starts on the next step. A jump to a pattern with no trigs: no arp note of the old pattern follows.
+  - Per-track mode with track 1 at 1/2x in A01 and 2x in A02, a jump to A02 and one back, judged on half steps. Each track starts on the start step, wrapped by its length, and goes on at its own speed.
+  - Trigs on even steps, each 1.5 steps long, as notes to the DSP and as MIDI. Every note ends 1.5 steps after it starts. In each run, two notes of the old pattern sound across a jump.
+  - Every trig of A02 a quarter step early by micro timing. A02's notes sound a quarter step early. On the jump's first step, the note sounds 0.008 step after the jump, which is 0.087 step after its time. Stock plays the first step after its own change on time.
+  - A cue in A01's first pass, to a pattern with every trig 1:2. The count starts at the change, on stock and on the build, so the new pattern's first pass plays. It goes on across the pattern's own ends, so the second pass is silent and the third plays.
+  - A cue at step 21 of A01's second pass, to a 48-step pattern with Page Loop on page 2 and every trig 1:2. The looped page's first pass plays from the jump's position (step 5 of the page), and its second pass is silent. Stock is judged only to its own change, as in `pageloopto`.
+  - Pool: sixteen tracks at 1/8x with arps on UP, and eight rapid alternating cues. Stock's lock allocator (`0x40138992`) and record allocator (`0x401389dc`) never find their pools empty, on stock and on the build. The build jumps once for each cue.
+  - The switch: [UP] and [DOWN] set the byte, with [PTN] tapped and with [PTN] held. Each press makes one settings write, and the repeats of a held [DOWN] write nothing.
+  - The LED: the firmware's colour cache (`0x466b7420`, one byte per panel channel) holds [PTN]'s byte. In the PTN view it is `0x71`, then `0x61` after [UP]. With the view closed it is off, in bank selection `0x83`, and after [DOWN] `0x71` again. Stock holds `0x71` in the PTN view throughout, and the same bytes in the other states.
+- Controls, on builds made for the check only. The next-step prediction fails on `directjump3_DN2_1.11.syx`, the earlier two-step build: in `shorter`, `back`, `rapid` and `speeds`, every cue starts one step later than predicted. `pageloopto` fails on this build without its Page Loop branch: one step after the jump, the cycle reads 0, and stock's rule gives 8. On that build `abloop` fails too: the looped page's first pass is silent, and its second plays.
+- With the jump's call that frees the old events replaced by NOPs, `shorter`, `back`, `rapid`, `early` and `lstlate` fail. An old note plays where the new pattern is silent or beside the new pattern's note.
+- The pool check fails on `directjump3`, with 14 empty lock allocations and 4 empty record allocations. It fails on a next-step build that marks the old events as stock does, without freeing them (19 empty lock allocations). It also fails on this build when it keeps the old arp requests (71 empty record allocations).
+- Every branch: `panel_drive --count` at each branch of the new code. The counts come from `equal`, `pertrack`, `chain`, `rapid`, `midi`, `pageloopto`, `pool`, `speeds`, `long`, `longmidi`, `early`, `ab` and `abloop`. Each path that frees, sets or commits runs. 33 jumps free 698 records, one MIDI payload and 9 emptied buckets. Each jump frees one arp request for each audio track, with the arps off too.
+- Three paths that keep a record never run: a voice's release, live MIDI input, and a MIDI group of another kind. They keep the record as stock does. In `long` and `longmidi`, notes sound across each jump, and the jump finds no note-off in the queue.
+- Cost, in emulator instructions, which are not the hardware's cycles. While idle the new hook adds 4 instructions to each sequencer interrupt: the median interrupt goes from 685 to 689. A jump frees its old events in 510 to 619 instructions with one track, and 1,459 to 2,869 with sixteen slow tracks with arps.
+- The jump's whole interrupt takes 7,397 with one track, where stock's largest interrupt in the same run takes 8,049 (its own change). With the sixteen slow tracks, each jump's interrupt takes 18,884 to 20,247, and stock's largest takes 23,294. The largest interrupt in that run, 64,934, comes nine steps after the last jump, when the sixteen tracks prepare a step while their arps play. Stock alone takes 64,932 in its largest interrupt with the same tracks at 1x and no jumps.
+- Every run watches the fault reporter (`0x4011ea6a`) and the DSP uploader's refusal (`0x400cf678`), and neither runs.
+- The image boots from reset (`scripts/emu_boot_check.py` on its MAIN OS section).
+- Every path to the hooked post starts in the PTN view's key handler. `0x400fa11e` makes the post and has three callers (`0x400fa2a2`, `0x400fa7e8`, `0x400fac22`). The first is in `0x400fa27e`, and only that handler calls `0x400fa27e`. The scan covered pc-relative and absolute calls in `0x40000400..0x40200000` and the address as data in the whole image. Its control found 213 calls to `0x4011c7ba`.
+- No absolute operand in MAIN OS addresses `0x405cd8ae..0x405cd95b`. The same scan finds the payload's `0x405cd8a3` four times. Each of the 114 absolute references into the settings block below it is followed (48 bytes) only by small offsets, and the settings defaults clear `0x405cd85c..0x405cd8ad`.
+- Integrity 22/22. The chunk has no scale-8 indexing (`scripts/check_coldfire.py`).
+
+**Not run:**
+- On the instrument: chains. The emulator runs both gestures (`chain`, `trigchain`).
+- A cue while a song row with its own length plays. The change counter then wraps at the row's length.
+- External MIDI clock.
+- A program change, or a chain confirmed with [YES], between a jump's cue and the jump. The jump takes it, as `twice` shows for a second cue (read from the code).
+- 1ST trigs after a jump. Expected: they play in the new pattern's first pass, because the jump runs stock's reset of the trig conditions.
+- midiarp across a jump (see `docs/mods-compatibility.md`).
+
+**Hardware test.** Flash `directjump4_DN2_1.11.syx`. The switch is kept in the instrument's settings, which survive a flash. So the first check needs an instrument whose switch has never been on.
+
+Setup, in an empty project with the sequencer stopped:
+1. Select A01: [PTN], then [TRIG 1].
+2. Track 1 gets a trig on every step. Press [TRK] + [TRIG 1], then [RECORD] for GRID RECORDING, then [TRIG 1] to [TRIG 16], then [RECORD] again.
+3. Track 2 gets a bar marker. Press [TRK] + [TRIG 2], then [TRK] + [FUNC] + [+] to raise the track an octave. On the TRIG PARAMETERS page, set LEN so a note lasts 8 steps. Then press [RECORD], [TRIG 1] and [RECORD].
+4. Copy A01 to A02: press [PTN], then [TRIG 1] + [RECORD], then [TRIG 2] + [STOP], then [NO].
+5. Select A02. Press [PTN] + [+] seven times, so A02 plays a fifth above A01. Then select track 1 and turn the filter's frequency well down on its FLTR page. A02's track 1 now sounds darker than A01's.
+
+- Pass:
+  - Before you press [UP] in the PTN view, press [PLAY] on A01, then [PTN] + [TRIG 2] near step 6. A02 starts after A01's step 16, as on stock: the switch is off by default.
+  - In the PTN view, [UP] shows "Direct Jump ON" and [DOWN] shows "Direct Jump OFF". Holding a key does not repeat the message.
+  - In the PTN view, [PTN] is magenta while the switch is on, and white while it is off. The magenta is the same as the [TRIG] keys' in PATTERN MUTE mode. In bank selection ([FUNC] + [PTN]), [PTN] has stock's colour.
+  - With the switch on, cue A02 early in a step. A02 starts on the next step, and its first note is already the darker sound. The bar marker keeps its place, every 16 steps from PLAY. The running light on the [TRIG] keys does not go back to step 1.
+  - A cue of A01 while A02 plays does the same. Then cue back and forth quickly for half a minute: after each jump, track 1 has the sound of the pattern that plays.
+  - Cue during steps 2 to 6: the bar marker sounds for its full 8 steps across the jump, and then ends.
+  - On A01's PAGE SETUP page ([FUNC] + [PAGE]), set SPEED to 1/8X, so a step lasts about a second. Lower the tempo if you need more time. Just after the running light moves, cue A02, and press [STOP] before the light moves again. Then press [PLAY]. Do this with the switch on and with it off, then set SPEED back to 1X.
+  - Both times, A02 does not sound before the stop, [PLAY] starts A02 from its first step, and no note hangs. A high note before the stop means [STOP] came too late, so try again.
+  - In both patterns, make track 1 a MIDI track ([FUNC] + [SYN], the MIDI machine) on a channel that a synth or MIDI monitor receives. Cue again: the MIDI notes change on the next step, and no note hangs.
+  - Turn on track 1's arp in both patterns ([FUNC] + [ARPEGGIATOR]). Cue back and forth quickly for half a minute: the arp follows each jump, and no note hangs.
+  - Give all 16 tracks a trig on every step and the arp on, in both patterns. In both patterns' PAGE SETUP ([FUNC] + [PAGE]), set PER TRACK mode ([FUNC] + [YES]) and SPEED 1/8X on tracks 9 to 16. Play for a minute with the switch off, cueing back and forth, and then for a minute with it on. With the switch on, there is no stutter, late note or slow screen that the minute with the switch off did not have. No error message shows.
+  - A chain made with [FUNC] + [YES] in the PTN view changes at the end of the pattern. So does a chain made with [PTN] held and [TRIG] keys, as in the manual's legacy procedure.
+  - With the switch on, turn the instrument off and on without SAVE PROJECT: the switch is still on. Do the same with the switch off: it is still off.
+  - Last, turn the switch on and flash a build without Direct Jump, such as stock or your usual build. A cue changes at the end of the pattern, and your other settings are as before. When you flash a Direct Jump build again, the switch is still on.
+  - If you have a source of MIDI clock, such as a DAW over USB: set CLOCK RECEIVE on (SETTINGS > MIDI CONFIG > SYNC) and cue again. The jump starts on the next step, as on the instrument's own clock.
+- Fail: anything else. For example: an error message, a crash, a hung note, or a cue that waits for the pattern's end with the switch on.
+
 ## Mod 10: `songguard` -- old projects open instead of halting
 
 Not a feature: a guard on a **stock 1.11 bug**. The song `LOAD` (`0x400dea6a`)

@@ -22,6 +22,7 @@ from ..mods import arpplocks as arpplocks_mod
 from ..mods import arpscale as arpscale_mod
 from ..mods import bootscreen as bootscreen_mod
 from ..mods import degreetranspose as degreetranspose_mod
+from ..mods import directjump as directjump_mod
 from ..mods import fxmod as fxmod_mod
 from ..mods import history
 from ..mods import layermidi as layermidi_mod
@@ -57,6 +58,7 @@ REGISTRY = {transients_mod.ID: transients_mod,
             songguard_mod.ID: songguard_mod,
             waverider_mod.ID: waverider_mod,
             reloadconfirm_mod.ID: reloadconfirm_mod,
+            directjump_mod.ID: directjump_mod,
             usbprobe_mod.ID: usbprobe_mod}
 
 

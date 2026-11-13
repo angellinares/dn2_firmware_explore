@@ -95,6 +95,13 @@ HISTORY: dict[str, tuple[Release, ...]] = {
             "You can now combine this mod with lfolength.",
         )),
     ) + UNPUBLISHED,
+    "directjump": (
+        Release("0.1.0", "2026-11-11", (
+            "First version. In the PTN view, press UP to turn DIRECT JUMP "
+            "on and DOWN to turn it off. With it on, a pattern you cue with PTN and a TRIG key starts on the "
+            "next step, from where the playing pattern was.",
+        )),
+    ),
     "fxmod": (
         Release("1.0.2", "2026-11-03", (
             "Nothing changes when you use it. A part it shares with Waverider changed for Waverider's "

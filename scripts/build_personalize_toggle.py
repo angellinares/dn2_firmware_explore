@@ -65,10 +65,9 @@ CONTEXT = (
 )
 
 
-def routines(flag: int, os: str = "1.11") -> str:
-    """Assembly: the item's functions for the toggle byte FLAG. `get` -> `%d0` 1
-    when the toggle is on, else 0; `set(on)` writes it; `name`, `press`, `value`
-    and `adjust` are the item's invokers. `name` reads the label `item_name`."""
+def toggle(flag: int, os: str = "1.11") -> str:
+    """Assembly: `get` -> `%d0` 1 when the toggle byte FLAG is on, else 0; `set(on)`
+    writes it. For a mod whose toggle has no PERSONALIZE item."""
     return osport.render("""| -> %d0 1 when the toggle is on, else 0.
 get:
     mvz.b   {flag:#x},%d0
@@ -93,7 +92,14 @@ set:
     unlk    %a6
     rts
 
-| name(&string, functor): the item's name (0x40096464).
+""", {**globals(), "flag": flag}, os)
+
+
+def routines(flag: int, os: str = "1.11") -> str:
+    """Assembly: the item's functions for the toggle byte FLAG: `toggle`'s `get` and
+    `set`, then `name`, `press`, `value` and `adjust`, the item's invokers. `name`
+    reads the label `item_name`."""
+    return toggle(flag, os) + osport.render("""| name(&string, functor): the item's name (0x40096464).
 name:
     link    %a6,#-4
     move.l  %d2,-(%sp)

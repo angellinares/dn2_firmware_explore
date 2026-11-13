@@ -81,9 +81,9 @@ NOTES: dict[frozenset, str] = {
         "note; degreetranspose's hook there (0x4012b1b0) should then move the step's note by the "
         "track's degrees, after the arp's offset.",
     frozenset(("directjump", "midiarp")):
-        "not run. A jump prepares the new pattern's first step by running stock's preparation loop "
-        "again in the same interrupt (0x400d9e10), so that step should reach the route that midiarp "
-        "hooks (0x400d9edc) as every other step does. midiarp's MIDI arp across a jump was not run.",
+        "not run. A jump runs stock's preparation loop again in the same interrupt (0x400d9e10) to "
+        "prepare the new pattern's first step. So that step should reach midiarp's route (0x400d9edc), "
+        "as every other step does. No run covers midiarp's MIDI arp across a jump.",
     frozenset(("arpmodes", "midiarp")):
         "a MIDI track's arp runs the same step, so SHUF and RAND should reach MIDI tracks; "
         "not run.",

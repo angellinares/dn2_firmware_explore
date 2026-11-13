@@ -154,6 +154,13 @@ Before any mod builds for 1.12:
 3. Move each chunk that the 1.12 range covers, and give the mod a new version.
 4. Measure the OS update buffer again (`docs/version-gate.md` section 5b).
 
+### Status (2026-11-13)
+
+1. `scripts/emu_high_ram_touch.py --os 1.12` ran on stock 1.12: boot, SAVE PROJECT AS, the DNX reads of the saved project, and the panel walk. Stock touched no RAM page from `0x46700000` up, under any of the nine addresses. Both controls (`0x46600000`, `0x4e600000`) answered. The same run on stock 1.11 gave the result in `docs/mod-memory-regions.md` again. The run does not show the end of the section: it shows that stock touched nothing above it.
+2. Done. `ramcheck.in_stock_dma` takes the range of the stock image's OS from `dnfw.osport.versions`: `0x466c0000..0x46709340` on 1.12.
+3. bootscreen's stamp moves to `0x467e8000` on 1.12. Refscan of 1.12's code finds 0 references to `0x467e0000..0x467f0000` under all nine addresses. A literal scan of the whole image finds 6 values in the stamp's 4 KiB. One is a `bne.s` in code. The other 5 are in data, and each fails the pointer test: 0 of 15 neighbours point into the image. The test passes on a real code pointer.
+4. Not done.
+
 ## The 1.12 port: tools (issue #382, 2026-11-12)
 
 Every mod gets a 1.12 build beside its 1.11 build, in the same repository. 1.11 stays the build users get until all mods are on 1.12. Then 1.12 becomes the default, and the 1.11 builds move to an archive.

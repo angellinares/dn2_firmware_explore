@@ -19,6 +19,10 @@
   "sha256": "7cd0209ca3af86bcf81e6f70a24728a4aec0955b611c84eab42c3cd0a41a2b72",
   "version": "0.1.1"
  },
+ "directjump": {
+  "sha256": "381d551baff55583e60b40d75eaacab0b119cb8ed234f3b212c27c49f06c4961",
+  "version": "0.1.0"
+ },
  "fxmod": {
   "sha256": "0e7fafb8dbba3929661a6386c5762524de2df21c6c4d6756715cf4e88e4dc9d7",
   "version": "1.0.2"

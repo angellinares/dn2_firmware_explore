@@ -5,6 +5,7 @@ export const VERSIONS = {
   arpscale: "0.2.1",
   bootscreen: "1.0.0",
   degreetranspose: "0.1.1",
+  directjump: "0.1.0",
   fxmod: "1.0.2",
   layermidi: "1.0.0",
   lfo4: "1.0.6",

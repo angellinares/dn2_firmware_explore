@@ -24,7 +24,7 @@ export const GROUPS = [
   { name: "Machines", mods: ["waverider", "transients"] },
   { name: "LFOs and modulation", mods: ["lfo4", "fxmod", "lfowaves", "moddest", "lfolength"] },
   { name: "Arpeggiator and MIDI", mods: ["midiarp", "layermidi", "arpmodes", "arpscale"] },
-  { name: "Workflow", mods: ["reloadconfirm", "bootscreen"] },
+  { name: "Workflow", mods: ["reloadconfirm", "directjump", "bootscreen"] },
 ];
 
 /** As the CLI: a mod that copies the stock parameter table goes last (lfo4.py, APPLY_LAST). */

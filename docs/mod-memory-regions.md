@@ -36,13 +36,14 @@ From each mod's own declaration (`ram()`), in region A, 2026-11-04:
 | arpscale | 1,672 | `0x467a8000` |
 | degreetranspose | 1,668 | `0x467b8000` |
 | reloadconfirm | 1,208 | `0x467e0000` |
+| directjump | 1,196 | `0x46790000` |
 | midiarp | 592 | `0x467d0000` |
 | layermidi | 324 | `0x467d8000` |
 | bootscreen | 320 | `0x46708000` |
 | lfolength | 260 | `0x467b0000` (`0x467f8000` until 2026-10-15) |
-| **all** | **729,042** | 0.70 MiB of the 24.9 MB |
+| **all** | **730,238** | 0.70 MiB of the 24.9 MB |
 
-Three mods also declare bytes in stock's data, outside region A. lfolength declares 96 bytes, one per sound slot. arpscale declares one byte of the settings block, and its marks are in each sound. reloadconfirm declares one byte.
+Four mods also declare bytes in stock's data, outside region A. lfolength declares 96 bytes, one per sound slot. arpscale declares one byte of the settings block, and its marks are in each sound. reloadconfirm and directjump each declare one byte.
 
 The table of 2026-10-11 gave Waverider 435,692 bytes from `0x4670c000`. Waverider's pages chunk moved to `0x4670a000` with pages 3 and 4 (`docs/waverider-pages34.md`), and the mark at `0x46a60000` came later.
 

@@ -31,9 +31,18 @@ def test_the_source_version_maps_to_itself():
 
 def test_an_address_the_map_did_not_decide_stops_the_build():
     with pytest.raises(osport.NotPorted):
-        osport.addr("1.12", 0x4464ABF0)          # the 1.11 heap start: no instruction names it
+        osport.addr("1.12", 0x40063ADE)          # inside code, named by no instruction, not read by hand
     with pytest.raises(osport.NotPorted):
         osport.addr("1.13", 0x40026980)          # no map for that version
+
+
+def test_the_hand_read_table_decides_what_the_map_cannot():
+    """by_hand_1.12.json: single addresses, and the heap arena, which moves as one block"""
+    assert osport.addr("1.12", 0x400CF7C6) == 0x400CF92A
+    assert osport.addr("1.12", 0x4464ABF0) == 0x4464BBF0          # the arena's base
+    assert osport.addr("1.12", 0x4664ABEF) == 0x4664BBEF          # its last byte
+    with pytest.raises(osport.NotPorted):
+        osport.addr("1.12", 0x4664ABF0)                           # past it
 
 
 def test_mod_ram_above_both_dma_sections_stays():
@@ -102,3 +111,18 @@ def test_render_refuses_a_moved_literal():
     with pytest.raises(osport.NotPorted, match="0x40137566"):
         osport.render(template, {}, "1.12")
     assert osport.render("    jmp     {T:#x}\n", {"T": 0x40137566}, "1.12") == "    jmp     0x40137846\n"
+
+
+def test_retarget_ports_a_module_s_constants_and_puts_them_back():
+    import types
+    m = types.ModuleType("chain")
+    m.SITE, m.SITES, m.COUNT, m.lower = 0x400CF7C6, (("memcpy", 0x40134490, 8), 0x7000), 5, 0x400CF7C6
+    with osport.retarget("1.12", [m], {m: {"OS": "1.12"}}):
+        assert m.SITE == 0x400CF92A and m.SITES == (("memcpy", 0x40134770, 8), 0x7000)
+        assert m.COUNT == 5 and m.lower == 0x400CF7C6 and m.OS == "1.12"
+    assert m.SITE == 0x400CF7C6 and m.SITES == (("memcpy", 0x40134490, 8), 0x7000)
+    m.BAD = 0x40063ADE
+    with pytest.raises(osport.NotPorted, match="chain.BAD"):
+        with osport.retarget("1.12", [m]):
+            pass
+    assert m.SITE == 0x400CF7C6                                     # a refusal leaves nothing changed

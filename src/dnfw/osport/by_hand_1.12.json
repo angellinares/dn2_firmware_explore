@@ -1,0 +1,13 @@
+{
+ "from": "1.11",
+ "to": "1.12",
+ "note": "Addresses the survey's map cannot decide (no instruction names them), each read by hand. Every entry: a 32-byte window of 1.11 around it occurs once in 1.12, at the new address, and each differing word in a 64-byte window is an address the map or a known shift moves.",
+ "addresses": {
+  "0x4005e7e4": {"new": "0x4005e7e4", "why": "lfo4 note.S PAGE_SELECT: the function's linkw; 32 bytes unique at +0; in 64, jsr 0x4009d446 (+0x164) and lea 0x40188086 (map) differ"},
+  "0x40063b06": {"new": "0x40063b06", "why": "lfo4 note.S: the return into stock; 64 bytes unique and equal at +0"},
+  "0x400cf7c6": {"new": "0x400cf92a", "why": "lfo4 hooks.S: the instruction after the hooked prologue; 32 bytes unique at +0x164; in 64, tst.l 0x42440958 is 0x42441958 (BSS +0x1000)"}
+ },
+ "ranges": [
+  {"from": "0x4464abf0", "to": "0x4664abf0", "delta": "0x1000", "why": "stock's heap arena, 32 MiB, moves as one block: its descriptor's +4 holds 0x4464abf0 on 1.11 (0x4029eb9c) and 0x4464bbf0 on 1.12 (0x4029f0dc); elekloader's DN2 profile gives 0x4464bbf0-0x4664bbf0"}
+ ]
+}

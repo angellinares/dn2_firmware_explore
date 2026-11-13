@@ -82,8 +82,16 @@ Stock runs the same keys and must match the same prediction with start step 0. T
   pool runs out on directjump3, and the record pool when a jump keeps the old pattern's arp
   clocks, though neither fault reporter runs. The input script and trace are kept with the frames.
 
-Every run watches the firmware's fault reporter (`0x4011ea6a`), and a run that reaches it fails.
-Needs what `scripts/emu_seqplay.py` needs, through `PANEL_DRIVE`.
+Every run watches the firmware's fault reporter (`0x4011ea6a`) and the DSP uploader's refusal
+(`0x400cf678`), and a run that reaches either fails.
+
+On OS 1.12 (issue #382) the same cases run. The build's version picks the stock image, and every
+stock address above moves through `dnfw.osport`, or through `ON_1_12` for the seven the map does
+not hold (the watches are `0x4011ed4a` and `0x400cf7dc`). The switch moves with the settings block
+(`build_direct_jump.overrides`), and the MIDI helpers from `emu_degreetranspose.py` take its 1.12
+addresses.
+Needs what `scripts/emu_seqplay.py` needs, through `PANEL_DRIVE`. A 1.12 build needs digikit
+`main`'s `panel_drive`, which boots 1.12.
 """
 
 from __future__ import annotations
@@ -99,9 +107,14 @@ from fractions import Fraction
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT / "src"), str(ROOT / "scripts")]
 
+from dnfw import osport  # noqa: E402
 from dnfw import seqframes as SF  # noqa: E402
 from dnfw.checkout import resources_dir  # noqa: E402
+from dnfw.cli.files import read_image  # noqa: E402
+from dnfw.firmware.load import load  # noqa: E402
+from dnfw.mods import specs  # noqa: E402
 
+import build_direct_jump as dj  # noqa: E402
 import emu_degreetranspose as DT  # noqa: E402
 import emu_seqplay as ES  # noqa: E402
 
@@ -145,6 +158,14 @@ MIDI_BLOCK_CHANNEL, MIDI_BLOCK_FLAGS = 70, 222   # copied at the kit's load (0x4
 LOCK_HEAD_READ = 0x40138992             # a0 holds the allocator's free-list head before its first dereference
 RECORD_ALLOC, RECORD_FOUND = 0x401389DC, 0x401389E6   # the engine-record allocator: its head read, a record found
 POOL_CUES = (1, 0) * 4                  # repeated replacement before the slow tracks' pending notes become due
+# The test's own 1.11 addresses on OS 1.12 (issue #382), not in map_1.12.json because no mod names
+# them, read with the survey's code map (`dnfw.osport.codemap`). The watches (+0x2e0, +0x164) and the
+# allocator places (+0x2e0): 32 bytes of 1.11 occur once in 1.12, there, with their moved address
+# words masked (each moved as the code map's votes say). The first pattern and kit: operand votes,
+# 9/9 and 11/11, BSS +0x1000.
+ON_1_12 = {"FAULT_REPORTER": 0x4011ED4A, "UPLOAD_REFUSAL": 0x400CF7DC, "LOCK_HEAD_READ": 0x40138C72,
+           "RECORD_ALLOC": 0x40138CBC, "RECORD_FOUND": 0x40138CC6, "PATTERN_RAM": 0x4121998C,
+           "KIT_RAM": 0x4210D08C}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -842,16 +863,32 @@ def check_pool(images: dict[str, pathlib.Path], frames: pathlib.Path) -> bool:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("build", type=pathlib.Path)
-    ap.add_argument("--stock", type=pathlib.Path, default=STOCK)
+    ap.add_argument("--stock", type=pathlib.Path, help="stock of the build's OS (default: the user's own)")
     ap.add_argument("--case", action="append", choices=list(CASES) + ["toggle", "leds", "pool"])
     ap.add_argument("--frames", type=pathlib.Path, default=ROOT / "out/emu-directjump")
     a = ap.parse_args()
+    os_version = specs.of_firmware(load(read_image(a.build)))
+    a.stock = a.stock or (STOCK if os_version == "1.11" else resources_dir() / dj.STOCKS[os_version])
+    this = sys.modules[__name__]
+    moved = {}
+    if os_version == "1.12":
+        moved = {**ON_1_12, "FLAG": dj.overrides(os_version)["FLAG"],
+                 "FAULT_WATCH": f"{ON_1_12['FAULT_REPORTER']:#x},{ON_1_12['UPLOAD_REFUSAL']:#x}"}
+        ES.use(os_version)
+        DT.MIDI_MASK_COPIES = (DT.MIDI_MASK_COPIES[0], DT.ON_1_12["MIDI_MASK_COPY"])
+        DT.MIDI_FLAGS, DT.MIDI_CHANNEL, DT.MIDI_SEND = (DT.ON_1_12["MIDI_FLAGS"], DT.ON_1_12["MIDI_CHANNEL"],
+                                                        DT.ON_1_12["MIDI_SEND"])
+    elif os_version != "1.11":
+        raise SystemExit(f"no test addresses for OS {os_version}")
     images = {"stock": a.stock, "build": a.build}
     failures = 0
     checks = {"toggle": check_toggle, "leds": check_leds, "pool": check_pool}
-    for name in a.case or list(CASES) + list(checks):
-        ok = checks[name](images, a.frames) if name in checks else check(name, CASES[name], images, a.frames)
-        failures += not ok
+    with osport.retarget(os_version, [this], {this: moved}):
+        print(f"OS {os_version}: stock {a.stock.name}, switch {FLAG:#010x}, exchange {ES.EXCHANGE}, "
+              f"watch {FAULT_WATCH}")
+        for name in a.case or list(CASES) + list(checks):
+            ok = checks[name](images, a.frames) if name in checks else check(name, CASES[name], images, a.frames)
+            failures += not ok
     print(f"\n{failures} failing case(s)")
     return 1 if failures else 0
 

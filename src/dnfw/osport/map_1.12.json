@@ -20,6 +20,7 @@
     "build_cave_boot_proof:build",
     "build_cave_proof:build",
     "build_diff:build",
+    "build_direct_jump:build",
     "build_flash_control:build",
     "build_fxblock16:build",
     "build_fxbrowser:build",
@@ -63,6 +64,7 @@
     "build_waverider_route:build",
     "bus:literal",
     "degreetranspose:literal",
+    "directjump:literal",
     "fxmod:literal",
     "layermidi:literal",
     "lfo4:literal",
@@ -173,7 +175,6 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_lfo_waveshapes:build",
     "lfo_wave_ui:build"
    ]
   },
@@ -1354,6 +1355,7 @@
    "check": "bytes match",
    "users": [
     "build_degreetranspose:build",
+    "build_direct_jump:build",
     "build_layer_midi:build",
     "layermidi:edit",
     "matrix:literal"
@@ -2061,6 +2063,32 @@
    "users": [
     "build_waverider_route:build",
     "waverider:guard"
+   ]
+  },
+  "0x4002c318": {
+   "new": "0x4002c318",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x4002c33e": {
+   "new": "0x4002c33e",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x4002c342": {
+   "new": "0x4002c342",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
    ]
   },
   "0x4002c47a": {
@@ -3871,6 +3899,15 @@
     "build_arp_plocks:build"
    ]
   },
+  "0x4005628c": {
+   "new": "0x4005628c",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
   "0x4005693c": {
    "new": "0x4005693c",
    "how": "exact",
@@ -5072,6 +5109,7 @@
     "build_arpscale:build",
     "build_personalize_toggle:build",
     "build_reload_confirm:build",
+    "directjump:guard",
     "reloadconfirm:guard"
    ]
   },
@@ -5416,6 +5454,23 @@
     "waverider:edit"
    ]
   },
+  "0x400d7674": {
+   "new": "0x400d77d8",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
+  "0x400d7694": {
+   "new": "0x400d77f8",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
   "0x400d85e8": {
    "new": "0x400d874c",
    "how": "exact",
@@ -5464,6 +5519,14 @@
     "degreetranspose:guard"
    ]
   },
+  "0x400d8752": {
+   "new": "0x400d88b6",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
   "0x400d89b0": {
    "new": "0x400d8b14",
    "how": "exact",
@@ -5471,6 +5534,15 @@
    "users": [
     "arpplocks:edit",
     "build_arp_plocks:build"
+   ]
+  },
+  "0x400d89fe": {
+   "new": "0x400d8b62",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
    ]
   },
   "0x400d8a2a": {
@@ -5491,6 +5563,15 @@
     "build_scale_degrees:build"
    ]
   },
+  "0x400d8aa8": {
+   "new": "0x400d8c0c",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
   "0x400d8b5a": {
    "new": "0x400d8cbe",
    "how": "exact",
@@ -5498,6 +5579,24 @@
    "users": [
     "build_arp_midi_play:build",
     "build_degreetranspose:build"
+   ]
+  },
+  "0x400d8eea": {
+   "new": "0x400d904e",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400d8f02": {
+   "new": "0x400d9066",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
    ]
   },
   "0x400d905e": {
@@ -5555,6 +5654,32 @@
     "midiarp:guard"
    ]
   },
+  "0x400d93f0": {
+   "new": "0x400d9554",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build",
+    "directjump:operand"
+   ]
+  },
+  "0x400d9922": {
+   "new": "0x400d9a86",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400d9926": {
+   "new": "0x400d9a8a",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
   "0x400d99a4": {
    "new": "0x400d9b08",
    "how": "exact",
@@ -5573,12 +5698,51 @@
     "degreetranspose:guard"
    ]
   },
+  "0x400d9e10": {
+   "new": "0x400d9f74",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:edit",
+    "matrix:literal"
+   ]
+  },
+  "0x400d9e16": {
+   "new": "0x400d9f7a",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400d9e24": {
+   "new": "0x400d9f88",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400d9e88": {
+   "new": "0x400d9fec",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
   "0x400d9edc": {
    "new": "0x400da040",
    "how": "exact",
    "check": "bytes match",
    "users": [
     "build_arp_midi_play:build",
+    "build_direct_jump:build",
+    "matrix:literal",
     "midiarp:edit"
    ]
   },
@@ -5600,6 +5764,14 @@
     "midiarp:guard"
    ]
   },
+  "0x400d9ee4": {
+   "new": "0x400da048",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
   "0x400d9f50": {
    "new": "0x400da0b4",
    "how": "exact",
@@ -5607,6 +5779,290 @@
    "users": [
     "build_arp_midi_play:build",
     "midiarp:guard"
+   ]
+  },
+  "0x400d9ffa": {
+   "new": "0x400da15e",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da156": {
+   "new": "0x400da2ba",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da174": {
+   "new": "0x400da2d8",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da26a": {
+   "new": "0x400da3ce",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da2c2": {
+   "new": "0x400da426",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da406": {
+   "new": "0x400da56a",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:edit"
+   ]
+  },
+  "0x400da40c": {
+   "new": "0x400da570",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da416": {
+   "new": "0x400da57a",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da41c": {
+   "new": "0x400da580",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
+  "0x400da45a": {
+   "new": "0x400da5be",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:edit"
+   ]
+  },
+  "0x400da460": {
+   "new": "0x400da5c4",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da4d2": {
+   "new": "0x400da636",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da4f0": {
+   "new": "0x400da654",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da520": {
+   "new": "0x400da684",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da52a": {
+   "new": "0x400da68e",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da544": {
+   "new": "0x400da6a8",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da55e": {
+   "new": "0x400da6c2",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da57e": {
+   "new": "0x400da6e2",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
+  "0x400da584": {
+   "new": "0x400da6e8",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da58a": {
+   "new": "0x400da6ee",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da58e": {
+   "new": "0x400da6f2",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
+  "0x400da6aa": {
+   "new": "0x400da80e",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da6e6": {
+   "new": "0x400da84a",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:edit"
+   ]
+  },
+  "0x400da6ec": {
+   "new": "0x400da850",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da6f8": {
+   "new": "0x400da85c",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da7a6": {
+   "new": "0x400da90a",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:edit"
+   ]
+  },
+  "0x400da7ac": {
+   "new": "0x400da910",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da7c2": {
+   "new": "0x400da926",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:edit"
+   ]
+  },
+  "0x400da7c8": {
+   "new": "0x400da92c",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da804": {
+   "new": "0x400da968",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400da8c8": {
+   "new": "0x400daa2c",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
+  "0x400da902": {
+   "new": "0x400daa66",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
    ]
   },
   "0x400db092": {
@@ -6486,6 +6942,14 @@
     "build_scale_degrees:build"
    ]
   },
+  "0x400dda4a": {
+   "new": "0x400ddbae",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
   "0x400ddaa2": {
    "new": "0x400ddc06",
    "how": "exact",
@@ -6540,6 +7004,14 @@
    "check": null,
    "users": [
     "build_scale_degrees:build"
+   ]
+  },
+  "0x400de06e": {
+   "new": "0x400de1d2",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
    ]
   },
   "0x400de0b0": {
@@ -6900,6 +7372,184 @@
    "check": null,
    "users": [
     "build_arp_on_midi2:build"
+   ]
+  },
+  "0x400fa11e": {
+   "new": "0x400fa2ea",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
+  "0x400fa1da": {
+   "new": "0x400fa3a6",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400fa1e0": {
+   "new": "0x400fa3ac",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:edit"
+   ]
+  },
+  "0x400fa1e6": {
+   "new": "0x400fa3b2",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400fa246": {
+   "new": "0x400fa412",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400fa25a": {
+   "new": "0x400fa426",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400fa264": {
+   "new": "0x400fa430",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400fa408": {
+   "new": "0x400fa5d4",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
+  "0x400fa414": {
+   "new": "0x400fa5e0",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400fa420": {
+   "new": "0x400fa5ec",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400fa5d4": {
+   "new": "0x400fa7a0",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400fa5ec": {
+   "new": "0x400fa7b8",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400fa6b4": {
+   "new": "0x400fa880",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400fa6be": {
+   "new": "0x400fa88a",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build",
+    "directjump:operand"
+   ]
+  },
+  "0x400fa6d0": {
+   "new": "0x400fa89c",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400fa6dc": {
+   "new": "0x400fa8a8",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400fa6f4": {
+   "new": "0x400fa8c0",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400fa6fa": {
+   "new": "0x400fa8c6",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400fabb0": {
+   "new": "0x400fad7c",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x400fae02": {
+   "new": "0x400fafce",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
    ]
   },
   "0x40105a6c": {
@@ -7349,8 +7999,10 @@
    "users": [
     "build_arp_on_midi2:build",
     "build_degreetranspose:build",
+    "build_direct_jump:build",
     "build_reload_confirm:build",
     "degreetranspose:guard",
+    "directjump:operand",
     "reloadconfirm:operand"
    ]
   },
@@ -7393,6 +8045,7 @@
     "arpplocks:guard",
     "build_arp_on_midi2:build",
     "build_arp_plocks:build",
+    "build_direct_jump:build",
     "build_reload_confirm:build"
    ]
   },
@@ -7431,7 +8084,8 @@
     "build_arp_plocks:build",
     "build_degreetranspose:build",
     "build_personalize_toggle:build",
-    "degreetranspose:operand"
+    "degreetranspose:operand",
+    "directjump:operand"
    ]
   },
   "0x4011d2f4": {
@@ -7698,6 +8352,15 @@
     "midiarp:guard"
    ]
   },
+  "0x4012a3d2": {
+   "new": "0x4012a6b2",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
   "0x4012a408": {
    "new": "0x4012a6e8",
    "how": "exact",
@@ -7881,6 +8544,31 @@
     "build_layer_midi:build"
    ]
   },
+  "0x4012b478": {
+   "new": "0x4012b758",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
+  "0x4012b486": {
+   "new": "0x4012b766",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x4012b49e": {
+   "new": "0x4012b77e",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
   "0x4012b8b0": {
    "new": "0x4012bb90",
    "how": "exact",
@@ -7899,6 +8587,14 @@
    "users": [
     "build_driveread_probe:build",
     "build_waverider_route:build"
+   ]
+  },
+  "0x40132148": {
+   "new": "0x40132428",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
    ]
   },
   "0x40133ebc": {
@@ -7929,6 +8625,15 @@
     "build_lfo4_ext:build",
     "dn2_111.h:header",
     "lfo4:edit"
+   ]
+  },
+  "0x40136980": {
+   "new": "0x40136c60",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
    ]
   },
   "0x401372f4": {
@@ -9242,6 +9947,41 @@
     "build_layer_midi:build"
    ]
   },
+  "0x40138a0c": {
+   "new": "0x40138cec",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x40138a84": {
+   "new": "0x40138d64",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x40138afc": {
+   "new": "0x40138ddc",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
+  "0x40138b0a": {
+   "new": "0x40138dea",
+   "how": "exact",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
   "0x4014be0e": {
    "new": "0x4014c0ee",
    "how": "exact",
@@ -9330,6 +10070,15 @@
    "check": null,
    "users": [
     "build_reload_confirm:build"
+   ]
+  },
+  "0x4018aabc": {
+   "new": "0x4018ad9c",
+   "how": "exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
    ]
   },
   "0x4018c8dc": {
@@ -9495,6 +10244,38 @@
     "reloadconfirm:guard"
    ]
   },
+  "0x401b684e": {
+   "new": "0x401b6b2e",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "directjump:operand"
+   ]
+  },
+  "0x401b68c2": {
+   "new": "0x401b6ba2",
+   "how": "bracketed",
+   "check": null,
+   "users": [
+    "directjump:operand"
+   ]
+  },
+  "0x401b6906": {
+   "new": "0x401b6be6",
+   "how": "bracketed",
+   "check": null,
+   "users": [
+    "directjump:operand"
+   ]
+  },
+  "0x401b6922": {
+   "new": "0x401b6c02",
+   "how": "bracketed",
+   "check": null,
+   "users": [
+    "directjump:operand"
+   ]
+  },
   "0x401b99ba": {
    "new": "0x401b9dd4",
    "how": "exact",
@@ -9514,17 +10295,21 @@
   "0x401ccbee": {
    "new": "0x401cd008",
    "how": "exact",
-   "check": null,
+   "check": "bytes match",
    "users": [
-    "build_reload_confirm:build"
+    "build_direct_jump:build",
+    "build_reload_confirm:build",
+    "directjump:guard"
    ]
   },
   "0x401ce69e": {
    "new": "0x401ceab8",
    "how": "exact",
-   "check": null,
+   "check": "bytes match",
    "users": [
-    "build_personalize_toggle:build"
+    "build_direct_jump:build",
+    "build_personalize_toggle:build",
+    "directjump:guard"
    ]
   },
   "0x401ce6d6": {
@@ -9779,6 +10564,23 @@
    "check": "bytes match",
    "users": [
     "waverider:edit"
+   ]
+  },
+  "0x401f3824": {
+   "new": "0x401f3c34",
+   "how": "data exact",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
+  "0x401f6b08": {
+   "new": "0x401f6f18",
+   "how": "data exact",
+   "check": "bytes match",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
    ]
   },
   "0x401f76f4": {
@@ -10119,6 +10921,50 @@
     "lfo_wave_ui:build"
    ]
   },
+  "0x40200880": {
+   "new": "0x40200c90",
+   "how": "data bracketed",
+   "check": null,
+   "users": [
+    "directjump:operand"
+   ]
+  },
+  "0x402008c4": {
+   "new": "0x40200cd4",
+   "how": "data bracketed",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x402008cc": {
+   "new": "0x40200cdc",
+   "how": "data bracketed",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:edit"
+   ]
+  },
+  "0x4020096c": {
+   "new": "0x40200d7c",
+   "how": "data bracketed",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:guard"
+   ]
+  },
+  "0x4020097c": {
+   "new": "0x40200d8c",
+   "how": "data bracketed",
+   "check": "relocated",
+   "users": [
+    "build_direct_jump:build",
+    "directjump:edit"
+   ]
+  },
   "0x4020544c": {
    "new": "0x40205904",
    "how": "data bracketed",
@@ -10348,6 +11194,14 @@
    "users": [
     "lfo_wave_ui:build",
     "waverider:operand"
+   ]
+  },
+  "0x4021ec0d": {
+   "new": "0x4021f0c5",
+   "how": "data exact",
+   "check": null,
+   "users": [
+    "directjump:operand"
    ]
   },
   "0x4021f244": {
@@ -11388,6 +12242,8 @@
    "how": "votes 17/17",
    "check": null,
    "users": [
+    "build_arpscale:build",
+    "build_direct_jump:build",
     "build_reload_confirm:build",
     "dn2_111.h:header"
    ]
@@ -11405,6 +12261,7 @@
    "how": "votes 2/2",
    "check": null,
    "users": [
+    "build_direct_jump:build",
     "reloadconfirm:operand"
    ]
   },
@@ -11413,6 +12270,7 @@
    "how": "votes 3/3",
    "check": null,
    "users": [
+    "build_direct_jump:build",
     "build_reload_confirm:build"
    ]
   },
@@ -11521,6 +12379,76 @@
     "build_intro_stamp:build"
    ]
   },
+  "0x42c4e900": {
+   "new": "0x42c4f900",
+   "how": "votes 26/26",
+   "check": null,
+   "users": [
+    "build_direct_jump:build",
+    "directjump:operand"
+   ]
+  },
+  "0x42c4e908": {
+   "new": "0x42c4f908",
+   "how": "votes 14/14",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
+  "0x42c5a918": {
+   "new": "0x42c5b918",
+   "how": "votes 19/19",
+   "check": null,
+   "users": [
+    "build_direct_jump:build",
+    "directjump:operand"
+   ]
+  },
+  "0x42c5a91c": {
+   "new": "0x42c5b91c",
+   "how": "votes 18/18",
+   "check": null,
+   "users": [
+    "build_direct_jump:build",
+    "directjump:operand"
+   ]
+  },
+  "0x42c5a91e": {
+   "new": "0x42c5b91e",
+   "how": "votes 17/17",
+   "check": null,
+   "users": [
+    "build_direct_jump:build",
+    "directjump:operand"
+   ]
+  },
+  "0x42c5a964": {
+   "new": "0x42c5b964",
+   "how": "votes 17/17",
+   "check": null,
+   "users": [
+    "build_direct_jump:build",
+    "directjump:operand"
+   ]
+  },
+  "0x42c5a974": {
+   "new": "0x42c5b974",
+   "how": "votes 7/7",
+   "check": null,
+   "users": [
+    "build_direct_jump:build",
+    "directjump:operand"
+   ]
+  },
+  "0x42c5a984": {
+   "new": "0x42c5b984",
+   "how": "votes 7/7",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
   "0x42c5a9a0": {
    "new": "0x42c5b9a0",
    "how": "votes 42/42",
@@ -11528,8 +12456,19 @@
    "users": [
     "arpscale:operand",
     "build_degreetranspose:build",
+    "build_direct_jump:build",
     "build_scale_degrees:build",
-    "degreetranspose:operand"
+    "degreetranspose:operand",
+    "directjump:operand"
+   ]
+  },
+  "0x42c5a9a4": {
+   "new": "0x42c5b9a4",
+   "how": "votes 6/6",
+   "check": null,
+   "users": [
+    "build_direct_jump:build",
+    "directjump:operand"
    ]
   },
   "0x42c5a9a8": {
@@ -11538,6 +12477,132 @@
    "check": null,
    "users": [
     "build_scale_degrees:build"
+   ]
+  },
+  "0x42c5a9bc": {
+   "new": "0x42c5b9bc",
+   "how": "votes 7/7",
+   "check": null,
+   "users": [
+    "build_direct_jump:build",
+    "directjump:operand"
+   ]
+  },
+  "0x42c5a9c4": {
+   "new": "0x42c5b9c4",
+   "how": "votes 5/5",
+   "check": null,
+   "users": [
+    "build_direct_jump:build",
+    "directjump:operand"
+   ]
+  },
+  "0x42c5a9c8": {
+   "new": "0x42c5b9c8",
+   "how": "votes 5/5",
+   "check": null,
+   "users": [
+    "directjump:operand"
+   ]
+  },
+  "0x42c5a9d8": {
+   "new": "0x42c5b9d8",
+   "how": "votes 14/14",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
+  "0x42c5a9d9": {
+   "new": "0x42c5b9d9",
+   "how": "votes 7/7",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
+  "0x42c5a9e9": {
+   "new": "0x42c5b9e9",
+   "how": "votes 8/8",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
+  "0x42c5a9ea": {
+   "new": "0x42c5b9ea",
+   "how": "votes 1/1",
+   "check": null,
+   "users": [
+    "directjump:operand"
+   ]
+  },
+  "0x42c5aa2a": {
+   "new": "0x42c5ba2a",
+   "how": "votes 5/5",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
+  "0x42c5aa2c": {
+   "new": "0x42c5ba2c",
+   "how": "votes 4/4",
+   "check": null,
+   "users": [
+    "build_direct_jump:build",
+    "directjump:operand"
+   ]
+  },
+  "0x42c5aa3c": {
+   "new": "0x42c5ba3c",
+   "how": "votes 6/6",
+   "check": null,
+   "users": [
+    "build_direct_jump:build",
+    "directjump:operand"
+   ]
+  },
+  "0x42c5aa4c": {
+   "new": "0x42c5ba4c",
+   "how": "votes 10/10",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
+   ]
+  },
+  "0x42c5aaac": {
+   "new": "0x42c5baac",
+   "how": "votes 6/6",
+   "check": null,
+   "users": [
+    "build_direct_jump:build",
+    "directjump:operand"
+   ]
+  },
+  "0x42c5aab4": {
+   "new": "0x42c5bab4",
+   "how": "votes 8/8",
+   "check": null,
+   "users": [
+    "build_direct_jump:build",
+    "directjump:operand"
+   ]
+  },
+  "0x42c5aac0": {
+   "new": "0x42c5bac0",
+   "how": "votes 23/23",
+   "check": null,
+   "users": [
+    "directjump:operand"
+   ]
+  },
+  "0x42c5aac8": {
+   "new": "0x42c5bac8",
+   "how": "votes 4/4",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
    ]
   },
   "0x42c647ac": {
@@ -11672,6 +12737,14 @@
     "degreetranspose:operand"
    ]
   },
+  "0x4463ec78": {
+   "new": "0x4463fc78",
+   "how": "votes 3/3",
+   "check": null,
+   "users": [
+    "directjump:operand"
+   ]
+  },
   "0x4463ed18": {
    "new": "0x4463fd18",
    "how": "votes 2/2",
@@ -11707,6 +12780,23 @@
     "build_lfo4_tick:build",
     "build_lfo_length:build",
     "lfolength:literal"
+   ]
+  },
+  "0x44644228": {
+   "new": "0x44645228",
+   "how": "votes 11/11",
+   "check": null,
+   "users": [
+    "build_direct_jump:build",
+    "directjump:operand"
+   ]
+  },
+  "0x44644230": {
+   "new": "0x44645230",
+   "how": "votes 5/5",
+   "check": null,
+   "users": [
+    "directjump:operand"
    ]
   },
   "0x44644d84": {
@@ -11758,6 +12848,14 @@
    "check": null,
    "users": [
     "build_layer_midi:build"
+   ]
+  },
+  "0x466b7420": {
+   "new": "0x466b8420",
+   "how": "votes 3/3",
+   "check": null,
+   "users": [
+    "build_direct_jump:build"
    ]
   },
   "0x466b74d0": {

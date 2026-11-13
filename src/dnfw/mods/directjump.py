@@ -31,6 +31,10 @@ so the browser applies exactly these bytes:
 
 The switch is one byte of RAM in the settings block (`0x405cd8c1`), which the firmware already
 saves to the +Drive and restores; the mod writes it only through the stock settings writer.
+
+On OS 1.12 (issue #382) the same routines apply from `directjump_code_1.12.json`: the sites and
+the stock addresses in the code come from `dnfw.osport`, and the switch moves with the settings
+block to `0x405ce8c1`. The chunk stays at `0x46790000`.
 """
 
 from __future__ import annotations
@@ -38,7 +42,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from . import RAM, Extent, ModError, Result, platform
+from . import RAM, Extent, ModError, Result, platform, specs
 
 ID = "directjump"
 NAME = "Direct jump"
@@ -50,17 +54,20 @@ BASE = 0x40000400
 SPEC = json.loads((pathlib.Path(__file__).with_name("directjump_code.json")).read_text())
 CODE_VA = SPEC["code"]["va"]
 BLOB = bytes.fromhex(SPEC["code"]["blob"])
-FLAG = 0x405CD8C1                  # the switch, in the settings block's unaddressed tail
+SPECS = specs.load(__file__, "directjump")         # one per OS version (issue #382); SPEC is 1.11's
+FLAG = 0x405CD8C1                  # the switch, in the settings block's unaddressed tail (1.11)
 # Bytes in the chunk that only look like RAM above BSS (`dnfw.mods.ramcheck`), in reclaim:
 # 0x467903e8 is `move.w #0x2700,%sr` (46 fc 27 00), and 0x467904a0 is `move.w %d7,%sr ;
 # movem.l` (46 c7 4c d7). The places shift with the code, so a change to the chunk needs
-# this checked again.
+# this checked again. The 1.12 chunk has the same layout, so the same places.
 NOT_RAM = (0x467903E8, 0x467904A0)
 
 
-def extents(firmware=None) -> list[Extent]:
-    return ([Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in SPEC["edits"]]
-            + platform.extents(16 + len(BLOB)))
+def extents(firmware=None, os: str | None = None) -> list[Extent]:
+    os = os or specs.of_firmware(firmware)
+    spec = specs.pick(SPECS, os, ID)
+    return ([Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in spec["edits"]]
+            + platform.extents(16 + len(spec["code"]["blob"]) // 2, os))
 
 
 def apply(firmware) -> Result:
@@ -68,37 +75,28 @@ def apply(firmware) -> Result:
     if section is None:
         raise ModError("image has no MAIN OS section")
     original, others = platform.split(section.unpack())
-    if len(original) < SPEC["stock_length"]:
+    if len(original) < SPEC["stock_length"]:      # shorter than the shortest stock
         raise ModError(f"MAIN OS is {len(original):,} B, shorter than "
                        f"{SPEC['stock_length']:,}: not Digitone II 1.11")
-    for g in SPEC["guards"]:
-        want = bytes.fromhex(g["bytes"])
-        if original[g["va"] - BASE:g["va"] - BASE + len(want)] != want:
-            raise ModError(f"0x{g['va']:08x} is not stock; this mod is for unmodified "
-                           "Digitone II 1.11")
-    for e in SPEC["edits"]:
-        want = bytes.fromhex(e["stock"])
-        if original[e["va"] - BASE:e["va"] - BASE + len(want)] != want:
-            raise ModError(f"0x{e['va']:08x} is not stock; this mod is for unmodified "
-                           "Digitone II 1.11, or another mod already wrote there")
-
-    content = bytearray(original)
-    for e in SPEC["edits"]:
-        new = bytes.fromhex(e["new"])
-        content[e["va"] - BASE:e["va"] - BASE + len(new)] = new
-    chunk = platform.area.CodeChunk(CODE_VA, BLOB).pack()
+    os = specs.of_main_os(original)
+    spec = specs.pick(SPECS, os, ID)
+    content = specs.apply_edits(original, spec, os)
+    code_va, blob = spec["code"]["va"], bytes.fromhex(spec["code"]["blob"])
+    chunk = platform.area.CodeChunk(code_va, blob).pack()
     content = platform.join(bytes(content), others + [(platform.area.CODE, chunk)])
 
-    return Result(payloads={SECTION: bytes(content)}, extents=extents(),
+    return Result(payloads={SECTION: bytes(content)}, extents=extents(os=os),
                   notes=["the PTN view: [UP] turns DIRECT JUMP on, [DOWN] off (off by default)",
                          "on: a pattern cued with [PTN] + [TRIG] starts at the next step, from "
                          "where the playing pattern was",
-                         f"{len(SPEC['edits'])} edits in section 3, and a {len(BLOB):,} B CODE "
-                         f"chunk at 0x{CODE_VA:08x} in the platform's area"])
+                         f"{len(spec['edits'])} edits in section 3, and a {len(blob):,} B CODE "
+                         f"chunk at 0x{code_va:08x} in the platform's area"])
 
 
-def ram() -> list[Extent]:
+def ram(os: str = "1.11") -> list[Extent]:
     """The RAM the code uses: its own chunk (with its three state bytes), and the switch's
     byte in the settings block."""
-    return [Extent(RAM, CODE_VA, len(BLOB), "the mod's code and its state (a platform CODE chunk)"),
-            Extent(RAM, FLAG, 1, "the DIRECT JUMP switch, in the settings block's tail")]
+    spec = specs.pick(SPECS, os, ID)
+    return [Extent(RAM, spec["code"]["va"], len(spec["code"]["blob"]) // 2,
+                   "the mod's code and its state (a platform CODE chunk)"),
+            Extent(RAM, spec.get("flag", FLAG), 1, "the DIRECT JUMP switch, in the settings block's tail")]

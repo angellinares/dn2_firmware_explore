@@ -84,8 +84,7 @@ def _spec(os: str = "1.11") -> dict:
 
 # The entry hooks whose stubs replay the displaced instructions unchanged, then jump
 # back (scripts/build_lfo4_ext.py, SITES): memcpy, memset, the sound LOAD and SAVE.
-HOOKS = ((0x40134490, 8), (0x401344D8, 8), (0x400DD282, 6), (0x400DD724, 8),
-         (0x400CF7BE, 8))   # fix4: the frame send's guard (csrc/lfo4/bridge.c), a test build
+HOOKS = ((0x40134490, 8), (0x401344D8, 8), (0x400DD282, 6), (0x400DD724, 8))
 
 
 def hooks(os: str = "1.11") -> tuple[tuple[int, int], ...]:

@@ -80,15 +80,15 @@ def test_it_would_have_caught_lfo4s_state_in_the_bounce_buffer():
     from dnfw.mods import RAM, Extent, platform
     old = [Extent(RAM, 0x46700000, 2560, "LFO state LIVE"), Extent(RAM, 0x46702000, 2560, "LFO state BACKUP")]
     stock = bytes(64)
-    assert len(ramcheck.in_stock_dma(stock, stock, old)) == 1                      # LIVE; BACKUP is above it
+    assert len(ramcheck.in_stock_dma(stock, stock, old, dma=ramcheck.STOCK_DMA)) == 1    # LIVE; BACKUP is above it
     for value, window in ((0x46700000, ""), (0x4E6F1300, " (the uncached window)")):
         content = bytearray(stock)
         content[8:12] = struct.pack(">I", value)
-        assert ramcheck.in_stock_dma(stock, bytes(content), []) == [
+        assert ramcheck.in_stock_dma(stock, bytes(content), [], dma=ramcheck.STOCK_DMA) == [
             f"{platform.BASE + 8:#010x} names {value:#010x}{window}"]
     content = bytearray(stock)
     content[8:12] = struct.pack(">I", 0x46702000)                                  # above the section: not its business
-    assert ramcheck.in_stock_dma(stock, bytes(content), []) == []
+    assert ramcheck.in_stock_dma(stock, bytes(content), [], dma=ramcheck.STOCK_DMA) == []
 
 
 def test_lfo4s_state_is_in_the_heaps_first_block():

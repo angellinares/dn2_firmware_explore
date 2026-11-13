@@ -38,14 +38,15 @@ from __future__ import annotations
 import struct
 
 from . import RAM, platform
+from ..osport import versions
 from ..patch import area
 
 LO, HI = 0x466B74D0, 0x47000000
 SLACK = 64
-STOCK_DMA = (0x466B8000, 0x46701340)     # stock's uncached DMA section, as cached addresses
-# 1.11 only. On 1.12 the DMA buffers run to 0x46709340 (docs/os-versions.md, "Before the 1.12
-# port"), over bootscreen's 0x46708000 and next to Waverider's 0x4670a000: measure 1.12's range
-# and make this per OS before any mod builds for 1.12.
+STOCK_DMA = (0x466B8000, 0x46701340)     # stock's uncached DMA section on 1.11, as cached addresses
+# Per OS, `in_stock_dma` takes the range from the stock image (osport.versions: 1.12's is
+# 0x466c0000..0x46709340). On 1.12 stock touched no RAM page from 0x46700000 up in
+# scripts/emu_high_ram_touch.py --os 1.12 (2026-11-13), as on 1.11.
 WINDOW = 0x08000000                      # the uncached window: the same RAM at address + WINDOW
 # sp0 (`moveal #0x48000000,%sp` at 0x400004f2) and the 128 KiB below it that digikit's port
 # files keep for the stack, whose depth is unmeasured
@@ -59,13 +60,14 @@ def in_stack_reserve(ram) -> list[str]:
             if x.section == RAM and x.end > lo]
 
 
-def in_stock_dma(stock: bytes, content: bytes, ram, reads=()) -> list[str]:
+def in_stock_dma(stock: bytes, content: bytes, ram, reads=(), dma: tuple[int, int] | None = None) -> list[str]:
     """What a mod places or names inside stock's DMA section, under either address.
 
     RAM: the mod's declared ranges. CONTENT against STOCK: every address the mod's
     own bytes name (`named`, and the same scan one window up). READS: the places
-    (`where`) a mod has shown to name stock's own buffer in order to read it."""
-    lo, hi = STOCK_DMA
+    (`where`) a mod has shown to name stock's own buffer in order to read it. DMA: the section's
+    range, by default the one of STOCK's OS version."""
+    lo, hi = dma or versions.identify(stock).dma
     skip = set(reads)
     bad = [f"declares {x.what} at {x.start:#010x}..{x.end:#010x}" for x in ram
            if x.section == RAM and x.start < hi and lo < x.end]

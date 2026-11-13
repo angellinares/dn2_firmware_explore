@@ -114,6 +114,11 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     ) + PUBLISHED,
     "layermidi": PUBLISHED,
     "lfo4": (
+        Release("1.0.7", "2026-11-14", (
+            "On a busy pattern at a fast tempo, a short sound on one track could stop sounding while other "
+            "tracks played. 1.0.5 added a check that held back a late update to the sound engine, and that "
+            "check caused it. 1.0.7 removes the check.",
+        )),
         Release("1.0.6", "2026-11-09", (
             "A sound with LFO4 settings that are out of range now loads without an LFO4. Before, "
             "LFO4 used such settings as they were. A sound saved by another firmware, or a damaged "

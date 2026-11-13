@@ -57,10 +57,12 @@
 
 <section class="changes">
   <h2>Version and changes</h2>
-  <p>This mod is at <strong><!-- dnfw:version lfo4 -->v1.0.6<!-- /dnfw:version --></strong>.
+  <p>This mod is at <strong><!-- dnfw:version lfo4 -->v1.0.7<!-- /dnfw:version --></strong>.
   What changed in each version, newest first.</p>
 <!-- dnfw:changes lfo4 -->
 <dl class="changes">
+  <dt><span class="version">v1.0.7</span> <time datetime="2026-11-14">2026-11-14</time></dt>
+  <dd><ul><li>On a busy pattern at a fast tempo, a short sound on one track could stop sounding while other tracks played. 1.0.5 added a check that held back a late update to the sound engine, and that check caused it. 1.0.7 removes the check.</li></ul></dd>
   <dt><span class="version">v1.0.6</span> <time datetime="2026-11-09">2026-11-09</time></dt>
   <dd><ul><li>A sound with LFO4 settings that are out of range now loads without an LFO4. Before, LFO4 used such settings as they were. A sound saved by another firmware, or a damaged project, can hold such settings.</li><li>When you open the LFO4 page and a track has such a sound, a box names the track: &quot;T3: LFO4 AREA HOLDS DATA LFO4 DIDN&#x27;T WRITE :)&quot;. Press YES or NO to close it. The box shows until you save the project and load it again.</li></ul></dd>
   <dt><span class="version">v1.0.5</span> <time datetime="2026-11-08">2026-11-08</time></dt>

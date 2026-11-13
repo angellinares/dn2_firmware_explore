@@ -8,7 +8,7 @@ export const VERSIONS = {
   directjump: "0.1.0",
   fxmod: "1.0.2",
   layermidi: "1.0.0",
-  lfo4: "1.0.6",
+  lfo4: "1.0.7",
   lfolength: "1.0.1",
   lfowaves: "1.0.1",
   midiarp: "1.0.0",

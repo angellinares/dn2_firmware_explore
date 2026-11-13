@@ -17,9 +17,6 @@
 /* page.c */
 #define STOCK_PAGE_TABLE    0x42433C00
 
-/* hooks.S: where the send hook returns, after the prologue it replays */
-#define STOCK_SEND_RESUME   0x400CF92A
-
 /* note.S */
 #define STOCK_KEY_RESUME    0x40063B06    /* the page-key case's exit */
 #define STOCK_PAGE_SELECT   0x4005E7E4    /* (this, key index, 0) */

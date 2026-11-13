@@ -61,6 +61,7 @@ import build_lfo4_table as table                           # noqa: E402
 import build_lfo4_ui as ui                                 # noqa: E402
 import build_lfo4_ui2 as ui2                               # noqa: E402
 import build_lfo4_value as value                           # noqa: E402
+from dnfw import osport                                     # noqa: E402
 from dnfw.patch import lfo4records, paramtable              # noqa: E402
 
 BASE = 0x40000400
@@ -71,6 +72,7 @@ SYX = ROOT / "00_Resources/02_Builds/lfo4-browser_DN2_1.11.syx"
 MASK_SITES = (0x40067506, 0x400676E4, 0x400679E6)
 MASK_STOCK = 0x00070000
 MASK_OURS = MASK_STOCK | lfo4records.DEST_FLAGS            # 0x78000
+OS = "1.11"                                              # the stock image's OS: build_lfo4_bridge.main sets it
 
 
 def browser(content, code):
@@ -81,7 +83,7 @@ def browser(content, code):
     # record in the stock table carries the bit being added, so widening the
     # test cannot change the answer for a parameter that already had one.
     clash = [i for i in range(paramtable.COUNT)
-             if struct.unpack_from(">I", content, paramtable.TABLE - BASE
+             if struct.unpack_from(">I", content, osport.addr(OS, paramtable.TABLE) - BASE
                                    + paramtable.RECORD * i + lfo4records.FLAGS)[0]
              & lfo4records.DEST_FLAGS]
     if clash:

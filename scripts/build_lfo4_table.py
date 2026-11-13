@@ -37,6 +37,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import build_lfo4_bridge as bridge                         # noqa: E402
 import build_lfo4_slots as slots                           # noqa: E402
+from dnfw import osport                                    # noqa: E402
 from dnfw.patch import area, lfo4records, paramtable       # noqa: E402
 
 BASE = 0x40000400
@@ -53,13 +54,14 @@ ENTRIES = slots.ENTRIES
 # in it, so it has to come from somewhere -- and the chunk it is used from is
 # the honest place for it.
 PAGE_NAME = b"LFO4\x00"
+OS = "1.11"                       # the stock image's OS: build_lfo4_bridge.main sets it (issue #382)
 
 
 def _records(stock: bytes) -> bytes:
     """The relocated table: 320 stock records, LFO4's ten, then the label."""
     name_va = TABLE_VA + paramtable.RECORD * (paramtable.COUNT + ADDED)
-    blob = paramtable.records(stock, BASE)
-    blob += lfo4records.build(stock, BASE, page_name_va=name_va)
+    blob = paramtable.records(stock, BASE, OS)
+    blob += lfo4records.build(stock, BASE, page_name_va=name_va, os=OS)
     return blob + PAGE_NAME
 
 
@@ -71,12 +73,12 @@ def chunks(stock: bytes):
 def relocate(content, code):
     """Repoint the table and widen the entry space, then say what it did."""
     del code
-    sites = paramtable.relocate(content, BASE, table_va=TABLE_VA, added=ADDED)
+    sites = paramtable.relocate(content, BASE, table_va=TABLE_VA, added=ADDED, os=OS)
     kinds = {}
     for site in sites:
         kinds[site.what.split(",")[0]] = kinds.get(site.what.split(",")[0], 0) + 1
     print("part 5 -- the parameter table")
-    print(f"  60-byte records {paramtable.TABLE:#010x} -> {TABLE_VA:#010x}, "
+    print(f"  60-byte records {osport.addr(OS, paramtable.TABLE):#010x} -> {TABLE_VA:#010x}, "
           f"{paramtable.COUNT} + {ADDED} records")
     print(f"  entry space {paramtable.COUNT + 1} -> {paramtable.COUNT + ADDED + 1}, "
           "except at the two sites it must not be")

@@ -120,6 +120,8 @@ SECOND = POOL + 0x1000
 BACKUP = POOL + 0x2000
 ALLOCATE = 0x4011FFE8
 ALLOCATOR_READY = 0x4029EB9C    # the arena's initialised flag
+ZERO_BACKUP_RESUME = 0x401372FA   # where `zero_backup` returns: past the 6 bytes its hook displaces
+RESERVE_RESUME = 0x40120072       # where `reserve` returns: past the allocator's `moveq #1 ; move.l %d0,READY`
 STATE_LEN = 2560
 STATE_STRIDE = 160          # per track: 4 LFOs x 40
 STOCK_LEN = 1920
@@ -350,7 +352,7 @@ zero_backup:
     move.l  %d2,%sp@-
     clr.l   %d0
     movea.l %d0,%a0
-    jmp     0x401372fa
+    jmp     {ZERO_BACKUP_RESUME:#010x}
 
 | ---- evaluator B: %a4 for the fourth iteration -------------------------
 | Here the body reads %a4@(34..49), again with the decrement at the end, so the
@@ -402,7 +404,7 @@ reserve:
 2:  clr.l   %a0@+
     cmpa.l  %a1,%a0
     bne.s   2b
-    jmp     0x40120072
+    jmp     {RESERVE_RESUME:#010x}
 """
 
 

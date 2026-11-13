@@ -14,7 +14,8 @@
  * `scripts/build_lfo4_ext.py` checks both against the image before patching,
  * and checks that this file assembles back to exactly those bytes.
  */
-#include "dn2_111.h"
+#include "dn2.h"
+#include "stock.h"
 #include "slots.h"
 
     .text
@@ -92,7 +93,7 @@ lfo4_send_stub:
 lfo4_send_displaced:
     lea     -12(%sp),%sp
     movem.l %d2/%a2-%a3,(%sp)
-    jmp     0x400CF7C6
+    jmp     STOCK_SEND_RESUME
 
 /* The other two sites are inside code that never expected a call, so unlike the
  * `memcpy` / `memset` stubs these must preserve what the compiler calls

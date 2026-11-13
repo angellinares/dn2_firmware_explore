@@ -45,10 +45,10 @@ hook at `0x400dd282` moved. In every other byte the image is the gated build.
 
 from __future__ import annotations
 
-import json
 import pathlib
 
-from . import Extent, ModError, Result, bus, platform
+from . import Extent, ModError, Result, bus, platform, specs
+from .. import osport
 from ..patch import lfo4records, paramtable
 
 ID = "lfo4"
@@ -66,7 +66,8 @@ COPIES = [Extent(SECTION, paramtable.TABLE - BASE, paramtable.RECORD * paramtabl
                  "the stock parameter table, copied into the appended area")]
 
 _CODE = pathlib.Path(__file__).with_name("lfo4_code.json")
-SPEC = json.loads(_CODE.read_text()) if _CODE.exists() else None
+SPECS = specs.load(__file__, "lfo4") if _CODE.exists() else {}   # one per OS version (issue #382)
+SPEC = SPECS.get("1.11")
 
 
 # The sleep and wake code (1.0.5), disassembled: `not.l %d0` (4680) then `and.l %d1,%d0` (c081),
@@ -75,10 +76,10 @@ SPEC = json.loads(_CODE.read_text()) if _CODE.exists() else None
 NOT_RAM = (0x46800D2A, 0x46800D8E, 0x46800DBA)
 
 
-def _spec() -> dict:
-    if SPEC is None:
+def _spec(os: str = "1.11") -> dict:
+    if not SPECS:
         raise ModError("lfo4_code.json is missing: run scripts/gen_lfo4_code.py")
-    return SPEC
+    return specs.pick(SPECS, os, ID)
 
 
 # The entry hooks whose stubs replay the displaced instructions unchanged, then jump
@@ -87,12 +88,17 @@ HOOKS = ((0x40134490, 8), (0x401344D8, 8), (0x400DD282, 6), (0x400DD724, 8),
          (0x400CF7BE, 8))   # fix4: the frame send's guard (csrc/lfo4/bridge.c), a test build
 
 
-def _platform_owned(e: dict) -> bool:
+def hooks(os: str = "1.11") -> tuple[tuple[int, int], ...]:
+    """HOOKS (1.11's) on OS"""
+    return tuple((osport.addr(os, site), n) for site, n in HOOKS)
+
+
+def _platform_owned(e: dict, os: str = "1.11") -> bool:
     """An edit the platform makes: the start-up call, the loader in its cave, or a
     bound of the bus's parameter count."""
     lo, hi = e["va"] - BASE, e["va"] - BASE + len(e["new"]) // 2
-    return (any(x.start < hi and lo < x.end for x in platform.loader_extents())
-            or any(x.start <= lo and hi <= x.end for x in bus.extents(platform.SPEC)))
+    return (any(x.start < hi and lo < x.end for x in platform.loader_extents(0, os))
+            or any(x.start <= lo and hi <= x.end for x in bus.extents(platform.SPECS[os])))
 
 
 # Three stock readers of the per-track LFO arrays that LFO4 moves and widens from 120
@@ -114,8 +120,14 @@ STRIDE_EDITS = [
 ]
 
 
-def _edits() -> list[dict]:
-    return [e for e in _spec()["edits"] if not _platform_owned(e)] + STRIDE_EDITS
+def stride_edits(os: str = "1.11") -> list[dict]:
+    """STRIDE_EDITS on OS: the sites move, the instruction words hold no address. `compose` checks
+    each one's stock bytes on the user's image before it writes (issue #382)."""
+    return [{**e, "va": osport.addr(os, e["va"])} for e in STRIDE_EDITS]
+
+
+def _edits(os: str = "1.11") -> list[dict]:
+    return [e for e in _spec(os)["edits"] if not _platform_owned(e, os)] + stride_edits(os)
 
 
 def _chunks(blob: bytes) -> list[tuple[bytes, bytes]]:
@@ -127,12 +139,13 @@ def _chunks(blob: bytes) -> list[tuple[bytes, bytes]]:
 AREA_EXTRA = 12 * (len(HOOKS) + 1) + 12 * len(HOOKS) + 8
 
 
-def extents(firmware=None) -> list[Extent]:
-    spec = _spec()
-    hooks = {site for site, _ in HOOKS}
-    out = [Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, "LFO4 edit", displaced=e["va"] in hooks)
-           for e in _edits()]
-    return out + platform.extents(len(spec["blob"]) // 2 + HEAD + lfo4records.TAIL + AREA_EXTRA)
+def extents(firmware=None, os: str | None = None) -> list[Extent]:
+    os = os or specs.of_firmware(firmware)
+    spec = _spec(os)
+    sites = {site for site, _ in hooks(os)}
+    out = [Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, "LFO4 edit", displaced=e["va"] in sites)
+           for e in _edits(os)]
+    return out + platform.extents(len(spec["blob"]) // 2 + HEAD + lfo4records.TAIL + AREA_EXTRA, os)
 
 
 # The evaluators' three LFO state arrays, moved so each track holds four LFOs
@@ -143,7 +156,11 @@ def extents(firmware=None) -> list[Extent]:
 # carried LFO state (docs/lfo4-state-memory.md). They are not RAM above BSS, so
 # `ram()` does not list them.
 STATE_HEAP = ((0x4464ABF0, 2560, "LFO state LIVE"), (0x4464BBF0, 2560, "LFO state SECOND"),
-              (0x4464CBF0, 2560, "LFO state BACKUP"))
+              (0x4464CBF0, 2560, "LFO state BACKUP"))   # 1.11's; the arena is 0x1000 higher on 1.12
+
+
+def state_heap(os: str = "1.11") -> tuple[tuple[int, int, str], ...]:
+    return tuple((osport.addr(os, va), n, what) for va, n, what in STATE_HEAP)
 
 
 # Entry 0, the record every out-of-range entry falls back to, is read from the 52 bytes
@@ -168,24 +185,25 @@ def ram() -> list[Extent]:
 PAGE_NAME_BYTES = b"LFO4\x00\x00\x00\x00"   # the page name after the table, in the packaged chunk
 
 
-def _table(content: bytes) -> bytes:
+def _table(content: bytes, os: str = "1.11") -> bytes:
     """The relocated table, from this image: its 320 records, LFO4's ten and their tail."""
-    spec = _spec()
+    spec = _spec(os)
     name_va = spec["table_va"] + paramtable.RECORD * spec["table_records"] + lfo4records.TAIL
-    return (paramtable.records(content, BASE)
-            + lfo4records.build(content, BASE, page_name_va=name_va))
+    return (paramtable.records(content, BASE, os)
+            + lfo4records.build(content, BASE, page_name_va=name_va, os=os))
 
 
 def compose(content: bytes) -> bytes:
     """Stock-guarded edits, then the appended area with the table filled in."""
-    spec = _spec()
     content, others = platform.split(content)
+    os = specs.of_main_os(content)
+    spec = _spec(os)
     out = bytearray(content)
     others = list(others)
-    for e in _edits():
+    for e in _edits(os):
         platform.write(out, others, e["va"], bytes.fromhex(e["stock"]), bytes.fromhex(e["new"]))
 
-    records = _table(content)
+    records = _table(content, os)
     chunks = []
     for cid, data in _chunks(bytes.fromhex(spec["blob"])):
         if cid == platform.area.CODE and platform.area.CodeChunk.unpack(data).load == spec["table_va"]:
@@ -195,18 +213,19 @@ def compose(content: bytes) -> bytes:
             blank = paramtable.RECORD * spec["table_records"]
             if any(code.image[:blank]) or code.image[blank:] != PAGE_NAME_BYTES:
                 raise ModError("lfo4_code.json is damaged: the table chunk is not a blank table and its name")
-            head = content[paramtable.TABLE - HEAD - BASE:paramtable.TABLE - BASE]
+            table = osport.addr(os, paramtable.TABLE)
+            head = content[table - HEAD - BASE:table - BASE]
             data = platform.area.CodeChunk(code.load - HEAD, head + records + code.image[blank:],
                                            code.bss, code.init).pack()
         chunks.append((cid, data))
-    return platform.join(bytes(out), others + chunks + _displaced(content, chunks)
+    return platform.join(bytes(out), others + chunks + _displaced(content, chunks, os)
                          + [bus.contribute(b"PARM", spec["table_records"] - paramtable.COUNT)])
 
 
-def _displaced(stock: bytes, chunks) -> list[tuple[bytes, bytes]]:
+def _displaced(stock: bytes, chunks, os: str = "1.11") -> list[tuple[bytes, bytes]]:
     """A `DISP` chunk per entry hook: where its stub replays the stock bytes."""
     out = []
-    for site, n in HOOKS:
+    for site, n in hooks(os):
         replay = stock[site - BASE:site - BASE + n] + bytes.fromhex("4ef9") + (site + n).to_bytes(4, "big")
         found = [code.load + at for code in (platform.area.CodeChunk.unpack(d) for c, d in chunks
                                              if c == platform.area.CODE)
@@ -224,7 +243,8 @@ def apply(firmware) -> Result:
     if section is None:
         raise ModError("image has no MAIN OS section")
     content = compose(section.unpack())
-    spec = _spec()
-    notes = [f"{len(_edits())} edits, {len(spec['blob']) // 2:,} B of CODE chunks in the "
+    os = specs.of_main_os(platform.split(section.unpack())[0])
+    spec = _spec(os)
+    notes = [f"{len(_edits(os))} edits, {len(spec['blob']) // 2:,} B of CODE chunks in the "
              f"platform's area; the parameter table rebuilt from this image; MAIN OS {len(content):,} B"]
-    return Result({SECTION: content}, extents(firmware), notes)
+    return Result({SECTION: content}, extents(firmware, os), notes)

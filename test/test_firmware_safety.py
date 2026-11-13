@@ -30,8 +30,8 @@ from dnfw.checkout import resources_dir  # noqa: E402
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STOCK_111 = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
 FLASHED = resources_dir(ROOT) / "02_Builds/batcha1-fxmod-lfo4-waverider-usbprobe_DN2_1.11.syx"
-KEYS = ("file", "stock", "layout", "recovery", "edits", "area", "ram", "dma", "dsp", "record", "rebuild")
-GOOD = dict(file="pass", stock="pass", layout="pass", recovery="pass", edits="info", area="pass", ram="pass",
+KEYS = ("file", "stock", "layout", "size", "recovery", "edits", "area", "ram", "dma", "dsp", "record", "rebuild")
+GOOD = dict(file="pass", stock="pass", layout="pass", size="pass", recovery="pass", edits="info", area="pass", ram="pass",
             dma="pass", dsp="info", record="pass", rebuild="pass")
 
 
@@ -161,6 +161,17 @@ def test_the_failures_say_what_they_found(cases):
     assert "0x402cf854 names 0x4e6df100" in detail("flashed", "dma")
     assert "hash" in detail("record", "record") and "image id" in detail("imageid", "record")
     assert "nosuchmod" in detail("unknown", "rebuild")
+
+
+def test_the_size_limit_is_2_mib_of_update_data(cases):
+    """Stock passes; 2 MiB of update data passes and one byte more fails"""
+    from types import SimpleNamespace
+    stock = cases["stock_fw"]
+    assert next(i for i in _python(cases, "good") if i.key == "size").status == "pass"
+    assert safety._size(stock).detail.startswith(f"{8 + stock.container.declared_size:,} bytes of update data")
+    at = lambda n: safety._size(SimpleNamespace(container=SimpleNamespace(declared_size=n - 8)))  # noqa: E731
+    assert at(0x200000).status == "pass" and at(0x200001).status == "fail"
+    assert "stop before the instrument asks to install it" in at(0x200001).detail
 
 
 def test_text_that_looks_like_an_address_is_not_one(cases):

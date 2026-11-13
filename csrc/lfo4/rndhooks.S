@@ -16,7 +16,7 @@
  * as the three stock paths set them up; the only thing that differs is which
  * entry number is pushed.
  */
-#include "dn2_111.h"
+#include "dn2.h"
 #include "slots.h"
 
     .globl  lfo4_rnd_a_stub

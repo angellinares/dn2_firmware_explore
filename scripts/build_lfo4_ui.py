@@ -88,8 +88,15 @@ SLEW_GATE_STOCK = bytes.fromhex("7051b0826710725bb282670a103c0065b0826600 00ae".
 SLEW_CLAMP = 0x4010DBC6          # moveq #2,%d1 -- the ceiling the index is tested against
 SLEW_CLAMPED = 0x4010DBCC        # moveq #2,%d0 -- what a larger index becomes
 SLEW_TABLE = 0x4010DBCE          # lea 0x40205454,%a0
-SLEW_TABLE_STOCK = bytes.fromhex("41f940205454")
 SLEW_ENTRIES = 0x40205454        # {80, 90, 100}, with a mangled RTTI string behind it
+
+
+def slew_table_stock() -> bytes:
+    """`lea SLEW_ENTRIES,%a0`, built when used: SLEW_ENTRIES moves with the OS (issue #382)"""
+    return bytes.fromhex("41f9") + struct.pack(">I", SLEW_ENTRIES)
+
+
+SLEW_TABLE_STOCK = slew_table_stock()   # 41f940205454 on 1.11
 
 
 def slew(content, code):
@@ -116,7 +123,7 @@ def slew(content, code):
     if mine[:12] != theirs:
         raise SystemExit(f"the four-entry SLEW table starts {mine[:12].hex()}, "
                          f"the firmware's three are {theirs.hex()}")
-    _jump(content, SLEW_TABLE, SLEW_TABLE_STOCK,
+    _jump(content, SLEW_TABLE, slew_table_stock(),
           code["lfo4_slew_entries"], "the SLEW table")
     # `lea imm,%a0` is not a jump: put the instruction back with our address.
     at = SLEW_TABLE - BASE

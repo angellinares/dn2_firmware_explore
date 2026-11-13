@@ -2,13 +2,15 @@
 
 `addr(os, va)` is how a generator names a stock address for an OS: the 1.11 address it was written
 with, translated through the committed map for that OS (`map_<os>.json`, written by
-`scripts/osport_survey.py --write`). An address the map did not decide stops the build, so a mod is
-never built for an OS at a guessed address. The map holds addresses and how each was decided, no
+`scripts/osport_survey.py --write`), then through `by_hand_<os>.json`: addresses no instruction names,
+each read by hand with its evidence. An address neither decides stops the build, so a mod is never
+built for an OS at a guessed address. Both files hold addresses and how each was decided, no
 firmware bytes.
 """
 
 from __future__ import annotations
 
+import contextlib
 import re
 
 import functools
@@ -33,6 +35,19 @@ def _map(os: str) -> dict[int, dict]:
     if data["from"] != SOURCE or data["to"] != os:
         raise NotPorted(f"{path.name} maps {data['from']} to {data['to']}, not {SOURCE} to {os}")
     return {int(k, 16): v for k, v in data["addresses"].items()}
+
+
+@functools.cache
+def _by_hand(os: str) -> tuple[dict[int, int], tuple[tuple[int, int, int], ...]]:
+    path = pathlib.Path(__file__).with_name(f"by_hand_{os}.json")
+    if not path.exists():
+        return {}, ()
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data["from"] != SOURCE or data["to"] != os:
+        raise NotPorted(f"{path.name} maps {data['from']} to {data['to']}, not {SOURCE} to {os}")
+    one = {int(k, 16): int(v["new"], 16) for k, v in data["addresses"].items()}
+    ranges = tuple((int(r["from"], 16), int(r["to"], 16), int(r["delta"], 16)) for r in data["ranges"])
+    return one, ranges
 
 
 WINDOW = 0x08000000                    # the uncached window: the same RAM at address + WINDOW
@@ -67,9 +82,16 @@ def addr(os: str, va: int) -> int:
                             f"(0x{new.dma[0]:08x}..0x{new.dma[1]:08x}): move it")
         return va
     row = _map(os).get(va)
-    if row is None:
-        raise NotPorted(f"0x{va:08x} has no {os} address in map_{os}.json: read it by hand and add it")
-    return int(row["new"], 16)
+    if row is not None:
+        return int(row["new"], 16)
+    one, ranges = _by_hand(os)
+    if va in one:
+        return one[va]
+    for lo, hi, delta in ranges:
+        if lo <= va < hi:
+            return va + delta
+    raise NotPorted(f"0x{va:08x} has no {os} address in map_{os}.json or by_hand_{os}.json: "
+                    "read it by hand and add it")
 
 
 def site(os: str, va: int, want: bytes, image: bytes, base: int = 0x40000400) -> tuple[int, bytes]:
@@ -129,6 +151,51 @@ def rebind(namespace: dict, os: str, overrides: dict | None = None) -> dict:
             raise NotPorted(f"{name}: {exc}") from None
     out.update(overrides)
     return out
+
+
+def _port_value(value, os: str, name: str):
+    """VALUE on OS: a stock address through `addr`, a tuple or list item by item, anything else as is"""
+    if is_stock_address(value):
+        try:
+            return addr(os, value)
+        except NotPorted as exc:
+            raise NotPorted(f"{name}: {exc}") from None
+    if isinstance(value, (tuple, list)) and not hasattr(value, "_fields"):
+        return type(value)(_port_value(v, os, name) for v in value)
+    return value
+
+
+_MISSING = object()
+
+
+@contextlib.contextmanager
+def retarget(os: str, modules, overrides: dict | None = None):
+    """Inside the block, every UPPERCASE constant of each module in MODULES that is a stock address,
+    or a tuple or list holding stock addresses, has its OS value; OVERRIDES ({module: {name: value}})
+    win. The constants come back on exit. For a build chain written as module constants: its
+    functions read them at call time. A value derived at import (bytes built from an address) does
+    not follow, so a check on stock bytes then fails, which is what makes a missed one loud."""
+    if os == SOURCE:
+        yield
+        return
+    overrides = overrides or {}
+    saved = []
+    try:
+        for m in modules:
+            ns = vars(m)
+            new = {k: _port_value(v, os, f"{m.__name__}.{k}") for k, v in ns.items() if k.isupper()}
+            new.update(overrides.get(m, {}))
+            for k, v in new.items():
+                if k not in ns or (v is not ns[k] and v != ns[k]):
+                    saved.append((m, k, ns.get(k, _MISSING)))
+                    setattr(m, k, v)
+        yield
+    finally:
+        for m, k, v in reversed(saved):
+            if v is _MISSING:
+                delattr(m, k)
+            else:
+                setattr(m, k, v)
 
 
 def render(template: str, namespace: dict, os: str, overrides: dict | None = None) -> str:

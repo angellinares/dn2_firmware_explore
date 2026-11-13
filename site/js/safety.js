@@ -30,6 +30,7 @@ const STACK_TOP = 0x48000000, STACK_RESERVE = 0x20000;
 const STOCK_RAM_END = STOCK_DMA[1];
 const STACK_FLOOR = STACK_TOP - STACK_RESERVE;
 const SHOWN = 8;
+const PREAMBLE = 8, UPDATE_MAX = 0x200000;          // firmware/safety.py: the USB update limit seen on a unit
 export const NOT_CHECKED = [
   "RAM that a mod uses without an area chunk: the image does not declare it.",
   "Whether the new code reads or writes the addresses it names.",
@@ -66,6 +67,7 @@ export async function check(patched, stock, rebuild = null) {
   const shape = await guard("layout", "The same OS version and sections", () => layout(patched, stock));
   items.push(shape);
   if (shape.status !== "pass") return items;
+  items.push(await guard("size", "The update fits the instrument's USB transfer", () => size(patched)));
   const ours = contents(patched), theirs = contents(stock);
   const main = ours.get(MAIN_OS), base = theirs.get(MAIN_OS);
   items.push(await guard("recovery", "The bootstrap and the other recovery sections are stock",
@@ -132,6 +134,16 @@ function layout(patched, stock) {
   const ids = (c) => c.sections.map((s) => `${s.id}:${s.dest}`).join(",");
   if (ids(a) !== ids(b)) return item("layout", title, "fail", "the sections or their load addresses differ from stock's");
   return item("layout", title, "pass", `version ${a.version}, ${a.sections.length} sections at stock's addresses`);
+}
+
+function size(patched) {
+  const title = "The update fits the instrument's USB transfer";
+  const n = PREAMBLE + patched.container.declaredSize;
+  if (n > UPDATE_MAX) {
+    return item("size", title, "fail", `${grouped(n)} bytes of update data, over the ${grouped(UPDATE_MAX)} that a Digitone II `
+                + "takes over USB: the transfer can stop before the instrument asks to install it");
+  }
+  return item("size", title, "pass", `${grouped(n)} bytes of update data, ${grouped(UPDATE_MAX - n)} below the limit of ${grouped(UPDATE_MAX)}`);
 }
 
 function recovery(ours, theirs) {

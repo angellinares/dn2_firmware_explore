@@ -259,9 +259,9 @@ def bound_sites(content: bytes, base: int, os: str = "1.11") -> list[Site]:
     return out
 
 
-def records(content: bytes, base: int) -> bytes:
-    """The 320 stock records, byte for byte."""
-    at = TABLE - base
+def records(content: bytes, base: int, os: str = "1.11") -> bytes:
+    """The 320 stock records, byte for byte, from where OS keeps them."""
+    at = osport.addr(os, TABLE) - base
     return bytes(content[at:at + RECORD * COUNT])
 
 
@@ -274,16 +274,16 @@ def poke(content: bytearray, base: int, site: Site) -> None:
     struct.pack_into(">I", content, at, site.now)
 
 
-def relocate(content: bytearray, base: int, *, table_va: int, added: int) -> list[Site]:
+def relocate(content: bytearray, base: int, *, table_va: int, added: int, os: str = "1.11") -> list[Site]:
     """Repoint the 60-byte table and widen the entry space by `added` records.
 
     The 68-byte companion stays where it is; `runtime_literals` is why.
 
     -> every site it wrote, so the build can print and the caller can count.
     """
-    delta = table_va - TABLE
-    sites = [Site(s.va, s.was, s.was + delta, s.what) for s in base_sites(content, base)]
-    sites += [Site(s.va, s.was, s.was + added, s.what) for s in bound_sites(content, base)]
+    delta = table_va - osport.addr(os, TABLE)
+    sites = [Site(s.va, s.was, s.was + delta, s.what) for s in base_sites(content, base, os)]
+    sites += [Site(s.va, s.was, s.was + added, s.what) for s in bound_sites(content, base, os)]
     for site in sites:
         poke(content, base, site)
     return sites

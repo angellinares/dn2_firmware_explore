@@ -38,7 +38,7 @@
  */
 #include "ext.h"
 
-#define PAGE_TABLE   0x42432C00u
+#define PAGE_TABLE   ((u32)STOCK_PAGE_TABLE)
 #define PAGE_STRIDE  44u
 #define PAGE_WORDS   (PAGE_STRIDE / 4u)
 #define LFO3_PAGE    6u

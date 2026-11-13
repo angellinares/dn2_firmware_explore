@@ -169,9 +169,10 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from build_arpscale import MAIN_OS, assemble_stubs, check
+from build_arpscale import MAIN_OS, STOCKS, assemble_stubs  # noqa: F401  (STOCKS: the generator's)
 from build_scale_degrees import (BASE, HEADER, PLAYBACK, SCALE_CONTEXT, TRACK_STRIDE, degree_move, locate,
                                  resolve, scales)
+from dnfw import osport
 from dnfw.cli.files import read_image
 from dnfw.container.section import compress
 from dnfw.firmware import build as fwbuild
@@ -283,7 +284,7 @@ def degrees_of(base: str, reg: str) -> str:
     mvs.b   {reg},{reg}
     asr.l   #4,{reg}"""
 
-SOURCE = f"""
+SOURCE = """
 | The note's pitch, after stock adds its transposes (0x400269a4), reached by jmp
 | from the frame ISR. %d0 the entry's note (kept: the voice is found by it), %d2
 | that note plus the transposes. Out: %d2 moved by the track's degrees, then the
@@ -291,15 +292,15 @@ SOURCE = f"""
 voice:
     lea     -44(%sp),%sp
     movem.l %d0/%d3-%d7/%a0-%a4,(%sp)
-{locate('voice_done')}
-{degrees_of('%a3', '%d3')}
+{locate("voice_done", OS)}
+{degrees_of("%a3", "%d3")}
     move.l  %d3,%d1
     beq.w   voice_done
     sub.l   %d0,%d2                     | the transposes, in semitones
     move.l  %d2,-(%sp)
     move.l  %d1,%d2                     | the move, in degrees
-{resolve('voice_semitones')}
-{degree_move('voice')}
+{resolve("voice_semitones")}
+{degree_move("voice", OS)}
     bra.s   2f
 voice_semitones:
     add.l   %d2,%d0                     | no scale: a degree is a semitone
@@ -352,11 +353,11 @@ midi_degrees:
     muls.l  %d1,%d4
     add.l   %d3,%d4
     move.l  %d4,%a3                     | the track's part
-{degrees_of('%a3', '%d3')}
+{degrees_of("%a3", "%d3")}
     move.l  %d3,%d2                     | the move, in degrees
     beq.w   midi_keep
-{resolve('midi_semitones')}
-{degree_move('midi')}
+{resolve("midi_semitones")}
+{degree_move("midi", OS)}
     bra.s   midi_keep
 midi_semitones:
     add.l   %d2,%d0                     | no scale: a degree is a semitone
@@ -652,7 +653,7 @@ track_applied:
     bsr.w   storage
     beq.s   1f
     move.l  %d0,%a0
-{degrees_of('%a0', '%d0')}
+{degrees_of("%a0", "%d0")}
 1:  rts
 
 | (%d0 a track, %d1 degrees): written, then the stock setting set to itself
@@ -783,27 +784,40 @@ STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
 OUT = ROOT / "00_Resources/02_Builds/degreetranspose_DN2_1.11.syx"
 
 
-def compose(stock: bytes, log=print) -> dict:
+def source(os: str = "1.11") -> str:
+    """The routines for OS (issue #382): their stock addresses through `dnfw.osport`"""
+    return osport.render(SOURCE, globals(), os)
+
+
+def compose(stock: bytes, log=print, os: str = "1.11") -> dict:
     """Apply the build to a stock MAIN OS. -> {content, blob, labels}: the hooked
-    image and the code, 4-padded, for a platform `CODE` chunk at CODE_VA."""
+    image and the code, 4-padded, for a platform `CODE` chunk at CODE_VA.
+
+    OS is STOCK's version (issue #382): every guard, hook and patch site goes
+    through `dnfw.osport.site`."""
+    def site(va, want, why):
+        try:
+            return osport.site(os, va, want, stock, BASE)
+        except osport.NotPorted as exc:
+            raise SystemExit(f"{why}: {exc}") from None
     if not available():
         raise SystemExit("no m68k assembler found")
     content = bytearray(stock)
 
     log("part 1 -- the code this relies on, asserted")
     for va, want, why in CONTEXT:
-        check(content, va, want, why)
+        va, want = site(va, want, why)
         log(f"  {va:#010x}  {want.hex():<28}  {why}")
-    log(f"  {len(scales(content))} scales, each holding its root, the two tables agreeing")
+    log(f"  {len(scales(content, os))} scales, each holding its root, the two tables agreeing")
 
     log(f"part 2 -- the code, from {CODE_VA:#010x}")
-    payload, at = assemble_stubs(SOURCE, CODE_VA, LABELS)
+    payload, at = assemble_stubs(source(os), CODE_VA, LABELS)
     blob = payload + bytes(-len(payload) % 4)
     log(f"  {len(payload)} bytes: " + ", ".join(f"{k} {v:#010x}" for k, v in at.items()))
 
     log("part 3 -- the hooks")
     for va, stock_bytes, label in HOOKS:
-        check(content, va, stock_bytes, label)
+        va, stock_bytes = site(va, stock_bytes, label)
         new = bytes.fromhex("4ef9") + struct.pack(">I", at[label])
         new += NOP * ((len(stock_bytes) - len(new)) // len(NOP))
         if len(new) != len(stock_bytes):
@@ -813,7 +827,7 @@ def compose(stock: bytes, log=print) -> dict:
 
     log("part 4 -- stock's masks, widened")
     for va, stock_bytes, new, why in PATCHES:
-        check(content, va, stock_bytes, why)
+        va, stock_bytes = site(va, stock_bytes, why)
         content[va - BASE:va - BASE + len(new)] = new
         log(f"  {va:#010x}  {stock_bytes.hex()} -> {new.hex()}  {why}")
 

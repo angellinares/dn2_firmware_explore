@@ -38,7 +38,7 @@ From each mod's own declaration (`ram()`), in region A, 2026-11-04:
 | reloadconfirm | 1,208 | `0x467e0000` |
 | midiarp | 592 | `0x467d0000` |
 | layermidi | 324 | `0x467d8000` |
-| bootscreen | 320 | `0x46708000` |
+| bootscreen | 320 | `0x46708000` on 1.11, `0x467e8000` on 1.12 (1.12's DMA section covers `0x46708000`) |
 | lfolength | 260 | `0x467b0000` (`0x467f8000` until 2026-10-15) |
 | **all** | **729,042** | 0.70 MiB of the 24.9 MB |
 

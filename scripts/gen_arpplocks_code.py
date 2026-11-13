@@ -1,6 +1,6 @@
 """Assemble the arp p-locks mod ahead of time, for `dnfw mods` and the browser.
 
-    python scripts/gen_arpplocks_code.py
+    python scripts/gen_arpplocks_code.py [--os 1.12]
 
 Runs `scripts/build_arp_plocks.py`'s compose (the default build: MODE, SPEED,
 RANGE and N.LEN; storage, playback, trigless locks, clear, copy and paste) on
@@ -15,7 +15,8 @@ stock Digitone II 1.11 and records what it changed:
   it used (one of them usbprobe's, one fxmod's) stay stock, so it combines with
   both. The hooks and patches are unchanged but for their targets.
 
-Outputs `src/dnfw/mods/arpplocks_code.json`.
+Outputs `src/dnfw/mods/arpplocks_code.json`, or with `--os 1.12` the 1.12 build beside it,
+`arpplocks_code_1.12.json` (issue #382): every site goes through `dnfw.osport.site`.
 """
 
 from __future__ import annotations
@@ -29,18 +30,29 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import build_arp_plocks as arp  # noqa: E402
+from dnfw import osport  # noqa: E402
+from dnfw.checkout import resources_dir  # noqa: E402
 from dnfw.cli.files import read_image  # noqa: E402
 from dnfw.firmware.load import load  # noqa: E402
 
-OUT_JSON = ROOT / "src/dnfw/mods/arpplocks_code.json"
 CODE_VA = 0x467C8000            # past the shadow sounds (0x467c0000 + 18,624) and the note list
+
+
+def output(os: str) -> pathlib.Path:
+    """The spec for OS: 1.11 keeps its name (issue #382)"""
+    name = "arpplocks_code.json" if os == "1.11" else f"arpplocks_code_{os}.json"
+    return ROOT / "src/dnfw/mods" / name
 
 
 def main() -> int:
     if arp.FULL:
         raise SystemExit("the mod is the default build; run without --all")
-    stock = load(read_image(ROOT / arp.STOCK)).container.find(arp.MAIN_OS).unpack()
-    built = arp.compose(stock, log=lambda *_: None, code_base=CODE_VA)
+    os = sys.argv[sys.argv.index("--os") + 1] if "--os" in sys.argv else "1.11"
+    stock = load(read_image(resources_dir(ROOT) / arp.STOCKS[os])).container.find(arp.MAIN_OS).unpack()
+    built = arp.compose(stock, log=lambda *_: None, code_base=CODE_VA, os=os)
+
+    def at(va, want):
+        return osport.site(os, va, want, stock, arp.BASE)
     content = built["content"]
     caves = {va - arp.BASE: n for va, n in built["caves"]}
 
@@ -63,19 +75,21 @@ def main() -> int:
         i = j
 
     code = {
-        "os": "Digitone II 1.11",
+        "os": f"Digitone II {os}",
         "stock_length": n,
         "edits": edits,
-        "guards": ([{"va": va, "bytes": want.hex()} for va, want, _ in arp.CONTEXT]
-                   + [{"va": va, "bytes": want.hex()} for va, want, _, _ in arp.HOOKS]
-                   + [{"va": va, "bytes": want.hex()} for va, want, _, _ in arp.PATCHES]),
+        "guards": [{"va": va, "bytes": have.hex()} for va, have in
+                   [at(va, want) for va, want, _ in arp.CONTEXT]
+                   + [at(va, want) for va, want, _, _ in arp.HOOKS]
+                   + [at(va, want) for va, want, _, _ in arp.PATCHES]],
         "ram": [{"va": arp.SHADOW, "bytes": 16 * arp.SHADOW_STRIDE, "what": "shadow sounds"},
                 {"va": arp.LAST_NOTE, "bytes": 4, "what": "the list the note hook last saw"}],
         "code": {"va": CODE_VA, "blob": built["blob"].hex(), "labels": {k: v for k, v in built["at"].items()}},
     }
-    OUT_JSON.write_text(json.dumps(code, indent=1) + "\n", newline="\n")
+    out_json = output(os)
+    out_json.write_text(json.dumps(code, indent=1) + "\n", newline="\n")
     size = sum(len(e["new"]) // 2 for e in edits)
-    print(f"wrote {OUT_JSON.relative_to(ROOT)}: {len(edits)} edits, {size} B, "
+    print(f"wrote {out_json.relative_to(ROOT)}: {len(edits)} edits, {size} B, "
           f"{len(code['guards'])} guards; a {len(built['blob'])} B CODE chunk at {CODE_VA:#010x}")
     return 0
 

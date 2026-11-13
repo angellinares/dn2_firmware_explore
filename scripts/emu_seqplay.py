@@ -48,13 +48,20 @@ PANEL_CANDIDATES = (
     ROOT.parent / "digikit-wt-forced/out/target/release/examples/panel_drive.exe",
     ROOT.parent / "digikit-rust/out/native/target-host/release/examples/panel_drive.exe",
 )
-EXCHANGE = "0x400cf7be"      # the audio ISR's send/receive to the DSP; argument 1 is the frame
+EXCHANGE = "0x400cf7be"      # the audio ISR's send/receive to the DSP; argument 1 is the frame (1.11)
 NO, RECORD, PLAY, STOP, TRK, TRIG1 = 12, 19, 20, 21, 16, 25
 TRIG_PAGE, FUNC, DOWN, ARP, STACK = 1, 17, 14, 51, 53    # the firmware's names: TRIG, ..., STACK
 ENCODER_A, ENCODER_E, ENCODER_G = 1, 5, 7
 ARP_MODES = ("OFF", "TRUE", "UP", "DOWN", "CYCL")         # the arp menu's MODE, in order (0x401d4b0c)
 COUNTS_PER_UNIT = 28        # a turn's counts for one unit of NOTE, the arp's MODE or a note's LEN
 TURN_STEP = 10              # counts sent at a time
+
+
+def use(os_version: str) -> None:
+    """Capture OS_VERSION's exchange routine (issue #382): 1.12's is 1.11's moved by the map"""
+    from dnfw import osport
+    global EXCHANGE
+    EXCHANGE = f"{osport.addr(os_version, 0x400CF7BE):#010x}"
 
 
 def panel_drive() -> pathlib.Path:

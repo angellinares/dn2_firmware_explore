@@ -1,6 +1,6 @@
 """Which megabytes above stock's data does stock touch, under any address? In the emulator.
 
-    python scripts/emu_high_ram_touch.py STOCK.syx [--out DIR]
+    python scripts/emu_high_ram_touch.py STOCK.syx [--out DIR] [--os 1.12]
 
 The mods live in RAM above stock's DMA section (`0x46701340..0x48000000`). The SDRAM is
 128 MB and its decode repeats it every 0x08000000 up to `0x8c000000`, so the same RAM has
@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import struct
 import subprocess
@@ -40,12 +41,31 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from emu_waverider_rename import Frames                     # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-PANEL = ROOT.parent / "digikit-rust/out/native/target-host/release/examples/panel_drive.exe"
-CARD = ROOT.parent / "dn2_firmware/out/dk-dn2-card.img"    # opened read-only: the save goes to an overlay in memory
+PANEL = pathlib.Path(os.environ.get("PANEL_DRIVE")
+                     or ROOT.parent / "digikit-rust/out/native/target-host/release/examples/panel_drive.exe")
+# opened read-only: the save goes to an overlay in memory
+CARD = pathlib.Path(os.environ.get("DK_CARD") or ROOT.parent / "dn2_firmware/out/dk-dn2-card.img")
 
 MIB, WINDOW = 0x100000, 0x08000000
 LO, HI = 0x46700000, 0x48000000
-STOCK_DMA_END = 0x46701340
+# Per OS version (issue #382). 1.12's DMA section ends +0x8000 higher by the static read
+# (docs/os-versions.md, "Before the 1.12 port"); this scan is what measures it.
+DMA_END = {"1.11": 0x46701340, "1.12": 0x46709340}
+# What the scan names in code, on 1.11; on 1.12 each is the map's, or read by hand where the map
+# has none (2026-11-13: the 256 bytes there differ from 1.11's only in moved address words)
+CODE = {"call_at": 0x4002E464, "call_fn": 0x4012166E, "lz4_compress": 0x400EFB70,
+        "lz4_decompress": 0x400EF5D0, "emmc_write": 0x4012C780, "emmc_read": 0x4012C59A}
+BY_HAND = {"1.12": {0x400EFB70: 0x400EFCD4, 0x400EF5D0: 0x400EF734, 0x4012C780: 0x4012CA60}}
+
+
+def code(os_version: str) -> dict[str, int]:
+    """CODE's addresses on OS_VERSION"""
+    sys.path.insert(0, str(ROOT / "src"))
+    from dnfw import osport
+    hand = BY_HAND.get(os_version, {})
+    return {k: hand[v] if v in hand else osport.addr(os_version, v) for k, v in CODE.items()}
+
+
 CONTROLS = (0x46600000, 0x4E600000)
 NO, SETTINGS, YES, DOWN = 12, 8, 10, 14
 SAVE_AS = [f"tap:{NO}", "wait:30M", f"tap:{SETTINGS}", "wait:30M", f"tap:{YES}", "wait:30M",
@@ -57,7 +77,8 @@ WALK = [s for key in (1, 2, 3, 4, 5, 6, 7, 12, 23, 12, 24, 12, 20, 19, 21, 21, 8
 
 
 # the Data API as DNX drives it: where panel_drive injects a SysEx message and what it calls
-SYSEX = ["--call-at", "0x4002e464", "--call-fn", "0x4012166e", "--call-args", "2"]
+def sysex(c: dict[str, int]) -> list[str]:
+    return ["--call-at", f"{c['call_at']:#010x}", "--call-fn", f"{c['call_fn']:#010x}", "--call-args", "2"]
 RAW_CHUNKS = 787                                            # a stored project, 12,890,159 bytes, in 16 KiB chunks
 PACKED_CHUNKS = 16                                          # the same compressed, about 190 KB
 
@@ -73,7 +94,8 @@ def data_api_read(path: bytes, form: bytes, handle: int, chunks: int) -> list[st
     return [f"send:{h}" for _, h in f.lines]
 
 
-def run(build: str, out: pathlib.Path, peeks: list[int], upload: list[str]) -> tuple[list[dict], dict[int, bytes]]:
+def run(build: str, out: pathlib.Path, peeks: list[int], upload: list[str],
+        c: dict[str, int] | None = None, base: str | None = None) -> tuple[list[dict], dict[int, bytes]]:
     """One boot and the scenario; then the pages touched, and each of PEEKS read whole."""
     out.mkdir(parents=True, exist_ok=True)
     first = 2 if upload else 1                              # a handle is the count of files opened since start-up
@@ -83,16 +105,20 @@ def run(build: str, out: pathlib.Path, peeks: list[int], upload: list[str]) -> t
     steps = SAVE_AS + transfers + WALK + ["touched"] + [f"peek:0x{a:08x}:{MIB}" for a in peeks]
     script = out / "steps"
     script.write_text(chr(10).join(steps) + chr(10), newline=chr(10))
-    r = subprocess.run([str(PANEL), build, "--card-image", str(CARD), "--out", str(out), *SYSEX,
-                        "--count", "0x400efb70,0x400ef5d0,0x4012c780,0x4012c59a", "--steps", f"@{script}"],
+    c = c or code("1.11")
+    watched = [c["lz4_compress"], c["lz4_decompress"], c["emmc_write"], c["emmc_read"]]
+    r = subprocess.run([str(PANEL), build, "--card-image", str(CARD), "--out", str(out), *sysex(c),
+                        *(["--base", base] if base else []),
+                        "--count", ",".join(f"{w:#010x}" for w in watched), "--steps", f"@{script}"],
                        capture_output=True, text=True, timeout=7200, stdin=subprocess.DEVNULL)
     if not r.stdout.strip():
         raise SystemExit(f"no output: {r.stderr[-800:]}")
     d = json.loads(r.stdout.strip().splitlines()[-1])
     if d["outcome"] != "done":
         raise SystemExit(f"{d['outcome']} {d.get('fault')}")
-    names = {"0x400efb70": "LZ4 compress", "0x400ef5d0": "LZ4 decompress", "0x4012c780": "eMMC write", "0x4012c59a": "eMMC read"}
-    print("  the scenario ran: " + ", ".join(f"{names[w['pc']]} x{w['hits']}" for w in d["watched"]))
+    names = dict(zip(watched,
+                     ("LZ4 compress", "LZ4 decompress", "eMMC write", "eMMC read")))
+    print("  the scenario ran: " + ", ".join(f"{names[int(w['pc'], 16)]} x{w['hits']}" for w in d["watched"]))
     touched = next(x["touched"] for x in d["results"] if "touched" in x)
     whole = [bytes.fromhex(x["hex"]) for x in d["results"] if "hex" in x]
     return touched, dict(zip(peeks, whole))
@@ -116,22 +142,25 @@ def main(argv=None) -> int:
     p.add_argument("build")
     p.add_argument("--out", default=str(ROOT / "out/high-ram-touch"))
     p.add_argument("--upload", help="a file of SysEx messages (hex, one a line): a compressed project sent to /projects/3")
+    p.add_argument("--os", default="1.11", choices=sorted(DMA_END), help="the build's OS version")
+    p.add_argument("--base", help="digikit's --base: the stock image's SHA-256, which a 1.11 run needs")
     a = p.parse_args(argv)
     out = pathlib.Path(a.out)
+    addrs, dma_end = code(a.os), DMA_END[a.os]
     upload = pathlib.Path(a.upload).read_text().split() if a.upload else []
-    touched, _ = run(a.build, out, [], upload)
+    touched, _ = run(a.build, out, [], upload, addrs, a.base)
     pages = {int(t["page"], 16): t for t in touched}
     ok = True
     for c in CONTROLS:
         ok &= c in pages
         print(f"  {'ok  ' if c in pages else 'FAIL'} control: page {c:#010x} is among the {len(pages)} touched")
     high = sorted(page for page in pages if LO <= ram(page) < HI)
-    _, whole = run(a.build, out, high, upload)              # the same run again, those pages read whole
+    _, whole = run(a.build, out, high, upload, addrs, a.base)              # the same run again, those pages read whole
     beyond = []
     print(f"  touched pages whose RAM is in {LO:#010x}..{HI:#010x}, under any address: {len(high)}")
     for page in high:
         t, data = pages[page], whole[page]
-        above = ram(page) != LO or any(data[STOCK_DMA_END - LO:])
+        above = ram(page) != LO or any(data[dma_end - LO:])
         beyond += [page] if above else []
         print(f"    {page:#010x} (RAM {ram(page):#010x}): first {t['kind']} of {t['addr']} at pc {t['pc']}; "
               f"{extent(data)}; {'ABOVE the DMA section' if above else 'inside the DMA section'}")

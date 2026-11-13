@@ -101,8 +101,11 @@ import build_scale_degrees as sd  # noqa: E402
 import emu_arpscale as ea  # noqa: E402
 import emu_seqplay as sp  # noqa: E402
 from dnfw import seqframes as SF  # noqa: E402
+from dnfw import osport  # noqa: E402
+from dnfw.checkout import resources_dir  # noqa: E402
 from dnfw.cli.files import read_image  # noqa: E402
 from dnfw.firmware.load import load  # noqa: E402
+from dnfw.mods import specs  # noqa: E402
 
 FUNC, PTN, TRK, KEYBOARD, PLUS, MINUS = bd.FUNC, bd.PTN, bd.TRK, bd.KEYBOARD, bd.PLUS, bd.MINUS
 YES = 10                        # panel code of [YES]
@@ -135,6 +138,16 @@ WAVERIDER_DOWNS = 4                             # MACHINE SEL: FM TONE, FM DRUM,
 # The small font the transposes are drawn in: its record (the font object 0x44507eb8
 # points at it) holds the advance, the height, then its widths, offsets and bitmaps.
 FONT_RECORD = 0x40290174
+
+# The test's own 1.11 addresses on OS 1.12 (issue #382), decided by the survey's code and data
+# maps (`dnfw.osport.codemap`), not in map_1.12.json because no mod uses them: the track load
+# through osport.addr; MIDI_SEND, SAVE_ROUTINE and CARD_WRITE exact code matches; FONT_RECORD an
+# exact data match; the MIDI task's mask copy and flags by operand votes (4/4, 15/15, +0x1000).
+# MIDI_CHANNEL had no votes: it is 0xb6 into the MIDI task's object, which moves +0x1000.
+DEFAULT_SITE = bd.DEFAULT_SITE   # the track default, captured by `clear` (main() moves it on 1.12)
+ON_1_12 = {"MIDI_MASK_COPY": 0x4461827C, "MIDI_FLAGS": 0x446173C4 + 4 * 908, "MIDI_CHANNEL": 0x4461747A,
+           "MIDI_SEND": 0x4012AAA6, "FONT_RECORD": 0x402906B4, "SAVE_ROUTINE": 0x400DE90C,
+           "CARD_WRITE": 0x4012EE4C}
 # The track box's header, (x0, y0, x1, y1) from the screen's top-left, on black, the
 # text centred on x 7 from row 14.
 TRACK_SPOT = (1, 14, 13, 20)
@@ -494,9 +507,9 @@ def check_clear(rig: Rig) -> bool:
     stages = ("set", "pattern cleared", "track cleared")
     seen = {}
     for who, image in (("stock", rig.stock), ("build", rig.build)):
-        result = drive(image, steps(who == "build"), rig.frames, (f"{bd.DEFAULT_SITE:#x}:0:0",))
+        result = drive(image, steps(who == "build"), rig.frames, (f"{DEFAULT_SITE:#x}:0:0",))
         peeks, at = peeks_of(result), peek_icounts(result, track_semis)
-        defaults = [int(c["icount"]) for c in captured(result, bd.DEFAULT_SITE)]
+        defaults = [int(c["icount"]) for c in captured(result, DEFAULT_SITE)]
         ran = [sum(at[i - 1] < icount <= at[i] for icount in defaults) for i in (1, 2)]
         seen[who] = ([(signed8(peeks[track_semis][i][0]), signed8(peeks[pattern_semis][i][0]),
                        degrees_at(peeks, lo, i)) for i in range(len(stages))], ran)
@@ -719,11 +732,28 @@ CHECKS = {"pending": check_pending, "alternation": check_alternation, "scope": c
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("build", type=pathlib.Path)
-    ap.add_argument("--stock", type=pathlib.Path, default=ea.STOCK)
+    ap.add_argument("--stock", type=pathlib.Path, help="stock of the build's OS (default: the user's own)")
     ap.add_argument("--case", action="append", choices=list(CASES) + list(CHECKS))
     a = ap.parse_args()
+    global TRACK_LOAD, DEFAULT_SITE, MIDI_MASK_COPIES, MIDI_FLAGS, MIDI_CHANNEL, MIDI_SEND, FONT_RECORD, SAVE_ROUTINE, CARD_WRITE
+    os_version = specs.of_firmware(load(read_image(a.build)))
+    a.stock = a.stock or (ea.STOCK if os_version == "1.11" else resources_dir(ROOT) / bs.STOCKS[os_version])
+    if os_version == "1.12":
+        TRACK_LOAD, DEFAULT_SITE = osport.addr(os_version, TRACK_LOAD), osport.addr(os_version, DEFAULT_SITE)
+        MIDI_MASK_COPIES = (MIDI_MASK_COPIES[0], ON_1_12["MIDI_MASK_COPY"])
+        MIDI_FLAGS, MIDI_CHANNEL, MIDI_SEND = ON_1_12["MIDI_FLAGS"], ON_1_12["MIDI_CHANNEL"], ON_1_12["MIDI_SEND"]
+        FONT_RECORD, SAVE_ROUTINE, CARD_WRITE = (ON_1_12["FONT_RECORD"], ON_1_12["SAVE_ROUTINE"],
+                                                 ON_1_12["CARD_WRITE"])
+        ea.PLAYBACK = osport.addr(os_version, ea.PLAYBACK)
+        sp.use(os_version)
+        if "waverider" in (a.case or CHECKS):
+            print("waverider: 1.11 only (Waverider has no 1.12 build), skipped")
+            a.case = [n for n in (a.case or list(CASES) + list(CHECKS)) if n != "waverider"]
+    elif os_version != "1.11":
+        raise SystemExit(f"no test addresses for OS {os_version}")
+    print(f"OS {os_version}: stock {a.stock.name}, exchange {sp.EXCHANGE}")
     stock_os = load(read_image(a.stock)).container.find(bs.MAIN_OS).unpack()
-    tables, font = sd.scales(stock_os), SmallFont(stock_os)
+    tables, font = sd.scales(stock_os, os_version), SmallFont(stock_os)
 
     lo, first_sound, _ = ea.addresses(a.stock)
     kit = first_sound - ea.SOUND_FIRST

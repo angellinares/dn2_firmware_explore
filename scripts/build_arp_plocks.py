@@ -100,6 +100,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 
+from dnfw import osport
 from dnfw.cli.files import read_image
 from dnfw.container.section import compress
 from dnfw.firmware import build as fwbuild
@@ -220,7 +221,7 @@ KEY_PRESSED = 0x401160BC               # (event) -> a press, not a release
 VIEW_REDRAW = 0x4011C7BA               # (view): draw again
 VIEW_ARP_STEP = 556                    # the view's selected arp step
 
-LOOK = f"""
+LOOK = """
 | Pattern load, lock id -> slot, (table, id). An arp lock: 0x80 | k, which
 | idx_hook turns into its header. Table 16 and every other id: stock.
 load_hook:
@@ -302,7 +303,7 @@ copy_cmp2:
 """
 LOOK_LABELS = ("load_hook", "idx_hook", "save_rec", "trk_cmp", "copy_cmp1", "copy_cmp2")
 
-CORE = f"""
+CORE = """
 | The note set, (track, ..., sound at +32, ...): a note with arp locks plays a
 | per-track shadow of its sound carrying them.
 note_hook:
@@ -476,7 +477,7 @@ ext_put:
     rts
 
 """
-UI_HELPERS = f"""
+UI_HELPERS = """
 | A trig held? d0 1 with a3 the held object, a2 the track context, d3 the
 | pattern length; else 0. Z follows d0.
 held_ctx:
@@ -586,7 +587,7 @@ disp_ext:                               | +0 desc, +4 ret, +8 model, +12 arp ste
     rts
 
 """
-MASK_CORE = f"""
+MASK_CORE = """
 | Table a0, low byte's header d7, step d2, the sound's mask d5 -> the mask the
 | step plays (each byte the lock's if locked) in d0.
 mask_at:
@@ -643,14 +644,17 @@ CORE_LABELS = ("note_hook", "build_hook", "sound_off",
                "model_sound", "ext_get", "ext_put", "shadow_apply", "ext_find")
 
 
-def ui_source() -> str:
+def ui_source(os: str = "1.11") -> str:
     stubs = []
     for _, setter, label, k, flags in EDITS:
         stubs.append(f"""{label}:
-    pea     {setter:#010x}
+    pea     {osport.addr(os, setter):#010x}
     move.l  #{desc(k, flags)},%sp@-
     bra     {"ui_mode_cap" if k == K_MODE else "ui_ext"}""")
-    return "\n".join(stubs) + f"""
+    return "\n".join(stubs) + osport.render(UI_TAIL, globals(), os)
+
+
+UI_TAIL = """
 
 | MODE's ceiling is the menu edit's own: the immediate of setMode's clamp
 | (4 on stock, 6 with arpmodes), so a MODE lock reaches what the menu reaches.
@@ -782,7 +786,7 @@ FIRST = {K_MODE, K_RNG, K_SPD, K_NLEN}
 if not FULL:
     EDITS = tuple(e for e in EDITS if e[3] in FIRST)
     DRAWS = tuple(d for d in DRAWS if d[3] in ("disp_mode", "disp_rng", "disp_spd", "disp_nlen"))
-UI_MASK = f"""
+UI_MASK = """
 | UP / DOWN on an arp step, replacing `jsr setStepOn(model, step, on)`: with a
 | trig held, the step's bit set or cleared in each held step's mask lock.
 ui_mask:
@@ -832,7 +836,7 @@ ui_mask:
 """
 UI_LABELS = tuple(e[2] for e in EDITS) + ("trigless_hook",)
 
-CLEAR_SRC = f"""
+CLEAR_SRC = """
 | Clearing a step's locks (0x4003d14e (model, track, step), reached by removing a
 | trig, clearing, and every paste before it writes): the step's arp locks too,
 | a record freed (ff ff) once every step is empty. When one was cleared, the stock
@@ -891,7 +895,7 @@ clear_hook:                             | +4 model, +8 track, +12 step
 
 """
 
-PASTE_CORE = f"""
+PASTE_CORE = """
 | The pastes' record loops, at the clipboard record's track byte: an arp record
 | of the copied track is written into the destination through ext_put, then fails
 | the stock compare (whose index lookup would take k for a stock slot).
@@ -967,7 +971,7 @@ track_paste:                            | -> d0 the result, the caller's d0 on t
     lea     %sp@(24),%sp
     rts
 """
-EDIT = f"""
+EDIT = """
 | Page pastes 0x40052634 / 0x40053246: a1 + d0 the record, the page's values at
 | fp-20 + d0 / d6 + d0, a3 the table, d3 the page's first step.
 paste_a:
@@ -999,7 +1003,7 @@ page_paste:                             | d1 the values base -> d1 the result
 """
 EDIT_LABELS = ("paste_a", "paste_b")
 
-TRIG_COPY = f"""
+TRIG_COPY = """
 | Trig copy (0x40053f48, after the source step's stock locks are gathered and
 | before its clipboard entry is appended): the step's arp locks saved by entry
 | number, {TRIG_CLIP_MAX} at most, at {TRIG_CLIP:#010x} ({TRIG_CLIP_STRIDE} B each: a mask, a
@@ -1050,7 +1054,7 @@ copy_hook:
     move.l  %a3@({CTX_TRACK}),%sp@-
     jmp     %a0@
 """
-TRIG_PASTE = f"""
+TRIG_PASTE = """
 | Trig paste (0x40055440, after the destination step is cleared): entry a3's saved
 | arp locks onto its step, then the recount. Replaces `mvz.b a3@(4),%d0;
 | lea 0x40054690,%a4`.
@@ -1111,7 +1115,7 @@ PUSH_GATES = "".join(f"""pg_{e[2]}:
     lea     @{e[2]}@,%a0
     bra     pg_gate
 """ for e in EDITS)
-PUSH_SRC = f"""
+PUSH_SRC = """
 | An encoder push in the ARPEGGIATOR menu, at its key handler's `addi.l #-41,%d2`
 | ({MENU_PUSH:#010x}). The stock menu takes a push and does nothing with it, so the
 | parameter pages' clear (trig held + push: 0x40064f90, through the track's slot
@@ -1225,17 +1229,18 @@ push_down:
     .long   0
 """
 
-CAVES = ((CAVE_LOOK, lambda: LOOK, LOOK_LABELS),
-         (CAVE_CORE, lambda: CORE, CORE_LABELS),
-         (CAVE_UI, lambda: ui_source() + UI_HELPERS + CLEAR_SRC,
+# Each cave's source is a function of the OS: its stock addresses go through `dnfw.osport`.
+CAVES = ((CAVE_LOOK, lambda os: osport.render(LOOK, globals(), os), LOOK_LABELS),
+         (CAVE_CORE, lambda os: osport.render(CORE, globals(), os), CORE_LABELS),
+         (CAVE_UI, lambda os: ui_source(os) + osport.render(UI_HELPERS + CLEAR_SRC, globals(), os),
           UI_LABELS + ("clear_hook", "disp_mode", "disp_rng", "disp_spd",
                        "disp_nlen", "disp_len", "disp_off", "held_ctx", "next_held", "ctx_table", "recount")),
-         (CAVE_EDIT, lambda: PASTE_CORE, ("paste_core", "paste_c", "paste_d")),
-         (CAVE_PASTE, lambda: EDIT, EDIT_LABELS),
-         (CAVE_TCOPY, lambda: TRIG_COPY, ("copy_hook",)),
-         (CAVE_TPASTE, lambda: TRIG_PASTE, ("paste_hook",)),
-         (CAVE_PUSH, lambda: PUSH_SRC, ("push_hook",) + tuple("pg_" + e[2] for e in EDITS))) + (
-        ((CAVE_MASK, lambda: UI_MASK + MASK_CORE, ("ui_mask", "disp_mask")),) if FULL else ())
+         (CAVE_EDIT, lambda os: osport.render(PASTE_CORE, globals(), os), ("paste_core", "paste_c", "paste_d")),
+         (CAVE_PASTE, lambda os: osport.render(EDIT, globals(), os), EDIT_LABELS),
+         (CAVE_TCOPY, lambda os: osport.render(TRIG_COPY, globals(), os), ("copy_hook",)),
+         (CAVE_TPASTE, lambda os: osport.render(TRIG_PASTE, globals(), os), ("paste_hook",)),
+         (CAVE_PUSH, lambda os: osport.render(PUSH_SRC, globals(), os), ("push_hook",) + tuple("pg_" + e[2] for e in EDITS))) + (
+        ((CAVE_MASK, lambda os: osport.render(UI_MASK + MASK_CORE, globals(), os), ("ui_mask", "disp_mask")),) if FULL else ())
 
 # (va, stock bytes, how, label) -- replaced by jmp / jsr / lea to the label.
 HOOKS = [
@@ -1302,6 +1307,8 @@ CONTEXT = (
 )
 
 STOCK = pathlib.Path("00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
+STOCKS = {"1.11": "00_Firmware/Digitone_II_OS1.11_dist.zip",       # under 00_Resources (issue #382)
+          "1.12": "00_Firmware/Digitone_II_OS1.12.syx"}
 OUT = pathlib.Path("00_Resources/02_Builds/arp-plocks-all_DN2_1.11.syx" if FULL
                    else "00_Resources/02_Builds/arp-plocks_DN2_1.11.syx")
 
@@ -1310,24 +1317,30 @@ def be32(v: int) -> bytes:
     return struct.pack(">I", v)
 
 
-def check(content: bytes, va: int, want: bytes, why: str) -> None:
-    have = bytes(content[va - BASE:va - BASE + len(want)])
-    if have != want:
-        raise SystemExit(f"{va:#010x}: expected {want.hex()}, found {have.hex()} ({why})")
-
-
-def compose(stock: bytes, log=print, code_base: int | None = None) -> dict:
+def compose(stock: bytes, log=print, code_base: int | None = None, os: str = "1.11") -> dict:
     """The mod on STOCK. Without CODE_BASE, each piece of code goes into its cave in the
     image (the packaged build of 2026-09-19). With it (the mod platform, 2026-10-02),
     the pieces are assembled one after another from CODE_BASE into one blob for a
     platform `CODE` chunk, and the caves stay stock: the hooks and patches are the same,
-    pointing at the blob's addresses."""
+    pointing at the blob's addresses.
+
+    OS is STOCK's version (issue #382): every guard, hook and patch site goes through
+    `dnfw.osport.site`, and the code names its stock addresses for OS. The cave build is
+    1.11 only."""
+    if os != "1.11" and code_base is None:
+        raise SystemExit(f"on OS {os} only the platform build exists: give a code base")
+
+    def site(va, want, why):
+        try:
+            return osport.site(os, va, want, content, BASE)
+        except osport.NotPorted as exc:
+            raise SystemExit(f"{why}: {exc}") from None
     if not available():
         raise SystemExit("no m68k assembler found (m68k-linux-gnu-as; WSL is fine)")
     content = bytearray(stock)
     log("part 1 -- the code this relies on, asserted")
     for va, want, why in CONTEXT:
-        check(content, va, want, why)
+        va, want = site(va, want, why)
         log(f"  {va:#010x}  {want.hex():<14}  {why}")
 
     log("part 2 -- the caves" if code_base is None else f"part 2 -- the code, from {code_base:#010x}")
@@ -1338,7 +1351,7 @@ def compose(stock: bytes, log=print, code_base: int | None = None) -> dict:
             cave = code_base + len(blob_out)
         elif any(content[cave - BASE:cave - BASE + cap]):
             raise SystemExit(f"cave at {cave:#010x} is not free")
-        text = re.sub(r"@(\w+)@", lambda m: f"{at[m.group(1)]:#010x}", source())
+        text = re.sub(r"@(\w+)@", lambda m: f"{at[m.group(1)]:#010x}", source(os))
         table = "\n    .align 2\n" + "\n".join(f"    .long {n}" for n in labels) + "\n"
         blob = assemble(text + table, base=cave)
         payload = blob[:-4 * len(labels)]
@@ -1355,7 +1368,7 @@ def compose(stock: bytes, log=print, code_base: int | None = None) -> dict:
 
     log("part 3 -- the hooks")
     for va, stock_bytes, how, label in HOOKS:
-        check(content, va, stock_bytes, f"{how} -> {label}")
+        va, stock_bytes = site(va, stock_bytes, f"{how} -> {label}")
         new = bytes.fromhex(OPCODE[how]) + be32(at[label])
         new += bytes.fromhex("4e71") * ((len(stock_bytes) - len(new)) // 2)
         content[va - BASE:va - BASE + len(new)] = new
@@ -1363,7 +1376,7 @@ def compose(stock: bytes, log=print, code_base: int | None = None) -> dict:
 
     log("part 4 -- byte patches")
     for va, stock_bytes, new, why in PATCHES:
-        check(content, va, stock_bytes, why)
+        va, stock_bytes = site(va, stock_bytes, why)
         content[va - BASE:va - BASE + len(new)] = new
         log(f"  {va:#010x}  {stock_bytes.hex()} -> {new.hex()}  {why}")
     return {"content": bytes(content), "caves": caves, "at": at,

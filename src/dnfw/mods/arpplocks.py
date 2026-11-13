@@ -72,7 +72,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from . import RAM, Extent, ModError, Result, platform
+from . import RAM, Extent, ModError, Result, platform, specs
 
 ID = "arpplocks"
 NAME = "Arpeggiator p-locks"
@@ -81,15 +81,18 @@ DEVICE = 0x15                      # Digitone II
 SECTION = 3                        # MAIN OS
 BASE = 0x40000400
 SPEC = json.loads((pathlib.Path(__file__).with_name("arpplocks_code.json")).read_text())
+SPECS = specs.load(__file__, "arpplocks")          # one per OS version (issue #382); SPEC is 1.11's
 
 
 CODE_VA = SPEC["code"]["va"]
 BLOB = bytes.fromhex(SPEC["code"]["blob"])
 
 
-def extents(firmware=None) -> list[Extent]:
-    return ([Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in SPEC["edits"]]
-            + platform.extents(16 + len(BLOB)))
+def extents(firmware=None, os: str | None = None) -> list[Extent]:
+    os = os or specs.of_firmware(firmware)
+    spec = specs.pick(SPECS, os, ID)
+    return ([Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in spec["edits"]]
+            + platform.extents(16 + len(spec["code"]["blob"]) // 2, os))
 
 
 def apply(firmware) -> Result:
@@ -99,38 +102,47 @@ def apply(firmware) -> Result:
     original, others = platform.split(section.unpack())
     # Longer is fine: data appended after the stock end (lfowaves, bootscreen)
     # moves no address this mod writes or reads.
-    if len(original) < SPEC["stock_length"]:
+    if len(original) < SPEC["stock_length"]:      # shorter than the shortest stock
         raise ModError(f"MAIN OS is {len(original):,} B, shorter than "
                        f"{SPEC['stock_length']:,}: not Digitone II 1.11")
-    for g in SPEC["guards"]:
+    os = specs.of_main_os(original)
+    spec = specs.pick(SPECS, os, ID)
+    if len(original) < spec["stock_length"]:
+        raise ModError(f"MAIN OS is {len(original):,} B, shorter than "
+                       f"{spec['stock_length']:,}: not Digitone II {os}")
+    # A guard covers each hook's site too, so another mod's hook there is refused here.
+    for g in spec["guards"]:
         want = bytes.fromhex(g["bytes"])
         if original[g["va"] - BASE:g["va"] - BASE + len(want)] != want:
             raise ModError(f"0x{g['va']:08x} is not stock; this mod is for unmodified "
-                           "Digitone II 1.11, or another mod already wrote there")
-    for e in SPEC["edits"]:
+                           f"Digitone II {os}, or another mod already wrote there")
+    for e in spec["edits"]:
         want = bytes.fromhex(e["stock"])
         if original[e["va"] - BASE:e["va"] - BASE + len(want)] != want:
             raise ModError(f"0x{e['va']:08x} is not stock; this mod is for unmodified "
-                           "Digitone II 1.11, or another mod already wrote there")
+                           f"Digitone II {os}, or another mod already wrote there")
 
     content = bytearray(original)
-    for e in SPEC["edits"]:
+    for e in spec["edits"]:
         new = bytes.fromhex(e["new"])
         content[e["va"] - BASE:e["va"] - BASE + len(new)] = new
-    chunk = platform.area.CodeChunk(CODE_VA, BLOB).pack()
+    code_va, blob = spec["code"]["va"], bytes.fromhex(spec["code"]["blob"])
+    chunk = platform.area.CodeChunk(code_va, blob).pack()
     content = platform.join(bytes(content), others + [(platform.area.CODE, chunk)])
 
-    return Result(payloads={SECTION: bytes(content)}, extents=extents(),
+    return Result(payloads={SECTION: bytes(content)}, extents=extents(os=os),
                   notes=["hold a trig in grid recording, turn MODE / SPEED / RANGE / N.LEN "
                          "in the ARPEGGIATOR menu: a p-lock",
-                         f"{len(SPEC['edits'])} edits in section 3, and a {len(BLOB):,} B CODE "
-                         f"chunk at 0x{CODE_VA:08x} in the platform's area"])
+                         f"{len(spec['edits'])} edits in section 3, and a {len(blob):,} B CODE "
+                         f"chunk at 0x{code_va:08x} in the platform's area"])
 
 
-def ram() -> list[Extent]:
-    """The RAM above BSS the code uses (`SPEC["ram"]`), for the platform's comparison."""
-    return ([Extent(RAM, r["va"], r["bytes"], r["what"]) for r in SPEC.get("ram", [])]
-            + [Extent(RAM, CODE_VA, len(BLOB), "the mod's code (a platform CODE chunk)")])
+def ram(os: str = "1.11") -> list[Extent]:
+    """The RAM above BSS the code uses (the spec's "ram"), for the platform's comparison."""
+    spec = specs.pick(SPECS, os, ID)
+    return ([Extent(RAM, r["va"], r["bytes"], r["what"]) for r in spec.get("ram", [])]
+            + [Extent(RAM, spec["code"]["va"], len(spec["code"]["blob"]) // 2,
+                      "the mod's code (a platform CODE chunk)")])
 
 
 # Bytes that only look like RAM above BSS (`dnfw.mods.ramcheck`): `lea 0x40054690,%a4 ;

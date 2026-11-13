@@ -81,6 +81,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 
+from dnfw import osport
 from dnfw.cli.files import read_image
 from dnfw.container.section import compress
 from dnfw.firmware import build as fwbuild
@@ -150,6 +151,10 @@ SOUND_SET_V92 = 0x401DB858
 # MIDI track SPH stayed a plain number (owner, 2026-09-17). v10 wraps both.
 MIDI_SET_V92 = 0x401DB9F0
 STOCK_V92 = 0x40036692
+# The stock code the stubs call or return to, named so that `osport.render` moves them (issue #382).
+SPRINTF = ui.SPRINTF
+FMT_FIXED2 = 0x40210BCE                 # "%d.%02d"
+A_RESUME, B_RESUME, NO_PHASE_RESUME = 0x40137A00, 0x40137612, 0x40137894   # past each hook's 6 B
 NEVER_FMT = b"%d.--\x00"
 
 # Any non-zero word will do -- xorshift32's only requirement.  It is re-seeded
@@ -172,7 +177,7 @@ def be32(v: int) -> bytes:
 
 
 def source(fn_table: int, state: int, short_names: int, long_names: int,
-           never_fmt: int, glyph_sets: int, label_table: int) -> str:
+           never_fmt: int, glyph_sets: int, label_table: int, os: str = "1.11") -> str:
     noise_ram = NOISE_RAM
     noise_index = STOCK_ENTRIES + 2
     """The three generators and the three hook stubs.
@@ -181,7 +186,7 @@ def source(fn_table: int, state: int, short_names: int, long_names: int,
     evaluators are entitled to keep values there across the call.
     """
     p0, p1, br, vi, last, out = (state + 4 * k for k in range(1, 7))
-    return f"""
+    return osport.render("""
     .text
 
 | ---- STP: the ramp quantised to 2^k levels, k from SPH ------------------
@@ -413,18 +418,18 @@ fmt_v92:
     addq.l  #1,%d1                  | loop length in cycles, 1..31
     move.l  %d1,%sp@-
     move.l  %d0,%sp@-
-    pea     0x40210bce              | "%d.%02d", the firmware's own
+    pea     {FMT_FIXED2:#010x}              | "%d.%02d", the firmware's own
     move.l  %sp@(28),%sp@-          | dest: arg 4, past three pushes
-    jsr     0x40000e82
+    jsr     {SPRINTF:#010x}
     lea     %sp@(16),%sp
     rts
 78: move.l  %d0,%sp@-               | never repeats: `colour.--`
     pea     {never_fmt:#010x}
     move.l  %sp@(24),%sp@-
-    jsr     0x40000e82
+    jsr     {SPRINTF:#010x}
     lea     %sp@(12),%sp
     rts
-79: jmp     0x40036692              | every other record, or another wave: stock
+79: jmp     {STOCK_V92:#010x}              | every other record, or another wave: stock
 
 | hash: %d0 = value, %d2 = octave -> %d0, clobbers %d3. A murmur-style mix.
 90: move.l  %d2,%d3
@@ -454,7 +459,7 @@ a_call:
     mvs.b   %a4@(78),%d1            | SPH, slot 8*lfo+6
     andi.l  #0x7f,%d1
     or.l    %d0,%d1                 | the instance key above SPH's seven bits
-    jmp     0x40137a00
+    jmp     {A_RESUME:#010x}
 
 | ---- evaluator B: the same, then make the call and come back ------------
 | Entered by jmp, so the stack is exactly what the generator expects.
@@ -468,7 +473,7 @@ b_call:
     andi.l  #0x7f,%d1
     or.l    %d0,%d1
     jsr     %a1@
-    jmp     0x40137612
+    jmp     {B_RESUME:#010x}
 
 | key: %a1 = &SPH -> %d0 = ((addr >> 1) & 1023) << 8. %d0 is free at both sites.
 | Slots are 202 bytes a track and 16 an LFO, so 101*dt + 8*dl never reaches
@@ -488,8 +493,8 @@ no_phase:
     bra.s   2f
 1:  mvs.w   %a4@(78),%d2
 2:  sub.l   %d0,%d7                 | the displaced instruction
-    jmp     0x40137894
-""" + ui.formatter_source(ENTRIES - 1, short_names, long_names) 
+    jmp     {NO_PHASE_RESUME:#010x}
+""", {**globals(), **locals()}, os) + ui.formatter_source(ENTRIES - 1, short_names, long_names, os) 
 
 
 def main() -> int:

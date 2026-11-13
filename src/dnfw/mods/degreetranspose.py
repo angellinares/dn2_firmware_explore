@@ -64,7 +64,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from . import RAM, Extent, ModError, Result, platform
+from . import RAM, Extent, ModError, Result, platform, specs
 
 ID = "degreetranspose"
 NAME = "Degree transpose"
@@ -76,11 +76,14 @@ BASE = 0x40000400
 SPEC = json.loads((pathlib.Path(__file__).with_name("degreetranspose_code.json")).read_text())
 CODE_VA = SPEC["code"]["va"]
 BLOB = bytes.fromhex(SPEC["code"]["blob"])
+SPECS = specs.load(__file__, "degreetranspose")    # one per OS version (issue #382); SPEC is 1.11's
 
 
-def extents(firmware=None) -> list[Extent]:
-    return ([Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in SPEC["edits"]]
-            + platform.extents(16 + len(BLOB)))
+def extents(firmware=None, os: str | None = None) -> list[Extent]:
+    os = os or specs.of_firmware(firmware)
+    spec = specs.pick(SPECS, os, ID)
+    return ([Extent(SECTION, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in spec["edits"]]
+            + platform.extents(16 + len(spec["code"]["blob"]) // 2, os))
 
 
 def apply(firmware) -> Result:
@@ -88,34 +91,25 @@ def apply(firmware) -> Result:
     if section is None:
         raise ModError("image has no MAIN OS section")
     original, others = platform.split(section.unpack())
-    if len(original) < SPEC["stock_length"]:
+    if len(original) < SPEC["stock_length"]:      # shorter than the shortest stock
         raise ModError(f"MAIN OS is {len(original):,} B, shorter than "
                        f"{SPEC['stock_length']:,}: not Digitone II 1.11")
-    for g in SPEC["guards"]:
-        want = bytes.fromhex(g["bytes"])
-        if original[g["va"] - BASE:g["va"] - BASE + len(want)] != want:
-            raise ModError(f"0x{g['va']:08x} is not stock; this mod is for unmodified "
-                           "Digitone II 1.11")
-    for e in SPEC["edits"]:
-        want = bytes.fromhex(e["stock"])
-        if original[e["va"] - BASE:e["va"] - BASE + len(want)] != want:
-            raise ModError(f"0x{e['va']:08x} is not stock; this mod is for unmodified "
-                           "Digitone II 1.11, or another mod already wrote there")
-
-    content = bytearray(original)
-    for e in SPEC["edits"]:
-        new = bytes.fromhex(e["new"])
-        content[e["va"] - BASE:e["va"] - BASE + len(new)] = new
-    chunk = platform.area.CodeChunk(CODE_VA, BLOB).pack()
+    os = specs.of_main_os(original)
+    spec = specs.pick(SPECS, os, ID)
+    content = specs.apply_edits(original, spec, os)
+    code_va, blob = spec["code"]["va"], bytes.fromhex(spec["code"]["blob"])
+    chunk = platform.area.CodeChunk(code_va, blob).pack()
     content = platform.join(bytes(content), others + [(platform.area.CODE, chunk)])
 
-    return Result(payloads={SECTION: bytes(content)}, extents=extents(),
+    return Result(payloads={SECTION: bytes(content)}, extents=extents(os=os),
                   notes=["[KEYBOARD]+[FUNC] or [TRK]+[+]/[-]: the active track, in degrees of its scale; "
                          "applied on release",
-                         f"{len(SPEC['edits'])} edits in section 3, and a {len(BLOB):,} B CODE "
-                         f"chunk at 0x{CODE_VA:08x} in the platform's area"])
+                         f"{len(spec['edits'])} edits in section 3, and a {len(blob):,} B CODE "
+                         f"chunk at 0x{code_va:08x} in the platform's area"])
 
 
-def ram() -> list[Extent]:
+def ram(os: str = "1.11") -> list[Extent]:
     """The RAM the code uses: its own chunk. The amounts live in the pattern's own data."""
-    return [Extent(RAM, CODE_VA, len(BLOB), "the mod's code (a platform CODE chunk)")]
+    spec = specs.pick(SPECS, os, ID)
+    return [Extent(RAM, spec["code"]["va"], len(spec["code"]["blob"]) // 2,
+                   "the mod's code (a platform CODE chunk)")]

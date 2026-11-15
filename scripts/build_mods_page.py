@@ -115,6 +115,7 @@ MENU_NAMES = {
     "midiarp": "MIDI ARP",
     "moddest": "MOD DEST",
     "reloadconfirm": "RELOAD CONF",
+    "sendloop": "SEND LOOP",
     "songguard": "SONG GUARD",
     "transients": "TRANSIENTS",
     "usbprobe": "USB PROBE",

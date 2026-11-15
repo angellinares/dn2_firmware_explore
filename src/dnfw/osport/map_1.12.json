@@ -77,6 +77,7 @@
     "patch.loader:patch",
     "platform:literal",
     "reloadconfirm:literal",
+    "sendloop:literal",
     "songguard:literal",
     "specs:literal",
     "usbprobe:literal",
@@ -4945,10 +4946,11 @@
   "0x40096f34": {
    "new": "0x40097098",
    "how": "bracketed",
-   "check": null,
+   "check": "bytes match",
    "users": [
     "build_mods_page:build",
-    "build_personalize_toggle:build"
+    "build_personalize_toggle:build",
+    "modspage:guard"
    ]
   },
   "0x40096f90": {
@@ -5097,9 +5099,10 @@
   "0x4009fa4a": {
    "new": "0x4009fbae",
    "how": "exact",
-   "check": null,
+   "check": "relocated",
    "users": [
-    "build_mods_page:build"
+    "build_mods_page:build",
+    "modspage:guard"
    ]
   },
   "0x400bb394": {
@@ -5363,7 +5366,24 @@
    "how": "exact",
    "check": null,
    "users": [
+    "sendloop:literal",
     "waverider:operand"
+   ]
+  },
+  "0x400cf912": {
+   "new": "0x400cfa76",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "sendloop:literal"
+   ]
+  },
+  "0x400cf922": {
+   "new": "0x400cfa86",
+   "how": "exact",
+   "check": null,
+   "users": [
+    "sendloop:literal"
    ]
   },
   "0x400d0000": {
@@ -7668,25 +7688,28 @@
   "0x4010b90e": {
    "new": "0x4010bbee",
    "how": "exact",
-   "check": null,
+   "check": "relocated",
    "users": [
-    "build_mods_page:build"
+    "build_mods_page:build",
+    "modspage:guard"
    ]
   },
   "0x4010b96e": {
    "new": "0x4010bc4e",
    "how": "exact",
-   "check": null,
+   "check": "bytes match",
    "users": [
-    "build_mods_page:build"
+    "build_mods_page:build",
+    "modspage:guard"
    ]
   },
   "0x4010b9b2": {
    "new": "0x4010bc92",
    "how": "exact",
-   "check": null,
+   "check": "relocated",
    "users": [
-    "build_mods_page:build"
+    "build_mods_page:build",
+    "modspage:guard"
    ]
   },
   "0x4010ba88": {
@@ -7700,25 +7723,28 @@
   "0x4010ba8e": {
    "new": "0x4010bd6e",
    "how": "exact",
-   "check": null,
+   "check": "relocated",
    "users": [
-    "build_mods_page:build"
+    "build_mods_page:build",
+    "modspage:guard"
    ]
   },
   "0x4010bde4": {
    "new": "0x4010c0c4",
    "how": "exact",
-   "check": null,
+   "check": "bytes match",
    "users": [
-    "build_mods_page:build"
+    "build_mods_page:build",
+    "modspage:edit"
    ]
   },
   "0x4010bdea": {
    "new": "0x4010c0ca",
    "how": "exact",
-   "check": null,
+   "check": "bytes match",
    "users": [
-    "build_mods_page:build"
+    "build_mods_page:build",
+    "modspage:guard"
    ]
   },
   "0x4010db00": {
@@ -8050,9 +8076,10 @@
   "0x40115668": {
    "new": "0x40115948",
    "how": "exact",
-   "check": null,
+   "check": "bytes match",
    "users": [
-    "build_mods_page:build"
+    "build_mods_page:build",
+    "modspage:guard"
    ]
   },
   "0x401157fc": {
@@ -8141,53 +8168,59 @@
   "0x4011690e": {
    "new": "0x40116bee",
    "how": "exact",
-   "check": null,
+   "check": "bytes match",
    "users": [
     "build_mods_page:build",
     "build_personalize_toggle:build",
-    "build_reload_confirm:build"
+    "build_reload_confirm:build",
+    "modspage:guard"
    ]
   },
   "0x401170d8": {
    "new": "0x401173b8",
    "how": "exact",
-   "check": null,
+   "check": "bytes match",
    "users": [
     "build_mods_page:build",
     "build_personalize_toggle:build",
-    "build_reload_confirm:build"
+    "build_reload_confirm:build",
+    "modspage:guard"
    ]
   },
   "0x40117224": {
    "new": "0x40117504",
    "how": "exact",
-   "check": null,
+   "check": "bytes match",
    "users": [
-    "build_mods_page:build"
+    "build_mods_page:build",
+    "modspage:guard"
    ]
   },
   "0x4011b600": {
    "new": "0x4011b8e0",
    "how": "exact",
-   "check": null,
+   "check": "bytes match",
    "users": [
-    "build_mods_page:build"
+    "build_mods_page:build",
+    "modspage:guard"
    ]
   },
   "0x4011b74e": {
    "new": "0x4011ba2e",
    "how": "exact",
-   "check": null,
+   "check": "bytes match",
    "users": [
-    "build_mods_page:build"
+    "build_mods_page:build",
+    "modspage:guard"
    ]
   },
   "0x4011bc26": {
    "new": "0x4011bf06",
    "how": "exact",
-   "check": null,
+   "check": "bytes match",
    "users": [
-    "build_mods_page:build"
+    "build_mods_page:build",
+    "modspage:guard"
    ]
   },
   "0x4011c674": {
@@ -8251,7 +8284,8 @@
    "how": "exact",
    "check": null,
    "users": [
-    "build_lfo4_tick:build"
+    "build_lfo4_tick:build",
+    "modspage:operand"
    ]
   },
   "0x4012006a": {
@@ -8274,10 +8308,11 @@
   "0x40120264": {
    "new": "0x40120544",
    "how": "exact",
-   "check": null,
+   "check": "relocated",
    "users": [
     "build_mods_page:build",
-    "build_personalize_toggle:build"
+    "build_personalize_toggle:build",
+    "modspage:guard"
    ]
   },
   "0x4012092c": {
@@ -10156,20 +10191,22 @@
   "0x40188086": {
    "new": "0x40188366",
    "how": "exact",
-   "check": null,
+   "check": "bytes match",
    "users": [
     "build_mods_page:build",
-    "build_personalize_toggle:build"
+    "build_personalize_toggle:build",
+    "modspage:guard"
    ]
   },
   "0x401880cc": {
    "new": "0x401883ac",
    "how": "exact",
-   "check": null,
+   "check": "bytes match",
    "users": [
     "build_fxbrowser2:build",
     "build_mods_page:build",
-    "build_reload_confirm:build"
+    "build_reload_confirm:build",
+    "modspage:guard"
    ]
   },
   "0x4018816a": {
@@ -10251,9 +10288,10 @@
   "0x4019e76e": {
    "new": "0x4019ea4e",
    "how": "exact",
-   "check": null,
+   "check": "bytes match",
    "users": [
-    "build_mods_page:build"
+    "build_mods_page:build",
+    "modspage:guard"
    ]
   },
   "0x4019f600": {
@@ -10310,9 +10348,10 @@
   "0x401a54c8": {
    "new": "0x401a57a8",
    "how": "exact",
-   "check": null,
+   "check": "bytes match",
    "users": [
-    "build_mods_page:build"
+    "build_mods_page:build",
+    "modspage:guard"
    ]
   },
   "0x401a5e2c": {
@@ -10442,7 +10481,8 @@
     "build_direct_jump:build",
     "build_mods_page:build",
     "build_reload_confirm:build",
-    "directjump:guard"
+    "directjump:guard",
+    "modspage:guard"
    ]
   },
   "0x401ce69e": {
@@ -10453,7 +10493,8 @@
     "build_direct_jump:build",
     "build_mods_page:build",
     "build_personalize_toggle:build",
-    "directjump:guard"
+    "directjump:guard",
+    "modspage:guard"
    ]
   },
   "0x401ce6d6": {
@@ -11600,7 +11641,8 @@
    "how": "data exact",
    "check": null,
    "users": [
-    "build_mods_page:build"
+    "build_mods_page:build",
+    "modspage:operand"
    ]
   },
   "0x40295698": {

@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 560" width="860" height="560" font-family="Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">The frame send's copy loop: stock's flow and the mod's flow</title>
+  <desc id="d">Two flow charts side by side. Stock handles each frame word in 7 instructions with two 16-bit writes. The mod prepares the command word and an end address once, then handles each word in 4 instructions with one 32-bit write. Both build the same buffer.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#3b4252"/>
+    </marker>
+  </defs>
+  <rect width="860" height="560" fill="#ffffff"/>
+
+  <!-- input, shared -->
+  <rect x="250" y="16" width="360" height="44" rx="6" fill="#eef1f6" stroke="#3b4252"/>
+  <text x="430" y="35" text-anchor="middle" font-size="13" fill="#1f2430">One frame: 1,344 words of 16 bits</text>
+  <text x="430" y="52" text-anchor="middle" font-size="12" fill="#4a5163">sent to the DSP 1,500 times a second</text>
+  <path d="M340 60V92" stroke="#3b4252" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+  <path d="M520 60V92" stroke="#3b4252" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+
+  <!-- stock column -->
+  <text x="210" y="88" text-anchor="middle" font-size="15" font-weight="600" fill="#1f2430">Stock</text>
+  <rect x="40" y="96" width="340" height="40" rx="6" fill="#f6f7f9" stroke="#8a93a6"/>
+  <text x="210" y="121" text-anchor="middle" font-size="13" fill="#1f2430">Once: start a word counter at 0</text>
+  <path d="M210 136V162" stroke="#3b4252" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+
+  <rect x="40" y="166" width="340" height="212" rx="8" fill="#fbf3e6" stroke="#b7791f" stroke-width="1.5"/>
+  <text x="56" y="188" font-size="12" font-weight="600" fill="#7a4d0b">FOR EACH WORD: 7 INSTRUCTIONS</text>
+  <rect x="60" y="198" width="300" height="30" rx="5" fill="#ffffff" stroke="#b7791f"/>
+  <text x="210" y="218" text-anchor="middle" font-size="13" fill="#1f2430">Test the counter against the word count</text>
+  <rect x="60" y="234" width="300" height="30" rx="5" fill="#ffffff" stroke="#b7791f"/>
+  <text x="210" y="254" text-anchor="middle" font-size="13" fill="#1f2430">Write the command word (16 bits)</text>
+  <rect x="60" y="270" width="300" height="30" rx="5" fill="#ffffff" stroke="#b7791f"/>
+  <text x="210" y="290" text-anchor="middle" font-size="13" fill="#1f2430">Step the counter and the buffer pointer</text>
+  <rect x="60" y="306" width="300" height="30" rx="5" fill="#ffffff" stroke="#b7791f"/>
+  <text x="210" y="326" text-anchor="middle" font-size="13" fill="#1f2430">Write the frame word (16 bits)</text>
+  <text x="210" y="362" text-anchor="middle" font-size="12" fill="#7a4d0b">then branch back to the test</text>
+  <path d="M360 321H374V213H362" stroke="#b7791f" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+
+  <!-- mod column -->
+  <text x="650" y="88" text-anchor="middle" font-size="15" font-weight="600" fill="#1f2430">The send-loop mod</text>
+  <rect x="480" y="96" width="340" height="56" rx="6" fill="#f6f7f9" stroke="#8a93a6"/>
+  <text x="650" y="117" text-anchor="middle" font-size="13" fill="#1f2430">Once: put the command word in the high half</text>
+  <text x="650" y="135" text-anchor="middle" font-size="13" fill="#1f2430">of a register, and work out the end address</text>
+  <path d="M650 152V162" stroke="#3b4252" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+
+  <rect x="480" y="166" width="340" height="212" rx="8" fill="#e8f3ee" stroke="#2f7d5b" stroke-width="1.5"/>
+  <text x="496" y="188" font-size="12" font-weight="600" fill="#1e5a40">FOR EACH WORD: 4 INSTRUCTIONS</text>
+  <rect x="500" y="198" width="300" height="30" rx="5" fill="#ffffff" stroke="#2f7d5b"/>
+  <text x="650" y="218" text-anchor="middle" font-size="13" fill="#1f2430">Read the frame word into the low half</text>
+  <rect x="500" y="234" width="300" height="30" rx="5" fill="#ffffff" stroke="#2f7d5b"/>
+  <text x="650" y="254" text-anchor="middle" font-size="13" fill="#1f2430">Write the whole entry (32 bits), step the pointer</text>
+  <rect x="500" y="270" width="300" height="30" rx="5" fill="#ffffff" stroke="#2f7d5b"/>
+  <text x="650" y="290" text-anchor="middle" font-size="13" fill="#1f2430">Test the read pointer against the end address</text>
+  <text x="650" y="326" text-anchor="middle" font-size="12" fill="#1e5a40">then branch back while words are left</text>
+  <text x="650" y="344" text-anchor="middle" font-size="12" fill="#1e5a40">(the test runs first: a count of 0 writes nothing)</text>
+  <path d="M800 285H814V213H802" stroke="#2f7d5b" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+
+  <!-- output, shared -->
+  <path d="M210 378V414" stroke="#3b4252" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+  <path d="M650 378V414" stroke="#3b4252" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+  <rect x="150" y="418" width="560" height="44" rx="6" fill="#eef1f6" stroke="#3b4252"/>
+  <text x="430" y="437" text-anchor="middle" font-size="13" fill="#1f2430">The same transfer buffer, byte for byte: 1,344 entries of 4 bytes,</text>
+  <text x="430" y="454" text-anchor="middle" font-size="12" fill="#4a5163">each the command word and one frame word. The rest of the send does not change.</text>
+
+  <!-- totals -->
+  <text x="210" y="494" text-anchor="middle" font-size="13" fill="#1f2430">7 × 1,344 = 9,408 instructions a frame</text>
+  <text x="210" y="512" text-anchor="middle" font-size="12" fill="#4a5163">2,688 memory writes</text>
+  <text x="650" y="494" text-anchor="middle" font-size="13" fill="#1f2430">4 × 1,344 = 5,376 instructions a frame</text>
+  <text x="650" y="512" text-anchor="middle" font-size="12" fill="#4a5163">1,344 memory writes</text>
+  <text x="430" y="544" text-anchor="middle" font-size="13" font-weight="600" fill="#1f2430">Measured: 4,030 instructions less in every frame, about 4 points of a frame on the unit</text>
+</svg>

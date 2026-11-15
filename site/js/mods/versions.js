@@ -14,6 +14,7 @@ export const VERSIONS = {
   midiarp: "1.0.0",
   moddest: "1.0.0",
   reloadconfirm: "1.0.0",
+  sendloop: "0.1.0",
   songguard: "0.1.0",
   transients: "2.0.0",
   usbprobe: "0.1.1",

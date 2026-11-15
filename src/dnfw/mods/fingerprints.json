@@ -55,6 +55,10 @@
   "sha256": "f4c15a961352952500964e807ff3af758ac242cf2294aed51a1d09c9e442de28",
   "version": "1.0.0"
  },
+ "sendloop": {
+  "sha256": "54d6fcc4cc58a078893ac7c66d9d315c5c46d9132f975a7a47dce47bacc08076",
+  "version": "0.1.0"
+ },
  "songguard": {
   "sha256": "2d53085a9c57e624a7e114675ac2671a89722bf86e0d96fa8273183e89d83173",
   "version": "0.1.0"

@@ -596,6 +596,34 @@ dnfw mods apply firmware.syx --mod midiarp --mod arpmodes -o modded.syx</pre>
 <pre>dnfw mods apply firmware.syx --mod directjump -o modded.syx</pre>
 </article>
 
+<article class="mod">
+  <div class="mod-head">
+    <span class="glyph" data-glyph="sendloop" aria-hidden="true"></span>
+    <h3>Send loop</h3>
+    <span class="mod-id">sendloop</span>
+    <span class="mod-version"><!-- dnfw:version sendloop -->v0.1.0<!-- /dnfw:version --></span>
+    <span class="tag ready">Confirmed on hardware</span>
+  </div>
+  <p>
+    The main processor of the Digitone&nbsp;II sends a frame of values to the sound processor 1,500
+    times a second. This mod copies that frame with a shorter loop. You see and hear no difference.
+    The main processor has about 4 points of a frame more room on a busy pattern.
+  </p>
+
+  <p style="margin-top:1.2rem">
+    <a class="cta" href="send-loop.html">Open the Send Loop tool &#8594;</a>
+  </p>
+
+  <dl class="facts">
+    <dt>Adds</dt><dd>Nothing on the screen and nothing in the sound</dd>
+    <dt>Changes</dt><dd>1 edit of 24&nbsp;B in section 3, in place. Nothing is appended</dd>
+    <dt>Tested</dt><dd>In the emulator, 2026-11-14. On the owner&rsquo;s Digitone&nbsp;II with OS 1.11, 2026-11-15: stopped and on a busy factory pattern, beside a control build, with recordings of both</dd>
+    <dt>Combines</dt><dd><!-- dnfw:combines sendloop -->This mod combines with Arpeggiator SHUF and RAND, Arpeggiator p-locks, Arp offsets in scale, Boot screen, Degree transpose, Direct jump, LFO modulation of the FX, Layering onto MIDI tracks, A fourth LFO, LFO ONE/HALF fix, New LFO waveforms, Arpeggiator on MIDI tracks, More modulation destinations, Reload confirm, Song guard, FM drum transients, USB SysEx probe (diagnostic) and Waverider, a sixth machine. See the compatibility table<!-- /dnfw:combines --></dd>
+  </dl>
+
+<pre>dnfw mods apply firmware.syx --mod sendloop -o modded.syx</pre>
+</article>
+
 <h2 id="bug-fixes">Bug fixes</h2>
 <p>Factory behaviour that contradicts the manual, fixed and nothing else changed. Each
 one is checked against factory firmware on the same patch, so the fix is the only difference.</p>
@@ -771,10 +799,6 @@ fixed the jump on audio tracks only. It is superseded by the fix above and kept 
     <tr>
       <td><strong>Song guard in the browser</strong> <code>songguard</code></td>
       <td><span class="tag ready">Fix confirmed on hardware</span> A project with a damaged song row count halts the factory firmware when it opens. The <code>songguard</code> fix loads that song as empty. The fix is on the command line (<code>dnfw mods apply --mod songguard</code>). A browser page, like the LFO Hold page, comes next.</td>
-    </tr>
-    <tr>
-      <td><strong>Send loop in the browser</strong> <code>sendloop</code></td>
-      <td><span class="tag ready">Confirmed on hardware</span> The main processor sends a frame of values to the sound processor 1,500 times a second. The <code>sendloop</code> mod copies that frame with a shorter loop. You hear no difference, and the main processor has about 4 points of a frame more room on a busy pattern (measured on OS 1.11). It is on the command line (<code>dnfw mods apply --mod sendloop</code>). A browser page comes next.</td>
     </tr>
     <tr>
       <td><strong>Granular synthesis</strong></td>

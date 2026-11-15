@@ -38,7 +38,8 @@ STOCK_111 = resources_dir(ROOT) / "00_Firmware/Digitone_II_OS1.11_dist.zip"
 # every website mod that needs no input file, alone, and the sets the hook bus combines
 ORDERS = [
     ["arpmodes"], ["arpscale"], ["directjump"], ["fxmod"], ["layermidi"], ["lfo4"], ["lfolength"], ["midiarp"], ["moddest"],
-    ["reloadconfirm"], ["waverider"],
+    ["reloadconfirm"], ["sendloop"], ["waverider"],
+    ["sendloop", "waverider"], ["waverider", "sendloop", "lfo4"],
     ["fxmod", "waverider"], ["waverider", "fxmod"], ["lfo4", "waverider"], ["waverider", "lfo4"],
     ["waverider", "lfolength"], ["fxmod", "waverider", "lfo4"],
     ["lfowaves"], ["lfowaves", "lfo4"], ["lfowaves", "fxmod", "lfo4", "waverider"],

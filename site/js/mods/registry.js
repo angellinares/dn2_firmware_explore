@@ -17,6 +17,7 @@ import * as lfolength from "./lfolength.js";
 import * as lfowaves from "./lfowaves.js";
 import * as midiarp from "./midiarp.js";
 import * as moddest from "./moddest.js";
+import * as modspage from "./modspage.js";
 import * as reloadconfirm from "./reloadconfirm.js";
 import * as waverider from "./waverider.js";
 
@@ -34,11 +35,14 @@ export const RUN = {
 /**
  * STOCK (a loaded firmware) with MODS applied in order, page after page -> the built .syx bytes.
  * RUN gives each mod's step. The composer passes its own for the mods that take the user's files.
+ * With PAGE, each step also puts the mod's row on the MODS page (modspage.js), as a page's build
+ * does (modspage.js's `withModsPage`); a mod that leaves MAIN OS alone takes it along for that.
  */
-export async function applyInOrder(stock, mods, run = RUN) {
+export async function applyInOrder(stock, mods, run = RUN, page = true) {
   let firmware = stock, bytes = null;
   for (const mod of mods) {
     const sections = await run[mod](firmware);
+    if (page) sections.set(3, modspage.update(sections.get(3) ?? firmware.container.find(3).unpack(), mod));
     bytes = await build(firmware, new Map([...sections].map(([id, c]) => [id, replacement(firmware, id, c, mod)])));
     firmware = await load(bytes);
   }
@@ -52,6 +56,6 @@ export async function applyInOrder(stock, mods, run = RUN) {
 export async function rebuild(stock, mods) {
   const unknown = mods.filter((m) => !(m in RUN));
   if (unknown.length) return `the site does not publish ${unknown.join(", ")}, so it cannot rebuild this image`;
-  const built = await load(await applyInOrder(stock, mods));
+  const built = await load(await applyInOrder(stock, mods, RUN, false));   // safety.js compares without the MODS page
   return new Map(built.container.sections.map((s) => [s.id, s.unpack() ?? s.stored]));
 }

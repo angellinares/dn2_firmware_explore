@@ -42,7 +42,8 @@ def rebuilder(stock_path: pathlib.Path):
         with tempfile.TemporaryDirectory() as tmp:
             out = pathlib.Path(tmp) / "rebuilt_DN2_1.11.syx"
             args = argparse.Namespace(image=stock_path, mod=list(mods), out=out,
-                                      probe_tag=tag if "usbprobe" in mods else None)
+                                      probe_tag=tag if "usbprobe" in mods else None,
+                                      no_mods_page=True)     # safety compares without the MODS page
             with contextlib.redirect_stdout(io.StringIO()):
                 if cli_mods._apply(args) != 0:
                     return "dnfw mods apply refused these mods"

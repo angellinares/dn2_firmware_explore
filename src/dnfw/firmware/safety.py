@@ -380,6 +380,16 @@ def _canonical(main: bytes, base_length: int):
     return bytes(main[:base_length]), sorted(chunks)
 
 
+def _without_page(main: bytes) -> bytes:
+    """MAIN without the MODS page. The page is the build tool's, as the record is: the rebuild
+    has none, so the image is compared without it."""
+    from ..mods import ModError, modspage
+    try:
+        return modspage.without(main)
+    except ModError:
+        return main
+
+
 def _rebuild(ours: dict[int, bytes], stock: Firmware, mods: list[str], tag: str, rebuild) -> Item:
     title = "The record's mods rebuild this image exactly"
     if not mods:
@@ -387,6 +397,7 @@ def _rebuild(ours: dict[int, bytes], stock: Firmware, mods: list[str], tag: str,
     if rebuild is None:
         return Item("rebuild", title, "skip", "no rebuild was asked for")
     got = rebuild(stock, mods, tag)
+    ours = {**ours, MAIN_OS: _without_page(ours[MAIN_OS])} if MAIN_OS in ours else ours
     if isinstance(got, str):
         return Item("rebuild", title, "skip", got)
     base = len(compare.content(stock.container.find(MAIN_OS))[0])

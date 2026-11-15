@@ -3,8 +3,9 @@
 `js_build_check.mjs` builds each mod set the way the Mod Composer does (site/js/mods/compose.js),
 which runs the website's pages one after the other. `dnfw mods apply` builds the same set, with the
 arguments the composer shows for it (compose.command). Every section must depack to the same bytes. The one
-allowed difference is the /modinfo record's build part (tag, commit, the mods list and its code
-hashes, the image id, the hash), and both records must pass DNX's check.
+allowed differences are the /modinfo record's build part (tag, commit, the mods list and its code
+hashes, the image id, the hash), and the MODS page's build rows (the build's name and the commit)
+with the order of its mods' rows. Both records must pass DNX's check.
 
 The platform area is compared as its set of chunks. The CLI applies lfo4 last whatever the
 order given (APPLY_LAST); a website user can apply it first. Then the same chunks sit in another
@@ -155,8 +156,24 @@ def _canonical(main: bytes):
             n = modinfo.size_at(data, at)
             data[at + 20:at + 248] = bytes(228)
             data[at + 252:at + n] = bytes(n - 252)        # the hash, and a 512-byte record's mods 12 and up
-        out.append((cid, bytes(data)))
+        out.append((cid, _page_canonical(cid, bytes(data))))
     return main[:platform.STOCK_LENGTH], sorted(out)
+
+
+def _page_canonical(cid, data: bytes) -> bytes:
+    """The MODS page's chunk with its mods' rows sorted and its build rows (the name and the commit,
+    after the OS row at the top) left out. The website applies its mods in the user's order and names its
+    build WEB BUILD. Another chunk comes back as it is."""
+    from dnfw.mods import modspage, platform
+    if cid != platform.area.CODE:
+        return data
+    chunk = platform.area.CodeChunk.unpack(data)
+    if chunk.load != modspage.CODE_VA:
+        return data
+    code = len(modspage.SPEC["code"]["blob"]) // 2
+    rows = modspage.parse(chunk.image[code:])
+    assert rows[0][0] == modspage.OS_ROW, "the page starts with the OS, the build's name and the commit"
+    return chunk.image[:code] + repr(rows[:1] + sorted(rows[modspage.INFO_ROWS:])).encode()
 
 
 @pytest.mark.parametrize("order", ORDERS, ids=NAME)

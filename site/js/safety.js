@@ -10,6 +10,7 @@
 import { verify } from "./firmware.js";
 import * as ele3 from "./container/ele3.js";
 import * as modinfo from "./modinfo.js";
+import * as modspage from "./mods/modspage.js";
 import { installed, parseArea, unpackCode, RUNTIME_VA } from "./mods/platform.js";
 
 const MAIN_OS = 3, DSP = 7;
@@ -326,7 +327,8 @@ async function rebuildItem(ours, stock, mods, tag, rebuild) {
   if (typeof got === "string") return item("rebuild", title, "skip", got);
   const baseLength = content(stock.container.find(MAIN_OS)).length;
   const [sa, ca] = canonical(got.get(MAIN_OS), baseLength);
-  const [sb, cb] = canonical(ours.get(MAIN_OS), baseLength);
+  // the MODS page is the build tool's, as the record is: the rebuild has none, so ours is compared without it
+  const [sb, cb] = canonical(modspage.without(ours.get(MAIN_OS)), baseLength);
   const keys = (m) => [...m.keys()].sort((x, y) => x - y).join(",");
   const others = [...ours.keys()].filter((k) => k !== MAIN_OS).every((k) => got.has(k) && same(got.get(k), ours.get(k)));
   if (keys(got) === keys(ours) && same(sa, sb) && same(ca, cb) && others) {

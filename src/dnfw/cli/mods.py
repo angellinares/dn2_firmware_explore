@@ -117,6 +117,8 @@ def configure(parser) -> None:
                     help="directory of .wav files, used in sorted order "
                          "(only mods that take samples need this)")
     ap.add_argument("-o", "--out", type=pathlib.Path, required=True)
+    ap.add_argument("--no-mods-page", action="store_true",
+                    help="leave out SETTINGS > SYSTEM > MODS, the page that lists the build's mods")
     ap.add_argument("--lead-ms", type=float, default=3.0,
                     help="default milliseconds kept before the detected onset "
                          "(per-sample overrides go in prepare.csv)")
@@ -363,6 +365,18 @@ def _apply(args) -> int:
         for e in found:
             print(f"  {e}")
         named.append((mod.ID, found))
+    page_rows = None
+    if not getattr(args, "no_mods_page", False):
+        # The MODS page: every build lists its mods on the instrument (dnfw.mods.modspage)
+        from ..mods import modspage, specs
+        os = specs.of_firmware(firmware)
+        tag = args.probe_tag or args.out.stem.split("_DN2_")[0]
+        page_rows = modspage.plan(firmware, [mod.ID for mod in chosen], os, tag, _commit())
+        found = modspage.extents(firmware, count=len(page_rows)) + modspage.ram(os, len(page_rows))
+        print(f"{modspage.ID} writes:")
+        for e in found:
+            print(f"  {e}")
+        named.append((modspage.ID, found))
 
     conflicts = check_compatible(named)
     if conflicts:
@@ -400,6 +414,13 @@ def _apply(args) -> int:
             print(f"  {note}")
         payloads.update(result.payloads)
         wrote.append((mod.ID, result.extents))
+
+    if page_rows is not None:
+        result = modspage.apply(_staged(firmware, payloads), page_rows)
+        for note in result.notes:
+            print(f"  {note}")
+        payloads.update(result.payloads)
+        wrote.append((modspage.ID, result.extents))
 
     if 3 in payloads:
         payloads[3] = _modinfo(payloads[3], chosen, args, firmware.container.version)
@@ -440,12 +461,25 @@ def _apply(args) -> int:
     return 0
 
 
+def _commit() -> str:
+    """The tool's commit, short, with "+" when the tree has changes; "unknown" outside a checkout"""
+    import subprocess
+    try:
+        root = pathlib.Path(__file__).resolve().parents[3]
+        commit = subprocess.run(["git", "rev-parse", "--short=10", "HEAD"], cwd=root,
+                                capture_output=True, text=True, timeout=30).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=root,
+                               capture_output=True, text=True, timeout=30).stdout.strip()
+        return commit[:10] + ("+" if dirty else "")
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
 def _modinfo(payload: bytes, chosen, args, os_version: str) -> bytes:
     """MAIN OS with its /modinfo record written (docs/for-dnx-modinfo.md), when a mod
     carries one (Waverider's +Drive chunk); every mod applied is listed with the hash of
     its code, so two builds of the same mods differ in the image id, not only the tag. The OS
     version comes from the stock image's header, not from its file name."""
-    import subprocess
     from ..mods import modinfo
     from ..waverider.store import xxh32
     here = pathlib.Path(__file__).resolve().parents[1] / "mods"
@@ -453,15 +487,7 @@ def _modinfo(payload: bytes, chosen, args, os_version: str) -> bytes:
     for mod in chosen:
         code = here / f"{mod.ID}_code.json"
         mods.append((mod.ID, xxh32(code.read_bytes()) if code.exists() else 0))
-    try:
-        root = pathlib.Path(__file__).resolve().parents[3]
-        commit = subprocess.run(["git", "rev-parse", "--short=10", "HEAD"], cwd=root,
-                                capture_output=True, text=True, timeout=30).stdout.strip()
-        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=root,
-                               capture_output=True, text=True, timeout=30).stdout.strip()
-        commit = commit[:10] + ("+" if dirty else "")
-    except (OSError, subprocess.SubprocessError):
-        commit = "unknown"
+    commit = _commit()
     tag = getattr(args, "probe_tag", None) or args.out.stem.split("_DN2_")[0]
     at = modinfo.locate(payload)
     filled = modinfo.fill(payload, mods, tag, commit, os_version)

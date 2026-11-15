@@ -81,7 +81,8 @@ def run(tmp_path_factory):
     for name, mods in [("arpmodes", ["arpmodes"]), ("midiarp-arpmodes", ["midiarp", "arpmodes"]),
                        ("lfo4-arpmodes", ["lfo4", "arpmodes"])]:
         out = tmp / f"{name}.syx"
-        args = ["mods", "apply", str(syx), "-o", str(out)]
+        # the harness compares the mod's own step, so the CLI leaves the MODS page out
+        args = ["mods", "apply", str(syx), "--no-mods-page", "-o", str(out)]
         for m in mods:
             args += ["--mod", m]
         assert dnfw(args) == 0

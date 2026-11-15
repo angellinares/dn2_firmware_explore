@@ -172,6 +172,7 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "midiarp": PUBLISHED,
     "moddest": PUBLISHED,
     "reloadconfirm": PUBLISHED,
+    "sendloop": UNPUBLISHED,
     "songguard": UNPUBLISHED,
     "transients": (
         Release("2.0.0", "2026-10-24", (

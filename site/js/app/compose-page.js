@@ -38,6 +38,7 @@ const MODS = {
   reloadconfirm: ["Reload confirm", "FUNC + NO can ask before it reloads the pattern.", "reload-confirm.html"],
   directjump: ["Direct jump", "A pattern cued in the pattern view starts on the next step, from where the playing one was.", "direct-jump.html"],
   bootscreen: ["Boot screen", "Your own mark in the start-up animation.", "boot.html"],
+  sendloop: ["Send loop", "The main processor sends each frame to the sound processor with less work. No change that you see or hear.", "send-loop.html"],
 };
 /** The suffix each mod's own page gives its file. */
 const SUFFIX = { moddest: "destinations", lfolength: "lfofix" };
@@ -120,7 +121,7 @@ function toggle(id, on) {
 /** The rows: ticked, blocked and why, the pill of a mod with files, its panel. */
 function drawRows() {
   const stop = blocked([...state.on], REFUSED);
-  for (const row of document.querySelectorAll(".mod-row")) {
+  for (const row of document.querySelectorAll(".mod-row[data-mod]")) {
     const id = row.dataset.mod;
     const box = row.querySelector("input");
     const why = row.querySelector(".why");

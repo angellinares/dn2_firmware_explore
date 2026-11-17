@@ -215,6 +215,14 @@
   <section class="card">
     <h2>2. Mods</h2>
     <p>A mod that does not combine with one you ticked is greyed out, with the reason.</p>
+    <!-- Not a mod: every build has it (dnfw.mods.modspage), so its row is ticked and fixed. -->
+    <div class="mod-row">
+      <input type="checkbox" id="m-modspage" checked disabled>
+      <span class="glyph" aria-hidden="true"></span>
+      <div class="what"><label for="m-modspage"><span class="nm">MODS page</span><span class="id">in every build</span></label>
+        <div class="blurb">SETTINGS &gt; SYSTEM &gt; MODS lists the mods of your build and their versions on the instrument.</div></div>
+      <div class="side"><a class="manual" href="https://github.com/angellinares/dn2_firmware_explore/blob/main/docs/mods-page.md" aria-label="MODS page: its page">Manual</a></div>
+    </div>
     <div id="mods"></div>
     <p class="small">Mods that are still in progress are not here. The home page lists them under
     <a href="index.html#in-progress">In progress</a>.</p>

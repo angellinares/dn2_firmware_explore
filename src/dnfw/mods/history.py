@@ -172,7 +172,13 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "midiarp": PUBLISHED,
     "moddest": PUBLISHED,
     "reloadconfirm": PUBLISHED,
-    "sendloop": UNPUBLISHED,
+    "sendloop": (
+        Release("0.1.0", "2026-11-15", (
+            "First version. The main processor sends each frame to the sound processor with a shorter copy "
+            "loop. You see and hear no difference. On a busy pattern the main processor has about 4 points "
+            "of a frame more room.",
+        )),
+    ),
     "songguard": UNPUBLISHED,
     "transients": (
         Release("2.0.0", "2026-10-24", (

@@ -2,6 +2,11 @@
 
 > **2026-09-29: ONESHOT development continues locally and its code has been removed from this repository.** This document stays as the record of the DT2 → DN2 port research: the ColdFire half, the frame and reply layouts, and why Waverider came first. File paths below that point at ONESHOT code refer to that earlier state.
 
+**Later external evidence:** [DN2 ekFS hardware results](dn2-ekfs-hardware-results.md)
+report power-cycle persistence and one disk-to-ONESHOT playback trial from
+October 8. They add bounded feasibility evidence and identify a storage overlap
+with Waverider; they do not reintroduce the port implementation or establish
+compatibility with this repository's firmware.
 
 **2026-09-25.** The question: ONESHOT is the simplest DT2 SRC machine and its
 code is already in a firmware we hold, so what would porting it cost?

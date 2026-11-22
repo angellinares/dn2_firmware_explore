@@ -15,6 +15,12 @@ Grades: **[V]** verified, meaning something was run (a script over the image
 or a capture, or a tool). **[D]** derived, meaning read from the disassembly.
 **[S]** speculative. A static reading is never graded [V].
 
+**Later external evidence (2026-10-08):** a separate DN2 port reported native
+ekFS file readback after power cycles and disk-to-ONESHOT playback. See
+[hardware results and storage overlap](dn2-ekfs-hardware-results.md) for the
+measurements, provenance and limits. The original research below remains dated
+September 26; the external results are not an upstream implementation.
+
 ---
 
 ## The short answer
@@ -377,6 +383,10 @@ proof. Device-side proofs are written out in §7.
   (3,072 MiB). That is past the DT2's `ekFS` metadata, still inside the
   probable pSLC 3,120 MiB for our index, and below 4 GiB. Bulk sample data then
   continues upward.
+  **These are alternative layouts:** starting past ekFS metadata does not avoid
+  its file-data allocator. Waverider's `[0x600000, 0x641000)` store lies inside
+  the external port's filesystem write range; see the
+  [compatibility analysis](dn2-ekfs-hardware-results.md#storage-compatibility-waverider-overlaps).
 - **Risk: low.** A read cannot damage anything. The one hazard is an
   out-of-range sector: the driver returns −1 and the buffer is left stale.
 - **Cheapest proof:** a build with **three reads side by side**. A positive

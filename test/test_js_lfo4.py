@@ -84,7 +84,7 @@ def run(tmp_path_factory):
     (tmp / "moddest_lfo4.bin").write_bytes(lfo4.compose(opened))
 
     pair = tmp / "fx_lfo4.syx"
-    assert dnfw(["mods", "apply", str(syx), "--mod", "fxmod", "--mod", "lfo4", "-o", str(pair)]) == 0
+    assert dnfw(["mods", "apply", str(syx), "--mod", "fxmod", "--mod", "lfo4", "--no-mods-page", "-o", str(pair)]) == 0
     (tmp / "fx_lfo4.bin").write_bytes(load(pair.read_bytes()).container.find(lfo4.SECTION).unpack())
 
     refusals = tmp / "refusals.json"

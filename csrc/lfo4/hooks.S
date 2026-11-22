@@ -74,27 +74,6 @@ lfo4_memset_displaced:
     mvz.b   11(%sp),%d0
     jmp     DN2_MEMSET + 8
 
-/* **The frame send's guard (fix4, a test build, 2026-11-07).** The stock send 0x400cf7be(0xa80,
- * frame, 0xabc, reply) at its entry: 8 bytes become `jmp lfo4_send_stub ; nop`. Both of its
- * frame callers (the audio frame at 0x40025e9e, and Waverider's frame hook) pass the frame
- * second. `lfo4_send_guard` (bridge.c) answers 1 to send now, or 0 to hold a late frame:
- * then this returns as the send would, and the frame's note masks go with the next one.
- * The send loads its arguments from the stack, and both callers ignore d0, so d0/d1/a0/a1
- * are free here. Its home is the platform: here only for the unit test. */
-    .globl  lfo4_send_stub
-lfo4_send_stub:
-    move.l  8(%sp),-(%sp)           | the frame argument
-    jsr     lfo4_send_guard
-    addq.l  #4,%sp
-    tst.l   %d0
-    bne.s   lfo4_send_displaced
-    rts                             | held
-    .globl  lfo4_send_displaced
-lfo4_send_displaced:
-    lea     -12(%sp),%sp
-    movem.l %d2/%a2-%a3,(%sp)
-    jmp     STOCK_SEND_RESUME
-
 /* The other two sites are inside code that never expected a call, so unlike the
  * `memcpy` / `memset` stubs these must preserve what the compiler calls
  * scratch: at both, d0, d1, a0 and a1 are live across the site. ColdFire's

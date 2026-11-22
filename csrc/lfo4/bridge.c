@@ -357,53 +357,14 @@ static int amp_ended(u32 v)
     return on > amp_atk[a] + (h < 127u ? amp_hold[h] : 0u) + amp_dec[d] && off > amp_dec[d];
 }
 
+/* **The frame send's guard is gone (1.0.7, 2026-11-14).** fix4's guard (1.0.5) held a late frame and
+ * carried only its note masks into the next one. The rest of the held frame never reached the DSP.
+ * On a tester's unit it choked a track's sound at 139 BPM. The build without it played clean, with
+ * no dropped beat. The late frames it answered came from
+ * an unreleased test build's load added to LFO 4's. */
+
 /* From `a4_top`, when an awake voice's row has no destination: it sleeps at once. A note, or a
  * change to the table while the voice can still be heard, wakes it again. */
-/* **The frame send's guard (fix4, a test build, 2026-11-07).** A frame sent late is lost when it
- * was sent 0.739 to 0.772 ms after the one before (diag4: 24 of 65 late frames, on the unit). A
- * late transfer is still running when the next frame's turn comes, so the stock send skips that
- * one (DSPI2 SR bit 28, 0x400cf7fc), and the late frame alone spans two DSP blocks. So this holds
- * any frame that is late, and adds its note masks to the next frame instead. That frame goes out
- * on time and reaches the DSP one block later than a kept late frame would. One hold at a time,
- * so a run of late frames still sends every second one. Waverider's other frames (its table
- * chunks) are sent as stock and only move the clock on. */
-#define DTCN0       (*(volatile u32 *)0xFC07000Cu)    /* DMA timer 0, 132 MHz (diag4's clock) */
-#define DSPI_SR     (*(volatile u32 *)0xEC03802Cu)
-#define DSPI_EOQ    0x10000000u                       /* the last transfer has ended */
-#define FRAME_TX    0x80005E60u
-#define NOTE_ON     (*(volatile u16 *)0x80005E82u)
-#define NOTE_OFF    (*(volatile u16 *)0x80005E84u)
-#define LATE_TICKS  91080u                            /* 0.690 ms: on-time gaps are 0.664 to 0.670 */
-u32 lfo4_guard_holds, lfo4_guard_carried;
-static u32 last_send;
-static u16 carry_on, carry_off;
-static u8 held;
-
-u32 lfo4_send_guard(u32 frame)
-{
-    u32 now = DTCN0;
-
-    if (!(DSPI_SR & DSPI_EOQ))            /* the link is busy: the stock send skips this itself */
-        return 1;
-    if (frame == FRAME_TX) {
-        if (!held && now - last_send > LATE_TICKS) {
-            carry_on |= NOTE_ON;
-            carry_off |= NOTE_OFF;
-            held = 1;
-            lfo4_guard_holds++;
-            return 0;
-        }
-        if (held) {
-            NOTE_ON |= carry_on;
-            NOTE_OFF |= carry_off;
-            carry_on = carry_off = 0;
-            held = 0;
-            lfo4_guard_carried++;
-        }
-    }
-    last_send = now;
-    return 1;
-}
 
 static u32 parked;                    /* bit v: slept by lfo4_sleep, its note may still sound */
 

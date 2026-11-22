@@ -114,6 +114,11 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     ) + PUBLISHED,
     "layermidi": PUBLISHED,
     "lfo4": (
+        Release("1.0.7", "2026-11-14", (
+            "On a busy pattern at a fast tempo, a short sound on one track could stop sounding while other "
+            "tracks played. 1.0.5 added a check that held back a late update to the sound engine, and that "
+            "check caused it. 1.0.7 removes the check.",
+        )),
         Release("1.0.6", "2026-11-09", (
             "A sound with LFO4 settings that are out of range now loads without an LFO4. Before, "
             "LFO4 used such settings as they were. A sound saved by another firmware, or a damaged "
@@ -167,6 +172,13 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "midiarp": PUBLISHED,
     "moddest": PUBLISHED,
     "reloadconfirm": PUBLISHED,
+    "sendloop": (
+        Release("0.1.0", "2026-11-15", (
+            "First version. The main processor sends each frame to the sound processor with a shorter copy "
+            "loop. You see and hear no difference. On a busy pattern the main processor has about 4 points "
+            "of a frame more room.",
+        )),
+    ),
     "songguard": UNPUBLISHED,
     "transients": (
         Release("2.0.0", "2026-10-24", (

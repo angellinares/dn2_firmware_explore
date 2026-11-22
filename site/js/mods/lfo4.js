@@ -61,8 +61,7 @@ const put32 = (d, at, v) => {
 };
 
 // The entry hooks whose stubs replay the displaced stock bytes unchanged, then jump back.
-const HOOKS = [[0x40134490, 8], [0x401344d8, 8], [0x400dd282, 6], [0x400dd724, 8],
-  [0x400cf7be, 8]];  // the frame send's guard (csrc/lfo4/bridge.c), as dnfw.mods.lfo4.HOOKS
+const HOOKS = [[0x40134490, 8], [0x401344d8, 8], [0x400dd282, 6], [0x400dd724, 8]];
 // The area beyond the packaged blob: a directory entry and the data of each DISP and the ADDS chunk.
 const AREA_EXTRA = 12 * (HOOKS.length + 1) + 12 * HOOKS.length + 8;
 

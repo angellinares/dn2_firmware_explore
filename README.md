@@ -38,6 +38,7 @@ Before you do this, keep a copy of the project.
 | `directjump` | A pattern cued in the PTN view starts on the next step, from where the playing pattern was ([PTN] + [UP] turns it on, [PTN] + [DOWN] off) | not yet tested by the repository owner; external report in `docs/flashing.md` | yes |
 | `degreetranspose` | [KEYBOARD] + [FUNC] or [TRK] + [+]/[−] (stock's track transpose keys, with [KEYBOARD] added) transposes the active track by degrees of its scale, not semitones, kept in each pattern, MIDI tracks included | not yet tested by the repository owner; external reports in `docs/flashing.md` | no |
 | `transients` | Replace the FM drum transient bank with your own samples | confirmed on hardware | yes |
+| `sendloop` | The DSP frame send copies each frame with a shorter loop: the same frame, about 4 points of a frame less load on the main processor ([how](docs/sendloop.md)) | confirmed on hardware (OS 1.11) | yes |
 | `songguard` | A song with a damaged row count loads as empty instead of halting the instrument (a stock bug) | confirmed on hardware | no |
 | `lfolength` | The LFO ONE/HALF fix: TRIG MODE ONE and HALF run one cycle / half a cycle from the start phase and hold the value they reached, on audio and MIDI tracks (two stock bugs; supersedes `lfohold`) | confirmed on hardware (2026-10-09, audio track); MIDI tracks in the emulator | yes |
 | `waverider` | A sixth synth machine: two wavetable oscillators with MOVE, a sub-oscillator and noise, with tables from the +Drive (alpha) | alpha, confirmed on hardware (2026-10-14) | yes |

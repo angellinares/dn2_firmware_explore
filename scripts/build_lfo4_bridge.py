@@ -61,7 +61,6 @@ ENTRIES = ["lfo4_init", "ext_get", "ext_set", "ext_drop", "lfo4_refresh", "lfo4_
            "lfo4_row_for_block", "lfo4_on_frame", "lfo4_wake", "lfo4_now", "lfo4_held", "lfo4_awake",
            "lfo4_runs", "lfo4_wakes", "lfo4_owner_raw", "lfo4_seen_generation", "lfo4_refreshes",
            "ext_generation", "lfo4_fx", "lfo4_fx_generation", "lfo4_sleep",
-           "lfo4_send_guard", "lfo4_guard_holds", "lfo4_guard_carried",
            *(s[2] for s in SITES)]
 
 # Each stub asks the C for its row instead of computing one from a fixed table.

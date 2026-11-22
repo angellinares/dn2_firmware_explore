@@ -1,0 +1,146 @@
+{
+ "os": "Digitone II 1.12",
+ "stock_length": 3196288,
+ "edits": [
+  {
+   "va": 1074839748,
+   "stock": "4cef7cfc0018",
+   "new": "4ef946798000",
+   "what": "the MODS page's hook"
+  }
+ ],
+ "guards": [
+  {
+   "va": 1074838606,
+   "bytes": "4fefff9048d77cfc"
+  },
+  {
+   "va": 1074838674,
+   "bytes": "4eb94011b8e0"
+  },
+  {
+   "va": 1074838894,
+   "bytes": "49f94011ba2e4e94"
+  },
+  {
+   "va": 1074839754,
+   "bytes": "4fef00884e75"
+  },
+  {
+   "va": 1074838510,
+   "bytes": "4879402947102f024eb940115948"
+  },
+  {
+   "va": 1074396078,
+   "bytes": "41e801d82f082f024eb94019ea4e2f022f124eb94011bf06"
+  },
+  {
+   "va": 1074922820,
+   "bytes": "4ef9401202c8"
+  },
+  {
+   "va": 1075636920,
+   "bytes": "4e5600002f02"
+  },
+  {
+   "va": 1075630088,
+   "bytes": "4e56fffc206e"
+  },
+  {
+   "va": 1075348326,
+   "bytes": "206f00042268"
+  },
+  {
+   "va": 1074885560,
+   "bytes": "2f0b70ff2f0a"
+  },
+  {
+   "va": 1074885892,
+   "bytes": "4fefffb048d7"
+  },
+  {
+   "va": 1074883566,
+   "bytes": "4e56fff82f0a"
+  },
+  {
+   "va": 1074360472,
+   "bytes": "2f0b72012f0a"
+  },
+  {
+   "va": 1074878792,
+   "bytes": "4e56ff44202e"
+  },
+  {
+   "va": 1074903264,
+   "bytes": "4fefffe048d7"
+  },
+  {
+   "va": 1074903598,
+   "bytes": "4fefffdc48d7"
+  },
+  {
+   "va": 1075468200,
+   "bytes": "518f2f0e2f0a"
+  },
+  {
+   "va": 1075348396,
+   "bytes": "2f0a206f0008"
+  },
+  {
+   "va": 1075440206,
+   "bytes": "206f0004226f"
+  },
+  {
+   "va": 1074904838,
+   "bytes": "4e56fff42f0b"
+  },
+  {
+   "va": 1074839748,
+   "bytes": "4cef7cfc0018"
+  }
+ ],
+ "labels": {
+  "menu_hook": 1182367744,
+  "mods_open": 1182368298,
+  "name": 1182368356,
+  "value": 1182368400,
+  "noop": 1182368466,
+  "kept": 1182368484,
+  "table": 1182368492
+ },
+ "names": {
+  "arpmodes": "ARP MODES",
+  "arpplocks": "ARP P-LOCKS",
+  "arpscale": "ARP SCALE",
+  "bootscreen": "BOOT SCREEN",
+  "degreetranspose": "DEGREE TRANS",
+  "directjump": "DIRECT JUMP",
+  "fxmod": "FX MOD",
+  "layermidi": "LAYER MIDI",
+  "lfo4": "LFO 4",
+  "lfohold": "LFO HOLD",
+  "lfolength": "LFO LENGTH",
+  "lfowaves": "LFO WAVES",
+  "midiarp": "MIDI ARP",
+  "moddest": "MOD DEST",
+  "reloadconfirm": "RELOAD CONF",
+  "sendloop": "SEND LOOP",
+  "songguard": "SONG GUARD",
+  "transients": "TRANSIENTS",
+  "usbprobe": "USB PROBE",
+  "waverider": "WAVERIDER"
+ },
+ "code": {
+  "va": 1182367744,
+  "blob": "4fefff70264f486b0040487a02c8486b00444eb9401ceab8487801e84eb9401205442840487800014879446457ec486b004448780001487a02a12f0c4eb94011b8e0486b00444eb9401cd0084fef002c4bfa029a2e1d67000112487800044eb940120544588f2040208d268042ab000441f9400970982748000841fa01e82748000c487800044eb940120544588f2040208d2740001042ab001441f9400970982748001841fa022c2748001c487800044eb940120544588f2040208d2740002042ab002441f9400970982748002841fa01c02748002c487800044eb940120544588f2040208d2740003042ab003441f9400970982748003841fa01d82748003c487800544eb940120544588f2c00487800084878ffff486b0030486b0020486b00102f0b2f064eb9401173b82f062f0c4eb940116bee486b00304eb940188366486b00204eb940188366486b00104eb9401883662f0b4eb9401883664fef00344bed002053876600fef2486c00382f0a41eb00604eb94011ba2e486b0060487a01644eb9401a57a8486b00644eb9401883ac4fef0014487800044eb940120544588f2040208a2740006842ab006c41f9400970982748007041fa00702748007442ab007842ab007c42ab008042ab0084487800544eb940120544588f2c00486b00784879446474ec486b0068487a00e62f064eb9401175042f062f0a4eb940116bee486b00784eb940188366486b00684eb9401883664fef00244fef00904cef7cfc00184ef94010c0ca4e56fff82f0a206e00082450487a00ac486efff84eb94019ea4e486efff82f124eb94011bf06486efffc4eb9401883ac4fef0014245f4e5e4e754e56fffc2f022408226e000822512251486effff2f092f084eb9401ceab84fef000c2002242efff84e5e4e75206f00042050205041e80014202f000c222f0010226f00142f082f0842a7487800024869000206810000004e2f014879402947102f004eb9401159484fef00204e754e754d4f4453004d6f64734d656e750000000000000000000000",
+  "labels": {
+   "menu_hook": 1182367744,
+   "mods_open": 1182368298,
+   "name": 1182368356,
+   "value": 1182368400,
+   "noop": 1182368466,
+   "kept": 1182368484,
+   "table": 1182368492
+  }
+ }
+}

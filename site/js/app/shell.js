@@ -24,6 +24,7 @@
 
 import { build, load, verify } from "../firmware.js";
 import { guardDownload } from "./notice.js";
+import { withModsPage } from "../mods/modspage.js";
 import { VERSIONS } from "../mods/versions.js";
 
 export const $ = (id) => document.getElementById(id);
@@ -182,7 +183,8 @@ export async function buildAndOffer(firmware, replacements, {
   // megabyte of packing and an HMAC.
   await new Promise((r) => requestAnimationFrame(r));
   try {
-    const bytes = await build(firmware, replacements);
+    // every build a page makes lists its mod on the instrument: SETTINGS > SYSTEM > MODS
+    const bytes = await build(firmware, mod ? withModsPage(firmware, replacements, mod) : replacements);
     return await offer(bytes, { name: outputName(filename, suffix, mod), into, note });
   } catch (error) {
     showChecks(into, [{ name: "build failed", ok: false,

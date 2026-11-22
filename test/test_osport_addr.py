@@ -126,3 +126,13 @@ def test_retarget_ports_a_module_s_constants_and_puts_them_back():
         with osport.retarget("1.12", [m]):
             pass
     assert m.SITE == 0x400CF7C6                                     # a refusal leaves nothing changed
+
+
+def test_retarget_takes_an_override_for_an_address_the_map_cannot_place():
+    """A settings-tail byte has no map entry: its override stands in, as `rebind`'s does"""
+    import types
+    m = types.ModuleType("emu")
+    m.SITE, m.FLAG = 0x400CF7C6, 0x405CD8C1
+    with osport.retarget("1.12", [m], {m: {"FLAG": 0x405CE8C1}}):
+        assert m.SITE == 0x400CF92A and m.FLAG == 0x405CE8C1
+    assert m.FLAG == 0x405CD8C1

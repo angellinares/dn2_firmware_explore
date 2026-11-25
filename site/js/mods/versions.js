@@ -13,6 +13,7 @@ export const VERSIONS = {
   lfowaves: "1.0.1",
   midiarp: "1.0.0",
   moddest: "1.0.0",
+  pslide: "0.1.0",
   reloadconfirm: "1.0.0",
   sendloop: "0.1.0",
   songguard: "0.1.0",

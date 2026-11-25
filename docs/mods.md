@@ -896,6 +896,154 @@ Setup, in an empty project with the sequencer stopped:
   - If you have a source of MIDI clock, such as a DAW over USB: set CLOCK RECEIVE on (SETTINGS > MIDI CONFIG > SYNC) and cue again. The jump starts on the next step, as on the instrument's own clock.
 - Fail: anything else. For example: an error message, a crash, a hung note, or a cue that waits for the pattern's end with the switch on.
 
+## Mod: `pslide` (parameter slides)
+
+**Status: not yet tested on hardware.** By [w-winter](https://github.com/w-winter). The design was agreed in issue #391. Checked in the emulator, 2026-11-26, on `pslide3_DN2_1.11.syx` and on the same code for OS 1.12 (below).
+
+Stock 1.11 changes a locked parameter at once, when its trig plays. This mod adds SLD (slide) to TRIG PAGE 2, on DATA ENTRY knob E, under RTRG. On stock, that place is empty.
+
+In GRID RECORDING mode, press [TRIG PARAMETERS] twice to open TRIG PAGE 2. Hold one or more [TRIG] keys and turn knob E, as stock sets RTRG with knob A on the same page. SLD goes from OFF through 1/2, 1, 2, 4, 8 and 16 to NEXT, and stops at each end. With no [TRIG] key held, SLD shows OFF and knob E does nothing. With more than one [TRIG] key held, SLD shows the first held trig's value, and knob E moves the SLD of each held trig.
+
+A value other than OFF shows inverted, as a locked parameter does. To set SLD back to OFF, hold the [TRIG] keys and press knob E, as you remove a parameter lock.
+
+![TRIG PAGE 2 in the emulator with a trig held, stock 1.11: knob E's place is empty](img/emu-pslide-trig-page2-stock.png) ![The same page and trig on this build: SLD 4](img/emu-pslide-trig-page2-sld.png)
+
+A trig with a length (1/2 to 16) glides to its locks over that many steps of the track's speed. Each parameter starts from the value that the track had just before the trig. That is the value on the track's last voice, or the preset's value when the track has no voice of its own. A parameter that the trig before locked, and that this trig does not lock, glides back to the preset's value over the same length.
+
+A NEXT trig glides from its own locks to the values of the next trig, and arrives as that trig plays. The next trig is the next note trig or lock trig within the track's length, or within the looped pages when Page Loop is on. When no other step has a trig, the slide lasts a whole cycle. If only one of the two trigs locks a parameter, the other end is the preset's value.
+
+A NEXT trig's own locks change at once when it plays, as on stock. The time is the grid distance: the next trig's micro timing does not change it. The next trig's condition does not count, so the slide arrives at the next trig's values even when that trig does not play. A NEXT trig reads the next trig's locks, the track's length and Page Loop when it is prepared, a step before it plays. An edit of these during its slide does not change the slide.
+
+- Each note glides on its own voice. A retrig, a note of the same chord, or an arp note that starts during the slide joins it. It starts from the value that the slide has reached. Retrigs do not start the slide again.
+- A lock trig glides on every voice of its track, each voice from its own value.
+- A new slide on a voice starts from where the voice's earlier slide was. The earlier slide goes on, on its other voices.
+- A lock trig without SLD that locks a sliding parameter takes it out of the slide on each voice. The parameter takes the lock, as on stock. The slide's other parameters go on.
+- A note of another trig on a sliding voice ends the slide on that voice. This happens with VOICES 1, or when another track takes the voice.
+- A slide ends exactly on its values. A tempo change during a slide changes the rest of it.
+- A turned knob takes its parameter out of the slide. The value follows the knob from where the slide left it.
+- [STOP] stops every slide where it is. A pattern change stops the old pattern's slides where they are, as the new pattern starts.
+- With the Direct Jump mod, a jump stops the old pattern's slides as the new pattern's first note plays. A jump that starts a shorter pattern on its step 1 looks like stock's change to this mod, and its slides stop a step late.
+- A trig with a preset lock of another machine changes at once, as on stock, with a length or with NEXT. A lock trig changes at once on a voice that plays another machine than the track's sound.
+- A trig that does not play, on a muted track or because of its condition, starts no slide.
+
+**The parameters that slide.** A parameter slides when stock offers it as an LFO destination (bits `0x1e00` of its record) and its maximum is `0x5000` or more. `scripts/build_pslide.py` (`masks`) reads the table from stock's records when the code is made, for the shared pages, each machine and each filter type. The mod reads no record while it runs. These parameters slide:
+- LFO 1 to 3: SPD, FADE, SPH and DEP.
+- The filter envelope, BASE, WIDTH and key tracking. The AMP envelope but its delay, PAN and VOL. The delay, reverb and chorus sends, bit reduction, sample-rate reduction and overdrive.
+- FM TONE: every parameter but ALGO, the four ratios, phase reset, the operators' trig and reset switches and their key tracking.
+- WAVETONE: every parameter but the two wavetables, the oscillator modulation, phase reset and the noise type.
+- FM DRUM: every parameter but ALGO, the noise reset and the ring modulation.
+- SWARMER: every parameter but the main octave.
+- The filters: frequency and resonance (Q and gain on the EQ), the multimode filter's type, and the comb filters' lowpass and feedback.
+
+ALGO, the switches and the other parameters with few values change at once, as on stock. The DSP reads some parameters only when a note starts (measured in digikit's SHARC runner, issue #391). These include the amp ATK, FM TONE's operator envelope times and some FM DRUM parameters. A slide of one of them is heard from the next note, which starts from the value that the slide has reached. Waverider has no row in the table, so on a Waverider track the shared pages and the filter slide. The LFO destinations that `moddest` opens do not slide.
+
+**Where SLD is kept.** SLD is three bits of the step's flag word: bit 0 of the value in `0x0008`, bit 1 in `0x0020` and bit 2 in `0x0040`. Stock has setters for `0x0008` and `0x0020`, and its FREEZE TRACK carries them, but no stock control sets them (read in stock 1.11). A hook makes FREEZE TRACK carry `0x0040` too. The repository's own tools use none of the three (issue #391).
+
+The mask that clears a trig's own settings (`0x4004fd36`) becomes `0x7f97`, so SLD goes with the trig. These clear SLD, measured with that mask on 2026-11-24:
+- removing a trig, and placing a trig on a step that had a trig before
+- LIVE RECORDING's erase and STEP RECORDING's [NO]
+- NOTE EDIT's delete and clear
+- [TRIG] + [PLAY]
+
+NOTE EDIT's UNDO of a clear gives the trig back without SLD, as stock gives it back without RTRG's lock.
+
+Trig copy and paste carry SLD through two hooks, because stock's clipboard keeps ten flag bits and not these three. FREEZE TRACK carries all three. Page paste, track paste and [FUNC] + [LEFT]/[RIGHT] keep the word. Stock plays a pattern with SLD's bits as it plays the same pattern without them (the case `stock-plays`). Stock's pattern save and reload keep the bits (`stock-reload`).
+
+**The load.** A slide moves its values in the audio-frame interrupt, at stock's call of the value smoother (`0x400db12a`), through the hook bus's `ev_frame`. A slide writes each value as its voice's target and its smoother state. So the smoother adds no lag, and an LFO modulates the slid value. In a frame where a note or a lock trig plays, no slide moves.
+
+In other frames, the rate follows the running slides' value writes (values times voices). Slides move every frame up to 512 writes, every second frame up to 1,024, and every fourth frame above. A slide's voices take turns by phase, so a 16-voice slide spreads its writes over the frames. A slide catches up by the sequencer's clock, so it still ends on time.
+
+A start costs about what stock's lock writes cost for the same locks. The slide writes its start values where stock's lock applier (`0x400db092`) would write the locks. For a note of a slide, the applier gets the trig's own list. For that call, the list's count is lowered to the locks that do not slide. When every lock slides, the mod does not call the applier, unless another mod has hooked it (`arpplocks` reads every call).
+
+A trig's slide is prepared at step evaluation, a step before the note, in one of 96 buffers. With every buffer in use, a new trig's locks change at once, as on stock. A track has five places for slides whose trig's list stock still holds. With all five in use, a new trig's locks also change at once.
+
+A waiting slide keeps stock's lock list of its trig, so that the list's address names the trig until its notes play. It lets the list go in the first frame after stock lets it go. Stock has 64 lists. When a trig does not play, stock lets its list go without a note, and the waiting slide ends.
+
+**What changes:** thirteen edits in section 3 and a platform `CODE` chunk.
+- `0x400d8ae2`, step evaluation, after it stores the event's lock list and sound: a trig with SLD gets a slide that waits for its notes. While it waits, it adds one to the use count of the trig's lock list, so the list's address names that trig.
+- `0x40026bac`, a note, before stock restores the voice's locked values: the start values, from the track's last voice.
+- `0x40026c34`, the note path's call of the lock applier (`0x400db092`): the locks that do not slide.
+- `0x40026c3e`, a note, after the applier: the slide starts, or the note joins it.
+- `0x40026642`, the lock trig's applier call for each voice. The trig's locked parameters leave the voice's older slides, and the voice gets a slide of its own.
+- `0x4006dde6` and `0x4006df1a`, the TRIG page's calls of the page renderer and the knob handler: SLD in knob E's place, and knob E.
+- `0x4006793e`, the parameter pages' key handler, at the push or release of a knob that has no parameter. On TRIG PAGE 2, the release of knob E's push sets the held trigs' SLD to OFF.
+- `0x40053e1a` and `0x400555c2`, trig copy and trig paste: SLD in the clipboard.
+- `0x400550da` and `0x4005520a`, FREEZE TRACK's read and set of `0x0020`: `0x0040` with it.
+- `0x4004fd36`, the clear mask: `0x7fff` -> `0x7f97`.
+- 5,244 B of code at `0x46c00000`, then 91,088 B of state that the platform's loader clears. The frame routine is a handler of `ev_frame`.
+
+`scripts/build_pslide.py` has the reading of the firmware, and the routines are `scripts/pslide_engine.py`, `pslide_prepare.py`, `pslide_notes.py` and `pslide_ui.py`. 50 guards check the stock code that the routines rely on, and the first bytes of each stock routine they call. `scripts/gen_pslide_code.py` writes `pslide_code.json` and `site/js/mods/pslide-code.js`, and refuses to write unless the JSON, replayed on stock, is the build byte for byte. `test/test_pslide_mod.py` checks the shipped bytes, the hooks and the refusal of an image that is not stock.
+
+**OS 1.12.** `scripts/osport_survey.py` maps every address of `build_pslide.py` to 1.12 (`map_1.12.json`, each site's bytes equal or relocated). Each hook's return is its 1.12 site plus the bytes it displaces (`build_pslide.overrides`). `gen_pslide_code.py --os 1.12` writes `pslide_code_1.12.json`.
+
+The 1.12 code differs from 1.11's in 28 address words, each a 1.11 address that moves to it. The table of the parameters that slide is the same. `test/test_pslide_112.py` checks this.
+
+**Sources.** The per-voice values and the smoother's call are this repository's own reading (`docs/engine-state.md`, `docs/fx-master-modulation.md`). De-Pattern's dn2mk2-firmware also slides at the smoother's call (`docs/slides.md`, AGPL-3.0-or-later, listed in `docs/references.md`). That document was read for its method only. This mod reads each site again in stock 1.11, and it has no code from that project or from Overtone.
+
+**Browser:** `site/param-slides.html` (2026-11-25). `site/js/mods/pslide.js` ports `apply`. `test/test_js_build_matches_cli.py` builds the mod alone, and with Waverider, fxmod and lfo4, as the page does and with `dnfw mods apply`.
+
+**Checks** (2026-11-26, digikit `main`'s `panel_drive` and `coupled-run` at `5f6be832`). OS 1.11: `pslide3_DN2_1.11.syx`, from `dnfw mods apply --mod pslide` on stock 1.11. OS 1.12: the same command on stock 1.12.
+- `scripts/emu_pslide.py` runs 76 cases. Most compare every frame sent to the DSP (`0x400cf7be`) with stock's. Stock's jumps give each slide's start and end values. The build must follow the line between them, arrive within a frame and a half of its time, and stay. Other cases read the step flags (knob E and the edits that carry SLD), and two run on stock only. All pass.
+- The cases cover each length and NEXT, with and without Page Loop, on tracks 1, 2 and 12. Two use per-track mode, at 2x and with a track length of 8. Others cover every rule above, chords, retrigs, arp notes and lock trigs with and without SLD. One lock trig locks every knob of six pages, and one case runs the pool out. Others mute 15 tracks, empty stock's lock lists, restart from STOP, move the clock back, and run every edit that carries SLD. Others check knob E, its press and SLD's inverted look on the screen.
+- The cases `waverider`, `lfo4`, `directjump` and `arpplocks` each run this mod with that mod. Their control is that mod without this one, built with `dnfw mods apply`. With arpplocks, the notes, the arp state and the applier's 36 calls are the same as with arpplocks alone. With lfo4, LFO 4 aimed at a slid TUNE changes the frames by the slide's line alone, and by nothing once it arrives.
+- Controls: 29 builds, each with one instruction of the chunk replaced by NOPs. Each fails its case.
+- Branches: 164 of the chunk's 175 conditional branches ran both ways over the cases. Each way is counted apart. `panel_drive --count` counts the branch, its target, its next instruction and each instruction that leads to those two. A test before a loop is read from its register (`scripts/emu_pslide.py`, `edges`).
+- The 11 others are tests whose untaken way no run reaches. Five skip an event of a track number of 16 or more, which stock's events do not have. Two test event fields that no run sets: a sound for a whole load at + 64, and no sound at + 60. The way they lead to runs from another test. Two find a track's five places in use, and the trig's locks then change at once, as on stock. Two end searches that always find their step.
+- `scripts/emu_pslide_load.py` runs the five stress patterns of issue #391, with SLD 16 on every trig. Each runs on the build and on the same image without pslide, for 8 s from PLAY, in `coupled-run` with its zero DSP (`--dsp zero`). The unit estimate is 72,727 instructions a frame (88,000 / 1.21, digikit's calibration against one unit).
+
+| pattern | without pslide: median / longest / frames over | with pslide |
+|---|---|---|
+| drum-full | 50,975 / 57,527 / 0 | 63,556 / 63,813 / 0 |
+| mixed-drum-full (Waverider and lfo4 in both) | 53,993 / 62,493 / 0 | 65,686 / 67,883 / 0 |
+| stagger-locks | 50,133 / 76,906 / 1 | 58,606 / 69,193 / 0 |
+| dense-80 | 49,707 / 84,247 / 37 | 53,939 / 86,252 / 37 |
+| chord-retrig | 50,646 / 64,286 / 0 | 58,053 / 60,903 / 0 |
+
+- dense-80's 37 frames over the estimate are the same 37 frames as without pslide. Each note has its trig's lock list where the control's has it. In mixed-drum-full, 3,075 frames run a slide's value write and LFO 4 both.
+- pslide's longest frame routine in a frame without a start is 12,557 instructions (drum-full). The most values its updates examine in such a frame is 550 (chord-retrig), at 8,960 instructions. In drum-full every lock slides and the applier is not called, so a slide's note takes 2,405 fewer instructions than stock's (median). In dense-80 a start with five slid locks costs 10 more instructions than stock's (median), and 124 more at most. The pool's high-water mark is 48 of 96 (dense-80).
+- With no slide running, the cost read from the code is 22 instructions for each note and 10 for each trig at step evaluation. It is 8 for each voice of a lock trig, and 18 for each audio frame. digikit's gate set passes against the build without pslide, 24 of 24 runs. The median audio frame is 18 instructions longer in 23 runs and 9 shorter in one.
+- Every functional and stress run watches the fault reporter (`0x4011ea6a`) and the DSP uploader's refusal (`0x400cf678`), and neither runs. The gate runs measure the audio interrupt only.
+- The image boots from reset in digikit's `boot_gate`, with the main UI at the same instruction as stock's. Integrity 22/22. The code has no scale-8 indexing (`scripts/check_coldfire.py`).
+- OS 1.12 (`dnfw mods apply --mod pslide` on stock 1.12): it boots, and `scripts/emu_pslide.py` passes 75 cases against stock 1.12. The same 29 controls fail. Waverider has no 1.12 build, so its case does not run there. So 163 of the 175 branches ran both ways: the eleven above, and the test for a machine past the table, which only Waverider reaches. The load harness ran on 1.11 only.
+
+**Not run:**
+- A CC during a slide. Expected: it leaves the slide as a knob does, because both write through `0x4002585a`.
+- A preset lock of another filter type. Expected: it changes at once, because the test compares the machine and the filter type.
+- Swing with NEXT. Expected: no change, because the length comes from the steps between the two trigs.
+- External MIDI clock and song mode. The slides follow the sequencer's clock, which moves under external clock too.
+- A trig with SLD pasted onto a MIDI track.
+- A SYN lock on a Waverider track.
+- A track in Euclidean mode. Stock gives the hook the generated step's source step. So NEXT is expected to look for the next trig among the stored steps, which Euclidean mode replaces with generated ones.
+- On the instrument: everything. The hardware test follows.
+
+**Hardware test.** Flash `pslide3_DN2_1.11.syx`.
+
+Setup, in an empty project with the sequencer stopped:
+1. Press [RECORD] for GRID RECORDING mode. On track 1, press [TRIG 1] and [TRIG 9].
+2. Press [TRIG PARAMETERS] to open TRIG PAGE 1. Hold [TRIG 1] and [TRIG 9], and turn LEN to 8 steps. Each note then lasts until the next one.
+3. Press [FLTR]. Hold [TRIG 9] and turn FREQ (DATA ENTRY knob E) well down.
+4. Press [TRIG PARAMETERS] twice to open TRIG PAGE 2. Hold [TRIG 9] and turn DATA ENTRY knob E until SLD shows 8.
+5. Press [RECORD] to leave GRID RECORDING mode.
+
+Make each change below in GRID RECORDING mode, and leave the mode before you listen.
+
+- Pass:
+  - TRIG PAGE 2 shows SLD under RTRG. With no [TRIG] key held, it shows OFF and knob E does nothing. With [TRIG 9] held, it shows 8, inverted as a locked value is.
+  - Press [PLAY]. From step 9 the sound darkens slowly, and it is fully dark as step 1 plays. Stock darkens it at once. At step 1 it is bright again at once.
+  - Set SLD 4 on [TRIG 1]. At step 1 the sound now brightens over 4 steps.
+  - Set SLD NEXT on [TRIG 9] and OFF on [TRIG 1]. Step 9 is now dark at once. It brightens over 8 steps, and it is fully bright as step 1 plays.
+  - Set SLD 8 on [TRIG 9] again. During the slide, turn FREQ on the FLTR page. The sound follows the knob from where the slide was.
+  - Press [TRIG 9] + [RECORD] to copy the trig. Press [TRIG 13] + [STOP] to paste it. TRIG PAGE 2 shows SLD 8 on [TRIG 13].
+  - Hold [TRIG 13] and press DATA ENTRY knob E. SLD shows OFF, and it is not inverted.
+  - Press [TRIG 13] + [PLAY] to clear the trig. Press [TRIG 13] to place it again. SLD shows OFF.
+  - Give all 16 tracks a trig on every step, with the FLTR page's first five knobs locked and SLD 16. To do this, set up one trig. Copy it to the other 15 steps. Copy the track to the other tracks with [FUNC] + [RECORD], [TRK] + [TRIG] and [FUNC] + [STOP].
+  - Play for a minute. There is no stutter, late note or slow screen, and no error message shows.
+  - While it plays, mute tracks 1 to 15 with [FUNC] + [TRIG 1] to [TRIG 15]. For half a minute, track 16 still glides to its locks. Unmute the tracks. They glide to their locks again.
+  - Save the project, and turn the instrument off and on. SLD is still on the trigs.
+  - Flash stock 1.11. Load the project. It plays, with each lock changing at once, and no error message shows. Save it as another project.
+  - Flash `pslide3_DN2_1.11.syx` again. Load that project. SLD is still on the trigs.
+- Fail: anything else. For example: an error message, a crash, a hung note, a click at the start of a slide, or a slide that does not arrive.
+
 ## Mod 10: `songguard` -- old projects open instead of halting
 
 Not a feature: a guard on a **stock 1.11 bug**. The song `LOAD` (`0x400dea6a`)

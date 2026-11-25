@@ -171,6 +171,13 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     ) + PUBLISHED,
     "midiarp": PUBLISHED,
     "moddest": PUBLISHED,
+    "pslide": (
+        Release("0.1.0", "2026-11-24", (
+            "First version. On TRIG PAGE 2, SLD sets how a trig's parameter locks change: OFF, "
+            "a length of 1/2 to 16 steps, or NEXT. A trig with a length glides to its locks over "
+            "that many steps. A NEXT trig glides to the next trig's values.",
+        )),
+    ),
     "reloadconfirm": PUBLISHED,
     "sendloop": (
         Release("0.1.0", "2026-11-15", (

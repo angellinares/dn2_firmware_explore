@@ -31,6 +31,7 @@ const MODS = {
   lfowaves: ["New LFO waveforms", "Seven waves after RAND: STEP, PULS, NOIS, TRAP and the wavetables WTB1, WTB2 and WTB3.", "lfo.html"],
   moddest: ["More modulation destinations", "13 more per-voice parameters open as LFO destinations.", "destinations.html"],
   lfolength: ["LFO ONE/HALF fix", "TRIG MODE ONE and HALF run one cycle or half a cycle, then hold the value.", "lfo-fix.html"],
+  pslide: ["Parameter slides", "A trig's parameter locks glide over a length, or to the next trig.", "param-slides.html"],
   midiarp: ["Arpeggiator on MIDI tracks", "The arpeggiator plays on MIDI tracks.", "arp.html"],
   layermidi: ["Layering onto MIDI tracks", "TRACK WILL TRIGGER onto a MIDI track plays it over MIDI.", "layer-midi.html"],
   arpmodes: ["Arpeggiator SHUF and RAND", "SHUF and RAND as real arpeggiator modes.", "arp-modes.html"],

@@ -51,6 +51,10 @@
   "sha256": "9d9705173553fd997b4fa213a885d5b334613363a0ce9b5b1d66247e234aacb7",
   "version": "1.0.0"
  },
+ "pslide": {
+  "sha256": "205c4d788f666be6c520b829f7780eb965f560e5a0676b9c09d811147a2c391c",
+  "version": "0.1.0"
+ },
  "reloadconfirm": {
   "sha256": "f4c15a961352952500964e807ff3af758ac242cf2294aed51a1d09c9e442de28",
   "version": "1.0.0"

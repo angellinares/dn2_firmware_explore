@@ -22,7 +22,7 @@ import * as transients from "./transients.js";
 /** The mods on offer, in the order the page lists them and applies them. */
 export const GROUPS = [
   { name: "Machines", mods: ["waverider", "transients"] },
-  { name: "LFOs and modulation", mods: ["lfo4", "fxmod", "lfowaves", "moddest", "lfolength"] },
+  { name: "LFOs and modulation", mods: ["lfo4", "fxmod", "lfowaves", "moddest", "lfolength", "pslide"] },
   { name: "Arpeggiator and MIDI", mods: ["midiarp", "layermidi", "arpmodes", "arpscale"] },
   { name: "Workflow", mods: ["reloadconfirm", "directjump", "bootscreen"] },
   { name: "Performance", mods: ["sendloop"] },

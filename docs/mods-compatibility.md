@@ -138,7 +138,9 @@ the other one's hook covers. The platform now owns those places (`src/dnfw/mods/
 
 - **An event**, `ev_param_slot` at `0x400dc02a`. The platform writes one jump to its
   dispatcher, and each mod adds a handler (an `EVNT` chunk). fxmod answers the FX slots
-  and Waverider answers its own.
+  and Waverider answers its own. Later events use the same pattern: `ev_param_cc` and
+  `ev_param_nrpn` for incoming MIDI, and `ev_frame` at `0x4002717e`, which runs every
+  handler in each audio frame before the value smoother.
 - **Two counts**: the parameter records (53 bounds) and the machine types (six bounds).
   lfo4 adds 10 records and Waverider adds 1 machine (an `ADDS` chunk). The platform
   writes every bound, also in a hook's copy (`DISP`).

@@ -259,11 +259,13 @@ export const busCodeLength = () => CODE.bus.code.length / 2;
 const TABLE_SLOTS = 8;
 const EVENTS = {
   PSLT: { name: "ev_param_slot", site: 0x400dc02a, stock: "2f027264206f0008", table: 0,
-          entry: "ev_param_slot", what: "param_set_slot_to_id -> the bus's ev_param_slot" },
+          entry: "ev_param_slot", end: "base_end", what: "param_set_slot_to_id -> the bus's ev_param_slot" },
   PCCI: { name: "ev_param_cc", site: 0x400dc814, stock: "4feffff448d7001c", table: 32,
-          entry: "ev_param_cc", what: "the incoming CC's parameter lookup -> the bus's ev_param_cc" },
+          entry: "ev_param_cc", end: "base_end", what: "the incoming CC's parameter lookup -> the bus's ev_param_cc" },
   PNRI: { name: "ev_param_nrpn", site: 0x400dc8f6, stock: "4feffff448d7001c", table: 64,
-          entry: "ev_param_nrpn", what: "the incoming NRPN's parameter lookup -> the bus's ev_param_nrpn" },
+          entry: "ev_param_nrpn", end: "base_end", what: "the incoming NRPN's parameter lookup -> the bus's ev_param_nrpn" },
+  FRAM: { name: "ev_frame", site: 0x4002717e, stock: "4eb9400db12a4282", table: 248,
+          entry: "ev_frame", end: "frame_end", what: "the audio frame's smoother call -> the bus's ev_frame" },
 };
 const MACHINE_BOUNDS = [[0x400dc15d, 1, 4], [0x400dc19d, 1, 4], [0x400dc333, 1, 4],
                         [0x400dc359, 1, 4], [0x400dc37f, 1, 4], [0x400dd287, 1, 6]];
@@ -335,7 +337,9 @@ function attach(content, chunks) {
   }
   const subs = handlers(chunks);
   if (Object.keys(subs).length === 0) return chunks;
-  const image = hex(CODE.bus.code);
+  // the chunk up to the end of the last subscribed event's code (bus.py, "Each event's table")
+  const end = Math.max(...Object.keys(subs).map((e) => CODE.bus.symbols[EVENTS[e].end] - BUS_VA));
+  const image = hex(CODE.bus.code).subarray(0, end);
   for (const [event, found] of Object.entries(subs)) {
     if (found.length >= TABLE_SLOTS) {
       throw new ModError(`${found.length} mods subscribe to ${EVENTS[event].name}; the bus takes ${TABLE_SLOTS - 1}`);

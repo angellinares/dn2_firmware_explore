@@ -22,7 +22,8 @@ With `--os 1.12` (issue #382) it writes `platform_code_1.12.json` and `platform-
 beside the 1.11 files: the loader built for 1.12 (`dn2_112.h`, its cave and area from
 `dnfw.osport.versions`), the bus's sites and the machine bounds translated with
 `dnfw.osport.addr`, and the parameter bounds found in the 1.12 image. Each translated site's
-stock bytes are read in the 1.12 image and must be 1.11's; a mismatch stops the run.
+stock bytes are read in the 1.12 image and must be 1.11's, with a displaced call's target
+translated too (`ev_frame`'s smoother); a mismatch stops the run.
 """
 
 from __future__ import annotations
@@ -44,6 +45,9 @@ from dnfw.mods import bus                  # noqa: E402
 from dnfw.patch import area, assemble, loader, paramtable  # noqa: E402
 
 DATA_LIMIT = 0x46740000                    # lfowaves' NOIS state starts here
+# Each event's table, by its label in the dispatchers' source (bus.SOURCE_TEMPLATE)
+TABLES = {b"PSLT": "param_slot_table", b"PCCI": "param_cc_table", b"PNRI": "param_nrpn_table",
+          b"FRAM": "frame_table"}
 STOCKS = {"1.11": "00_Firmware/Digitone_II_OS1.11_dist.zip", "1.12": "00_Firmware/Digitone_II_OS1.12.syx"}
 NL = chr(10)
 
@@ -59,29 +63,43 @@ def stock_of(os: str) -> bytes:
     return load(read_image(resources_dir(ROOT) / STOCKS[os])).container.find(3).unpack()
 
 
+def bus_calls(os: str) -> dict[bytes, int]:
+    """The stock routine each event's displaced call names, on OS"""
+    return {event: osport.addr(os, e["call"]) for event, e in bus.EVENTS.items() if "call" in e}
+
+
 def bus_sites(os: str, stock: bytes) -> dict[bytes, dict]:
-    """Each event's site on OS and the stock bytes there, which must be 1.11's"""
-    out = {}
+    """Each event's site on OS and the stock bytes there, which must be 1.11's (a displaced
+    call naming its routine's address on OS)"""
+    out, calls = {}, bus_calls(os)
     for event, e in bus.EVENTS.items():
         va = osport.addr(os, e["site"])
+        want = e["stock"]
+        if event in calls:
+            want = want.replace(f"{e['call']:08x}", f"{calls[event]:08x}")
         here = stock[va - loader.BASE:va - loader.BASE + len(e["stock"]) // 2].hex()
-        if here != e["stock"]:
-            raise SystemExit(f"{e['name']}: {os} holds {here} at 0x{va:08x}, not 1.11's {e['stock']}")
+        if here != want:
+            raise SystemExit(f"{e['name']}: {os} holds {here} at 0x{va:08x}, not {want}")
         out[event] = {"site": va, "stock": here}
     return out
 
 
-def bus_code(sites: dict[bytes, dict] | None = None) -> dict:
-    names = [e["entry"] for e in bus.EVENTS.values()]
-    text = bus.source({e: v["site"] for e, v in sites.items()} if sites else None)
+def bus_code(os: str, sites: dict[bytes, dict] | None = None) -> dict:
+    entries = [e["entry"] for e in bus.EVENTS.values()]
+    ends = sorted({e["end"] for e in bus.EVENTS.values()})
+    names = entries + ends + [TABLES[event] for event in bus.EVENTS]
+    text = bus.source({e: v["site"] for e, v in sites.items()} if sites else None,
+                      bus_calls(os) if sites else None)
     blob = assemble.assemble(text + NL + "    .align 2" + NL + NL.join(f"    .long {n}" for n in names) + NL,
                              base=bus.BUS_VA)
-    code, symbols = blob[:-4 * len(names)], struct.unpack(f">{len(names)}I", blob[-4 * len(names):])
-    entry = 4 * bus.TABLE_SLOTS * len(bus.EVENTS)       # the tables come first
-    if (any(code[:entry]) or code[entry:entry + 2] != bytes.fromhex("2f0a")   # move.l %a2,-(%sp)
-            or any(e["table"] != 4 * bus.TABLE_SLOTS * k for k, e in enumerate(bus.EVENTS.values()))):
-        raise SystemExit("the bus's tables are not where bus.EVENTS says")
-    out = {"load": bus.BUS_VA, "code": code.hex(), "symbols": dict(zip(names, symbols))}
+    found = dict(zip(names, struct.unpack(f">{len(names)}I", blob[-4 * len(names):])))
+    code = blob[:found["frame_end"] - bus.BUS_VA]
+    for event, e in bus.EVENTS.items():
+        table, entry = found[TABLES[event]] - bus.BUS_VA, found[e["entry"]] - bus.BUS_VA
+        if (table != e["table"] or any(code[table:table + 4 * bus.TABLE_SLOTS])
+                or code[entry:entry + 2] != bytes.fromhex("2f0a")):            # move.l %a2,-(%sp)
+            raise SystemExit(f"the bus's {e['name']} is not where bus.EVENTS says")
+    out = {"load": bus.BUS_VA, "code": code.hex(), "symbols": {n: found[n] for n in entries + ends}}
     if sites:
         out["sites"] = {e.decode(): v for e, v in sites.items()}
     return out
@@ -126,7 +144,7 @@ def generate(os: str = "1.11") -> dict:
         "cave_va": cave, "cave_cap": loader.CAVE_CAP,
         "link_va": link, "loader": linked.image.hex(),
         "area_va": area_va, "runtime_va": area.RUNTIME_VA, "data_limit": DATA_LIMIT,
-        "bus": bus_code(sites), "counts": counts,
+        "bus": bus_code(os, sites), "counts": counts,
     }
 
 

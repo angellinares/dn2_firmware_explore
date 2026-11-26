@@ -18,6 +18,7 @@ from dnfw.waverider.frame import slot_offset  # noqa: E402
 
 SLOT_A, SLOT_B = 71, 72              # the FLTR page's knobs A and B on the default sound (ATK, DEC)
 SLOT_ALGO = 25                       # the SYN page's knob A on FM TONE (ALGO), which does not slide
+SLOT_VOL = 90                        # the AMP page's knob H (VOL)
 FLTR_SLOTS = (71, 72, 73, 74, 67, 68, 66, 69)   # FLTR page 1's knobs A to H
 NEXT = 7                             # SLD's last value; knob E is turned one unit past it
 SLD_BITS = 0x0068
@@ -690,6 +691,17 @@ def check_muted(b: Run, s: Run) -> list[str]:
     lock = s.value(sframe + 2, (smask & -smask).bit_length() - 1)
     return [] if min(start, lock) < now < max(start, lock) else [
         f"the first note after the unmute (frame {frame}) reads {start} then {now}, stock's lock {lock}"]
+
+
+def check_stop_return(b: Run, s: Run) -> list[str]:
+    """Step 1 with SLD 2 and no lock, step 9 locking VOL with SLD 4. STOP during step 9's slide, then
+    PLAY: stock clears every voice's sound at STOP (0x800052a8), so the track has no voice of its own,
+    and the restart's step 1 starts from the preset's values with nothing to return from. Its voice
+    reads what stock's does. Before the stop, step 9 slid"""
+    (k9, v9), (k, v) = b.note(1), b.note(2)
+    if b.value(k9 + 50, v9, SLOT_VOL) == s.value(k9 + 50, v9, SLOT_VOL):
+        return ["step 9 did not slide before the stop"]
+    return as_stock_from(b, s, v, SLOT_VOL, k - 2, "the restart's step 1")
 
 
 def check_stop_pending(b: Run, s: Run) -> list[str]:

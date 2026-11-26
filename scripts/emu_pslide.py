@@ -88,7 +88,8 @@ frames at 120 BPM.
   and the notes whose trig's lock list reaches the applier are stock's (stock has 64 lists).
 - `no-lists`: the list allocator's free list emptied before PLAY (stock's allocator then reads
   address 0, in the emulator): the notes and the lists are stock's.
-- `stop-first`: step 1 with SLD, STOP, then PLAY: the restart's step 1 slides.
+- `stop-first`, `stop-return`: step 1 with SLD, STOP, then PLAY: the restart's step 1 slides. With no lock
+  of its own (step 9 locks VOL, AMP knob H) it plays as stock's: stock clears the voices' sounds at STOP.
 - `stop-pending`: STOP between step 5's evaluation and its note, then PLAY: step 1 plays as on
   stock and step 5 slides.
 - `arpplocks`, `directjump`, `waverider`, `lfo4` run on stock with that mod and pslide, against
@@ -183,7 +184,7 @@ from emu_pslide_checks import (  # noqa: E402
     check_next, check_next_alone, check_next_loop, check_next_micro, check_next_preset, check_next_preset_same,
     check_next_track_2, check_next_track_length, check_other_track, check_overlap, check_pattern, check_pool,
     check_preview_off, check_residual, check_return, check_same_notes, check_speed, check_steal,
-    check_push, check_stock_plays, check_stock_reload, check_stop, check_stop_first, check_stop_pending,
+    check_push, check_stock_plays, check_stock_reload, check_stop, check_stop_first, check_stop_pending, check_stop_return,
     check_takeover, check_tempo, check_unheld, check_words, screen, sld)
 
 STOCK = resources_dir() / "00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
@@ -193,7 +194,7 @@ SOURCES = {"1.11": STOCK_ZIP, "1.12": resources_dir() / "00_Firmware/Digitone_II
 TRIG_PAGE, SYN, FLTR, AMP, PRESET, TEMPO, YES, UP, NO, LEFT, DOWN, RIGHT = 1, 2, 3, 4, 7, 9, 10, 11, 12, 13, 14, 15
 TRK, FUNC, RECORD, PLAY, STOP, PAGE, PTN, TRIG1, VOICE, ARP, STACK = 16, 17, 19, 20, 21, 22, 23, 25, 50, 51, 53
 FX, MOD = 5, 6
-KNOB_A, KNOB_B, KNOB_D, KNOB_E, KNOB_G, LEVEL = 1, 2, 4, 5, 7, 9      # LEVEL/DATA is panel_drive's ninth
+KNOB_A, KNOB_B, KNOB_D, KNOB_E, KNOB_G, KNOB_H, LEVEL = 1, 2, 4, 5, 7, 8, 9      # LEVEL/DATA is panel_drive's ninth
 PUSH_E = 45                          # knob E's push (41 to 48: knobs A to H as buttons)
 CLOCK = 0x80005398                   # the audio interrupt's position counter
 CONDITIONS, LST = 0x280, 6           # track 1's COND byte per step in the pattern; LST plays on a change
@@ -592,6 +593,10 @@ def cases() -> list[Case]:
                                + wait(450)), check_same_notes, {5: 4}, same_counts=(LISTED,)),
         Case("stop-first", tuple(BOOT + grid([1, 5], [(1, KNOB_A, 12)], [(1, 4, ())]) + tap(PLAY) + wait(150)
                                  + tap(STOP) + wait(100) + tap(PLAY) + wait(150)), check_stop_first, {1: 4}),
+        Case("stop-return", tuple(BOOT + grid([1, 9], [], [(1, 3, ()), (9, 4, ())],
+                                              extra=tap(AMP) + wait(40) + hold([9], ES.turn(KNOB_H, -40)))
+                                  + tap(PLAY) + wait(225) + tap(STOP) + wait(100) + tap(PLAY) + wait(150)),
+             check_stop_return, {1: 3, 9: 4}),
         Case("stop-pending", tuple(BOOT + grid(*BASE, [(5, 4, ())]) + tap(PLAY) + wait(46) + tap(STOP) + wait(100)
                                    + tap(PLAY) + wait(200)), check_stop_pending, {5: 4}),
         Case("arpplocks", tuple(BOOT + ARP_UP + grid([1], [(1, KNOB_A, 12), (5, KNOB_B, 6)], [(1, 6, ()), (5, 2, ())],

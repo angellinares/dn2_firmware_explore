@@ -902,7 +902,9 @@ Setup, in an empty project with the sequencer stopped:
 
 External reports from w-winter's Digitone II are in `docs/flashing.md`. On 2026-11-26, `pslide3_DN2_1.11.syx` passes the checks of the hardware test below, run over USB by a script. `pslide4_DN2_1.11.syx` differs from it in how a slide starts (see **The load**). On 2026-11-27, `pslide4`'s pslide passes the checks that a slide's start can change: the slides, a turned knob, the mutes and the dense pattern by ear.
 
-The current build, `pslide5_DN2_1.11.syx`, differs from `pslide4` in two fixes. A preset lock of another machine on the first note after [PLAY] now changes at once. A knob turned just after a chord starts now takes its parameter on every voice of the chord. `pslide4` fails the emulator cases of both fixes (`machine-first`, `next-preset-first` and `knob-chord-after`), and no check on the instrument reaches them. The load on the instrument is below. Checked in the emulator on `pslide5`, and on the same code for OS 1.12 (below).
+The current build, `pslide5_DN2_1.11.syx`, differs from `pslide4` in two fixes. A preset lock of another machine on the first note after [PLAY] now changes at once. A knob turned just after a chord starts now takes its parameter on every voice of the chord. `pslide4` fails the emulator cases of both fixes (`machine-first`, `next-preset-first` and `knob-chord-after`).
+
+On 2026-11-28, `pslide5` passes the same checks on w-winter's Digitone II as `pslide4`'s pslide. No check on the instrument reaches the two fixes. The load on the instrument is below. Checked in the emulator on `pslide5`, and on the same code for OS 1.12 (below).
 
 Stock 1.11 changes a locked parameter at once, when its trig plays. This mod adds SLD (slide) to TRIG PAGE 2, on DATA ENTRY knob E, under RTRG. On stock, that place is empty.
 
@@ -1019,19 +1021,19 @@ The 1.12 code differs from 1.11's only in address words, each a 1.11 address mov
 - The image boots from reset in digikit's `boot_gate`, with the main UI at the same instruction as stock's. Integrity 22/22. The code has no scale-8 indexing (`scripts/check_coldfire.py`).
 - OS 1.12 (`dnfw mods apply --mod pslide` on stock 1.12): it boots, and `scripts/emu_pslide.py` passes 87 cases against stock 1.12. The same 32 controls fail. Waverider has no 1.12 build, so its case does not run there. So 175 of the 189 branches ran both ways: the 13 above, and the test for a machine past the table, which only Waverider reaches. The load harness ran on 1.11 only.
 
-**Load on the instrument** (2026-11-27, w-winter's Digitone II in Overbridge mode, on external MIDI clock). `pslide-probe3_DN2_1.11.syx` is `pslide4`'s pslide with usbprobe, Waverider and lfo4 (`dnfw mods apply --mod usbprobe --mod waverider --mod pslide --mod lfo4 --probe-tag pslide-probe3` at commit `1b2046e6`, sha256 `c4bba223d184834558964f765d7b07b2b7b58afdc9dd0b53fe333b8053fa56c4`). `noslide-probe1_DN2_1.11.syx` is the same without pslide (`--probe-tag noslide-probe1` at commit `b9035e2e`, sha256 `553d4c3c0ec5a66baf93b1d69c8e05691f357f669d0f6e2878277274e4ada257`). The USB probe read the audio interrupt once a second, over about 28 seconds of each pattern. The patterns are the emulator's `dense-80` and `mixed-drum-full`, with SLD 16 on every trig. `pslide5`'s two fixes change no instruction that these patterns run, except the test of the machine (see **Checks**).
+**Load on the instrument** (w-winter's Digitone II in Overbridge mode, on external MIDI clock). `pslide-probe4_DN2_1.11.syx` is `pslide5`'s pslide with usbprobe, Waverider and lfo4 (`dnfw mods apply --mod usbprobe --mod waverider --mod pslide --mod lfo4 --probe-tag pslide-probe4` at commit `622d6e9a`, sha256 `411c915d959eedd5421e84fc5225abe3581901deab713978050eebc0264a5e49`), read on 2026-11-28. `noslide-probe1_DN2_1.11.syx` is the same without pslide (`--probe-tag noslide-probe1` at commit `b9035e2e`, sha256 `553d4c3c0ec5a66baf93b1d69c8e05691f357f669d0f6e2878277274e4ada257`), read on 2026-11-27. The USB probe read the audio interrupt once a second, over about 28 seconds of each pattern. The patterns are the emulator's `dense-80` and `mixed-drum-full`, with SLD 16 on every trig.
 
 | | dense-80 without pslide | dense-80 with pslide | mixed-drum-full without | mixed-drum-full with |
 |---|---|---|---|---|
-| median load of the audio interrupt | 48.4% | 58.1% | 50.1% | 64.1% |
-| longest interrupt in each second (median) | 100.8% of a frame | 107.9% | 84.8% | 88.9% |
-| longest interrupt | 103.1% | 109.7% | 86.1% | 90.4% |
-| interrupts over the probe's threshold | 85 | 225 | 0 | 0 |
+| median load of the audio interrupt | 48.4% | 58.1% | 50.1% | 64.2% |
+| longest interrupt in each second (median) | 100.8% of a frame | 107.3% | 84.8% | 88.6% |
+| longest interrupt | 103.1% | 109.5% | 86.1% | 90.6% |
+| interrupts over the probe's threshold | 85 | 222 | 0 | 0 |
 
-- Both builds kept 1,500 audio frames a second. w-winter heard the dense pattern play cleanly.
-- The longest interrupt in each second is the steadier figure. Three runs of the control on 2026-11-26 and 2026-11-27 read 100.8 to 100.9% of a frame on dense-80. Their counts over the threshold were 68, 73 and 85.
+- Both builds kept 1,500 audio frames a second. w-winter heard the dense pattern play cleanly on `pslide5`.
+- The longest interrupt in each second is the steadier figure. Three runs of the control on 2026-11-26 and 2026-11-27 read 100.8 to 100.9% of a frame on dense-80. Their counts over the threshold were 68, 73 and 85. `pslide4`'s pslide read 107.9% on 2026-11-27, with 225 over the threshold.
 - The threshold is 87,708 timer ticks, a frame on another unit. A frame of this unit is about 88,002 ticks. Stock's busiest steps in dense-80 already reach it, so a small cost moves many of them over.
-- With SLD OFF on every trig of dense-80, the hooks alone gave a median load of 48.7%. The longest interrupt in each second read 103.0% (median), and 139 interrupts went over the threshold.
+- With SLD OFF on every trig of dense-80, the hooks alone gave a median load of 48.7%. The longest interrupt in each second read 102.2% (median), and 113 interrupts went over the threshold.
 
 **Not run:**
 - A preset lock of another filter type. Expected: it changes at once, because the test compares the machine and the filter type.

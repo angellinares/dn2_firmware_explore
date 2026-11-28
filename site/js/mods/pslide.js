@@ -2,7 +2,7 @@
  * Parameter slides: a trig's parameter locks glide over a length or to the next trig.
  *
  * The browser half of `src/dnfw/mods/pslide.py`, which carries the evidence. Same steps, same
- * order: check every guard and every edit's stock bytes, write the eleven hooks and the clear
+ * order: check every guard and every edit's stock bytes, write the twelve hooks and the clear
  * mask's operand, then add the routines to the platform's area as a CODE chunk at 0x46c00000,
  * with the slides' state after it, and subscribe the frame routine to the hook bus's ev_frame.
  * `test/test_js_build_matches_cli.py` fails if the bytes differ from the Python's.

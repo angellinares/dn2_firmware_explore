@@ -101,9 +101,10 @@ p_whole:
     lea     44(%sp),%sp
     bra     9b
 
-| a4 = a slide, a5 = its track: d3 = the track's last voice, or -1 when the track has no voice of
-| its own with a sound. Z clear when that voice's sound has another machine or filter type than
-| the slide's. Uses d0, a0, a1
+| a4 = a slide, a5 = its track, in the note path: d3 = the track's last voice, or -1 when the
+| track has no voice of its own with a sound. Z clear when the slide's sound has another machine or
+| filter type than that voice's sound, or, with no such voice, than the track's own sound in the
+| kit. Uses d0, d1, a0, a1
 last_voice:
     move.l  T_LASTV(%a5),%d3
     subq.l  #1,%d3
@@ -116,12 +117,17 @@ last_voice:
     move.l  (%a0,%d3.l*4),%d0
     beq.s   8f
     movea.l %d0,%a0
-    movea.l B_SOUND(%a4),%a1
+    bra.s   9f
+8:  moveq   #-1,%d3                 | the kit's sound of the track, as the note path finds it
+    move.l  B_TNUM(%a4),%d0
+    move.l  #{SOUND_BYTES},%d1
+    muls.l  %d1,%d0
+    movea.l {KIT:#x},%a0
+lv_kit:
+    lea     {KIT_SOUND}(%a0,%d0.l),%a0
+9:  movea.l B_SOUND(%a4),%a1
     move.w  {SOUND_MACHINE}(%a0),%d0
     cmp.w   {SOUND_MACHINE}(%a1),%d0
-    rts
-8:  moveq   #-1,%d3
-    cmp.l   %d3,%d3
     rts
 
 | a4 = a pending slide whose note plays on voice d2, a5 = its track. Its start values: what the

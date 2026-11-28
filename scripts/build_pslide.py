@@ -84,8 +84,14 @@ restore and the applier leave those slots. The voice then takes each start value
 last voice in that hook (`sv_take`), and the hook after the applier sets their lock bits
 (`queue_note`). The rest of the start waits in a queue for a later frame or the next lock trig
 (`drain`): the entries' values, read back from the voice, and the owners. It keeps the note's clock,
-and no slide moves in the note's frame, so the wait changes no value. A whole-sound load starts its
-slide at once, after the applier.
+and no slide moves in the note's frame, so the wait changes no value. A later note of the same trig
+in that frame (a chord) takes its values from the note before it in the same way, so its join at
+the drain claims owners and lock bits only: a knob or CC written to its voice since its frame
+stays. A whole-sound load starts its slide at once, after the applier.
+
+A trig whose sound has another machine or filter type than the track's last voice's sound, or
+than the track's own sound in the kit when the track has no voice of its own, changes at once. The
+note path finds the kit's sound of track t at `[0x800052a0]` + 52 + 1163 t (`0x40026714`).
 
 The applier gets the trig's own list, as on stock, so a mod that reads the list there (arpplocks'
 arp locks past the stock entries, + 828) reads it unchanged. At step evaluation prepare moves the
@@ -148,6 +154,7 @@ SRC = 0x80003AF0                # each voice's targets: word 17 + 101 voice + sl
 STATE = 0x8000DE60              # each voice's smoother state, 16.16, the same indexing
 VOICE_TRACK = 0x80005308        # longs by voice: the track that owns it
 VOICE_SOUND = 0x800052A8        # longs by voice: the sound it has
+KIT = 0x800052A0                # the kit the note path reads a track's own sound from
 LOCKMASK = 0x4664B26C           # 16 bytes by voice: a bit per slot that a lock wrote
 CLOCK = 0x80005398              # the position counter, + 2 x (BPM x 120) each audio frame
 PLAYING = 0x42C5A918            # the sequencer plays: 1
@@ -164,6 +171,8 @@ FRAME_FLAG = 0x4058E550         # cleared after each note's locks (the instructi
 SOUND_VALUES = 20               # a sound's value of slot s: word at + 20 + 2 s
 SOUND_MACHINE = 222             # ... its machine type (byte)
 SOUND_FILTER = 223              # ... its filter type (byte)
+SOUND_BYTES = 1163              # a sound's record, and the stride of the kit's sounds
+KIT_SOUND = 52                  # the kit's sound of track t: + 52 + 1163 t
 SRC_HEADER_BYTES = 34           # a voice's block: 17 words before slot 0
 STATE_VOICE_BYTES = 404         # a voice's STATE block: 101 longs
 SLOTS = 101                     # a voice's values
@@ -297,7 +306,7 @@ LABELS = ("slide_frame", "h_prep", "h_pre", "h_apply", "h_post", "h_lock", "upda
           "p_preview", "preview_off", "drop_earlier", "p_nolist", "w_unplayed", "u_foreign_end",
           "p_next_machine", "last_voice", "l_machine", "revoke", "l_revoke", "k_held", "p_track", "ui_push",
           "p_knob", "p_release", "p_page", "d_locked", "drain", "drain_due", "queue_note", "d_later",
-          "d_join", "d_dropped", "d_values", "q_full", "q_whole", "q_later", "p_queued", "s_target", "s_novel", "bss_start")
+          "d_join", "d_dropped", "d_values", "d_claim", "lv_kit", "q_full", "q_whole", "q_later", "p_queued", "s_target", "s_novel", "bss_start")
 
 # Read, not written: the code the hooks rely on.
 CONTEXT = (
@@ -315,6 +324,8 @@ CONTEXT = (
      "the next step wraps at the pattern's length, or + 1164 per track"),
     (0x400DA174, bytes.fromhex("1c2a05a467047d86"), "with Page Loop, at + 1444"),
     (0x400265C0, bytes.fromhex("2c3c400db092"), "lock-trig loop: the applier in d6, which h_lock calls directly"),
+    (0x40026708, bytes.fromhex("24280040661a2428003c6614343c048b4c032800068200000034d4b9800052a0"),
+     "note path: a note's sound, event + 64, else + 60, else the kit's: 1163 x track + 52 + [0x800052a0]"),
     (0x40026BB2, bytes.fromhex("49ec05ee670e"), "note path: a sound at event + 64 loads whole into the voice"),
     (0x40026BC6, bytes.fromhex("2028003c660a202eff90d0b9800052a0b0b3cc006706"),
      "note path: event + 60 (or the kit's) against the voice's sound, a3 = SRC: VOICE_SOUND by voice"),

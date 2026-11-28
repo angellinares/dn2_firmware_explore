@@ -35,6 +35,9 @@ frames at 120 BPM.
   update and its arrival (placed by a first run): the value leaves the slide.
 - `knob-start`: on one voice, the target is written just before a new slide. That slide must
   start from the smoothed value and reach its lock, rather than cancel itself as a knob change.
+- `knob-chord-after` (rule 1): step 5 a chord of three sliding knobs A and B. Each voice's target of
+  knob A is written as a knob writes it, after the chord's frame and before its start is finished (placed
+  by a first run): on each voice knob A leaves the slide for the written value, and knob B goes on.
 - `knob-unheld`: knob E turned with no trig held, then less than a unit with a trig held: SLD stays OFF.
 - `push`: SLD 4 on steps 1 and 9, [TRIG 9] held on TRIG PAGE 2: SLD's box looks locked (the screen);
   knob E's push keeps SLD, its release sets step 9's to OFF and the box looks plain. Knob C's and
@@ -50,6 +53,11 @@ frames at 120 BPM.
   stock; preset-locked to the track's own FM TONE, it glides.
 - `machine-chord` (rule 4): step 5 a chord of three, preset-locked to FM DRUM: each voice jumps as
   on stock (the chord's later notes find the dropped slide and take the whole list).
+- `machine-first`, `next-preset-first`, `next-preset-first-same` (rule 4): the preset lock on step 1,
+  the first note after PLAY, so the track has no voice of its own. With SLD 4 or NEXT and a pool preset
+  of FM DRUM it changes at once, as on stock. On a track of FM DRUM, with NEXT and a pool preset of FM
+  DRUM, it glides to step 5's lock: the test reads the kit's sound of the track, whose machine is not
+  0 there.
 - `next-preset-type`, `next-preset-same` (rule 4): step 5 NEXT, preset-locked to FM DRUM, changes at
   once; to the same machine, it glides to step 9's lock.
 - `locktrig-preset` (rule 4): on the voice of step 1's note, preset-locked to FM DRUM, a lock trig
@@ -58,8 +66,9 @@ frames at 120 BPM.
 - `retrig-dense`: the same with every knob of six pages locked too, so that the retrig voices' writes
   pass the budget and the voices move in turns: each still starts on the line and lands.
 - `overlap` (rule 11): step 5's slide starts where step 1's slide was; step 1's goes on.
-- `chord`, `arp`: each voice of a chord on step 5, and each arp note of a long note on step 5
-  that starts during the slide, follows the line.
+- `chord`, `unison`, `arp`: each voice of a chord on step 5, each of the three voices of its note with
+  UNISON on in VOICE SETUP, and each arp note of a long note on step 5 that starts during the slide,
+  follows the line.
 - `locktrig`, `locktrig-take`: under step 1's 16-step slide of knob A, a lock trig on step 5
   slides knob B on every voice of the track over a step, step 1's slide going on; or it locks
   knob A, and that voice glides from where step 1's slide was to the lock trig's value and stays.
@@ -108,6 +117,10 @@ frames at 120 BPM.
   over 4 steps.
   `lfo4`: LFO 4 aimed at FM DRUM's TUNE, step 5's TUNE lock with SLD 2: the frames differ from lfo4
   alone's by the slide alone.
+- `lfo-locks`: step 5 locks SPD, FADE, SPH and DEP of LFOs 1 to 3 (knobs A, C, F and H of each MOD
+  page) with SLD 4. These values go to the ColdFire's LFO evaluator (`0x40137726`), not to the DSP, so
+  this case captures the values the evaluator reads in each frame in place of the frame to the DSP:
+  each jumps on stock, and on the build each follows the line from stock's value before it to the lock.
 - `residual`: step 5 also locks ALGO (SYN knob A), which does not slide: it jumps as on stock.
 - `restore-residual`: VOICES 1, step 1 locks ALGO and step 5 slides FLTR knob A: at step 5 the
   voice's ALGO goes back to the sound's value, as on stock, while knob A slides.
@@ -120,12 +133,12 @@ frames at 120 BPM.
   move it; the value comes from a first run of the same keys): the slide never moves back and lands.
 - `control`: knob E sets SLD on each held trig, from OFF to NEXT and no further, does nothing
   with no trig held, passes to stock's LFO.T on TRIG PAGE 1, and reaches a trig on page 3.
-- `copy-paste`, `copy-two`, `freeze`, `freeze-rotated`, `remove`, `clear`, `shift`,
+- `copy-paste`, `copy-two`, `freeze`, `freeze-rotated`, `remove`, `clear`, `note-edit-undo`, `shift`,
   `page-paste`, `track-paste`: step 1 seeded `0x03e9` (SLD NEXT on stock's fields), then trig copy
   and paste, a two-trig copy, FREEZE TRACK with the identity mapping and with rotation, the trig
-  removed and placed again, [TRIG] + [PLAY], [FUNC] + [RIGHT], page and track copy and paste. The
-  build's words keep stock's other bits; paste, rotated FREEZE TRACK, removal and clear differ
-  from stock in SLD alone.
+  removed and placed again, [TRIG] + [PLAY], NOTE EDIT's clear of the note and its UNDO ([FUNC] +
+  [PLAY] twice), [FUNC] + [RIGHT], page and track copy and paste. The build's words keep stock's
+  other bits; paste, rotated FREEZE TRACK, removal, clear and the UNDO differ from stock in SLD alone.
 - `stock-plays`, `stock-reload` (stock only): stock sends the same frames to the DSP with SLD's
   bits set on its trigs as without them; stock's pattern save and reload ([FUNC] + [YES], the
   words zeroed, [FUNC] + [NO]) give the words back with SLD's bits and every other bit.
@@ -148,7 +161,8 @@ On OS 1.12 (issue #382) the same cases run. The build's version picks the stock 
 image the other mods apply to, and every stock address above moves through `dnfw.osport`, or
 through `ON_1_12` for the three the map lacks.
 
-The checks are `scripts/emu_pslide_checks.py`'s. Needs what `scripts/emu_seqplay.py` needs,
+The checks are `scripts/emu_pslide_checks.py`'s, and the reading of the branch counts
+`scripts/emu_pslide_branches.py`'s. Needs what `scripts/emu_seqplay.py` needs,
 through `PANEL_DRIVE`, and for `--controls` and `--coverage` an m68k objdump (`dnfw.image.objdump`).
 A 1.12 build needs digikit `main`'s `panel_drive`, which boots 1.12.
 """
@@ -156,14 +170,12 @@ A 1.12 build needs digikit `main`'s `panel_drive`, which boots 1.12.
 from __future__ import annotations
 
 import argparse
-import collections
 import contextlib
 import dataclasses
 import io
 import json
 import os
 import pathlib
-import re
 import subprocess
 import sys
 import tempfile
@@ -186,17 +198,20 @@ from dnfw.patch import area  # noqa: E402
 
 import emu_pslide_checks as C  # noqa: E402
 import emu_seqplay as ES  # noqa: E402
+import emu_pslide_branches as BR  # noqa: E402
+from emu_pslide_branches import branches, counted, edges, loop_tests, seeds  # noqa: E402
 from emu_pslide_checks import (  # noqa: E402
-    APPLIER, END_POKE, FRAME_BYTES, LISTED, LIST_FREED, NEXT, SLD_BITS, SLOT_A, Flow, Run, check_arpplocks,
+    APPLIER, END_POKE, FRAME_BYTES, LFO_CAPTURE, LISTED, LIST_FREED, NEXT, SLD_BITS, SLOT_A, Run, check_arpplocks,
     check_clock_back, check_conditions, check_control, check_dense, check_direct_jump, check_every_step,
-    check_frames_stock, check_joins, check_knob, check_knob_chord, check_knob_end, check_length, check_lfo4,
+    check_first_preset, check_frames_stock, check_joins, check_knob, check_knob_after, check_knob_chord,
+    check_knob_end, check_length, check_lfo4, check_lfo_locks, check_undo,
     check_locktrig, check_locktrig_chord, check_locktrig_first, check_locktrig_next, check_locktrig_off,
     check_locktrig_preset, check_machine, check_machine_chord, check_mono, check_mono_locktrig, check_muted,
     check_next, check_next_alone, check_next_loop, check_next_micro, check_next_preset, check_next_preset_same,
     check_next_track_2, check_next_track_length, check_other_track, check_overlap, check_pattern, check_pool,
     check_preview_off, check_residual, check_restore_residual, check_return, check_same_notes, check_speed, check_steal,
     check_push, check_stock_plays, check_stock_reload, check_stop, check_stop_first, check_stop_pending, check_stop_return,
-    check_takeover, check_tempo, check_unheld, check_whole_sound, check_words, screen, sld)
+    check_takeover, check_tempo, check_unheld, check_unison, check_whole_sound, check_words, screen, sld)
 
 STOCK = resources_dir() / "00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
 STOCK_ZIP = resources_dir() / "00_Firmware/Digitone_II_OS1.11_dist.zip"
@@ -216,6 +231,7 @@ LIST_HEAD = 0x4464422C               # the lock-list allocator's free-list head 
 SRC = 0x80003AF0                     # each voice's targets: word 17 + 101 voice + slot
 SCALE_MODE, TRACK_SCALE, TRACK_LENGTH, TRACK_STRIDE = 122201, 1167, 1164, 1701   # per-track mode, a track's speed, length
 FAULT_WATCH = "0x4011ea6a,0x400cf678"
+LFO_EVALUATOR = 0x40137726           # the ColdFire's LFO evaluator: argument 0, each voice's values
 # The harness's own 1.11 addresses on OS 1.12 (issue #382) that map_1.12.json lacks: the first
 # pattern and the fault watches as `scripts/emu_directjump.py`'s ON_1_12 reads them, and the list
 # release's free (the release, 0x401389a8 -> 0x40138c88 in the map, has 1.11's bytes but for the
@@ -231,8 +247,6 @@ ON_1_12 = {"PATTERN": 0x4121998C, "FAULT_WATCH": "0x4011ed4a,0x400cf7dc", "LIST_
 # runs the first step 100 M after the main UI (952 M with the SSI paced), a tap takes 20 M.
 STEPS_FROM, TAP = 952_000_000, 20_000_000
 STALL_FIRST, STALL_EVERY, STALL_SPAN, STALL_MARGIN = 4_533_000_000, 4_505_700_000, 48_000_000, 12_000_000
-CONDITIONAL = re.compile(r"b(ne|eq|cs|cc|hi|ls|gt|ge|lt|le|pl|mi|vs|vc)[sbwl]? (0x[0-9a-f]+)")
-TRANSFER = re.compile(r"(bra[sbwl]?|bsr[sbwl]?|jmp|jsr) (0x[0-9a-f]+)")
 # label in the chunk: the case that must fail with that instruction replaced by NOPs
 CONTROLS = {"u_foreign": "knob", "f_stopped": "stop", "f_cut": "pattern", "w_owner": "locktrig-take",
             "sv_machine": "machine", "n_join": "retrig", "m_vslide": "mono", "m_vserial": "mono-locktrig",
@@ -241,7 +255,8 @@ CONTROLS = {"u_foreign": "knob", "f_stopped": "stop", "f_cut": "pattern", "w_own
             "a_stock": "arpplocks", "w_unplayed": "muted-tracks", "p_preview": "preview-sld-off",
             "l_revoke": "locktrig-off", "p_next_machine": "next-preset-type", "l_machine": "locktrig-preset",
             "k_held": "knob-unheld", "u_foreign_end": "knob-end", "p_track": "next-track-2", "w_stale": "stop-first",
-            "p_knob": "push", "p_release": "push", "p_page": "push", "d_locked": "push", "s_target": "knob-start"}
+            "p_knob": "push", "p_release": "push", "p_page": "push", "d_locked": "push", "s_target": "knob-start",
+            "d_claim": "knob-chord-after", "lv_kit": "next-preset-first-same"}
 BACK = 10 * 2 * 14400                # ten frames of the clock at 120 BPM
 POST_EXCHANGE_DELAY = 2_000         # place the target write after the preceding frame's smoother
 
@@ -355,6 +370,12 @@ WAVERIDER = ([f"press:{FUNC}", "wait:20M", f"tap:{SYN}", "wait:40M", f"release:{
 # it moves TUNE without reaching the clamp
 LFO4_TUNE = (tap(MOD) + wait(30)) * 4 + ES.turn(KNOB_D, 1) + tap(YES) + wait(20) + ES.turn(8, 3) + tap(NO) + wait(40)
 MONO = tap(VOICE) + wait(60) + ES.turn(KNOB_E, 1) + tap(NO) + wait(40)    # VOICE SETUP: VOICES 1
+# VOICE SETUP: UNISON's STATE on (knob F) and V.AMNT 3 (knob G, from 2)
+UNISON_3 = tap(VOICE) + wait(60) + ES.turn(6, 1) + wait(20) + ES.turn(7, 1) + tap(NO) + wait(40)
+# step 5 held on each of LFO 1 to 3's pages ([MOD] from the FLTR page, then again): SPD, FADE, SPH and DEP
+# (knobs A, C, F and H) 10 units up
+LFO_LOCKS_5 = [s for _ in range(3) for s in tap(MOD) + wait(40) + hold([5], [t for k in (1, 3, 6, 8)
+                                                                         for t in ES.turn(k, 10)])]
 # every knob of SYN pages 1 and 2, FLTR pages 1 and 2, AMP and FX turned up 2 units, step 5 held
 # (a page key tapped on its own first page opens its second)
 EVERY_KNOB_5 = [s for page in (SYN, SYN, FLTR, FLTR, AMP, FX)
@@ -397,10 +418,11 @@ def clear_of_stalls(steps: list[str], start: int = STEPS_FROM, tap_span: int = T
     return out
 
 
-def drive(image: pathlib.Path, steps: list[str], ssi: bool, counts: list[int], regs: tuple[int, ...] = ()) -> Run:
+def drive(image: pathlib.Path, steps: list[str], ssi: bool, counts: list[int], regs: tuple[int, ...] = (),
+          capture: str | None = None) -> Run:
     cmd = [str(ES.panel_drive()), str(image), "--watch", FAULT_WATCH, "--steps", ",".join(clear_of_stalls(steps))]
     if ssi:
-        cmd += ["--ssi-hz", "96000", "--capture", f"{ES.EXCHANGE}:1:{FRAME_BYTES}"]
+        cmd += ["--ssi-hz", "96000", "--capture", capture or f"{ES.EXCHANGE}:1:{FRAME_BYTES}"]
     if counts:
         cmd += ["--count", ",".join(f"{pc:#x}" for pc in counts)]
     if regs:
@@ -411,6 +433,12 @@ def drive(image: pathlib.Path, steps: list[str], ssi: bool, counts: list[int], r
             raise SystemExit(f"panel_drive gave no result: {done.stderr[-300:]}")
         d = json.loads(done.stdout)
         screens = [screen(pathlib.Path(r["frame"])) for r in d.get("results", []) if "frame" in r]
+    return run_of(d, counts, screens)
+
+
+def run_of(d: dict, counts: list[int], screens: list) -> Run:
+    """panel_drive's result D as a Run: the fault watches, the hits of COUNTS, and SCREENS, read from its
+    `frame:` files"""
     watched = {int(w["pc"], 16): w["hits"] for w in d.get("watched", [])}
     faults = [watched.get(int(pc, 16), 0) for pc in FAULT_WATCH.split(",")]
     peeks = [r for r in d.get("results", []) if "peek" in r]
@@ -438,9 +466,10 @@ class Case:
     stock_steps: tuple[str, ...] | None = None             # stock's own keys, when they differ
     on_stock_only: bool = False                             # both runs on stock
     clock_back: int = 0          # the step before which the clock is poked BACK (read in a first run)
-    target_poke: tuple[int, Literal["start", "end"]] | None = None  # split step and the slide boundary to precede
+    target_poke: tuple[int, Literal["start", "end", "after"]] | None = None  # split step, and where to write
     same_counts: tuple[int, ...] = ()   # instructions that must run as often on the build as on its control
     mods: tuple[str, ...] = ()   # other mods: the case runs on stock with them and pslide, against stock with them
+    capture: str | None = None   # panel_drive's capture (pc:argument:bytes) in place of the frame to the DSP
 
 
 BASE = ([1, 5], [(5, KNOB_A, 12)])
@@ -466,6 +495,10 @@ def cases() -> list[Case]:
     knob_start = BOOT + MONO + grid(*BASE, [(5, 4, ())]) + tap(PLAY) + wait(10)
     knob_start_at = len(knob_start)
     knob_start += wait(200)
+    knob_after = (BOOT + grid([1, 5], [(5, KNOB_A, 12), (5, KNOB_B, 6)], [(5, 4, ())], extra=NOTE_CHORD_5) + tap(PLAY)
+                  + wait(10))
+    knob_after_at = len(knob_after)
+    knob_after += wait(200)
     mutes = [s for n in range(1, 16) for s in chord(FUNC, trig(n))]   # tracks 1 to 15 muted, or unmuted
     conditions = BOOT + grid([1, 5, 6, 7, 8, 9], [(5, KNOB_A, 12), (6, KNOB_A, 4), (7, KNOB_A, 12), (8, KNOB_A, 4),
                                                   (9, KNOB_A, 12)], [(1, NEXT, ())] + [(n, 2, ()) for n in range(5, 10)])
@@ -507,6 +540,7 @@ def cases() -> list[Case]:
                                  + wait(150) + ["turn:1:10", "wait:2M"] * 3 + wait(300)), check_knob_chord, {5: 6}),
         Case("knob-end", tuple(knob_end), check_knob_end, {5: 4}, target_poke=(knob_end_at, "end")),
         Case("knob-start", tuple(knob_start), check_length(4), {5: 4}, target_poke=(knob_start_at, "start")),
+        Case("knob-chord-after", tuple(knob_after), check_knob_after, {5: 4}, target_poke=(knob_after_at, "after")),
         Case("push", tuple(BOOT + grid([1, 9], [], [(1, 4, ()), (9, 4, ())]) + tap(RECORD) + wait(20) + tap(TRIG_PAGE)
                            + wait(60) + tap(TRIG_PAGE) + wait(60) + [f"press:{trig(9)}", "wait:60M", "frame:held"]
                            + [f"press:{PUSH_E}", "wait:40M"] + flags() + [f"release:{PUSH_E}", "wait:40M", "frame:off"]
@@ -535,6 +569,18 @@ def cases() -> list[Case]:
                                        + grid([1, 5, 9], [(5, KNOB_A, 12), (9, KNOB_A, 4)], [(5, NEXT, ())])
                                        + tap(RECORD) + wait(20) + PRESET_LOCK_5 + tap(RECORD) + wait(30)
                                        + tap(PLAY) + wait(250)), check_next_preset, {5: NEXT}),
+        Case("machine-first", tuple(BOOT + machine(DOWN) + POOL_SAVE + machine(UP)
+                                    + grid([1, 5], [(1, KNOB_A, 12)], [(1, 4, ())]) + tap(RECORD) + wait(20)
+                                    + preset_lock(1) + tap(RECORD) + wait(30) + tap(PLAY) + wait(200)),
+             check_first_preset, {1: 4}),
+        Case("next-preset-first", tuple(BOOT + machine(DOWN) + POOL_SAVE + machine(UP)
+                                        + grid([1, 5], [(1, KNOB_A, 12), (5, KNOB_A, 4)], [(1, NEXT, ())])
+                                        + tap(RECORD) + wait(20) + preset_lock(1) + tap(RECORD) + wait(30)
+                                        + tap(PLAY) + wait(200)), check_first_preset, {1: NEXT}),
+        Case("next-preset-first-same", tuple(BOOT + machine(DOWN) + POOL_SAVE
+                                             + grid([1, 5], [(1, KNOB_A, 12), (5, KNOB_A, 4)], [(1, NEXT, ())])
+                                             + tap(RECORD) + wait(20) + preset_lock(1) + tap(RECORD) + wait(30)
+                                             + tap(PLAY) + wait(200)), check_next, {1: NEXT}),
         Case("next-preset-same", tuple(BOOT + POOL_SAVE + grid([1, 5, 9], [(5, KNOB_A, 12), (9, KNOB_A, 4)],
                                                                [(5, NEXT, ())])
                                        + tap(RECORD) + wait(20) + PRESET_LOCK_5 + tap(RECORD) + wait(30)
@@ -551,6 +597,8 @@ def cases() -> list[Case]:
              check_joins, {5: 4}),
         Case("chord", tuple(BOOT + grid(*BASE, [(5, 4, ())], extra=NOTE_CHORD_5) + tap(PLAY) + wait(200)),
              check_joins, {5: 4}),
+        Case("unison", tuple(BOOT + UNISON_3 + grid(*BASE, [(5, 4, ())]) + tap(PLAY) + wait(200)), check_unison,
+             {5: 4}),
         Case("arp", tuple(BOOT + grid(*BASE, [(5, 4, ())], extra=LONG_5) + ARP_UP + tap(PLAY) + wait(200)),
              check_joins, {5: 4}),
         Case("overlap", tuple(BOOT + grid([1, 5], [(1, KNOB_A, 12), (5, KNOB_A, 4)], [(1, 6, ()), (5, 4, ())])
@@ -637,6 +685,8 @@ def cases() -> list[Case]:
         Case("lfo4", tuple(BOOT + machine(DOWN) + LFO4_TUNE + grid([1, 5], [], [(5, 3, ())], extra=tap(SYN) + wait(40)
                                                                           + hold([5], ES.turn(KNOB_A, 6)))
                            + tap(PLAY) + wait(200)), check_lfo4, {5: 3}, mods=("lfo4",)),
+        Case("lfo-locks", tuple(BOOT + grid([1, 5], [], [(5, 4, ())], extra=LFO_LOCKS_5) + tap(PLAY) + wait(200)),
+             check_lfo_locks, {5: 4}, capture=f"{LFO_EVALUATOR:#x}:0:{LFO_CAPTURE}"),
         Case("residual", tuple(BOOT + grid(*BASE, [(5, 4, ())], extra=tap(SYN) + wait(40)
                                            + hold([5], ES.turn(KNOB_A, 2)))
                                + tap(PLAY) + wait(200)), check_residual, {5: 4}),
@@ -671,6 +721,8 @@ def cases() -> list[Case]:
              check_words({1: 0}), ssi=False),
         Case("clear", tuple(edit + [f"poke:{PATTERN:#x}:83e9"] + hold([1], tap(PLAY)) + flags()),
              check_words({1: 0}), ssi=False),
+        Case("note-edit-undo", tuple(edit + hold([1], tap(STACK)) + chord(FUNC, PLAY) + flags() + chord(FUNC, PLAY)
+                                     + flags()), check_undo, ssi=False),
         Case("shift", tuple(edit + chord(FUNC, RIGHT) + flags()), check_words({}, tuple(range(1, 17))), ssi=False),
         Case("page-paste", tuple(edit + chord(PAGE, RECORD) + chord(FUNC, PAGE) + tap(PAGE) + wait(40) + tap(NO)
                                  + wait(40) + tap(PAGE) + wait(40) + chord(PAGE, PLAY) + chord(PAGE, STOP)
@@ -709,7 +761,8 @@ def keys(case: Case, image: pathlib.Path, steps: tuple[str, ...], build: bool = 
     """STEPS, with the clock poked BACK where the case says, from its value there in a first run
     (the emulator is deterministic, so the second run reaches the same value). On a BUILD, with
     TARGET_POKE: the first run finds step 5's voice and the requested slide boundary. The second
-    writes that voice's target of knob A (as a knob writes it) in the frame before that boundary"""
+    writes that voice's target of knob A (as a knob writes it) in the frame before that boundary, or
+    with "after", each voice's of step 5's chord in the frame after the chord's"""
     if case.clock_back:
         head, tail = list(steps[:case.clock_back]), list(steps[case.clock_back:])
         clock = int.from_bytes(drive(image, head + [f"peek:{CLOCK:#x}:4"], case.ssi, []).peeks[-1], "big")
@@ -719,13 +772,15 @@ def keys(case: Case, image: pathlib.Path, steps: tuple[str, ...], build: bool = 
         head, tail = list(steps[:split]), list(steps[split:])
         first = drive(image, head + [f"peek:{CLOCK:#x}:4"] + tail, case.ssi, [])
         k, v = first.note(1)
-        frame = k
+        frame, voices = k, [v]
         if boundary == "end":
             series = first.series(v, SLOT_A)
             frame = next(f for f in range(k, len(series)) if series[f] == series[-1])
+        elif boundary == "after":
+            frame, voices = k + 1, first.voices(1)
         at = first.icounts[first.first + frame - 1] + POST_EXCHANGE_DELAY
-        target = SRC + 2 * (17 + 101 * v + SLOT_A)
-        return head + [f"wait:{at - first.peek_at[-1]}", f"poke:{target:#x}:{END_POKE:04x}"] + tail
+        pokes = [f"poke:{SRC + 2 * (17 + 101 * x + SLOT_A):#x}:{END_POKE:04x}" for x in voices]
+        return head + [f"wait:{at - first.peek_at[-1]}"] + pokes + tail
     return list(steps)
 
 
@@ -734,12 +789,12 @@ def run_case(case: Case, build: pathlib.Path, stock: pathlib.Path, counts: list[
     image = stock if case.on_stock_only else build
     same = list(case.same_counts)
     b = drive(image, keys(case, image, case.steps), case.ssi, ([] if case.on_stock_only else counts) + same,
-              () if case.on_stock_only else regs)
+              () if case.on_stock_only else regs, case.capture)
     if case.on_stock_only and case.stock_steps is None:
         return problems_of(case, b, b), b
     if case.name not in stock_runs:
         stock_runs[case.name] = drive(stock, keys(case, stock, case.stock_steps or case.steps, False), case.ssi,
-                                      same)
+                                      same, (), case.capture)
     return problems_of(case, b, stock_runs[case.name]), b
 
 
@@ -765,9 +820,6 @@ def pair(case: Case, build: pathlib.Path, stock: pathlib.Path, images: dict) -> 
 
 # ---- the chunk: controls and branch counts ----
 
-CODE = pslide.SPEC["code"]
-BLOB, CODE_VA = bytes.fromhex(CODE["blob"]), CODE["va"]
-LABELS = pslide.SPEC["labels"]
 
 
 def chunk_of(image: pathlib.Path):
@@ -776,9 +828,9 @@ def chunk_of(image: pathlib.Path):
     firmware = load(read_image(image))
     original, chunks = platform.split(firmware.container.find(pslide.SECTION).unpack())
     found = [i for i, (cid, data) in enumerate(chunks)
-             if cid == area.CODE and area.CodeChunk.unpack(data).load == CODE_VA]
-    if len(found) != 1 or area.CodeChunk.unpack(chunks[found[0]][1]).image[:len(BLOB)] != BLOB:
-        raise SystemExit(f"{image} has no CODE chunk at {CODE_VA:#x} equal to pslide_code.json's")
+             if cid == area.CODE and area.CodeChunk.unpack(data).load == BR.CODE_VA]
+    if len(found) != 1 or area.CodeChunk.unpack(chunks[found[0]][1]).image[:len(BR.BLOB)] != BR.BLOB:
+        raise SystemExit(f"{image} has no CODE chunk at {BR.CODE_VA:#x} equal to pslide_code.json's")
     return firmware, original, chunks, found[0]
 
 
@@ -786,8 +838,8 @@ def control_image(build: pathlib.Path, label: str, folder: pathlib.Path) -> path
     """BUILD with the instruction at LABEL replaced by NOPs"""
     firmware, original, chunks, i = chunk_of(build)
     code = area.CodeChunk.unpack(chunks[i][1])
-    at = LABELS[label] - CODE_VA
-    size = objdump.disassemble(code.image[at:at + 8], LABELS[label])[0].size
+    at = BR.LABELS[label] - BR.CODE_VA
+    size = objdump.disassemble(code.image[at:at + 8], BR.LABELS[label])[0].size
     image = bytearray(code.image)
     image[at:at + size] = bytes.fromhex("4e71") * (size // 2)
     chunks[i] = (area.CODE, area.CodeChunk(code.load, bytes(image), code.bss, code.init).pack())
@@ -796,84 +848,6 @@ def control_image(build: pathlib.Path, label: str, folder: pathlib.Path) -> path
     out = folder / f"control-{label}-{build.stem}.syx"
     out.write_bytes(fwbuild.build(firmware, {pslide.SECTION: compress(section.id, section.dest, content)}))
     return out
-
-
-def branches() -> tuple[list[tuple[int, int, int]], dict[int, set]]:
-    """The chunk's code up to its data (`sld_bits`): each conditional branch (its address, its
-    target, the next instruction), and each instruction's ways in: ("branch" or "fall", from
-    address), ("jump" or "call", from address), or ("entry", 0) for a routine that a hook or the
-    hook bus enters"""
-    code = objdump.disassemble(BLOB[:LABELS["sld_bits"] - CODE_VA], CODE_VA)
-    entries = {int(e["new"][4:12], 16) for e in pslide.SPEC["edits"] if e["new"][:4] in ("4ef9", "4eb9")}
-    ways: dict[int, set] = collections.defaultdict(set)
-    for a in entries | {LABELS["slide_frame"]}:
-        ways[a].add(("entry", 0))
-    points = []
-    for i in code:
-        if m := CONDITIONAL.match(i.text):
-            points.append((i.address, int(m.group(2), 16), i.end))
-            ways[int(m.group(2), 16)].add(("branch", i.address))
-            ways[i.end].add(("fall", i.address))
-        elif m := TRANSFER.match(i.text):
-            ways[int(m.group(2), 16)].add(("call" if m.group(1).startswith(("bsr", "jsr")) else "jump", i.address))
-            if m.group(1).startswith(("bsr", "jsr")):
-                ways[i.end].add(("fall", i.address))
-        elif not i.text.startswith(("rts", "rte", "jmp")):
-            ways[i.end].add(("fall", i.address))
-    return points, ways
-
-
-def counted(points: list[tuple[int, int, int]], ways: dict[int, set]) -> list[int]:
-    """The instructions `edges` needs counted: each branch, its target and its next instruction, and
-    every instruction from which those two are reached"""
-    found = {pc for point in points for pc in point}
-    for _, target, after in points:
-        found |= {src for pc in (target, after) for kind, src in ways[pc] if kind != "entry"}
-    return sorted(found)
-
-
-def loop_tests(points: list[tuple[int, int, int]]) -> dict[int, tuple[int, int]]:
-    """The tests of an empty count before a counted loop, which flow alone cannot split: a branch A
-    on a data register's zero whose next instruction starts a loop that a `subq.l #1` of the same
-    register and a branch B back close, B's next instruction being A's target. -> {A: (B, the
-    register)}"""
-    code = {i.address: i for i in objdump.disassemble(BLOB[:LABELS["sld_bits"] - CODE_VA], CODE_VA)}
-    before = {i.end: i for i in code.values()}
-    found = {}
-    for at, target, after in points:
-        test = before[at].text
-        if not CONDITIONAL.match(code[at].text).group(1) == "eq" or not (m := re.search(r"%d(\d)$", test)):
-            continue
-        for back, loop_head, past in points:
-            if loop_head == after and past == target and before[back].text == f"subql #1,%d{m.group(1)}":
-                found[at] = (back, int(m.group(1)))
-    return found
-
-
-def seeds(loops: dict[int, tuple[int, int]], runs: list[Run]) -> tuple[dict[int, int], dict[int, int]]:
-    """From each loop test's register at the test: the (taken, not taken) counts of the test and of
-    its loop's branch back (a count of 0 skips the loop, n runs it n times and branches back n - 1).
-    Exact only when no run dropped a logged hit"""
-    taken: dict[int, int] = {}
-    not_taken: dict[int, int] = {}
-    for at, (back, reg) in loops.items():
-        values = [d[reg] for run in runs for pc, d in run.regs if pc == at]
-        taken[at], not_taken[at] = sum(v == 0 for v in values), sum(v > 0 for v in values)
-        taken[back], not_taken[back] = sum(v - 1 for v in values if v > 0), not_taken[at]
-    return taken, not_taken
-
-
-def edges(points: list[tuple[int, int, int]], ways: dict[int, set], hits: dict[int, int],
-          seeded: tuple[dict[int, int], dict[int, int]] = ({}, {})) -> dict[int, tuple[int | None, int | None]]:
-    """Each branch's (taken, not taken) counts, by the flow into its target and its next
-    instruction: an instruction runs as often as the ways into it are taken, so one way is the
-    instruction's count less the others', and taken plus not taken is the branch's count. Repeated
-    until nothing more follows. None where a way stays mixed with one that is not counted (a routine
-    that a hook enters as well as code in the chunk)"""
-    flow = Flow(ways, hits, {at for at, _, _ in points}, dict(seeded[0]), dict(seeded[1]))
-    while any([flow.settle(point) for point in points]):
-        pass
-    return {at: (flow.taken.get(at), flow.not_taken.get(at)) for at, _, _ in points}
 
 
 def main() -> int:
@@ -892,9 +866,10 @@ def main() -> int:
     moved = {}
     if os_version == "1.12":
         ES.use(os_version)
-        moved = {sys.modules[__name__]: {**ON_1_12, "BLOB": bytes.fromhex(pslide.SPECS[os_version]["code"]["blob"])},
-                 C: {"LIST_FREED": ON_1_12["LIST_FREED"], "LISTED": ON_1_12["LISTED"]}}
-    with osport.retarget(os_version, [sys.modules[__name__], C], moved):
+        moved = {sys.modules[__name__]: ON_1_12,
+                 C: {"LIST_FREED": ON_1_12["LIST_FREED"], "LISTED": ON_1_12["LISTED"]},
+                 BR: {"BLOB": bytes.fromhex(pslide.SPECS[os_version]["code"]["blob"])}}
+    with osport.retarget(os_version, [sys.modules[__name__], C, BR], moved):
         print(f"OS {os_version}: stock {a.stock.name}, pattern {PATTERN:#010x}, exchange {ES.EXCHANGE}, "
               f"watch {FAULT_WATCH}")
         return run_all(a, SOURCES[os_version])
@@ -957,7 +932,7 @@ def report_coverage(points: list[tuple[int, int, int]], ways: dict[int, set], co
     the loop tests' registers), and each that did not or whose ways the counts cannot tell apart:
     -> how many those are"""
     hits = {pc: sum(run.counts.get(pc, 0) for _, run in results) for pc in counts}
-    names = sorted((v, k) for k, v in LABELS.items())
+    names = sorted((v, k) for k, v in BR.LABELS.items())
     loops = loop_tests(points)
     runs = [run for _, run in results]
     seeded = seeds(loops, runs)
@@ -970,7 +945,7 @@ def report_coverage(points: list[tuple[int, int, int]], ways: dict[int, set], co
     open_ = [(point, ways_run) for point, ways_run in found if None in ways_run or 0 in ways_run]
     print(f"\nbranches: {len(points) - len(open_)} of {len(points)} ran both ways, each way counted apart")
     for (at, _, _), (taken, not_taken) in open_:
-        label = max((n for n in names if n[0] <= at), default=(CODE_VA, "?"))
+        label = max((n for n in names if n[0] <= at), default=(BR.CODE_VA, "?"))
         print(f"    {at:#x} ({label[1]} + {at - label[0]}): taken {'?' if taken is None else taken}, "
               f"not taken {'?' if not_taken is None else not_taken}")
     return len(open_)

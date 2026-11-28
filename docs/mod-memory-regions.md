@@ -28,7 +28,7 @@ From each mod's own declaration (`ram()`), in region A, 2026-11-04:
 |---|---|---|
 | waverider | 458,144 | `0x4670a000`, `0x467f0000`, `0x46a00000`, `0x46a60000` |
 | the platform | 196,854 | `0x46710000` (its data window), `0x46e00000` |
-| pslide | 97,744 | `0x46c00000`: 5,600 bytes of code, then the slides' state (its declaration of 2026-11-27) |
+| pslide | 97,776 | `0x46c00000`: 5,632 bytes of code, then the slides' state (its declaration of 2026-11-28) |
 | lfo4 | 30,724 | `0x46800000`, `0x468fffcc` (its state arrays, 7,680 bytes, are in the heap) |
 | arpplocks | 20,936 | `0x467c0000`, `0x467c4900`, `0x467c8000` |
 | lfowaves | 11,716 | `0x46740000`, `0x46750000`, `0x46780000` |
@@ -42,7 +42,7 @@ From each mod's own declaration (`ram()`), in region A, 2026-11-04:
 | layermidi | 324 | `0x467d8000` |
 | bootscreen | 320 | `0x46708000` on 1.11, `0x467e8000` on 1.12 (1.12's DMA section covers `0x46708000`) |
 | lfolength | 260 | `0x467b0000` (`0x467f8000` until 2026-10-15) |
-| **all** | **827,982** | 0.79 MiB of the 24.9 MB: the declarations of 2026-11-04, and pslide's |
+| **all** | **828,014** | 0.79 MiB of the 24.9 MB: the declarations of 2026-11-04, and pslide's |
 
 Four mods also declare bytes in stock's data, outside region A. lfolength declares 96 bytes, one per sound slot. arpscale declares one byte of the settings block, and its marks are in each sound. reloadconfirm and directjump each declare one byte.
 

@@ -1,6 +1,6 @@
 """The checks of `scripts/emu_pslide.py`: a case's frames on the build against stock's, its step
-flags and the counts it asked for. The cases, their keys and what each shows are in that script's
-docstring.
+flags and the counts it asked for. The cases, their keys and what each shows are in
+that script's docstring.
 """
 
 from __future__ import annotations
@@ -30,6 +30,10 @@ LIST_FREED = 0x401389CA              # the list release's free: the list's count
 APPLIER = 0x400DB092                 # the lock applier's entry (arpplocks hooks it)
 LISTED = 0x40026C2A                  # the note path's applier call: the note's trig has a lock list
 END_POKE = 0x0800                    # the target a knob-like write sets in a slide's last frame (knob-end)
+# the values the LFO evaluator reads (lfo-locks), as the smoother gives them: word 17 + 101 voice + slot
+VALUES_HEADER, VALUES_VOICE, LFO_VOICES = 34, 202, 2
+LFO_CAPTURE = VALUES_HEADER + VALUES_VOICE * LFO_VOICES
+LFO_SLOTS = (1, 3, 6, 8, 9, 11, 14, 16, 17, 19, 22, 24)   # LFO 1 to 3: SPD, FADE, SPH and DEP
 
 
 # ---- runs ----
@@ -96,7 +100,11 @@ def glides(run: Run, voice: int, slot: int, start: int, length: float, a: int, b
     """VOICE's SLOT reads A in frame START, follows the line to B, reaches B within a frame and a
     half of START + LENGTH (a start in that frame moves no slide) and stays. LAG: frames a slide
     may trail the line by when it moves every second or fourth frame."""
-    s = run.series(voice, slot)
+    return follows(run.series(voice, slot), start, length, a, b, what, lag)
+
+
+def follows(s: list[int], start: int, length: float, a: int, b: int, what: str, lag: int = 0) -> list[str]:
+    """`glides` on S, a value for each frame"""
     tolerance = max(2, abs(b - a) // 512) + abs(b - a) * lag / length
     for k in range(start, min(start + int(length), len(s))):
         line = a + (b - a) * (k - start) / length
@@ -194,6 +202,13 @@ def check_next_preset_same(b: Run, s: Run) -> list[str]:
     return glides(b, v, SLOT_A, k, b.note(2)[0] - k, a, target, "step 5")
 
 
+def check_first_preset(b: Run, s: Run) -> list[str]:
+    """Step 1, the first note after PLAY (the track has no voice of its own), with SLD and a preset
+    lock of another machine: its values change at once, as stock's"""
+    _, v = b.note(0)
+    return as_stock_from(b, s, v, SLOT_A, 0, "step 1")
+
+
 def check_locktrig_preset(b: Run, s: Run) -> list[str]:
     """Step 1 plays a preset lock of another machine. On its voice, the lock trig on step 5 with SLD
     changes knob A at once, as stock's"""
@@ -212,6 +227,51 @@ def check_knob_end(b: Run, s: Run) -> list[str]:
     # stock's smoother takes the value toward the written target over many frames
     return [] if abs(after[-1] - END_POKE) * 20 < abs(target - END_POKE) else [
         f"200 frames on it reads {after[-1]}, not near the written {END_POKE} (the lock {target})"]
+
+
+def check_knob_after(b: Run, s: Run) -> list[str]:
+    """Step 5's chord slides knobs A and B over 4 steps. Each voice's target of knob A is written, as a
+    knob writes it, after the chord's frame and before the slide's start is finished (placed by a first
+    run): on each voice, knob A leaves the slide and goes to the written target, and knob B goes on on
+    its line"""
+    voices = b.voices(1)
+    out = [] if len(voices) == 3 else [f"step 5 plays {len(voices)} voices, not 3"]
+    _, lock = ends(s)
+    (_, v1), (k5, v5) = s.note(0), s.note(1)
+    a_b, lock_b = s.value(1, v1, SLOT_B), s.value(k5 + 1, v5, SLOT_B)
+    k, _ = b.note(1)
+    for v in voices:
+        after = b.series(v, SLOT_A)[k + 2:k + 200]
+        if lock in after or abs(after[-1] - END_POKE) * 20 >= abs(lock - END_POKE):
+            out.append(f"voice {v}: knob A reads {after[-1]} 200 frames on, not near the written {END_POKE} "
+                       f"(the lock {lock})")
+        out += glides(b, v, SLOT_B, k, 4 * STEP, a_b, lock_b, f"voice {v}, knob B")
+    return out
+
+
+def evaluated(run: Run, voice: int, slot: int) -> list[str]:
+    """VOICE's SLOT in each frame of a run that captured the LFO evaluator's values"""
+    at = VALUES_HEADER + VALUES_VOICE * voice + 2 * slot
+    return [int.from_bytes(f[at:at + 2], "big") for f in run.frames]
+
+
+def check_lfo_locks(b: Run, s: Run) -> list[str]:
+    """Step 5 locks SPD, FADE, SPH and DEP of LFOs 1 to 3 with SLD 4. The frames are the values the LFO
+    evaluator reads in each audio frame. On step 5's voice, stock's jump to each lock, and the build's
+    follow the line from stock's value before the jump to the lock over the 4 steps"""
+    out = []
+    for slot in LFO_SLOTS:
+        stock = {v: evaluated(s, v, slot) for v in range(LFO_VOICES)}
+        voice = next((v for v, series in stock.items() if len(set(series)) > 1), None)
+        if voice is None:
+            out.append(f"slot {slot}: no voice's value changes on stock")
+            continue
+        series = stock[voice]
+        if len(set(series)) != 2:
+            out.append(f"slot {slot}: stock reads {len(set(series))} values, not a jump")
+        lock = series[-1]
+        out += follows(evaluated(b, voice, slot), series.index(lock), 4 * STEP, series[0], lock, f"slot {slot}")
+    return out
 
 
 SLD_LOCKED = (range(21, 46), range(39, 58))    # stock's locked look around SLD's box: 3 pixels each side, 1 above and below
@@ -452,6 +512,12 @@ def check_joins(b: Run, s: Run) -> list[str]:
             if b.value(round(k + length) + 2, v) != target:
                 out.append(f"voice {v} is not on the lock after the slide")
     return out
+
+
+def check_unison(b: Run, s: Run) -> list[str]:
+    """UNISON on with three voices: step 5's note plays on three voices, and each follows the line"""
+    voices = b.voices(1)
+    return ([] if len(voices) == 3 else [f"step 5 plays {len(voices)} voices, not 3"]) + check_joins(b, s)
 
 
 def check_overlap(b: Run, s: Run) -> list[str]:
@@ -799,6 +865,16 @@ def check_words(steps_carry: dict[int, int], same: tuple[int, ...] = ()) -> Call
     return check
 
 
+def check_undo(b: Run, s: Run) -> list[str]:
+    """Step 1 seeded 0x03e9: NOTE EDIT's clear of its note, then UNDO (the clear again). Stock gives
+    the trig back with its flags. The build's clear also clears SLD (the clear mask), so UNDO gives the
+    trig back without SLD and with stock's other bits"""
+    cleared, back = s.word(-2, 1), s.word(-1, 1)
+    out = [] if not cleared & 1 and back & 1 else [
+        f"stock: step 1 {cleared:#06x} after the clear and {back:#06x} after UNDO, not a clear and its undo"]
+    return out + check_words({1: 0})(b, s)
+
+
 # ---- data stock reads (stock only) ----
 
 def check_stock_plays(b: Run, s: Run) -> list[str]:
@@ -817,39 +893,3 @@ def check_stock_reload(b: Run, s: Run) -> list[str]:
     words = [(b.word(i, 1), b.word(i, 5)) for i in range(3)]
     return [] if words == [(0x03E9, 0x0021), (0, 0), (0x03E9, 0x0021)] else [
         f"steps 1 and 5: {[(f'{x:#06x}', f'{y:#06x}') for x, y in words]}"]
-
-
-@dataclasses.dataclass
-class Flow:
-    """The counts `edges` has learned: the ways into each instruction, the instruction counts, and
-    each branch's taken and not taken counts so far"""
-    ways: dict[int, set]
-    hits: dict[int, int]
-    branch_at: set[int]
-    taken: dict[int, int]
-    not_taken: dict[int, int]
-
-    def way(self, kind: str, src: int) -> int | None:
-        """How often one way in was taken, or None while that is not known"""
-        if kind == "entry":
-            return None
-        if kind == "branch":
-            return self.taken.get(src)
-        if kind == "fall" and src in self.branch_at:
-            return self.not_taken.get(src)
-        return self.hits[src]           # a fall from a plain instruction or a call's return, a jump, a call
-
-    def settle(self, point: tuple[int, int, int]) -> bool:
-        """One pass over the branch at POINT: -> whether it learned a count"""
-        at, target, after = point
-        learned = False
-        for mine, pc, me in ((self.taken, target, ("branch", at)), (self.not_taken, after, ("fall", at))):
-            others = [self.way(kind, src) for kind, src in self.ways[pc] if (kind, src) != me]
-            if at not in mine and None not in others:
-                mine[at] = self.hits[pc] - sum(others)
-                learned = True
-        if (at in self.taken) != (at in self.not_taken):
-            known, unknown = (self.taken, self.not_taken) if at in self.taken else (self.not_taken, self.taken)
-            unknown[at] = self.hits[at] - known[at]
-            learned = True
-        return learned

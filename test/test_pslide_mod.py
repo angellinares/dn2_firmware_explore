@@ -1,5 +1,5 @@
 """The parameter-slide mod: it applies to stock 1.11 (1.12 is test_pslide_112.py's), refuses a
-changed image, writes only its eleven hooks and the clear mask's operand in the image, and runs
+changed image, writes only its twelve hooks and the clear mask's operand in the image, and runs
 from one platform CODE chunk at 0x46c00000 with its state after it, its frame routine a handler
 of the hook bus's ev_frame.
 

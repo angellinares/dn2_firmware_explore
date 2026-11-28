@@ -43,18 +43,18 @@ BASE = 0x40000400
 SPECS = specs.load(__file__, "pslide")         # one per OS version (issue #382)
 SPEC = SPECS["1.11"]
 # Bytes in the chunk that only look like RAM above BSS (`dnfw.mods.ramcheck`), each disassembled
-# with objdump -m m68k:cfv4e on 2026-11-27. The places move with the code, so a change to the chunk
+# with objdump -m m68k:cfv4e on 2026-11-28. The places move with the code, so a change to the chunk
 # needs them read again.
 NOT_RAM = (
-    0x46C001DC, 0x46C00606, 0x46C0070E, 0x46C0074E, 0x46C0076A,
+    0x46C001DC, 0x46C00612, 0x46C0071A, 0x46C0075A, 0x46C00776,
                              # move.w #0x2700,%sr (46 fc 27 00)
-    0x46C00646, 0x46C00748, 0x46C00760, 0x46C0077E,
+    0x46C00652, 0x46C00754, 0x46C0076C, 0x46C0078A,
                              # move.w %d5,%sr (46 c5) and the next instruction
     0x46C00288,
                              # not.l %d1 ; and.l %d1,%d0 (46 81 c0 81)
-    0x46C003E0, 0x46C00704, 0x46C00BC6, 0x46C00BCE, 0x46C00BD6, 0x46C00BDE, 0x46C00C52,
+    0x46C003E0, 0x46C00710, 0x46C00BD2, 0x46C00BDA, 0x46C00BE2, 0x46C00BEA, 0x46C00C74,
                              # not.l %d0 ; and.l %d0,%d4 (46 80 c8 80)
-    0x46C013E6, 0x46C014CE,
+    0x46C01406, 0x46C014EE,
                              # jsr 0x40054690 ; lea ...: the operand's low word and the next opcode
 )
 

@@ -633,7 +633,11 @@ d_values:
     move.l  %d0,B_MASK(%a4)
     bsr     started
     bra     4f
-3:  bsr     note_join
+3:  mvz.b   B_INIT(%a4),%d6         | its voice took its values in its note's frame (sv_take): the join
+d_claim:
+    clr.b   B_INIT(%a4)             | claims owners and lock bits only, so a knob or CC written to the
+    bsr     note_join               | voice since then stays
+    move.b  %d6,B_INIT(%a4)
 4:  subq.l  #1,%d7
     bne     1b
 9:  movem.l (%sp),%d0-%d7/%a0-%a6

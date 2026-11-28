@@ -898,7 +898,11 @@ Setup, in an empty project with the sequencer stopped:
 
 ## Mod: `pslide` (parameter slides)
 
-**Status: not yet tested by the repository owner.** By [w-winter](https://github.com/w-winter). The design was agreed in issue #391. On w-winter's Digitone II, 2026-11-26, `pslide3_DN2_1.11.syx` passes the checks of the hardware test below, run over USB by a script (an external report in `docs/flashing.md`). `pslide4_DN2_1.11.syx` differs from it in how a slide starts (see **The load**). On 2026-11-27, `pslide4`'s pslide passes the checks that a slide's start can change: the slides, a turned knob, the mutes and the dense pattern by ear. Its load on the instrument is below. Checked in the emulator on `pslide4`, and on the same code for OS 1.12 (below).
+**Status: not yet tested by the repository owner.** By [w-winter](https://github.com/w-winter). The design was agreed in issue #391.
+
+External reports from w-winter's Digitone II are in `docs/flashing.md`. On 2026-11-26, `pslide3_DN2_1.11.syx` passes the checks of the hardware test below, run over USB by a script. `pslide4_DN2_1.11.syx` differs from it in how a slide starts (see **The load**). On 2026-11-27, `pslide4`'s pslide passes the checks that a slide's start can change: the slides, a turned knob, the mutes and the dense pattern by ear.
+
+The current build, `pslide5_DN2_1.11.syx`, differs from `pslide4` in two fixes. A preset lock of another machine on the first note after [PLAY] now changes at once. A knob turned just after a chord starts now takes its parameter on every voice of the chord. `pslide4` fails the emulator cases of both fixes (`machine-first`, `next-preset-first` and `knob-chord-after`), and no check on the instrument reaches them. The load on the instrument is below. Checked in the emulator on `pslide5`, and on the same code for OS 1.12 (below).
 
 Stock 1.11 changes a locked parameter at once, when its trig plays. This mod adds SLD (slide) to TRIG PAGE 2, on DATA ENTRY knob E, under RTRG. On stock, that place is empty.
 
@@ -906,7 +910,7 @@ In GRID RECORDING mode, press [TRIG PARAMETERS] twice to open TRIG PAGE 2. Hold 
 
 A value other than OFF shows inverted, as a locked parameter does. To set SLD back to OFF, hold the [TRIG] keys and press knob E, as you remove a parameter lock.
 
-![TRIG PAGE 2 in the emulator with a trig held, stock 1.11: knob E's place is empty](img/emu-pslide-trig-page2-stock.png) ![The same page and trig on this build: SLD 4, inverted as a locked value is](img/emu-pslide-trig-page2-sld.png)
+![Stock 1.11's TRIG PAGE 2 with a trig held: knob E's place is empty](img/emu-pslide-trig-page2-stock.png) ![This build's TRIG PAGE 2 with the trig held: SLD 4, inverted](img/emu-pslide-trig-page2-sld.png)
 
 A trig with a length (1/2 to 16) glides to its locks over that many steps of the track's speed. Each parameter starts from the value that the track had just before the trig. That is the value on the track's last voice, or the preset's value when the track has no voice of its own. A parameter that the trig before locked, and that this trig does not lock, glides back to the preset's value over the same length.
 
@@ -973,25 +977,27 @@ A waiting slide keeps stock's lock list of its trig, so that the list's address 
 - `0x40053e1a` and `0x400555c2`, trig copy and trig paste: SLD in the clipboard.
 - `0x400550da` and `0x4005520a`, FREEZE TRACK's read and set of `0x0020`: `0x0040` with it.
 - `0x4004fd36`, the clear mask: `0x7fff` -> `0x7f97`.
-- 5,600 B of code at `0x46c00000`, then 92,144 B of state that the platform's loader clears. The frame routine is a handler of `ev_frame`.
+- 5,632 B of code at `0x46c00000`, then 92,144 B of state that the platform's loader clears. The frame routine is a handler of `ev_frame`.
 
-`scripts/build_pslide.py` has the reading of the firmware, and the routines are `scripts/pslide_engine.py`, `pslide_prepare.py`, `pslide_notes.py` and `pslide_ui.py`. 50 guards check the stock code that the routines rely on, and the first bytes of each stock routine they call. `scripts/gen_pslide_code.py` writes `pslide_code.json` and `site/js/mods/pslide-code.js`, and refuses to write unless the JSON, replayed on stock, is the build byte for byte. `test/test_pslide_mod.py` checks the shipped bytes, the hooks and the refusal of an image that is not stock.
+`scripts/build_pslide.py` has the reading of the firmware, and the routines are `scripts/pslide_engine.py`, `pslide_prepare.py`, `pslide_notes.py` and `pslide_ui.py`. 51 guards check the stock code that the routines rely on, and the first bytes of each stock routine they call. `scripts/gen_pslide_code.py` writes `pslide_code.json` and `site/js/mods/pslide-code.js`, and refuses to write unless the JSON, replayed on stock, is the build byte for byte. `test/test_pslide_mod.py` checks the shipped bytes, the hooks and the refusal of an image that is not stock.
 
 **OS 1.12.** `scripts/osport_survey.py` maps every address of `build_pslide.py` to 1.12 (`map_1.12.json`, each site's bytes equal or relocated). Each hook's return is its 1.12 site plus the bytes it displaces (`build_pslide.overrides`). `gen_pslide_code.py --os 1.12` writes `pslide_code_1.12.json`.
 
-The 1.12 code differs from 1.11's in 28 address words, each a 1.11 address that moves to it. The table of the parameters that slide is the same. `test/test_pslide_112.py` checks this.
+The 1.12 code differs from 1.11's only in address words, each a 1.11 address moved to its 1.12 one. The table of the parameters that slide is the same. `test/test_pslide_112.py` checks this.
 
 **Sources.** The per-voice values and the smoother's call are this repository's own reading (`docs/engine-state.md`, `docs/fx-master-modulation.md`). De-Pattern's dn2mk2-firmware also slides at the smoother's call (`docs/slides.md`, AGPL-3.0-or-later, listed in `docs/references.md`). That document was read for its method only. This mod reads each site again in stock 1.11, and it has no code from that project or from Overtone.
 
 **Browser:** `site/param-slides.html` (2026-11-25). `site/js/mods/pslide.js` ports `apply`. `test/test_js_build_matches_cli.py` builds the mod alone, and with Waverider, fxmod and lfo4, as the page does and with `dnfw mods apply`.
 
-**Checks** (2026-11-27, digikit `main`'s `panel_drive` and `coupled-run` at `5f6be832`). OS 1.11: `pslide4_DN2_1.11.syx`, sha256 `02c338f1f0ee6c309f980dc6ee85fa8a2f1e2699d5991d8822a748f4122bcb93`. `dnfw mods apply --mod pslide` on stock 1.11 gives this file at commit `1b2046e6`, under the same file name. OS 1.12: the same command on stock 1.12, at the same commit.
-- `scripts/emu_pslide.py` runs 81 cases. Most compare every frame sent to the DSP (`0x400cf7be`) with stock's. Stock's jumps give each slide's start and end values. The build must follow the line between them, arrive within a frame and a half of its time, and stay. Other cases read the step flags (knob E and the edits that carry SLD), and two run on stock only. All pass.
-- The cases cover each length and NEXT, with and without Page Loop, on tracks 1, 2 and 12. Two use per-track mode, at 2x and with a track length of 8. Others cover every rule above, chords, retrigs, arp notes and lock trigs with and without SLD. One lock trig locks every knob of six pages, and one case runs the pool out. Others mute 15 tracks, empty stock's lock lists, move the clock back, and run every edit that carries SLD.
-- Two cases restart from STOP, with and without a lock on the first step. Others check knob E, its press and SLD's inverted look on the screen. One writes a voice's target as a knob does, just before a slide starts on that voice, and the slide still reaches its lock. Two check stock's work as a slide starts. A lock that does not slide goes back to the sound's value, and a preset lock loads its whole sound. One plays a chord of three with NEXT on all 16 tracks: 48 notes at once, of which stock starts 16.
+**Checks** (2026-11-28, digikit `main`'s `panel_drive` and `coupled-run` at `5f6be832`). OS 1.11: `pslide5_DN2_1.11.syx`, sha256 `ea5b09f07d0306611a61311f39deb0662d68cf734614e7fd69f7d584c4b3cf4b`. `dnfw mods apply --mod pslide` on stock 1.11 gives this file, under the same file name. OS 1.12: the same command on stock 1.12.
+- `scripts/emu_pslide.py` runs 88 cases. Most compare every frame sent to the DSP (`0x400cf7be`) with stock's. Stock's jumps give each slide's start and end values. The build must follow the line between them, arrive within a frame and a half of its time, and stay. Other cases read the step flags (knob E and the edits that carry SLD), and two run on stock only. All pass.
+- `lfo-locks` slides SPD, FADE, SPH and DEP of LFOs 1 to 3. These values go to the ColdFire's LFO evaluator (`0x40137726`) alone. So the case captures the values that the evaluator reads in each frame, and each follows the line.
+- The cases cover each length and NEXT, with and without Page Loop, on tracks 1, 2 and 12. Two use per-track mode, at 2x and with a track length of 8. Others cover every rule above, chords, retrigs, unison, arp notes and lock trigs with and without SLD. Three put a preset lock on the first note after [PLAY], when the track has no voice of its own. One lock trig locks every knob of six pages, and one case runs the pool out. Others mute 15 tracks, empty stock's lock lists, move the clock back, and run every edit that carries SLD, NOTE EDIT's UNDO included.
+- Two cases restart from STOP, with and without a lock on the first step. Others check knob E, its press and SLD's inverted look on the screen. One writes a voice's target as a knob does, just before a slide starts on that voice, and the slide still reaches its lock. Another writes each voice's target of a chord just after the chord's frame, and each voice follows that value.
+- Two cases check stock's work as a slide starts. A lock that does not slide goes back to the sound's value, and a preset lock loads its whole sound. One plays a chord of three with NEXT on all 16 tracks: 48 notes at once, of which stock starts 16.
 - The cases `waverider`, `lfo4`, `directjump` and `arpplocks` each run this mod with that mod. Their control is that mod without this one, built with `dnfw mods apply`. With arpplocks, the notes, the arp state and the applier's 36 calls are the same as with arpplocks alone. With lfo4, LFO 4 aimed at a slid TUNE changes the frames by the slide's line alone, and by nothing once it arrives.
-- Controls: 30 builds, each with one instruction of the chunk replaced by NOPs. Each fails its case.
-- Branches: 176 of the chunk's 189 conditional branches ran both ways over the cases. Each way is counted apart. `panel_drive --count` counts the branch, its target, its next instruction and each instruction that leads to those two. A test before a loop is read from its register (`scripts/emu_pslide.py`, `edges`).
+- Controls: 32 builds, each with one instruction of the chunk replaced by NOPs. Each fails its case.
+- Branches: 176 of the chunk's 189 conditional branches ran both ways over the cases. Each way is counted apart. `panel_drive --count` counts the branch, its target, its next instruction and each instruction that leads to those two. A test before a loop is read from its register (`scripts/emu_pslide_branches.py`, `edges`).
 - The 13 others are tests whose untaken way no run reaches. Five skip an event of a track number of 16 or more, which stock's events do not have. Two test event fields that no run sets: a sound for a whole load at + 64, and no sound at + 60. The way they lead to runs from another test. Two find a track's five places in use, and the trig's locks then change at once, as on stock. Two end searches that always find their step.
 - One more finds the queue of starts full. It holds one frame's notes, and stock starts 16 at most, one on each voice. The last finds a queued slide that step evaluation dropped before the slide could start. Only the stopped sequencer's list, which no slide holds, can be evaluated again in that time.
 - `scripts/emu_pslide_load.py` runs the five stress patterns of issue #391, with SLD 16 on every trig. Each runs on the build and on the same image without pslide, for 8 s from PLAY, in `coupled-run` with its zero DSP (`--dsp zero`). The unit estimate is 72,727 instructions a frame (88,000 / 1.21, digikit's calibration against one unit).
@@ -1001,18 +1007,19 @@ The 1.12 code differs from 1.11's in 28 address words, each a 1.11 address that 
 | drum-full | 50,975 / 57,527 / 0 | 63,560 / 63,817 / 0 |
 | mixed-drum-full (Waverider, lfo4 and the USB probe in both) | 54,012 / 63,683 / 0 | 65,705 / 67,526 / 0 |
 | stagger-locks | 50,133 / 76,906 / 1 | 58,610 / 69,289 / 0 |
-| dense-80 | 49,707 / 84,247 / 37 | 53,943 / 86,348 / 35 |
-| chord-retrig | 50,646 / 64,286 / 0 | 58,057 / 61,520 / 0 |
+| dense-80 | 49,707 / 84,247 / 37 | 53,943 / 86,460 / 35 |
+| chord-retrig | 50,646 / 64,286 / 0 | 58,057 / 61,084 / 0 |
 
-- dense-80's 35 frames over the estimate are among the control's 37. Each note has its trig's lock list where the control's has it. In mixed-drum-full, 3,074 frames run a slide's value write and LFO 4 both.
-- pslide's longest frame routine in a frame without a start is 12,561 instructions (drum-full). In chord-retrig it is 10,378, and its updates examine at most 550 values in one frame. In drum-full every lock slides and the applier is not called, so a slide's note takes 2,601 fewer instructions than stock's (median). In dense-80 a start with five slid locks costs 3 fewer instructions than stock's (median), and 130 more at most. While slides run, a note outside them costs 60 to 63 more than stock's (stagger-locks, and mixed-drum-full's Waverider tracks). The pool's high-water mark is 48 of 96 (dense-80).
+- dense-80's 35 frames over the estimate are among the control's 37. Each note has its trig's lock list where the control's has it. In mixed-drum-full, 3,074 frames run a slide's update and LFO 4's pass both.
+- pslide's longest frame routine in a frame without a start is 12,561 instructions (drum-full). In chord-retrig it is 9,942, and its updates examine at most 550 values in one frame. In drum-full every lock slides and the applier is not called, so a slide's note takes 2,600 fewer instructions than stock's (median). In dense-80 a start with five slid locks costs 2 fewer instructions than stock's (median), and 137 more at most.
+- In dense-80, 192 of the 1,040 notes cost more than on stock. When a track's last voice now plays another track, the test of the machine reads the track's sound in the kit. That costs 7 instructions. While slides run, a note outside them costs 60 to 63 more than stock's (stagger-locks, and mixed-drum-full's Waverider tracks). The pool's high-water mark is 48 of 96 (dense-80).
 - With no slide running, the cost read from the code is 23 instructions for each note. A note without a lock list, such as a key played live, costs 20. The cost is 10 for each trig at step evaluation, 8 for each voice of a lock trig, and 18 for each audio frame.
 - digikit's gate set: 23 of 24 runs pass against the image without pslide. The median audio frame is 18 instructions longer in 23 runs and 9 shorter in one. That one, `kb-chord16` with Waverider, lfo4 and the USB probe, fails by 96 instructions: its longest frame is 1,096 longer, against a limit of 1,000. The chord's 13 notes play over three frames with pslide (5, 4 and 4 notes) and over four without it (4, 4, 4 and 1). Each note's path is 20 instructions longer, and the frames with the same notes differ by 25 to 28.
-- Every functional and stress run watches the fault reporter (`0x4011ea6a`) and the DSP uploader's refusal (`0x400cf678`), and neither runs. The gate runs measure the audio interrupt only.
+- Every run watches the fault reporter (`0x4011ea6a`) and the DSP uploader's refusal (`0x400cf678`), and neither runs. The gate set's comparison fails a span with no passes, so the build runs each gate scenario once more to watch them.
 - The image boots from reset in digikit's `boot_gate`, with the main UI at the same instruction as stock's. Integrity 22/22. The code has no scale-8 indexing (`scripts/check_coldfire.py`).
-- OS 1.12 (`dnfw mods apply --mod pslide` on stock 1.12): it boots, and `scripts/emu_pslide.py` passes 80 cases against stock 1.12. The same 30 controls fail. Waverider has no 1.12 build, so its case does not run there. So 175 of the 189 branches ran both ways: the 13 above, and the test for a machine past the table, which only Waverider reaches. The load harness ran on 1.11 only.
+- OS 1.12 (`dnfw mods apply --mod pslide` on stock 1.12): it boots, and `scripts/emu_pslide.py` passes 87 cases against stock 1.12. The same 32 controls fail. Waverider has no 1.12 build, so its case does not run there. So 175 of the 189 branches ran both ways: the 13 above, and the test for a machine past the table, which only Waverider reaches. The load harness ran on 1.11 only.
 
-**Load on the instrument** (2026-11-27, w-winter's Digitone II in Overbridge mode, on external MIDI clock). `pslide-probe3_DN2_1.11.syx` is `pslide4`'s pslide with usbprobe, Waverider and lfo4 (`dnfw mods apply --mod usbprobe --mod waverider --mod pslide --mod lfo4 --probe-tag pslide-probe3` at commit `1b2046e6`, sha256 `c4bba223d184834558964f765d7b07b2b7b58afdc9dd0b53fe333b8053fa56c4`). `noslide-probe1_DN2_1.11.syx` is the same without pslide (`--probe-tag noslide-probe1` at commit `b9035e2e`, sha256 `553d4c3c0ec5a66baf93b1d69c8e05691f357f669d0f6e2878277274e4ada257`). The USB probe read the audio interrupt once a second, over about 28 seconds of each pattern. The patterns are the emulator's `dense-80` and `mixed-drum-full`, with SLD 16 on every trig.
+**Load on the instrument** (2026-11-27, w-winter's Digitone II in Overbridge mode, on external MIDI clock). `pslide-probe3_DN2_1.11.syx` is `pslide4`'s pslide with usbprobe, Waverider and lfo4 (`dnfw mods apply --mod usbprobe --mod waverider --mod pslide --mod lfo4 --probe-tag pslide-probe3` at commit `1b2046e6`, sha256 `c4bba223d184834558964f765d7b07b2b7b58afdc9dd0b53fe333b8053fa56c4`). `noslide-probe1_DN2_1.11.syx` is the same without pslide (`--probe-tag noslide-probe1` at commit `b9035e2e`, sha256 `553d4c3c0ec5a66baf93b1d69c8e05691f357f669d0f6e2878277274e4ada257`). The USB probe read the audio interrupt once a second, over about 28 seconds of each pattern. The patterns are the emulator's `dense-80` and `mixed-drum-full`, with SLD 16 on every trig. `pslide5`'s two fixes change no instruction that these patterns run, except the test of the machine (see **Checks**).
 
 | | dense-80 without pslide | dense-80 with pslide | mixed-drum-full without | mixed-drum-full with |
 |---|---|---|---|---|
@@ -1034,7 +1041,7 @@ The 1.12 code differs from 1.11's in 28 address words, each a 1.11 address that 
 - A SYN lock on a Waverider track.
 - A track in Euclidean mode. Stock gives the hook the generated step's source step. So NEXT is expected to look for the next trig among the stored steps, which Euclidean mode replaces with generated ones.
 
-**Hardware test.** Flash `pslide4_DN2_1.11.syx`.
+**Hardware test.** Flash `pslide5_DN2_1.11.syx`.
 
 Setup, in an empty project with the sequencer stopped:
 1. Press [RECORD] for GRID RECORDING mode. On track 1, press [TRIG 1] and [TRIG 9].
@@ -1059,7 +1066,7 @@ Make each change below in GRID RECORDING mode, and leave the mode before you lis
   - While it plays, mute tracks 1 to 15 with [FUNC] + [TRIG 1] to [TRIG 15]. For half a minute, track 16 still glides to its locks. Unmute the tracks. They glide to their locks again.
   - Save the project, and turn the instrument off and on. SLD is still on the trigs.
   - Flash stock 1.11. Load the project. It plays, with each lock changing at once, and no error message shows. Save it as another project.
-  - Flash `pslide4_DN2_1.11.syx` again. Load that project. SLD is still on the trigs.
+  - Flash `pslide5_DN2_1.11.syx` again. Load that project. SLD is still on the trigs.
 - Fail: anything else. For example: an error message, a crash, a hung note, a click at the start of a slide, or a slide that does not arrive.
 
 ## Mod 10: `songguard` -- old projects open instead of halting

@@ -31,8 +31,8 @@ Each run is checked:
   it (stock's lists are few, and its allocator does not check for an empty free list);
 - no audio frame from PLAY on is over the unit estimate (88,000 instructions / 1.21, digikit's
   calibration) on the build that is not over on the control;
-- `mixed-drum-full`: some frames run a slide's value write and LFO 4's active pass both
-  (`addq.l #1,0x468035d8` at `0x402dfb12` in lfo4's stubs, checked in MIXED's bytes).
+- `mixed-drum-full`: some frames run a slide's update (it examines a slide's values) and LFO 4's
+  active pass both (`addq.l #1,0x468035d8` at `0x402dfb12` in lfo4's stubs, checked in MIXED's bytes).
 
 Measured and printed for each pattern: the audio frame's median and longest pass and the frames
 over the unit estimate on both runs; pslide's frame routine, the longest pass in frames with and
@@ -43,7 +43,9 @@ note; the slide buffers' high-water mark (`g_bump`, of 96).
 
 `--gates` runs digikit's gate set (`idle`, `kb-chord16` and `dn2-rec-play` from
 `tests/scenarios/dn2.json`, and the nine scenarios of `tests/scenarios/dn2-load.json`) on CONTROL,
-then on BUILD with `--span-baseline` and its default limits, and the same for MIXED.
+then on BUILD with `--span-baseline` and its default limits, and the same for MIXED. The control's
+run also watches the fault reporter and the upload refusal, and BUILD runs each scenario once more to
+watch them, because the span gate fails a span with no passes. A pass at either fails the scenario.
 
 Needs digikit's `coupled-run` (`COUPLED_RUN`, else `DIGIKIT`'s
 `dist/native-target/generic/release/coupled-run`) and its `tests/scenarios`. Works in a temporary
@@ -98,6 +100,7 @@ GATE_SCENARIOS = (("dn2.json", ("idle", "kb-chord16", "dn2-rec-play")),
                                      "load-midi-flood", "load-lfo3", "load-midi-out", "load-sysex-send",
                                      "load-sysex-keys")))
 GATE_SPANS = {"isr": (0x40025E36, 0x40027BC6), "evala": (0x400272D4, 0x400272DA)}
+FAULT_SPANS = {name: SPANS[name] for name in ("fault_reporter", "fault_refusal")}
 
 
 # ---- the patterns, as panel steps ----
@@ -357,14 +360,13 @@ def frames(r: Report, play: int, end: int, names) -> Frames:
     lo, hi = r.origin + play, r.origin + end
     isr = [(at, n) for at, n in rows["isr"] if lo <= at < hi]
     split = {name: per_frame(found, isr) for name, found in rows.items()}
-    faults = sum(s["length"]["count"] for s in r.report["spans"] if s["name"].startswith("fault_"))
     period = next(s["period"] for s in r.report["spans"] if s["name"] == "isr")
     listed_at = [at for at, _ in rows["listed"]]
     listed = [bisect.bisect_left(listed_at, at + n) > bisect.bisect_left(listed_at, at)
               for at, n in rows["note"] if lo <= at < hi]
     return Frames([n for _, n in isr], {name: c for name, (c, _) in split.items()},
                   {name: i for name, (_, i) in split.items()},
-                  {name: [n for at, n in found if lo <= at < hi] for name, found in rows.items()}, listed, faults,
+                  {name: [n for at, n in found if lo <= at < hi] for name, found in rows.items()}, listed, faults(r),
                   period)
 
 
@@ -436,9 +438,9 @@ def check(p: Pattern, b: Report, c: Report, play: int, end: int, spans: tuple[di
     if p.mixed and writes:
         wrote = [a + b for a, b in zip(fb.counts["writes"], fb.counts["writes1"])]
         both = sum(1 for i, n in enumerate(wrote) if n and fb.counts["lfo4"][i])
-        result["frames_with_slide_writes_and_lfo4"] = both
+        result["frames_with_slide_updates_and_lfo4"] = both
         if not both:
-            problems.append("no frame runs a slide's value write and LFO 4's active pass both")
+            problems.append("no frame runs a slide's update and LFO 4's active pass both")
     return problems, result
 
 
@@ -518,6 +520,11 @@ def case(p: Pattern, images: dict, stock: pathlib.Path, folder: pathlib.Path, wr
     return found, result
 
 
+def faults(r: Report) -> int:
+    """R's passes through the fault watches"""
+    return sum(s["length"]["count"] for s in r.report["spans"] if s["name"].startswith("fault_"))
+
+
 def gates(images: dict, stock: pathlib.Path, folder: pathlib.Path, jobs: int) -> list[str]:
     """The gate set on CONTROL, then on BUILD against it, and the same for MIXED"""
     suite = paths.DIGIKIT / "tests/scenarios"
@@ -529,13 +536,18 @@ def gates(images: dict, stock: pathlib.Path, folder: pathlib.Path, jobs: int) ->
             continue
 
         def one(name: str) -> str:
-            base = run(images[control], stock, files, name, GATE_SPANS, folder, f"gate-{control}", log=False)
+            base = run(images[control], stock, files, name, GATE_SPANS | FAULT_SPANS, folder, f"gate-{control}",
+                       log=False)
             if not base.ok:
                 return f"{name}: the control's run failed"
             r = run(images[build], stock, files, name, GATE_SPANS, folder, f"gate-{build}", log=False,
                     baseline=folder / f"gate-{control}-{name}.json")
+            watched = run(images[build], stock, files, name, FAULT_SPANS, folder, f"gate-{build}-faults", log=False)
+            hits = {who: faults(x) for who, x in ((control, base), (build, watched))}
+            ok = r.ok and watched.ok and not any(hits.values())
             lines = [ln.strip() for ln in r.text.splitlines() if ln.strip().startswith("span ")]
-            return f"{build} {name}: {'ok' if r.ok else 'FAIL'}" + "".join(f"\n    {ln}" for ln in lines)
+            return (f"{build} {name}: {'ok' if ok else 'FAIL'}, fault watches {hits}"
+                    + "".join(f"\n    {ln}" for ln in lines))
         with ThreadPoolExecutor(jobs) as pool:
             out += list(pool.map(one, names))
     return out

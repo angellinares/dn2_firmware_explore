@@ -202,6 +202,7 @@ The platform has one spec per OS version: `platform_code.json` for 1.11 and `pla
 | loader cave, link | `0x4028da6e`, `0x4028da70` | `0x4028dfae`, `0x4028dfb0` | 138 zero bytes, +0x540 |
 | area | `0x4030b980` | `0x4030c980` | the stock end |
 | bus sites | `0x400dc02a`, `0x400dc814`, `0x400dc8f6` | +0x164 each | `osport.addr`, stock bytes equal |
+| bus site `ev_frame` | `0x4002717e` | the same, its `jsr` +0x164 | `osport.addr`, stock bytes equal with the call translated |
 | machine-count bounds | 6 sites | +0x164 each | `osport.addr`, the stock value read there |
 | parameter bounds | 55 | 55 | found in the image; each 1.11 bound maps onto one |
 

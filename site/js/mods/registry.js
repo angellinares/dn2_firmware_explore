@@ -18,6 +18,7 @@ import * as lfowaves from "./lfowaves.js";
 import * as midiarp from "./midiarp.js";
 import * as moddest from "./moddest.js";
 import * as modspage from "./modspage.js";
+import * as pslide from "./pslide.js";
 import * as reloadconfirm from "./reloadconfirm.js";
 import * as sendloop from "./sendloop.js";
 import * as waverider from "./waverider.js";
@@ -29,7 +30,7 @@ export const RUN = {
   arpmodes: MAIN_OS(arpmodes), arpscale: MAIN_OS(arpscale), directjump: MAIN_OS(directjump), fxmod: MAIN_OS(fxmod),
   layermidi: MAIN_OS(layermidi),
   lfo4: MAIN_OS(lfo4), lfolength: MAIN_OS(lfolength), lfowaves: MAIN_OS(lfowaves), midiarp: MAIN_OS(midiarp),
-  moddest: MAIN_OS(moddest), reloadconfirm: MAIN_OS(reloadconfirm), sendloop: MAIN_OS(sendloop),
+  moddest: MAIN_OS(moddest), pslide: MAIN_OS(pslide), reloadconfirm: MAIN_OS(reloadconfirm), sendloop: MAIN_OS(sendloop),
   waverider: async (f) => { const r = await waverider.apply(f); return new Map([[3, r.main], [7, r.dsp]]); },
 };
 

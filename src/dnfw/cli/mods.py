@@ -31,6 +31,7 @@ from ..mods import lfolength as lfolength_mod
 from ..mods import lfowaves as lfowaves_mod
 from ..mods import midiarp as midiarp_mod
 from ..mods import moddest as moddest_mod
+from ..mods import pslide as pslide_mod
 from ..mods import reloadconfirm as reloadconfirm_mod
 from ..mods import sendloop as sendloop_mod
 from ..mods import songguard as songguard_mod
@@ -61,6 +62,7 @@ REGISTRY = {transients_mod.ID: transients_mod,
             waverider_mod.ID: waverider_mod,
             reloadconfirm_mod.ID: reloadconfirm_mod,
             directjump_mod.ID: directjump_mod,
+            pslide_mod.ID: pslide_mod,
             usbprobe_mod.ID: usbprobe_mod}
 
 

@@ -114,6 +114,7 @@ MENU_NAMES = {
     "lfowaves": "LFO WAVES",
     "midiarp": "MIDI ARP",
     "moddest": "MOD DEST",
+    "pslide": "PARAM SLIDES",
     "reloadconfirm": "RELOAD CONF",
     "sendloop": "SEND LOOP",
     "songguard": "SONG GUARD",

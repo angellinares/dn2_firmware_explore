@@ -119,6 +119,29 @@ NOTES: dict[frozenset, str] = {
     frozenset(("lfo4", "moddest")):
         "measured: with moddest applied first, all 13 masks it opens are in lfo4's "
         "relocated table (test/test_lfo4_mod.py).",
+    frozenset(("arpplocks", "pslide")):
+        "emulator, 2026-11-25, case arpplocks of scripts/emu_pslide.py. A lock trig locks the arp's MODE "
+        "and slides a filter knob. The notes, the arp state and the applier's 36 calls are the same as "
+        "with arpplocks alone. The applier gets the trig's own list, with its count lowered to the locks that do not "
+        "slide. An arp lock does not slide.",
+    frozenset(("directjump", "pslide")):
+        "emulator, 2026-11-25, cases directjump and directjump-late of scripts/emu_pslide.py. A jump "
+        "stops the old pattern's slides where they are as the new pattern's first note plays. A jump "
+        "that starts a shorter pattern on its first step stops them a step late. That jump was not run.",
+    frozenset(("pslide", "waverider")):
+        "emulator, 2026-11-25, case waverider of scripts/emu_pslide.py. On a Waverider track a filter "
+        "lock glides as on FM TONE. The table of the parameters that slide has no Waverider row, so "
+        "only the shared pages and the filter slide there. The load pattern mixed-drum-full meets pslide's limit with both mods "
+        "(scripts/emu_pslide_load.py).",
+    frozenset(("lfo4", "pslide")):
+        "emulator, 2026-11-25, case lfo4 of scripts/emu_pslide.py. LFO 4 aimed at a slid TUNE changes "
+        "the frames by the slide's line alone, and by nothing once the slide lands. In the load "
+        "pattern mixed-drum-full, slides write values in frames where LFO 4 runs. LFO 4's own "
+        "parameters have no stock lock, so none of them slides.",
+    frozenset(("moddest", "pslide")):
+        "pslide's table of the parameters that slide comes from stock's records when its code is made "
+        "(scripts/build_pslide.py, masks). The 13 parameters that moddest opens as LFO destinations "
+        "do not slide. Not run.",
 }
 
 # Pairs refused whatever the bytes say: a functional clash, each with its NOTES

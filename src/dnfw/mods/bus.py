@@ -18,6 +18,7 @@ arguments on the stack, d0-d1/a0-a1 free, the result in d0.
 | `ev_param_slot` | `0x400dc02a`, `param_set_slot_to_id(slot, type, filter)` | `int f(slot, type, filter)`; nonzero: taken, the parameter entry for the slot |
 | `ev_param_cc` | `0x400dc814`, the incoming CC's parameter `(track, type, filter, cc)` | `int f(track, type, filter, cc)`; nonzero: taken, the parameter record's id |
 | `ev_param_nrpn` | `0x400dc8f6`, the incoming NRPN's parameter `(track, type, filter, nrpn)` | `int f(track, type, filter, nrpn)`; the same, for the 14-bit number `msb * 128 + lsb` |
+| `ev_frame` | `0x4002717e`, the audio-frame interrupt's call of the value smoother `0x400db12a(targets)` | `void f(targets)`; every handler runs, before the smoother |
 
 When no handler takes it, the dispatcher runs the stock instructions it displaced
 and goes on in the stock routine. fxmod answers the FX slots 101..124 there, and
@@ -25,6 +26,21 @@ Waverider answers its page 3 and page 5 slots on a Waverider track. Stock maps a
 machine's knob CCs and NRPNs per machine type, types 0..4 only (`0x42c66a84` and
 `0x42c66a0c`, 24 bytes a type); Waverider answers its own pages' numbers on the two
 MIDI events.
+
+`ev_frame` runs in every audio frame (1,500 a second). `targets` is the array of
+per-voice values that the sound and the locks write (`0x80003af0`): a header of 17
+words, then 17 blocks of 101, so slot `s` of block `b` is word `17 + 101 b + s`, and
+block 16 holds the FX and master values. A handler can write a target, and the
+smoother then glides to it. The modulation apply comes after the smoother, so an LFO
+modulates what a handler wrote. When every handler has returned, the dispatcher calls
+the smoother once and runs the instruction the jump displaced. The handlers run in the
+audio-frame interrupt, so each one must finish quickly and must not wait.
+
+Each event's table and dispatcher have a fixed place in the dispatchers' chunk. An
+event added later (`ev_frame`) has its table and dispatcher after the earlier events'
+code, and the platform writes the chunk only up to the end of the last event that a
+mod subscribes to (`end`). So a build whose mods subscribe only to the earlier events
+has the same chunk as before the later event existed.
 
 ## Counts
 
@@ -149,29 +165,62 @@ ev_param_nrpn:
     beq.s   7b
 8:  tst.l   %d0
     rts
+base_end:
+| The later events: each one's table, then its dispatcher (see "Each event's table" above).
+    .balign 4
+frame_table:
+    .space  32
+| The audio-frame interrupt's smoother call, from 0x4002717e by jmp: each handler in turn,
+| void f(targets), with the targets the interrupt pushed for the smoother. Then the two
+| stock instructions the jmp displaced (the smoother's call and `clr.l %d2`), and on at
+| 0x40027186.
+    .globl  ev_frame
+ev_frame:
+    move.l  %a2,%sp@-
+    lea     frame_table,%a2
+1:  move.l  %a2@+,%d0
+    beq.s   9f
+    move.l  %sp@(4),%sp@-           | targets
+    movea.l %d0,%a0
+    jsr     %a0@
+    addq.l  #4,%sp
+    bra.s   1b
+9:  movea.l %sp@+,%a2
+    jsr     {FRAM_CALL}
+    clr.l   %d2
+    jmp     {FRAM_RET}
+frame_end:
 """
 
 RETURN = 8          # each hook is `jmp entry ; nop`, 8 bytes: the stock code resumes 8 bytes past its site
 
 
-def source(sites: dict[bytes, int] | None = None) -> str:
-    """The dispatchers' source, returning to the stock code past each site (OS 1.11's when SITES
-    is None; a 1.12 spec passes its own, issue #382). Braces in the comments are doubled."""
+def source(sites: dict[bytes, int] | None = None, calls: dict[bytes, int] | None = None) -> str:
+    """The dispatchers' source, returning to the stock code past each site and calling the stock
+    routine a displaced call names (OS 1.11's when SITES and CALLS are None; a 1.12 spec passes
+    its own, issue #382). Braces in the comments are doubled."""
     sites = sites or {e: v["site"] for e, v in EVENTS.items()}
-    return SOURCE_TEMPLATE.format(**{f"{e.decode()}_RET": f"0x{sites[e] + RETURN:x}" for e in EVENTS})
+    calls = calls or {e: v["call"] for e, v in EVENTS.items() if "call" in v}
+    return SOURCE_TEMPLATE.format(**{f"{e.decode()}_RET": f"0x{sites[e] + RETURN:x}" for e in EVENTS},
+                                  **{f"{e.decode()}_CALL": f"0x{va:x}" for e, va in calls.items()})
 
 
-# The events: their sites, the stock bytes the jump replaces, and the table's place.
+# The events: their sites, the stock bytes the jump replaces, the table's place, and the
+# label that ends the event's code in the chunk. `call` is the stock routine that a displaced
+# `jsr` names: on another OS version its address moves, and the stock bytes with it.
 EVENTS = {
     b"PSLT": {"name": "ev_param_slot", "site": 0x400DC02A, "stock": "2f027264206f0008",
-              "table": 0, "entry": "ev_param_slot",
+              "table": 0, "entry": "ev_param_slot", "end": "base_end",
               "what": "param_set_slot_to_id -> the bus's ev_param_slot"},
     b"PCCI": {"name": "ev_param_cc", "site": 0x400DC814, "stock": "4feffff448d7001c",
-              "table": 32, "entry": "ev_param_cc",
+              "table": 32, "entry": "ev_param_cc", "end": "base_end",
               "what": "the incoming CC's parameter lookup -> the bus's ev_param_cc"},
     b"PNRI": {"name": "ev_param_nrpn", "site": 0x400DC8F6, "stock": "4feffff448d7001c",
-              "table": 64, "entry": "ev_param_nrpn",
+              "table": 64, "entry": "ev_param_nrpn", "end": "base_end",
               "what": "the incoming NRPN's parameter lookup -> the bus's ev_param_nrpn"},
+    b"FRAM": {"name": "ev_frame", "site": 0x4002717E, "stock": "4eb9400db12a4282",
+              "call": 0x400DB12A, "table": 248, "entry": "ev_frame", "end": "frame_end",
+              "what": "the audio frame's smoother call -> the bus's ev_frame"},
 }
 
 # The counts: the stock value, and the bounds that spell it (va, width, stock value).
@@ -269,7 +318,8 @@ def attach(write, content: bytearray, chunks: list, spec: dict) -> list:
     subs = handlers(chunks)
     if not subs:
         return chunks
-    image = bytearray.fromhex(spec["bus"]["code"])
+    end = max(spec["bus"]["symbols"][EVENTS[event]["end"]] - BUS_VA for event in subs)
+    image = bytearray.fromhex(spec["bus"]["code"])[:end]
     for event, found in subs.items():
         if len(found) >= TABLE_SLOTS:
             raise ModError(f"{len(found)} mods subscribe to {EVENTS[event]['name']}; "

@@ -39,9 +39,8 @@ def test_the_dispatcher_is_assembled_where_the_events_say(stock):
     spec = platform.SPEC["bus"]
     code = bytes.fromhex(spec["code"])
     assert spec["load"] == bus.BUS_VA
-    assert not any(code[:4 * bus.TABLE_SLOTS * len(bus.EVENTS)])         # the tables, empty
-    for k, (event, e) in enumerate(bus.EVENTS.items()):
-        assert e["table"] == 4 * bus.TABLE_SLOTS * k
+    for event, e in bus.EVENTS.items():
+        assert not any(code[e["table"]:e["table"] + 4 * bus.TABLE_SLOTS])   # the table, empty
         entry = spec["symbols"][e["entry"]] - bus.BUS_VA
         assert code[entry:entry + 2] == bytes.fromhex("2f0a")             # move.l %a2,-(%sp)
         assert _at(stock, e["site"], 8).hex() == e["stock"]
@@ -49,6 +48,7 @@ def test_the_dispatcher_is_assembled_where_the_events_say(stock):
     assert bytes.fromhex("2f027264206f00084ef9400dc032") in code
     assert bytes.fromhex("4feffff448d7001c4ef9400dc81c") in code          # the CC lookup
     assert bytes.fromhex("4feffff448d7001c4ef9400dc8fe") in code          # the NRPN lookup
+    assert bytes.fromhex("4eb9400db12a42824ef940027186") in code          # the smoother's call
 
 
 @pytest.mark.parametrize("event", [b"PCCI", b"PNRI"])
@@ -60,9 +60,27 @@ def test_the_midi_events_hook_their_lookup_and_fill_their_own_table(stock, event
     image = _bus_chunk(out)
     assert struct.unpack_from(">I", image, e["table"])[0] == 0x46A00000
     assert struct.unpack_from(">I", image, 0)[0] == 0x46B00000           # ev_param_slot's, apart
-    other = (set(bus.EVENTS) - {event, b"PSLT"}).pop()
-    assert _at(out, bus.EVENTS[other]["site"], 8).hex() == bus.EVENTS[other]["stock"]   # not subscribed
+    for other in set(bus.EVENTS) - {event, b"PSLT"}:                     # not subscribed
+        assert _at(out, bus.EVENTS[other]["site"], 8).hex() == bus.EVENTS[other]["stock"]
     assert platform.split(out)[0] == platform.join(stock, [])[:platform.STOCK_LENGTH]
+
+
+def test_the_frame_event_hooks_the_smoother_call_and_extends_the_chunk(stock):
+    """A build that subscribes only to the first three events keeps the chunk it had before
+    ev_frame existed: the code up to base_end."""
+    e, spec = bus.EVENTS[b"FRAM"], platform.SPEC["bus"]
+    base_end = spec["symbols"]["base_end"] - bus.BUS_VA
+    out = platform.join(stock, [bus.subscribe(b"FRAM", 0x46A00000), bus.subscribe(b"PSLT", 0x46B00000)])
+    entry = spec["symbols"]["ev_frame"]
+    assert _at(out, e["site"], 8) == bytes.fromhex("4ef9") + struct.pack(">I", entry) + bytes.fromhex("4e71")
+    image = _bus_chunk(out)
+    assert len(image) >= spec["symbols"]["frame_end"] - bus.BUS_VA
+    assert struct.unpack_from(">I", image, e["table"])[0] == 0x46A00000
+    assert platform.split(out)[0] == platform.join(stock, [])[:platform.STOCK_LENGTH]
+    only = platform.join(stock, [bus.subscribe(b"PSLT", 0x46B00000)])
+    alone = _bus_chunk(only)
+    assert len(alone) == base_end + -base_end % 4 and not any(alone[base_end:])   # base_end, padded
+    assert _at(only, e["site"], 8).hex() == e["stock"]
 
 
 def test_handlers_go_in_order_and_the_site_jumps_to_the_dispatcher(stock):

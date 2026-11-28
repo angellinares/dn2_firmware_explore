@@ -19,42 +19,47 @@ that writes it, so a lock trig on a sliding voice takes only its own parameters.
 
 Each slide entry is 8 bytes: the value's offset in a voice's SRC block (34 + 2 slot), its start,
 its target and the value last written.
+
+To limit work in note frames, the track record finds a slide by its list, and a start's fields
+share the buffer header's first 16 bytes beside its two masks. The remaining bookkeeping waits
+in a queue for the next frame (`drain`).
 """
 
 ENGINE = """
     .equ T_NB, 0
-    .equ T_LASTV, 8
-    .equ T_SLOT, 12
-    .equ T_SIZE, 32
+    .equ T_LASTV, 4
+    .equ T_PLACE, 8                 | 5 places of 8 bytes: a slide's list, then the slide
+    .equ T_SIZE, 64
+    .equ T_SHIFT, 6
     .equ PLACES, 5
-    .equ B_STATE, 0
-    .equ B_N, 2
-    .equ B_LIST, 4
-    .equ B_TRACK, 8
-    .equ B_TNUM, 12
-    .equ B_NEXT, 16
-    .equ B_MASK, 20
-    .equ B_LAST, 24
-    .equ B_PROG, 28
-    .equ B_LEN, 32
-    .equ B_KIND, 36
-    .equ B_INIT, 37
-    .equ B_SLOT, 38
-    .equ B_PHASE, 39
-    .equ B_SH, 40
-    .equ B_ID, 41
-    .equ B_VSER, 42
-    .equ B_HELD, 43
-    .equ B_WORK, 44
-    .equ B_PTN, 48
-    .equ B_SOUND, 52
-    .equ B_LENS, 56
-    .equ B_ISNEXT, 60
-    .equ B_USED, 61
-    .equ B_ARRIVED, 62
-    .equ B_ELIG, 64
-    .equ B_LMASK, 80
-    .equ B_NRES, 96
+    .equ B_STATE, 0                 | the fields a note's start reads, in one line of the cache
+    .equ B_ISNEXT, 1
+    .equ B_NRES, 2
+    .equ B_INIT, 4
+    .equ B_KIND, 5
+    .equ B_N, 6
+    .equ B_TNUM, 8
+    .equ B_SOUND, 12
+    .equ B_LMASK, 16
+    .equ B_ELIG, 32
+    .equ B_LIST, 48
+    .equ B_TRACK, 52
+    .equ B_NEXT, 56
+    .equ B_MASK, 60
+    .equ B_LAST, 64
+    .equ B_PROG, 68
+    .equ B_LEN, 72
+    .equ B_LENS, 76
+    .equ B_WORK, 80
+    .equ B_PTN, 84
+    .equ B_SLOT, 88
+    .equ B_PHASE, 89
+    .equ B_SH, 90
+    .equ B_ID, 91
+    .equ B_VSER, 92
+    .equ B_HELD, 93
+    .equ B_USED, 94
+    .equ B_ARRIVED, 96
     .equ B_ENT, 100
     .equ E_FROM, 2
     .equ E_TO, 4
@@ -67,6 +72,8 @@ ENGINE = """
     .equ PENDING, 1
     .equ RUNNING, 2
     .equ DROPPED, 3
+    .equ QUEUED, 4                  | its first note's frame has passed it to the drain
+    .equ QUEUE_N, {QUEUE_N}
 
 | ==== the hook bus's ev_frame: every audio frame, before the smoother
 slide_frame:
@@ -81,6 +88,7 @@ f_note:
 frame_work:
     lea     -44(%sp),%sp
     movem.l %d2-%d7/%a2-%a6,(%sp)
+    bsr     drain_due               | the starts that the last note frame queued
     moveq   #0,%d7
     tst.l   {PLAYING:#x}
     bne.s   1f
@@ -250,8 +258,10 @@ let_go:
     mvz.b   B_SLOT(%a3),%d0
     beq.s   2f
     movea.l B_TRACK(%a3),%a0
-    lea     T_SLOT-4(%a0),%a1
-    clr.l   (%a1,%d0.l*4)
+    lsl.l   #3,%d0
+    lea     T_PLACE-8(%a0,%d0.l),%a1
+    clr.l   (%a1)+
+    clr.l   (%a1)
     subq.l  #1,T_NB(%a0)
     clr.b   B_SLOT(%a3)
 2:  tst.b   B_HELD(%a3)
@@ -544,19 +554,125 @@ voice_blocks:
     adda.l  %d0,%a1
     rts
 
-| a0 = a track, d1 = a list: a1 = the track's slide with that list (0: none), d0 = its place
+| a0 = a track, d1 = a list: a1 = the track's slide with that list (0: none), d0 = its place. It
+| reads the track's places, not the slides
 find:
     moveq   #0,%d0
-1:  movea.l T_SLOT(%a0,%d0.l*4),%a1
-    tst.l   %a1
+    lea     T_PLACE(%a0),%a1
+1:  tst.l   4(%a1)
     beq.s   2f
-    cmp.l   B_LIST(%a1),%d1
+    cmp.l   (%a1),%d1
     beq.s   3f
-2:  addq.l  #1,%d0
+2:  addq.l  #8,%a1
+    addq.l  #1,%d0
     cmpi.l  #PLACES,%d0
     bne.s   1b
     suba.l  %a1,%a1
-3:  rts
+    rts
+3:  movea.l 4(%a1),%a1
+    rts
+
+| ==== the queue: a note of a slide whose voice kept its sound (or of a NEXT slide) has its values
+| and its lock bits in its own frame. Its slide's start, or its join, waits here for the next frame
+| (or for the next note or lock trig, if one comes first), which does what h_post did before. The
+| values sent to the DSP are the same: no slide moves in a note's frame
+drain_due:
+    tst.l   g_qn
+    beq.s   9f
+    move.l  g_qframe,%d0
+    cmp.l   g_frame,%d0
+d_later:
+    bne.s   drain
+9:  rts                             | (uses d0)
+
+| every queued start and join, in the order of their notes. Keeps every register
+drain:
+    lea     -60(%sp),%sp
+    movem.l %d0-%d7/%a0-%a6,(%sp)
+    move.l  g_qn,%d7
+    beq     9f
+    clr.l   g_qn
+    lea     g_queue,%a6
+1:  movea.l (%a6)+,%a4
+    move.l  (%a6)+,%d2
+    mvz.b   B_STATE(%a4),%d0
+    subq.l  #RUNNING,%d0
+d_join:
+    beq     3f                      | a later note of its trig: it joins
+    subq.l  #QUEUED-RUNNING,%d0
+d_dropped:
+    bne     4f                      | an evaluation of its list again has dropped it
+    mvz.b   B_INIT(%a4),%d0
+    subq.l  #2,%d0
+d_values:
+    bne     5f                      | NEXT: its first update reads its values
+    move.l  %d2,%d1                 | its entries start from the values the voice took in h_pre
+    bsr     voice_blocks
+    lea     B_ENT(%a4),%a0
+    mvz.w   B_N(%a4),%d4            | (a slide with B_INIT 2 has an entry at least)
+7:  mvz.w   (%a0),%d1
+    move.w  (%a1,%d1.l*2),%d0
+    move.w  %d0,E_FROM(%a0)
+    move.w  %d0,E_CUR(%a0)
+    addq.l  #8,%a0
+    subq.l  #1,%d4
+    bne     7b
+    clr.b   B_INIT(%a4)             | the claim: owners and lock bits, as the voice has its values
+    bsr     voice_claim
+    moveq   #1,%d0
+    move.b  %d0,B_INIT(%a4)
+    bra     8f
+5:  bsr     voice_claim
+8:  moveq   #RUNNING,%d0
+    move.b  %d0,B_STATE(%a4)
+    move.l  g_qclock,%d0
+    move.l  %d0,B_LAST(%a4)
+    clr.l   B_PROG(%a4)
+    moveq   #0,%d0
+    bset    %d2,%d0
+    move.l  %d0,B_MASK(%a4)
+    bsr     started
+    bra     4f
+3:  bsr     note_join
+4:  subq.l  #1,%d7
+    bne     1b
+9:  movem.l (%sp),%d0-%d7/%a0-%a6
+    lea     60(%sp),%sp
+    rts
+
+| a4 = a slide, d2 = a voice: the voice's lock bits of the slide's slots now (the voice's next note
+| returns them to the sound's values), and the slide's start or the voice's join at the drain. A
+| full queue drains first. Uses d0, a0
+queue_note:
+    move.l  %d2,%d0
+    lsl.l   #4,%d0
+    lea     {LOCKMASK:#x},%a0
+    adda.l  %d0,%a0
+    move.l  B_LMASK(%a4),%d0
+    or.l    %d0,(%a0)+
+    move.l  B_LMASK+4(%a4),%d0
+    or.l    %d0,(%a0)+
+    move.l  B_LMASK+8(%a4),%d0
+    or.l    %d0,(%a0)+
+    move.l  B_LMASK+12(%a4),%d0
+    or.l    %d0,(%a0)
+    move.l  g_qn,%d0
+    cmpi.l  #QUEUE_N,%d0
+q_full:
+    bcs.s   1f
+    bsr     drain
+    moveq   #0,%d0
+1:  lsl.l   #3,%d0
+    lea     g_queue,%a0
+    adda.l  %d0,%a0
+    move.l  %a4,(%a0)+
+    move.l  %d2,(%a0)
+    addq.l  #1,g_qn
+    move.l  g_frame,%d0
+    move.l  %d0,g_qframe
+    move.l  {CLOCK:#x},%d0
+    move.l  %d0,g_qclock
+    rts
 
 | a4 = a buffer from the pool with its id, or 0 when every buffer is in use (the trig's locks
 | then change at once, as on stock). Uses d0, d1, d5

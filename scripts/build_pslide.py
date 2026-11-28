@@ -80,8 +80,12 @@ A start costs about what stock's applier costs for the same locks. Before stock'
 hook clears the voice's lock bits of the slots the slide writes (the restore would set them to the
 sound's value, which the start overwrites). When the voice keeps its sound (stock loads a sound
 whole when the event names one at + 64 or the voice has another, `0x40026bae..0x40026bee`), the
-restore and the applier leave those slots, so the voice takes each start value in the pass that
-reads it.
+restore and the applier leave those slots. The voice then takes each start value from the track's
+last voice in that hook (`sv_take`), and the hook after the applier sets their lock bits
+(`queue_note`). The rest of the start waits in a queue for a later frame or the next lock trig
+(`drain`): the entries' values, read back from the voice, and the owners. It keeps the note's clock,
+and no slide moves in the note's frame, so the wait changes no value. A whole-sound load starts its
+slide at once, after the applier.
 
 The applier gets the trig's own list, as on stock, so a mod that reads the list there (arpplocks'
 arp locks past the stock entries, + 828) reads it unchanged. At step evaluation prepare moves the
@@ -184,7 +188,7 @@ HALF_TICK_UNITS = 28125         # 450,000 / 16: a half-step is ticks per step x 
 # the engine's sizes
 MAX_ENTRIES = 101
 HEADER_BYTES = 100              # each buffer: its header, then its entries (B_ENT)
-BUF_SIZE = HEADER_BYTES + 8 * MAX_ENTRIES
+BUF_SIZE = -(-(HEADER_BYTES + 8 * MAX_ENTRIES) // 16) * 16   # each buffer on a line of the cache (16 bytes)
 POOL_N = 96
 HEADER_LONGS = HEADER_BYTES // 4  # what a lock trig's voice slide copies before its entries
 BUDGET = 512                    # value writes in a frame before slides move every second frame
@@ -288,11 +292,12 @@ LABELS = ("slide_frame", "h_prep", "h_pre", "h_apply", "h_post", "h_lock", "upda
           "f_stopped", "f_cut", "u_foreign", "w_owner", "sv_machine", "n_join", "m_vserial",
           "m_vslide", "l_slides", "u_taken", "u_back", "w_alone", "let_go", "w_stale", "frame_work", "frame_exit", "wv_each",
           "p_uncounted", "f_note", "w_due", "u_all", "sv_returns",
-          "a_none", "p_whole", "sv_claim", "c_taken", "u_one", "u_single", "us_each", "u_foreign_all",
+          "a_none", "p_whole", "sv_claim", "u_one", "u_single", "us_each", "u_foreign_all",
           "w_owner_all", "a_stock", "a_part", "l_part", "p_dropped", "p_early",
           "p_preview", "preview_off", "drop_earlier", "p_nolist", "w_unplayed", "u_foreign_end",
           "p_next_machine", "last_voice", "l_machine", "revoke", "l_revoke", "k_held", "p_track", "ui_push",
-          "p_knob", "p_release", "p_page", "d_locked", "bss_start")
+          "p_knob", "p_release", "p_page", "d_locked", "drain", "drain_due", "queue_note", "d_later",
+          "d_join", "d_dropped", "d_values", "q_full", "q_whole", "q_later", "p_queued", "s_target", "s_novel", "bss_start")
 
 # Read, not written: the code the hooks rely on.
 CONTEXT = (
@@ -367,7 +372,7 @@ elig_machine:
 {ELIG_MACHINE}
 elig_filter:
 {ELIG_FILTER}
-    .balign 4
+    .balign 16
 bss_start:
     .equ g_frame, bss_start + 0
     .equ g_start, bss_start + 4
@@ -392,14 +397,19 @@ bss_start:
     .equ g_stop_edge, bss_start + 72
     .equ g_due, bss_start + 76
     .equ g_due_now, bss_start + 80
-    .equ tracks, bss_start + 96
+    .equ g_qn, bss_start + 92
+    .equ g_qframe, bss_start + 96
+    .equ g_qclock, bss_start + 100
+    .equ tracks, bss_start + 128
     .equ vslide, tracks + 16 * T_SIZE
     .equ vserial, vslide + 64
-    .equ owners, vserial + 16
+    .equ g_queue, vserial + 16
+    .equ owners, g_queue + 8 * QUEUE_N
     .equ pool, owners + {OWNERS_BYTES}
 """
 OWNERS_BYTES = 16 * 2 * SLOTS          # a word for each voice and slot
-BSS_BYTES = 96 + 16 * 32 + 64 + 16 + OWNERS_BYTES + POOL_N * BUF_SIZE
+QUEUE_N = 16                           # the starts one frame's notes queue: a note per voice
+BSS_BYTES = 128 + 16 * 64 + 64 + 16 + 8 * QUEUE_N + OWNERS_BYTES + POOL_N * BUF_SIZE
 
 
 def masks(stock: bytes, os: str = "1.11") -> dict[str, list[tuple[int, int, int, int]]]:

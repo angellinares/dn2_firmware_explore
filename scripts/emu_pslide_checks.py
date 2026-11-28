@@ -669,9 +669,12 @@ def check_every_step(b: Run, s: Run) -> list[str]:
     lock stock's same note jumped to"""
     if len(s.notes) < 32 or len(b.notes) < 32:
         return [f"{len(b.notes)} notes on the build, {len(s.notes)} on stock, not 32"]
+    locks = [s.value(frame + 2, voice) for frame, voice in (s.note(n) for n in range(32))]
+    if len(set(locks)) != 2 or any(a == z for a, z in zip(locks, locks[1:])):
+        return ["the control's locks do not alternate between two distinct values"]
     for n in range(32):
-        (kb, vb), (ks, vs) = b.note(n), s.note(n)
-        lock, got = s.value(ks + 2, vs), b.value(kb + 195, vb)
+        kb, vb = b.note(n)
+        lock, got = locks[n], b.value(kb + 195, vb)
         if got != lock:
             return [f"note {n + 1} (frame {kb}, voice {vb}) reads {got} after its slide, stock's lock {lock}"]
     return []
@@ -726,6 +729,35 @@ def check_residual(b: Run, s: Run) -> list[str]:
         out.append("stock's ALGO lock does not change the value")
     return out + ([] if b.value(k + 1, v, SLOT_ALGO) == algo else
                   [f"ALGO reads {b.value(k + 1, v, SLOT_ALGO)} after the note, stock {algo}"])
+
+
+def check_restore_residual(b: Run, s: Run) -> list[str]:
+    """A mono track restores step 1's ALGO lock at step 5 while FLTR ATK slides"""
+    k, voice = b.note(1)
+    sk, sv = s.note(1)
+    target = s.value(sk + 2, sv, SLOT_ALGO)
+    out = check_length(1)(b, s)
+    for name, run in (("build", b), ("stock", s)):
+        first, v = run.note(0)
+        if run.value(first + 2, v, SLOT_ALGO) == target:
+            out.append(f"{name}: step 1 has no distinct ALGO lock")
+    if b.value(k + 2, voice, SLOT_ALGO) != target:
+        out.append("the previous non-sliding ALGO lock did not restore")
+    return out
+
+
+def check_whole_sound(b: Run, s: Run) -> list[str]:
+    """The same-machine preset on step 5 loads its VOL while its ATK lock slides"""
+    out = check_length(4)(b, s)
+    k, voice = b.note(1)
+    sk, sv = s.note(1)
+    initial = s.value(2, s.note(0)[1], SLOT_VOL)
+    target = s.value(sk + 2, sv, SLOT_VOL)
+    if initial == target or b.value(2, b.note(0)[1], SLOT_VOL) != initial:
+        out.append("the preset does not provide a distinct volume from the track's")
+    if b.value(k + 2, voice, SLOT_VOL) != target:
+        out.append("the preset's volume was not loaded")
+    return out
 
 
 def check_dense(b: Run, s: Run) -> list[str]:
@@ -785,3 +817,39 @@ def check_stock_reload(b: Run, s: Run) -> list[str]:
     words = [(b.word(i, 1), b.word(i, 5)) for i in range(3)]
     return [] if words == [(0x03E9, 0x0021), (0, 0), (0x03E9, 0x0021)] else [
         f"steps 1 and 5: {[(f'{x:#06x}', f'{y:#06x}') for x, y in words]}"]
+
+
+@dataclasses.dataclass
+class Flow:
+    """The counts `edges` has learned: the ways into each instruction, the instruction counts, and
+    each branch's taken and not taken counts so far"""
+    ways: dict[int, set]
+    hits: dict[int, int]
+    branch_at: set[int]
+    taken: dict[int, int]
+    not_taken: dict[int, int]
+
+    def way(self, kind: str, src: int) -> int | None:
+        """How often one way in was taken, or None while that is not known"""
+        if kind == "entry":
+            return None
+        if kind == "branch":
+            return self.taken.get(src)
+        if kind == "fall" and src in self.branch_at:
+            return self.not_taken.get(src)
+        return self.hits[src]           # a fall from a plain instruction or a call's return, a jump, a call
+
+    def settle(self, point: tuple[int, int, int]) -> bool:
+        """One pass over the branch at POINT: -> whether it learned a count"""
+        at, target, after = point
+        learned = False
+        for mine, pc, me in ((self.taken, target, ("branch", at)), (self.not_taken, after, ("fall", at))):
+            others = [self.way(kind, src) for kind, src in self.ways[pc] if (kind, src) != me]
+            if at not in mine and None not in others:
+                mine[at] = self.hits[pc] - sum(others)
+                learned = True
+        if (at in self.taken) != (at in self.not_taken):
+            known, unknown = (self.taken, self.not_taken) if at in self.taken else (self.not_taken, self.taken)
+            unknown[at] = self.hits[at] - known[at]
+            learned = True
+        return learned

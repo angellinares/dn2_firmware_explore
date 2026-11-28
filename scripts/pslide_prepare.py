@@ -49,7 +49,7 @@ preview_off:
     moveq   #16,%d0
     cmp.l   %d0,%d6
     bcc.s   9f
-    lsl.l   #5,%d6
+    lsl.l   #T_SHIFT,%d6
     lea     tracks,%a5
     adda.l  %d6,%a5
     move.l  %a6,%d7
@@ -68,7 +68,7 @@ prepare:
 p_track:
     suba.l  %d0,%a2
     move.l  %d6,%d0
-    lsl.l   #5,%d0
+    lsl.l   #T_SHIFT,%d0
     lea     tracks,%a5
     adda.l  %d0,%a5
     move.l  %a6,%d7
@@ -110,8 +110,10 @@ p_uncounted:
 1:  move.l  %d4,%d0
     addq.l  #1,%d0
     move.b  %d0,B_SLOT(%a4)
-    lea     T_SLOT(%a5),%a0
-    move.l  %a4,(%a0,%d4.l*4)
+    lsl.l   #3,%d0
+    lea     T_PLACE-8(%a5,%d0.l),%a0
+    move.l  %d7,(%a0)+              | the place: the trig's list, then the slide
+    move.l  %a4,(%a0)
     addq.l  #1,T_NB(%a5)
     moveq   #PENDING,%d0
     move.b  %d0,B_STATE(%a4)
@@ -147,13 +149,15 @@ drop_earlier:
 9:  rts
 
 | a5 = a track, a1 = its slide in place d0: it goes (state DROPPED, freed by the next frame).
-| Interrupts masked by the caller. Uses d1, a0
+| Interrupts masked by the caller. Uses d0, d1, a0
 drop_place:
     moveq   #DROPPED,%d1
     move.b  %d1,B_STATE(%a1)
     clr.b   B_SLOT(%a1)
-    lea     T_SLOT(%a5),%a0
-    clr.l   (%a0,%d0.l*4)
+    lsl.l   #3,%d0
+    lea     T_PLACE(%a5,%d0.l),%a0
+    clr.l   (%a0)+
+    clr.l   (%a0)
     subq.l  #1,T_NB(%a5)
     rts
 
@@ -161,10 +165,11 @@ drop_place:
 | then change at once, as on stock). A frame can only free a place, so a place seen free stays
 | free. Uses d4, a0
 free_place:
-    lea     T_SLOT(%a5),%a0
+    lea     T_PLACE+4(%a5),%a0
     moveq   #0,%d4
-1:  tst.l   (%a0,%d4.l*4)
+1:  tst.l   (%a0)
     beq.s   2f
+    addq.l  #8,%a0
     addq.l  #1,%d4
     cmpi.l  #PLACES,%d4
     bne.s   1b

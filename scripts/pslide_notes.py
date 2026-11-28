@@ -5,7 +5,8 @@
   track's last voice, before stock's restore can overwrite a reused voice, which takes them there
   when it keeps its sound; the applier's call, with the trig's list counting only the locks that do
   not slide, or no call when every lock slides; the start, or the join of a later note of the same
-  trig.
+  trig. When the voice keeps its sound, the voice has its values and lock bits in the note's frame,
+  and the rest of the start waits for the next frame (`queue_note`, `drain`).
 - `h_lock` (each voice of a lock trig): the slots the trig locks leave the voice's older slides, and
   the voice gets a slide of its own, from its own values.
 """
@@ -22,12 +23,13 @@ h_pre:
     jmp     {PRE_BACK:#x}
 1:  lea     -44(%sp),%sp
     movem.l %d1-%d6/%a0-%a3/%a5,(%sp)
+    bsr     drain_due               | an earlier frame's queued starts come first
     clr.l   g_note
     move.l  16(%a0),%d0
     moveq   #16,%d1
     cmp.l   %d1,%d0
     bcc     2f
-    lsl.l   #5,%d0
+    lsl.l   #T_SHIFT,%d0
     lea     tracks,%a5
     adda.l  %d0,%a5
     tst.l   T_NB(%a5)
@@ -43,6 +45,9 @@ h_pre:
     subq.l  #RUNNING-PENDING,%d0
 p_dropped:
     beq     2f                      | running: the note joins it
+    subq.l  #QUEUED-RUNNING,%d0
+p_queued:
+    beq     2f                      | queued in this frame: a later note of its trig joins it
     clr.l   g_note                  | dropped (another machine): the note's locks change at once
     bra     2f
 5:  movea.l %a1,%a4
@@ -138,6 +143,18 @@ sv_machine:
     lea     {LOCKMASK:#x},%a2
     adda.l  %d0,%a2
     mvz.w   B_N(%a4),%d5
+    lea     B_LMASK(%a4),%a0        | none but this trig's slots: no return (and no read of B_ELIG)
+    moveq   #0,%d1
+    moveq   #3,%d4
+8:  move.l  (%a0,%d4.l*4),%d0
+    not.l   %d0
+    and.l   (%a2,%d4.l*4),%d0
+    or.l    %d0,%d1
+    subq.l  #1,%d4
+    bpl.s   8b
+    tst.l   %d1
+s_novel:
+    beq     sv_values
     lea     B_ELIG(%a4),%a0
     move.l  (%a2),%d0
     and.l   (%a0),%d0
@@ -220,30 +237,29 @@ sv_done:
     moveq   #1,%d0
     move.b  %d0,B_INIT(%a4)
     rts
-| the voice d2 takes each start value, the last voice's smoother state, as its target, its state
-| and its owner (B_INIT stays 2, and note_start's claim writes only the lock bits)
+| the voice d2 takes each start value, voice d3's smoother state, as its target and its state, for
+| each of the slide's entries (it has one at least). Only their offsets are read: B_INIT stays 2,
+| and the drain fills the entries from the voice and claims its owners. The target is written even
+| when d2 is d3, because a knob can leave a voice's target apart from its state. Uses d0, d1, d4,
+| a0-a3, a5
 sv_take:
     move.l  %d2,%d1
-    bsr     voice_blocks            | a0 SRC, a1 STATE, a2 owners of the note's voice
-    movea.l %a0,%a3
-    movea.l %a1,%a5
-    mvz.b   B_ID(%a4),%d6
+    bsr     voice_blocks            | a0 SRC, a1 STATE of the note's voice, both by an entry's offset
     move.l  #{STATE_VOICE_BYTES},%d0
     muls.l  %d3,%d0
-    lea     {STATE:#x},%a0
-    adda.l  %d0,%a0
-    lea     B_ENT(%a4),%a1
-7:  mvz.w   (%a1),%d1
-    move.l  (%a0,%d1.l*2),%d0
-    move.l  %d0,(%a5,%d1.l*2)
+    lea     {STATE:#x},%a3
+    adda.l  %d0,%a3                 | voice d3's STATE
+    lea     B_ENT(%a4),%a5
+    mvz.w   B_N(%a4),%d4
+1:  mvz.w   (%a5),%d1
+    move.l  (%a3,%d1.l*2),%d0
+    move.l  %d0,(%a1,%d1.l*2)
     swap    %d0
-    move.w  %d0,(%a3,%d1.l)
-    move.w  %d0,E_FROM(%a1)
-    move.w  %d0,E_CUR(%a1)
-    move.w  %d6,(%a2,%d1.l)
-    addq.l  #8,%a1
-    subq.l  #1,%d5
-    bne.s   7b
+s_target:
+    move.w  %d0,(%a0,%d1.l)
+    addq.l  #8,%a5
+    subq.l  #1,%d4
+    bne.s   1b
     rts
 sv_drop:
     moveq   #DROPPED,%d0
@@ -294,9 +310,10 @@ h_post:
     moveq   #16,%d1
     cmp.l   %d1,%d0
     bcc.s   8f
-    lsl.l   #5,%d0
+    lsl.l   #T_SHIFT,%d0
     lea     tracks,%a1
     adda.l  %d0,%a1
+    move.l  T_LASTV(%a1),%d1        | the voice of the track's note before this one, + 1
     move.l  %d2,%d0
     addq.l  #1,%d0
     move.l  %d0,T_LASTV(%a1)
@@ -306,8 +323,8 @@ h_post:
 7:  move.l  g_frame,%d0             | no slide moves in this frame (slide_frame runs after notes)
     addq.l  #1,%d0
     move.l  %d0,g_start
-    lea     -40(%sp),%sp
-    movem.l %d1-%d5/%a0-%a2/%a4-%a5,(%sp)
+    lea     -48(%sp),%sp
+    movem.l %d1-%d6/%a0-%a5,(%sp)
     movea.l %a1,%a5
     lea     vserial,%a1
     mvz.b   (%a1,%d2.l),%d0
@@ -322,13 +339,30 @@ h_post:
     mvz.b   B_STATE(%a4),%d0
     subq.l  #PENDING,%d0
     bne.s   2f
-    bsr     note_start
+    mvz.b   B_INIT(%a4),%d0         | a start: queued, unless the voice took a whole sound (B_INIT 1)
+    subq.l  #1,%d0
+q_whole:
+    beq.s   3f
+    moveq   #QUEUED,%d0
+    move.b  %d0,B_STATE(%a4)
+    bra.s   4f
+3:  bsr     note_start
     bra.s   9f
-2:
+2:  subq.l  #QUEUED-PENDING,%d0
+q_later:
+    bne.s   5f
+    tst.b   B_ISNEXT(%a4)           | a later note of a queued trig: the values of the voice of the
+    bne.s   4f                      | note before it, which took them in h_pre (NEXT: its own)
+    move.l  (%sp),%d3
+    subq.l  #1,%d3
+    bsr     sv_take
+4:  bsr     queue_note
+    bra.s   9f
+5:
 n_join:
     bsr     note_join
-9:  movem.l (%sp),%d1-%d5/%a0-%a2/%a4-%a5
-    lea     40(%sp),%sp
+9:  movem.l (%sp),%d1-%d6/%a0-%a5
+    lea     48(%sp),%sp
     bra.s   8b
 
 | a4 = a pending slide whose trig plays on voice d2, a5 = its track: it starts
@@ -377,14 +411,7 @@ voice_claim:
     move.l  %a3,-(%sp)
     mvz.w   B_N(%a4),%d4
     beq.s   5f
-    mvz.b   B_INIT(%a4),%d0
-    subq.l  #2,%d0
-c_taken:
-    bne.s   6f
-    moveq   #1,%d0                  | the voice took its start values in h_pre: the lock bits only
-    move.b  %d0,B_INIT(%a4)
-    bra.s   5f
-6:  move.l  %d2,%d1
+    move.l  %d2,%d1
     bsr     voice_blocks
     mvz.b   B_ID(%a4),%d3
     lea     B_ENT(%a4),%a3
@@ -440,13 +467,14 @@ h_lock:
     lea     -48(%sp),%sp
     movem.l %d1-%d7/%a0-%a4,(%sp)
     move.l  %d0,%d7
+    bsr     drain                   | queued starts claim their owners before the revoke, as before
     bsr     revoke
     movea.l -36(%a6),%a0
     move.l  16(%a0),%d0
     moveq   #16,%d1
     cmp.l   %d1,%d0
     bcc.s   9f
-    lsl.l   #5,%d0
+    lsl.l   #T_SHIFT,%d0
     lea     tracks,%a0
     adda.l  %d0,%a0
     tst.l   T_NB(%a0)

@@ -19,7 +19,7 @@ The code is assembled ahead of time (`scripts/gen_pslide_code.py` -> `pslide_cod
 browser applies exactly these bytes:
 
 1. every guard and every edit's stock bytes are checked: an image that differs is refused;
-2. the eleven hooks, each a `jmp` or `jsr` into the chunk, and the operand of the mask that
+2. the twelve hooks, each a `jmp` or `jsr` into the chunk, and the operand of the mask that
    clears a trig's own settings (`0x4004fd36`: `0x7fff` -> `0x7f97`) are written;
 3. the routines are added to the platform's area as a `CODE` chunk at `0x46c00000`, with the
    slides' state after them, which the platform's start-up loader clears. The frame routine
@@ -43,18 +43,18 @@ BASE = 0x40000400
 SPECS = specs.load(__file__, "pslide")         # one per OS version (issue #382)
 SPEC = SPECS["1.11"]
 # Bytes in the chunk that only look like RAM above BSS (`dnfw.mods.ramcheck`), each disassembled
-# with objdump -m m68k:cfv4e on 2026-11-26. The places move with the code, so a change to the chunk
+# with objdump -m m68k:cfv4e on 2026-11-27. The places move with the code, so a change to the chunk
 # needs them read again.
 NOT_RAM = (
-    0x46C001D8, 0x46C004E2, 0x46C005EA, 0x46C00628, 0x46C00644,
+    0x46C001DC, 0x46C00606, 0x46C0070E, 0x46C0074E, 0x46C0076A,
                              # move.w #0x2700,%sr (46 fc 27 00)
-    0x46C00522, 0x46C00622, 0x46C0063A, 0x46C00658,
+    0x46C00646, 0x46C00748, 0x46C00760, 0x46C0077E,
                              # move.w %d5,%sr (46 c5) and the next instruction
-    0x46C00282,
+    0x46C00288,
                              # not.l %d1 ; and.l %d1,%d0 (46 81 c0 81)
-    0x46C003DA, 0x46C005E0, 0x46C00A94, 0x46C00A9C, 0x46C00AA4, 0x46C00AAC,
+    0x46C003E0, 0x46C00704, 0x46C00BC6, 0x46C00BCE, 0x46C00BD6, 0x46C00BDE, 0x46C00C52,
                              # not.l %d0 ; and.l %d0,%d4 (46 80 c8 80)
-    0x46C01286, 0x46C0136E,
+    0x46C013E6, 0x46C014CE,
                              # jsr 0x40054690 ; lea ...: the operand's low word and the next opcode
 )
 

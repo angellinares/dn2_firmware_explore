@@ -898,7 +898,7 @@ Setup, in an empty project with the sequencer stopped:
 
 ## Mod: `pslide` (parameter slides)
 
-**Status: not yet tested by the repository owner.** By [w-winter](https://github.com/w-winter). The design was agreed in issue #391. On w-winter's Digitone II, 2026-11-26, `pslide3_DN2_1.11.syx` passes the checks of the hardware test below, run over USB by a script (an external report in `docs/flashing.md`). `pslide4_DN2_1.11.syx` differs from it in how a slide starts (see **The load**). Checked in the emulator on `pslide4`, and on the same code for OS 1.12 (below).
+**Status: not yet tested by the repository owner.** By [w-winter](https://github.com/w-winter). The design was agreed in issue #391. On w-winter's Digitone II, 2026-11-26, `pslide3_DN2_1.11.syx` passes the checks of the hardware test below, run over USB by a script (an external report in `docs/flashing.md`). `pslide4_DN2_1.11.syx` differs from it in how a slide starts (see **The load**). On 2026-11-27, `pslide4`'s pslide passes the checks that a slide's start can change: the slides, a turned knob, the mutes and the dense pattern by ear. Its load on the instrument is below. Checked in the emulator on `pslide4`, and on the same code for OS 1.12 (below).
 
 Stock 1.11 changes a locked parameter at once, when its trig plays. This mod adds SLD (slide) to TRIG PAGE 2, on DATA ENTRY knob E, under RTRG. On stock, that place is empty.
 
@@ -906,7 +906,7 @@ In GRID RECORDING mode, press [TRIG PARAMETERS] twice to open TRIG PAGE 2. Hold 
 
 A value other than OFF shows inverted, as a locked parameter does. To set SLD back to OFF, hold the [TRIG] keys and press knob E, as you remove a parameter lock.
 
-![TRIG PAGE 2 in the emulator with a trig held, stock 1.11: knob E's place is empty](img/emu-pslide-trig-page2-stock.png) ![The same page and trig on this build: SLD 4](img/emu-pslide-trig-page2-sld.png)
+![TRIG PAGE 2 in the emulator with a trig held, stock 1.11: knob E's place is empty](img/emu-pslide-trig-page2-stock.png) ![The same page and trig on this build: SLD 4, inverted as a locked value is](img/emu-pslide-trig-page2-sld.png)
 
 A trig with a length (1/2 to 16) glides to its locks over that many steps of the track's speed. Each parameter starts from the value that the track had just before the trig. That is the value on the track's last voice, or the preset's value when the track has no voice of its own. A parameter that the trig before locked, and that this trig does not lock, glides back to the preset's value over the same length.
 
@@ -985,7 +985,7 @@ The 1.12 code differs from 1.11's in 28 address words, each a 1.11 address that 
 
 **Browser:** `site/param-slides.html` (2026-11-25). `site/js/mods/pslide.js` ports `apply`. `test/test_js_build_matches_cli.py` builds the mod alone, and with Waverider, fxmod and lfo4, as the page does and with `dnfw mods apply`.
 
-**Checks** (2026-11-27, digikit `main`'s `panel_drive` and `coupled-run` at `5f6be832`). OS 1.11: `pslide4_DN2_1.11.syx`, from `dnfw mods apply --mod pslide` on stock 1.11. OS 1.12: the same command on stock 1.12.
+**Checks** (2026-11-27, digikit `main`'s `panel_drive` and `coupled-run` at `5f6be832`). OS 1.11: `pslide4_DN2_1.11.syx`, sha256 `02c338f1f0ee6c309f980dc6ee85fa8a2f1e2699d5991d8822a748f4122bcb93`. `dnfw mods apply --mod pslide` on stock 1.11 gives this file at commit `1b2046e6`, under the same file name. OS 1.12: the same command on stock 1.12, at the same commit.
 - `scripts/emu_pslide.py` runs 81 cases. Most compare every frame sent to the DSP (`0x400cf7be`) with stock's. Stock's jumps give each slide's start and end values. The build must follow the line between them, arrive within a frame and a half of its time, and stay. Other cases read the step flags (knob E and the edits that carry SLD), and two run on stock only. All pass.
 - The cases cover each length and NEXT, with and without Page Loop, on tracks 1, 2 and 12. Two use per-track mode, at 2x and with a track length of 8. Others cover every rule above, chords, retrigs, arp notes and lock trigs with and without SLD. One lock trig locks every knob of six pages, and one case runs the pool out. Others mute 15 tracks, empty stock's lock lists, move the clock back, and run every edit that carries SLD.
 - Two cases restart from STOP, with and without a lock on the first step. Others check knob E, its press and SLD's inverted look on the screen. One writes a voice's target as a knob does, just before a slide starts on that voice, and the slide still reaches its lock. Two check stock's work as a slide starts. A lock that does not slide goes back to the sound's value, and a preset lock loads its whole sound. One plays a chord of three with NEXT on all 16 tracks: 48 notes at once, of which stock starts 16.
@@ -1012,6 +1012,20 @@ The 1.12 code differs from 1.11's in 28 address words, each a 1.11 address that 
 - The image boots from reset in digikit's `boot_gate`, with the main UI at the same instruction as stock's. Integrity 22/22. The code has no scale-8 indexing (`scripts/check_coldfire.py`).
 - OS 1.12 (`dnfw mods apply --mod pslide` on stock 1.12): it boots, and `scripts/emu_pslide.py` passes 80 cases against stock 1.12. The same 30 controls fail. Waverider has no 1.12 build, so its case does not run there. So 175 of the 189 branches ran both ways: the 13 above, and the test for a machine past the table, which only Waverider reaches. The load harness ran on 1.11 only.
 
+**Load on the instrument** (2026-11-27, w-winter's Digitone II in Overbridge mode, on external MIDI clock). `pslide-probe3_DN2_1.11.syx` is `pslide4`'s pslide with usbprobe, Waverider and lfo4 (`dnfw mods apply --mod usbprobe --mod waverider --mod pslide --mod lfo4 --probe-tag pslide-probe3` at commit `1b2046e6`, sha256 `c4bba223d184834558964f765d7b07b2b7b58afdc9dd0b53fe333b8053fa56c4`). `noslide-probe1_DN2_1.11.syx` is the same without pslide (`--probe-tag noslide-probe1` at commit `b9035e2e`, sha256 `553d4c3c0ec5a66baf93b1d69c8e05691f357f669d0f6e2878277274e4ada257`). The USB probe read the audio interrupt once a second, over about 28 seconds of each pattern. The patterns are the emulator's `dense-80` and `mixed-drum-full`, with SLD 16 on every trig.
+
+| | dense-80 without pslide | dense-80 with pslide | mixed-drum-full without | mixed-drum-full with |
+|---|---|---|---|---|
+| median load of the audio interrupt | 48.4% | 58.1% | 50.1% | 64.1% |
+| longest interrupt in each second (median) | 100.8% of a frame | 107.9% | 84.8% | 88.9% |
+| longest interrupt | 103.1% | 109.7% | 86.1% | 90.4% |
+| interrupts over the probe's threshold | 85 | 225 | 0 | 0 |
+
+- Both builds kept 1,500 audio frames a second. w-winter heard the dense pattern play cleanly.
+- The longest interrupt in each second is the steadier figure. Three runs of the control on 2026-11-26 and 2026-11-27 read 100.8 to 100.9% of a frame on dense-80. Their counts over the threshold were 68, 73 and 85.
+- The threshold is 87,708 timer ticks, a frame on another unit. A frame of this unit is about 88,002 ticks. Stock's busiest steps in dense-80 already reach it, so a small cost moves many of them over.
+- With SLD OFF on every trig of dense-80, the hooks alone gave a median load of 48.7%. The longest interrupt in each second read 103.0% (median), and 139 interrupts went over the threshold.
+
 **Not run:**
 - A preset lock of another filter type. Expected: it changes at once, because the test compares the machine and the filter type.
 - Swing with NEXT. Expected: no change, because the length comes from the steps between the two trigs.
@@ -1019,7 +1033,6 @@ The 1.12 code differs from 1.11's in 28 address words, each a 1.11 address that 
 - A trig with SLD pasted onto a MIDI track.
 - A SYN lock on a Waverider track.
 - A track in Euclidean mode. Stock gives the hook the generated step's source step. So NEXT is expected to look for the next trig among the stored steps, which Euclidean mode replaces with generated ones.
-- On the instrument: a load reading with the USB probe (`docs/usbprobe.md`), with and without this mod.
 
 **Hardware test.** Flash `pslide4_DN2_1.11.syx`.
 
@@ -1046,7 +1059,7 @@ Make each change below in GRID RECORDING mode, and leave the mode before you lis
   - While it plays, mute tracks 1 to 15 with [FUNC] + [TRIG 1] to [TRIG 15]. For half a minute, track 16 still glides to its locks. Unmute the tracks. They glide to their locks again.
   - Save the project, and turn the instrument off and on. SLD is still on the trigs.
   - Flash stock 1.11. Load the project. It plays, with each lock changing at once, and no error message shows. Save it as another project.
-  - Flash `pslide3_DN2_1.11.syx` again. Load that project. SLD is still on the trigs.
+  - Flash `pslide4_DN2_1.11.syx` again. Load that project. SLD is still on the trigs.
 - Fail: anything else. For example: an error message, a crash, a hung note, a click at the start of a slide, or a slide that does not arrive.
 
 ## Mod 10: `songguard` -- old projects open instead of halting
